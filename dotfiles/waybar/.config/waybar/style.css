@@ -44,6 +44,8 @@ tooltip {
 #custom-overview,
 #custom-workspace-prev,
 #custom-workspace-next,
+#custom-window-prev,
+#custom-window-next,
 #window,
 #clock,
 #cpu,
@@ -58,7 +60,9 @@ tooltip {
 #custom-osk,
 #custom-overview,
 #custom-workspace-prev,
-#custom-workspace-next {
+#custom-workspace-next,
+#custom-window-prev,
+#custom-window-next {
   background: transparent;
   border: 1px solid transparent;
   border-radius: 8px;
@@ -77,7 +81,9 @@ tooltip {
 #custom-osk:hover,
 #custom-overview:hover,
 #custom-workspace-prev:hover,
-#custom-workspace-next:hover {
+#custom-workspace-next:hover,
+#custom-window-prev:hover,
+#custom-window-next:hover {
   background: @accent-soft;
   border-color: @accent-glow;
   color: @accent;

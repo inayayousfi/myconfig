@@ -1,4 +1,6 @@
 {
+  "proxy": "",
+  "restore_on_startup": "launchpad",
   "collaboration_panel": {
     "dock": "left"
   },
@@ -6,8 +8,9 @@
     "opencode": {
       "favorite_config_option_values": {
         "model": [
-          "github-copilot/claude-opus-4.7/medium",
-          "openai/gpt-5.5/low"
+          "openai/gpt-5.5/low",
+          "github-copilot/claude-opus-4.7",
+          "openai/gpt-5.5/medium"
         ]
       },
       "type": "registry"
@@ -58,7 +61,7 @@
   "ui_font_family": "Iosevka Nerd Font",
   "buffer_font_size": 18.0,
   "buffer_font_family": "Iosevka Nerd Font Mono",
-  "auto_update": false,
+  "auto_update": true,
   "on_last_window_closed": "quit_app",
   "when_closing_with_no_tabs": "close_window",
   "agent": {

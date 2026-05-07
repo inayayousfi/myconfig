@@ -7,8 +7,10 @@
   "modules-left": [
     "custom/osk",
     "custom/overview",
-    "custom/workspace-prev",
+    "custom/window-prev",
     "custom/workspace-next",
+    "custom/workspace-prev",
+    "custom/window-next",
     "niri/window"
   ],
   "modules-center": [
@@ -32,15 +34,25 @@
     "tooltip-format": "Overview",
     "on-click": "niri msg action toggle-overview"
   },
-  "custom/workspace-prev": {
+  "custom/window-prev": {
     "format": "",
+    "tooltip-format": "Previous window",
+    "on-click": "niri msg action focus-column-left"
+  },
+  "custom/workspace-next": {
+      "format": "",
+      "tooltip-format": "Next workspace",
+      "on-click": "niri msg action focus-workspace-down"
+    },
+  "custom/workspace-prev": {
+    "format": "",
     "tooltip-format": "Previous workspace",
     "on-click": "niri msg action focus-workspace-up"
   },
-  "custom/workspace-next": {
+  "custom/window-next": {
     "format": "",
-    "tooltip-format": "Next workspace",
-    "on-click": "niri msg action focus-workspace-down"
+    "tooltip-format": "Next window",
+    "on-click": "niri msg action focus-column-right"
   },
   "niri/window": {
     "format": "{title}",

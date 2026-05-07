@@ -104,6 +104,9 @@ binds {
     Mod+T hotkey-overlay-title="Open WezTerm" { spawn "wezterm"; }
     Mod+Q hotkey-overlay-title=null { close-window; }
     Mod+Escape allow-inhibiting=false hotkey-overlay-title="Toggle shortcut inhibition" { toggle-keyboard-shortcuts-inhibit; }
+    
+    Mod+S { screenshot-screen; }
+    Mod+Shift+S { screenshot-window; } 
 
     Mod+I hotkey-overlay-title="Show hotkeys" { show-hotkey-overlay; }
     Mod+Space hotkey-overlay-title="Search apps, commands, and files" { spawn "fuzzel"; }

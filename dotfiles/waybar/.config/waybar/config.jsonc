@@ -28,7 +28,7 @@
   "custom/osk": {
     "format": "",
     "tooltip-format": "On-screen keyboard",
-    "on-click": "sh -c 'pkill -x axidev-osk 2>/dev/null; axidev-osk >/dev/null 2>&1 &'"
+    "on-click": "sh -c 'pkill -9 -x axidev-osk 2>/dev/null; setsid -f axidev-osk >/dev/null 2>&1'"
   },
   "custom/overview": {
     "format": "󰖲",

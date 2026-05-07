@@ -58,6 +58,7 @@ layout {
 window-rule {
     geometry-corner-radius 8
     clip-to-geometry true
+    default-window-height { proportion 1.0; }
 }
 
 hotkey-overlay {
@@ -99,7 +100,7 @@ window-rule {
 }
 
 binds {
-    Mod+F hotkey-overlay-title="Reset column width preset" { switch-preset-column-width; }
+    Mod+F hotkey-overlay-title="Reset column width preset" { spawn-sh "niri msg action switch-preset-column-width && niri msg action reset-window-height"; }
 
     Mod+T hotkey-overlay-title="Open WezTerm" { spawn "wezterm"; }
     Mod+Q hotkey-overlay-title=null { close-window; }

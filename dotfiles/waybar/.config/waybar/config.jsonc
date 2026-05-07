@@ -7,6 +7,7 @@
   "modules-left": [
     "custom/osk",
     "custom/overview",
+    "custom/preset-width",
     "custom/window-prev",
     "custom/workspace-next",
     "custom/workspace-prev",
@@ -34,25 +35,34 @@
     "tooltip-format": "Overview",
     "on-click": "niri msg action toggle-overview"
   },
+  "custom/preset-width": {
+    "format": "󰁄",
+    "tooltip-format": "Toggle column width (50% / 98%)",
+    "on-click": "sh -c 'niri msg action switch-preset-column-width && niri msg action reset-window-height'"
+  },
   "custom/window-prev": {
     "format": "",
-    "tooltip-format": "Previous window",
-    "on-click": "niri msg action focus-column-left"
+    "tooltip-format": "Left click: focus window left\nRight click: move column left",
+    "on-click": "niri msg action focus-column-left",
+    "on-click-right": "niri msg action move-column-left"
   },
   "custom/workspace-next": {
       "format": "",
-      "tooltip-format": "Next workspace",
-      "on-click": "niri msg action focus-workspace-down"
+      "tooltip-format": "Left click: focus next workspace\nRight click: move column to next workspace",
+      "on-click": "niri msg action focus-workspace-down",
+      "on-click-right": "niri msg action move-column-to-workspace-down"
     },
   "custom/workspace-prev": {
     "format": "",
-    "tooltip-format": "Previous workspace",
-    "on-click": "niri msg action focus-workspace-up"
+    "tooltip-format": "Left click: focus previous workspace\nRight click: move column to previous workspace",
+    "on-click": "niri msg action focus-workspace-up",
+    "on-click-right": "niri msg action move-column-to-workspace-up"
   },
   "custom/window-next": {
     "format": "",
-    "tooltip-format": "Next window",
-    "on-click": "niri msg action focus-column-right"
+    "tooltip-format": "Left click: focus window right\nRight click: move column right",
+    "on-click": "niri msg action focus-column-right",
+    "on-click-right": "niri msg action move-column-right"
   },
   "niri/window": {
     "format": "{title}",

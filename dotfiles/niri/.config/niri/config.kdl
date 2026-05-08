@@ -124,6 +124,7 @@ binds {
     Mod+Shift+Right { move-column-right; }
 
     Mod+Tab { toggle-overview; }
+    F19 { toggle-overview; }
     Mod+K { focus-workspace-up; }
     Mod+J { focus-workspace-down; }
 

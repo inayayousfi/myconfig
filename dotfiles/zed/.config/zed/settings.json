@@ -1,93 +1,104 @@
 {
-  "proxy": "",
-  "restore_on_startup": "launchpad",
-  "collaboration_panel": {
-    "dock": "left"
+  "agent": {
+    "default_profile": "ask",
+    "default_model": {
+      "provider": "ollama",
+      // ollama pull gemma4:latest
+      "model": "gemma4:latest",
+      "enable_thinking": true
+    },
+    "dock": "left",
+    "favorite_models": [],
+    "model_parameters": [],
+    "show_turn_stats": true,
   },
   "agent_servers": {
     "opencode": {
       "favorite_config_option_values": {
-        "model": [
-          "openai/gpt-5.5/low",
-          "github-copilot/claude-opus-4.7",
-          "openai/gpt-5.5/medium",
-          "openai/gpt-5.5"
-        ]
+        "model": ["github-copilot/claude-opus-4.7", "openai/gpt-5.5"],
       },
-      "type": "registry"
-    }
+      "type": "registry",
+    },
   },
-  "tab_bar": {
-    "show": false
-  },
-  "max_tabs": 1,
-  "title_bar": {
-    "show_menus": false,
-    "show_user_picture": false,
-    "show_user_menu": false,
-    "show_sign_in": false,
-    "show_onboarding_banner": true
-  },
-  "show_edit_predictions": false,
-  "base_keymap": "VSCode",
-  "terminal": {
-    "scrollbar": {
-      "show": "always"
-    }
-  },
-  "buffer_line_height": "standard",
-  "buffer_font_weight": 450.0,
-  "ui_font_size": 18.0,
-  "ui_font_weight": 450.0,
-  "completion_menu_scrollbar": "auto",
-  "soft_wrap": "editor_width",
-  "vim": {
-    "toggle_relative_line_numbers": true
-  },
-  "gutter": {
-    "folds": false
-  },
-  "scrollbar": {
-    "show": "never"
-  },
-  "relative_line_numbers": "enabled",
+  "auto_update": true,
   "autosave": {
     "after_delay": {
-      "milliseconds": 2000
+      "milliseconds": 2000,
+    },
+  },
+  "base_keymap": "VSCode",
+  "buffer_font_family": "Iosevka Nerd Font Mono",
+  "buffer_font_size": 20,
+  "buffer_font_weight": 450,
+  "buffer_line_height": "standard",
+  "collaboration_panel": {
+    "dock": "left",
+  },
+  "completion_menu_scrollbar": "auto",
+  "edit_predictions": {
+    "mode": "eager",
+    "provider": "ollama",
+    "ollama": {
+      "api_url": "http://127.0.0.1:11434",
+      // ollama pull hf.co/bartowski/zed-industries_zeta-2-GGUF:Q4_0
+      "model": "hf.co/bartowski/zed-industries_zeta-2-GGUF:Q4_0",
+      "prompt_format": "zeta2",
+      "max_output_tokens": 256
     }
   },
-  "rounded_selection": false,
-  "unnecessary_code_fade": 0.0,
-  "hide_mouse": "never",
-  "ui_font_family": "Iosevka Nerd Font",
-  "buffer_font_size": 18.0,
-  "buffer_font_family": "Iosevka Nerd Font Mono",
-  "auto_update": true,
-  "on_last_window_closed": "quit_app",
-  "when_closing_with_no_tabs": "close_window",
-  "agent": {
-    "show_turn_stats": true,
-    "dock": "left",
-    "favorite_models": [],
-    "model_parameters": []
-  },
-  "outline_panel": {
-    "dock": "right"
-  },
   "git_panel": {
-    "dock": "right"
+    "dock": "right",
+  },
+  "gutter": {
+    "folds": false,
+  },
+  "hide_mouse": "never",
+  "icon_theme": "Zed (Default)",
+  "max_tabs": 1,
+  "on_last_window_closed": "quit_app",
+  "outline_panel": {
+    "dock": "right",
   },
   "project_panel": {
-    "dock": "right"
+    "dock": "right",
   },
-  "icon_theme": "Zed (Default)",
-  "telemetry": {
-    "diagnostics": false,
-    "metrics": false
+  "relative_line_numbers": "enabled",
+  "restore_on_startup": "launchpad",
+  "rounded_selection": false,
+  "scrollbar": {
+    "show": "never",
   },
   "session": {
-    "trust_all_worktrees": true
+    "trust_all_worktrees": true,
+  },
+  "soft_wrap": "editor_width",
+  "tab_bar": {
+    "show": false,
+  },
+  "telemetry": {
+    "diagnostics": false,
+    "metrics": false,
+  },
+  "terminal": {
+    "scrollbar": {
+      "show": "always",
+    },
+  },
+  "theme": "Black & Pink",
+  "title_bar": {
+    "show_menus": false,
+    "show_onboarding_banner": true,
+    "show_sign_in": false,
+    "show_user_menu": false,
+    "show_user_picture": false,
+  },
+  "ui_font_family": "Iosevka Nerd Font",
+  "ui_font_size": 20,
+  "ui_font_weight": 450,
+  "unnecessary_code_fade": 0,
+  "vim": {
+    "toggle_relative_line_numbers": true,
   },
   "vim_mode": true,
-  "theme": "Black & Pink"
+  "when_closing_with_no_tabs": "close_window",
 }

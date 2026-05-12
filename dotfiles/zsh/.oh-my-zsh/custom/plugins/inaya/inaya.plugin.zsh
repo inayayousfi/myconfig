@@ -126,6 +126,10 @@ if has tmux; then
     alias tmux='tmux -f $XDG_CONFIG_HOME/tmux/tmux.conf'
 fi
 
+if has systemctl; then 
+    alias sus='systemctl suspend'
+fi
+
 # ============================================================================
 # Functions (Cross-platform)
 # ============================================================================
@@ -181,11 +185,11 @@ stowgo() {
     stow --dir="$HOME/dotfiles" --target="$target" --restow --no-folding "$pkg"
 }
 
-# Fuzzy file picker - opens selection in neovim
+# Fuzzy file picker - opens selection in zed
 pf() {
   local file
   file=$(fzf --preview='bat {} --color=always --style=numbers' --bind shift-up:preview-page-up,shift-down:preview-page-down)
-  [ -n "$file" ] && nvim "$file"
+  [ -n "$file" ] && zed "$file"
 }
 
 # Yazi file manager wrapper - changes directory on exit

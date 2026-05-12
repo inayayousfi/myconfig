@@ -112,5 +112,39 @@
     "bindings": {
       "ctrl-shift-h": "agent::Toggle"
     }
+  },
+  {
+    "bindings": {
+      "ctrl-shift-f": "workspace::ToggleZoom"
+    }
+  },
+  {
+    "unbind": {
+      "shift-escape": "workspace::ToggleZoom"
+    }
+  },
+  {
+    "context": "Terminal",
+    "unbind": {
+      "ctrl-shift-f": "buffer_search::Deploy"
+    }
+  },
+  {
+    "context": "Workspace",
+    "unbind": {
+      "ctrl-shift-f": "pane::DeploySearch"
+    }
+  },
+  {
+    "context": "Pane",
+    "unbind": {
+      "ctrl-shift-f": "project_search::ToggleFocus"
+    }
+  },
+  {
+    "context": "ProjectSearchBar",
+    "unbind": {
+      "ctrl-shift-f": "search::FocusSearch"
+    }
   }
 ]

@@ -122,9 +122,9 @@
   "custom/screen": {
     "format": "<span color='#ff4ead'>󰍹 </span>",
     "tooltip-format": "Left click: brightness\nMiddle click: wdisplays\nRight click: display profiles",
-    "on-click": "sh -c '/home/iy/.local/bin/brightness-popup >/dev/null 2>&1 &'",
+    "on-click": "sh -c '$HOME/.local/bin/brightness-popup >/dev/null 2>&1 &'",
     "on-click-middle": "sh -c 'wdisplays >/dev/null 2>&1 &'",
-    "on-click-right": "sh -c '${XDG_CONFIG_HOME:-$HOME/.config}/display/display-tray menu >/dev/null 2>&1 &'"
+    "on-click-right": "sh -c '$HOME/.local/bin/display-tray menu >/dev/null 2>&1 &'"
   },
   "tray": {
     "icon-size": 20,

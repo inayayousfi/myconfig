@@ -1,4 +1,6 @@
 {
+  "diff_view_style": "split",
+  "cli_default_open_behavior": "existing_window",
   "show_edit_predictions": false,
   "agent": {
     "default_profile": "ask",

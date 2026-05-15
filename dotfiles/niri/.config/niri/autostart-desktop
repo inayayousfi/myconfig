@@ -78,6 +78,14 @@ desktop_exec_to_shell() {
     printf '%s\n' "$exec_line"
 }
 
+start() {
+    "$@" &
+}
+
+start_shell() {
+    sh -lc "$1" &
+}
+
 dir="${XDG_CONFIG_HOME:-$HOME/.config}/autostart"
 if [[ -d "$dir" ]]; then
     for file in "$dir"/*.desktop; do
@@ -105,3 +113,12 @@ for file in "${desktop_files[@]}"; do
 
     sh -lc "$exec_line" &
 done
+
+start mako
+start waybar
+start axidev-osk
+start_shell "~/.config/kanata/kanata-tray"
+start_shell "nm-applet --indicator"
+start_shell "/usr/libexec/xdg-desktop-portal-wlr"
+start_shell "/usr/libexec/xdg-desktop-portal-gtk"
+start_shell "swaybg -i ~/wallpaper/menhara_mtf_hihi_topazlabs_upscale.png -m fill"

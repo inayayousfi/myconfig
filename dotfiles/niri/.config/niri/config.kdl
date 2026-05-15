@@ -67,18 +67,43 @@ hotkey-overlay {
 
 screenshot-path "~/Pictures/Screenshots/Screenshot from %Y-%m-%d %H-%M-%S.png"
 
-spawn-at-startup "mako"
-spawn-at-startup "waybar"
-spawn-at-startup "axidev-osk"
-spawn-at-startup "sh" "-lc" "~/.config/kanata/kanata-tray"
 spawn-at-startup "sh" "-lc" "~/dotfiles/niri/.config/niri/autostart-desktop"
-spawn-at-startup "sh" "-lc" "nm-applet --indicator"
-spawn-at-startup "sh" "-lc" "/usr/libexec/xdg-desktop-portal-wlr"
-spawn-at-startup "sh" "-lc" "/usr/libexec/xdg-desktop-portal-gtk"
-spawn-at-startup "sh" "-lc" "swaybg -i ~/wallpaper/menhara_mtf_hihi_topazlabs_upscale.png -m fill"
 
 animations {
-    off
+    workspace-switch {
+        duration-ms 100
+        curve "ease-out-cubic"
+    }
+
+    window-open {
+        duration-ms 100
+        curve "ease-out-cubic"
+    }
+
+    window-close {
+        duration-ms 100
+        curve "ease-out-cubic"
+    }
+
+    horizontal-view-movement {
+        duration-ms 100
+        curve "ease-out-cubic"
+    }
+
+    window-movement {
+        duration-ms 100
+        curve "ease-out-cubic"
+    }
+
+    window-resize {
+        duration-ms 100
+        curve "ease-out-cubic"
+    }
+
+    overview-open-close {
+        duration-ms 100
+        curve "ease-out-cubic"
+    }
 }
 
 window-rule {
@@ -103,6 +128,9 @@ binds {
     Mod+F hotkey-overlay-title="Reset column width preset" { spawn-sh "niri msg action switch-preset-column-width && niri msg action reset-window-height"; }
 
     Mod+T hotkey-overlay-title="Open WezTerm" { spawn "wezterm"; }
+    Mod+Z hotkey-overlay-title="Open Zed" { spawn "/home/iy/.local/zed.app/bin/zed"; }
+    Mod+E hotkey-overlay-title="Open Home" { spawn "thunar"; }
+    
     Mod+Q hotkey-overlay-title=null { close-window; }
     Mod+Escape allow-inhibiting=false hotkey-overlay-title="Toggle shortcut inhibition" { toggle-keyboard-shortcuts-inhibit; }
     

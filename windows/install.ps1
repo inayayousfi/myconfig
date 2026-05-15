@@ -159,84 +159,6 @@ function Install-PowerShellProfile
   Write-Log "PowerShell profile installed" -Level 'OK'
 }
 
-# ============================================================================
-# Neovim Configuration
-# ============================================================================
-
-function Install-NeovimConfig
-{
-  $source = Join-Path $SharedDotfilesDir "nvim\.config\nvim"
-  $destination = Join-Path $env:LOCALAPPDATA "nvim"
-
-  if (-not (Test-Path $source))
-  {
-    Write-Log "Neovim config source not found: $source" -Level 'ERROR'
-    return
-  }
-
-  if ((Test-Path $destination) -and (Test-Path (Join-Path $destination "lua\config\lazy.lua")))
-  {
-    Write-Log "Neovim configuration is already installed" -Level 'OK'
-  } else
-  {
-    Write-Log "Installing Neovim configuration..."
-  }
-
-  Copy-DotfileSafe -Source $source -Destination $destination -Recurse
-  [Environment]::SetEnvironmentVariable("EDITOR", "nvim", "User")
-  Write-Log "Neovim configuration installed" -Level 'OK'
-}
-
-# ============================================================================
-# Yazi Configuration
-# ============================================================================
-
-function Install-YaziConfig
-{
-  $source = Join-Path $SharedDotfilesDir "yazi\.config\yazi"
-  $destination = Join-Path $env:APPDATA "yazi"
-
-  if (-not (Test-Path $source))
-  {
-    Write-Log "Yazi config source not found: $source" -Level 'ERROR'
-    return
-  }
-
-  Copy-DotfileSafe -Source $source -Destination $destination -Recurse
-  [Environment]::SetEnvironmentVariable(
-    "YAZI_FILE_ONE",
-    "C:\Program Files\Git\usr\bin\file.exe",
-    "User"
-  )
-  Write-Log "Yazi configuration installed" -Level 'OK'
-}
-
-# ============================================================================
-# Lazygit Configuration
-# ============================================================================
-
-function Install-LazygitConfig
-{
-  $source = Join-Path $SharedDotfilesDir "lazygit\.config\lazygit\config.yml"
-  $destination = Join-Path $env:LOCALAPPDATA "lazygit\config.yml"
-
-  if (-not (Test-Path $source))
-  {
-    Write-Log "Lazygit config source not found: $source" -Level 'ERROR'
-    return
-  }
-
-  if (Test-Path $destination)
-  {
-    $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-    $backup = "$destination.backup.$timestamp"
-    Copy-Item -Path $destination -Destination $backup -Force
-    Write-Log "Backed up existing Lazygit config to $backup"
-  }
-
-  Copy-DotfileSafe -Source $source -Destination $destination
-  Write-Log "Lazygit configuration installed" -Level 'OK'
-}
 
 # ============================================================================
 # Oh My Posh Configuration
@@ -258,6 +180,79 @@ function Install-OhMyPoshConfig
 }
 
 # ============================================================================
+# Zed Configuration
+# ============================================================================
+
+function Install-ZedConfig
+{
+  $source = Join-Path $SharedDotfilesDir "zed\.config\zed"
+  $destination = Join-Path $env:APPDATA "Zed"
+
+  if (-not (Test-Path $source))
+  {
+    Write-Log "Zed config source not found: $source" -Level 'ERROR'
+    return
+  }
+
+  Copy-DotfileSafe -Source $source -Destination $destination -Recurse
+  Write-Log "Zed configuration installed" -Level 'OK'
+}
+
+function Install-OllamaModels
+{
+  if (-not (Test-CommandExists "ollama"))
+  {
+    Write-Log "Ollama not found, skipping model installation" -Level 'WARNING'
+    return
+  }
+
+  $models = @(
+    "gemma4:latest",
+    "hf.co/bartowski/zed-industries_zeta-2-GGUF:Q4_0"
+  )
+
+  foreach ($model in $models)
+  {
+    Write-Log "Pulling Ollama model: $model..."
+    ollama pull $model
+    if ($LASTEXITCODE -eq 0)
+    {
+      Write-Log "Ollama model installed: $model" -Level 'OK'
+    } else
+    {
+      Write-Log "Failed to pull Ollama model: $model" -Level 'WARNING'
+    }
+  }
+}
+
+# ============================================================================
+# Windows Terminal Configuration
+# ============================================================================
+
+function Install-WindowsTerminalConfig
+{
+  $source = Join-Path $WindowsDotfilesDir "WindowsTerminal\settings.json"
+  $destination = Join-Path $env:LOCALAPPDATA "Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json"
+
+  if (-not (Test-Path $source))
+  {
+    Write-Log "Windows Terminal config source not found: $source" -Level 'ERROR'
+    return
+  }
+
+  if (Test-Path $destination)
+  {
+    $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+    $backup = "$destination.backup.$timestamp"
+    Copy-Item -Path $destination -Destination $backup -Force
+    Write-Log "Backed up existing Windows Terminal config to $backup"
+  }
+
+  Copy-DotfileSafe -Source $source -Destination $destination
+  Write-Log "Windows Terminal configuration installed" -Level 'OK'
+}
+
+# ============================================================================
 # Iosevka Mono Font
 # ============================================================================
 
@@ -275,71 +270,6 @@ function Install-IosevkaMonoFont
 }
 
 # ============================================================================
-# WezTerm Configuration
-# ============================================================================
-
-function Install-WezTermConfig
-{
-  $source = Join-Path $SharedDotfilesDir "wezterm\.wezterm.lua"
-  $destination = Join-Path $env:USERPROFILE ".wezterm.lua"
-
-  if (-not (Test-Path $source))
-  {
-    Write-Log "WezTerm config source not found: $source" -Level 'ERROR'
-    return
-  }
-
-  # Backup existing config
-  if (Test-Path $destination)
-  {
-    $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-    $backup = "$destination.backup.$timestamp"
-    Copy-Item -Path $destination -Destination $backup -Force
-    Write-Log "Backed up existing WezTerm config to $backup"
-  }
-
-  Copy-DotfileSafe -Source $source -Destination $destination
-  Write-Log "WezTerm configuration installed" -Level 'OK'
-}
-
-# ============================================================================
-# Komorebi and YASB Configuration
-# ============================================================================
-
-function Install-KomorebiConfig
-{
-  # Komorebi config lives under the user profile config tree on Windows.
-  $komorebiSource = Join-Path $WindowsDotfilesDir ".config\komorebi"
-  $komorebiDest = Join-Path $env:USERPROFILE ".config\komorebi"
-
-  if (-not (Test-Path $komorebiSource))
-  {
-    Write-Log "Komorebi config source not found: $komorebiSource" -Level 'ERROR'
-  } else
-  {
-    Copy-DotfileSafe -Source $komorebiSource -Destination $komorebiDest -Recurse
-    Write-Log "Komorebi configuration installed" -Level 'OK'
-  }
-
-  # YASB config follows the same user-scoped config layout.
-  $yasbSource = Join-Path $WindowsDotfilesDir ".config\yasb"
-  $yasbDest = Join-Path $env:USERPROFILE ".config\yasb"
-
-  if (-not (Test-Path $yasbSource))
-  {
-    Write-Log "YASB config source not found: $yasbSource" -Level 'ERROR'
-  } else
-  {
-    Copy-DotfileSafe -Source $yasbSource -Destination $yasbDest -Recurse
-    Write-Log "YASB configuration installed" -Level 'OK'
-  }
-
-  [Environment]::SetEnvironmentVariable("KOMOREBI_CONFIG_HOME", "$Env:USERPROFILE\.config\komorebi", "User")
-  komorebic enable-autostart
-  yasbc enable-autostart
-}
-
-# ============================================================================
 # AutoHotkey Scripts
 # ============================================================================
 
@@ -347,6 +277,9 @@ function Install-AHKScripts
 {
   $source = Join-Path $WindowsDotfilesDir "AutoHotkey"
   $destination = Join-Path $env:USERPROFILE "AutoHotkey"
+  $exePath = Join-Path $destination "myconfig.exe"
+  $startupDir = [Environment]::GetFolderPath("Startup")
+  $shortcutPath = Join-Path $startupDir "myconfig-autohotkey.lnk"
 
   if (-not (Test-Path $source))
   {
@@ -356,6 +289,25 @@ function Install-AHKScripts
 
   Copy-DotfileSafe -Source $source -Destination $destination -Recurse
   Write-Log "AutoHotkey scripts installed" -Level 'OK'
+
+  if (-not (Test-Path $exePath))
+  {
+    Write-Log "AutoHotkey executable not found: $exePath" -Level 'WARNING'
+    return
+  }
+
+  try
+  {
+    $shell = New-Object -ComObject WScript.Shell
+    $shortcut = $shell.CreateShortcut($shortcutPath)
+    $shortcut.TargetPath = $exePath
+    $shortcut.WorkingDirectory = $destination
+    $shortcut.Save()
+    Write-Log "AutoHotkey startup shortcut installed" -Level 'OK'
+  } catch
+  {
+    Write-Log "Failed to create AutoHotkey startup shortcut: $($_.Exception.Message)" -Level 'ERROR'
+  }
 }
 
 # ============================================================================
@@ -372,33 +324,6 @@ function Install-PSReadLineModule
     Write-Log "Installing PSReadLine module..."
     Install-Module -Name PSReadLine -AllowPrerelease -Force -Scope CurrentUser
     Write-Log "PSReadLine module installed" -Level 'OK'
-  }
-}
-
-# ============================================================================
-# GnuWin32 PATH
-# ============================================================================
-
-function Install-GnuWin32Path
-{
-  $gnuWin32Bin = "C:\Program Files (x86)\GnuWin32\bin"
-
-  if (-not (Test-Path $gnuWin32Bin))
-  {
-    Write-Log "GnuWin32 bin directory not found, skipping PATH setup" -Level 'WARNING'
-    return
-  }
-
-  $currentPath = [Environment]::GetEnvironmentVariable("Path", "User")
-  if ($currentPath -like "*GnuWin32*")
-  {
-    Write-Log "GnuWin32 is already in PATH" -Level 'OK'
-  } else
-  {
-    Write-Log "Adding GnuWin32 to user PATH..."
-    [Environment]::SetEnvironmentVariable("Path", "$currentPath;$gnuWin32Bin", "User")
-    $env:Path = "$env:Path;$gnuWin32Bin"
-    Write-Log "GnuWin32 added to PATH" -Level 'OK'
   }
 }
 
@@ -512,18 +437,15 @@ function Main
 
   # Copy the core configuration files and directories.
   Install-PowerShellProfile
-  Install-NeovimConfig
-  Install-YaziConfig
-  Install-LazygitConfig
   Install-OhMyPoshConfig
-  Install-WezTermConfig
-  Install-KomorebiConfig
+  Install-ZedConfig
+  Install-OllamaModels
+  Install-WindowsTerminalConfig
   Install-AHKScripts
 
   # Install the supporting tools and modules that the dotfiles expect.
   Install-PSReadLineModule
   Install-IosevkaMonoFont
-  Install-GnuWin32Path
   Install-LLVMPath
   Install-PythonSetup
   Install-NodeViaNVM

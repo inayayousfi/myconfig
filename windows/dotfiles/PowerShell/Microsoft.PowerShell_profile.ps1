@@ -108,11 +108,6 @@ if ($UseInteractiveProfile)
 
 Set-Alias lg lazygit
 Set-Alias oc opencode
-Set-Alias cx codex
-Set-Alias vim nvim
-Set-Alias vi nvim
-Set-Alias v nvim
-Set-Alias grep rg
 Set-Alias which gcm
 
 # =========================
@@ -181,20 +176,6 @@ function su
   )
 
   Start-Process -FilePath "wt.exe" -Verb RunAs -ArgumentList $wtArgs
-}
-
-function y
-{
-  $tmp = (New-TemporaryFile).FullName
-  yazi.exe $args --cwd-file="$tmp"
-  $cwd = Get-Content -Path $tmp -Encoding UTF8
-
-  if ($cwd -ne $PWD.Path -and (Test-Path -LiteralPath $cwd -PathType Container))
-  {
-    Set-Location -LiteralPath (Resolve-Path -LiteralPath $cwd).Path
-  }
-
-  Remove-Item $tmp
 }
 
 function msvcenv
@@ -660,29 +641,29 @@ function repair-winget {
 }
 
 # =========================
-# AI Commit (Codex clean)
+# AI Commit
 # =========================
 
 function aic
 {
   param(
-    [string]$Model = "gpt-5.4-mini"
+    [string]$Model = "openai/gpt-5.4-mini"
   )
 
-  $branch = (git rev-parse --abbrev-ref HEAD) -join "`n"
-  $gitLog = (git log -10 --pretty=format:"<commit>%n%h%n%B%n</commit>") -join "`n"
-  $diffStat = (git diff --cached --stat) -join "`n"
-  $diff = (git diff --cached) -join "`n"
+  $branch = (git rev-parse --abbrev-ref HEAD 2>$null) -join "`n"
+  $gitLog = (git log -10 --pretty=format:"<commit>%n%h%n%B%n</commit>" 2>$null) -join "`n"
+  $diffStat = (git diff --cached --stat 2>$null) -join "`n"
+  $diff = (git diff --cached 2>$null) -join "`n"
 
-  $branch = $branch.Replace("`r`n", "`n").Replace("`r", "`n").Trim()
-  $gitLog = $gitLog.Replace("`r`n", "`n").Replace("`r", "`n").Trim()
-  $diffStat = $diffStat.Replace("`r`n", "`n").Replace("`r", "`n").Trim()
-  $diff = $diff.Replace("`r`n", "`n").Replace("`r", "`n").Trim()
+  $branch = $branch.Replace("`r`n", "`n").Replace("`r", "`n")
+  $gitLog = $gitLog.Replace("`r`n", "`n").Replace("`r", "`n")
+  $diffStat = $diffStat.Replace("`r`n", "`n").Replace("`r", "`n")
+  $diff = $diff.Replace("`r`n", "`n").Replace("`r", "`n")
 
   if ([string]::IsNullOrWhiteSpace($diffStat))
   {
-    Write-Err "❌ No staged changes. Run git add first."
-    return
+    [Console]::Error.WriteLine("❌ No staged changes. Run git add first.")
+    return 1
   }
 
   while ($true)
@@ -717,58 +698,63 @@ Rules:
 - no fluff
 "@
 
-    $rawMessage = $prompt | codex exec `
-      -m $Model `
-      -c model_reasoning_effort=low `
-      -c temperature=0.2
+    $rawMessage = opencode run --model $Model $prompt
 
     if (-not $rawMessage)
     {
-      Write-Err "❌ Failed to generate commit message."
-      return
+      [Console]::Error.WriteLine("❌ Failed to generate commit message.")
+      return 1
     }
 
     $message = (($rawMessage | ForEach-Object { [string]$_ }) -join "`n")
-    $message = $message.Replace("`r`n", "`n").Replace("`r", "`n").Trim()
+    $message = $message.Replace("`r`n", "`n").Replace("`r", "`n")
 
     if ([string]::IsNullOrWhiteSpace($message))
     {
-      Write-Err "❌ Codex returned an empty commit message."
-      return
+      [Console]::Error.WriteLine("❌ opencode returned an empty commit message.")
+      return 1
     }
 
     Write-Host ""
-    Write-Host "──────────────── commit preview ────────────────" -ForegroundColor DarkGray
-    Write-Host $message -ForegroundColor Cyan
-    Write-Host "───────────────────────────────────────────────" -ForegroundColor DarkGray
+    Write-Host "──────────────── commit preview ────────────────"
+    Write-Host $message
+    Write-Host "───────────────────────────────────────────────"
     Write-Host ""
 
-    $choice = Read-Host "[Y] yes  |  [R] retry  |  [C] cancel"
+    Write-Host -NoNewline "[Y] yes  |  [R] retry  |  [C] cancel: "
+    $choice = Read-Host
 
     switch ($choice.ToLowerInvariant())
     {
       "y"
       {
         $message | git commit -F -
-        Write-Success "✨ Commit created. Tiny machine goblin satisfied."
-        return
+
+        if ($LASTEXITCODE -eq 0)
+        {
+          Write-Host "✨ Commit created. Tiny machine goblin satisfied."
+          return 0
+        }
+
+        [Console]::Error.WriteLine("❌ Commit failed. Nothing was committed.")
+        return 1
       }
 
       "r"
       {
-        Write-Info "🔁 Retrying... maybe the robot was feeling silly."
+        Write-Host "🔁 Retrying... maybe the robot was feeling silly."
         continue
       }
 
       "c"
       {
-        Write-Warn "🚫 Commit cancelled. Nothing was committed."
-        return
+        Write-Host "🚫 Commit cancelled. Nothing was committed."
+        return 0
       }
 
       default
       {
-        Write-Warn "🤨 Expected Y, R, or C. Let's try again."
+        Write-Host "🤨 Expected Y, R, or C. Let's try again."
         continue
       }
     }
@@ -811,22 +797,5 @@ function reload
   if (-not $IsQuiet)
   {
     Clear-Host
-  }
-}
-
-# =========================
-# Startup (interactive only)
-# =========================
-
-if ($UseInteractiveProfile)
-{
-  if (Get-Command fastfetch.exe -ErrorAction SilentlyContinue)
-  {
-    fastfetch.exe
-  }
-
-  if (Get-Command zoxide -ErrorAction SilentlyContinue)
-  {
-    Invoke-Expression (& { (zoxide init powershell | Out-String) })
   }
 }

@@ -1,131 +1,71 @@
 {
-	"$schema" : "https://aka.ms/winget-packages.schema.2.0.json",
-	"CreationDate" : "2026-02-12T10:03:43.460-00:00",
-	"Sources" : 
-	[
-		{
-			"Packages" : 
-			[
-				{
-					"PackageIdentifier" : "CoreyButler.NVMforWindows"
-				},
-				{
-					"PackageIdentifier" : "7zip.7zip"
-				},
-				{
-					"PackageIdentifier" : "AutoHotkey.AutoHotkey"
-				},
-				{
-					"PackageIdentifier" : "Git.Git"
-				},
-				{
-					"PackageIdentifier" : "ImageMagick.ImageMagick"
-				},
-				{
-					"PackageIdentifier" : "Neovim.Neovim"
-				},
-				{
-					"PackageIdentifier" : "Kitware.CMake"
-				},
-				{
-					"PackageIdentifier" : "Microsoft.PowerShell"
-				},
-				{
-					"PackageIdentifier" : "LLVM.LLVM"
-				},
-				{
-					"PackageIdentifier" : "GnuWin32.Make"
-				},
-				{
-					"PackageIdentifier" : "Microsoft.VisualStudio.2022.BuildTools"
-				},
-				{
-					"PackageIdentifier" : "BurntSushi.ripgrep.MSVC"
-				},
-				{
-					"PackageIdentifier" : "Gyan.FFmpeg"
-				},
-				{
-					"PackageIdentifier" : "JesseDuffield.lazygit"
-				},
-				{
-					"PackageIdentifier" : "Rustlang.Rustup"
-				},
-				{
-					"PackageIdentifier" : "SST.OpenCodeDesktop"
-				},
-				{
-					"PackageIdentifier" : "ajeetdsouza.zoxide"
-				},
-				{
-					"PackageIdentifier" : "jqlang.jq"
-				},
-				{
-					"PackageIdentifier" : "junegunn.fzf"
-				},
-				{
-					"PackageIdentifier" : "oschwartz10612.Poppler"
-				},
-				{
-					"PackageIdentifier" : "sxyazi.yazi"
-				},
-				{
-					"PackageIdentifier" : "Ollama.Ollama"
-				},
-				{
-					"PackageIdentifier" : "Microsoft.WindowsTerminal"
-				},
-				{
-					"PackageIdentifier" : "Microsoft.WSL"
-				},
-				{
-					"PackageIdentifier" : "Python.PythonInstallManager"
-				},
-				{
-					"PackageIdentifier" : "JanDeDobbeleer.OhMyPosh"
-				},
-				{
-					"PackageIdentifier" : "LGUG2Z.komorebi"
-				},
-				{
-					"PackageIdentifier" : "AmN.yasb"
+  "$schema": "https://aka.ms/winget-packages.schema.2.0.json",
+  "CreationDate": "2026-02-12T10:03:43.460-00:00",
+  "Sources": [
+    {
+      "Packages": [
+        {
+          "PackageIdentifier": "CoreyButler.NVMforWindows"
         },
         {
-          "PackageIdentifier" : "jftuga.less"
+          "PackageIdentifier": "7zip.7zip"
         },
         {
-          "PackageIdentifier" : "XAMPPRocky.tokei"
+          "PackageIdentifier": "Git.Git"
         },
         {
-          "PackageIdentifier" : "GoLang.Go"
+          "PackageIdentifier": "Microsoft.PowerShell"
         },
         {
-          "PackageIdentifier" : "Docker.DockerDesktop"
+          "PackageIdentifier": "LLVM.LLVM"
         },
         {
-          "PackageIdentifier" : "wez.wezterm"
+          "PackageIdentifier": "Microsoft.VisualStudio.2022.BuildTools"
         },
         {
-          "PackageIdentifier" : "Fastfetch-cli.Fastfetch"
-        },
-        { 
-          "PackageIdentifier" : "OpenAI.Codex"
+          "PackageIdentifier": "Rustlang.Rustup"
         },
         {
-          "PackageIdentifier" : "T3Tools.T3Code"
+          "PackageIdentifier": "Ollama.Ollama"
         },
         {
-          "PackageIdentifier" : "tree-sitter.tree-sitter-cli"
+          "PackageIdentifier": "Microsoft.WindowsTerminal"
+        },
+        {
+          "PackageIdentifier": "Microsoft.WSL"
+        },
+        {
+          "PackageIdentifier": "Python.PythonInstallManager"
+        },
+        {
+          "PackageIdentifier": "JanDeDobbeleer.OhMyPosh"
+        },
+        {
+          "PackageIdentifier": "jftuga.less"
+        },
+        {
+          "PackageIdentifier": "XAMPPRocky.tokei"
+        },
+        {
+          "PackageIdentifier": "GoLang.Go"
+        },
+        {
+          "PackageIdentifier": "Docker.DockerDesktop"
+        },
+        {
+          "PackageIdentifier": "ZedIndustries.Zed"
+        },
+        {
+          "PackageIdentifier": "cjpais.Handy"
         }
-			],
-			"SourceDetails" : 
-			{
-				"Argument" : "https://cdn.winget.microsoft.com/cache",
-				"Identifier" : "Microsoft.Winget.Source_8wekyb3d8bbwe",
-				"Name" : "winget",
-				"Type" : "Microsoft.PreIndexed.Package"
-			}
-		},
-	],
-	"WinGetVersion" : "1.12.460"
+      ],
+      "SourceDetails": {
+        "Argument": "https://cdn.winget.microsoft.com/cache",
+        "Identifier": "Microsoft.Winget.Source_8wekyb3d8bbwe",
+        "Name": "winget",
+        "Type": "Microsoft.PreIndexed.Package"
+      }
+    }
+  ],
+  "WinGetVersion": "1.12.460"
 }

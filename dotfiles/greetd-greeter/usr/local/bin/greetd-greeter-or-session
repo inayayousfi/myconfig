@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+log=/tmp/greetd-greeter-or-session.log
+osk_failed=/tmp/greetd-osk-failed
+
+exec >>"$log" 2>&1
+
+echo "=== $(date -Is) greetd greeter wrapper starting ==="
+
+for attempt in 1 2 3; do
+    rm -f "$osk_failed"
+    echo "Starting niri greeter compositor (attempt $attempt)"
+
+    set +e
+    env GTK_USE_PORTAL=0 GDK_DEBUG=no-portals niri --config /etc/greetd/niri-config.kdl
+    status=$?
+    set -e
+
+    if [[ -f "$osk_failed" ]]; then
+        echo "OSK failure marker found; bypassing greeter into user session"
+        rm -f "$osk_failed"
+        exec /usr/local/bin/niri-session
+    fi
+
+    if [[ "$status" -eq 0 ]]; then
+        echo "Greeter compositor exited cleanly"
+        exit 0
+    fi
+
+    echo "Greeter compositor exited with status $status"
+    sleep 1
+done
+
+echo "Greeter failed after retries; starting user session fallback"
+exec /usr/local/bin/niri-session

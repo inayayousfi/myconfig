@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export XDG_CURRENT_DESKTOP=niri
+export XDG_SESSION_TYPE=wayland
+export XDG_SESSION_DESKTOP=niri
+
+export GTK_THEME=Adwaita:dark
+export GTK_APPLICATION_PREFER_DARK_THEME=1
+export ADW_DISABLE_PORTAL=1
+export MOZ_ENABLE_WAYLAND=1
+export ELECTRON_OZONE_PLATFORM_HINT=wayland
+export QT_QPA_PLATFORM='wayland;xcb'
+export QT_QPA_PLATFORMTHEME=qt6ct
+export QT_QUICK_CONTROLS_STYLE=Fusion
+export SDL_VIDEODRIVER=wayland
+export CLUTTER_BACKEND=wayland
+
+exec niri

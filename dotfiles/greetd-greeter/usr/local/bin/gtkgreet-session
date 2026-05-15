@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cleanup() {
+    niri msg action quit --skip-confirmation >/dev/null 2>&1 || true
+}
+
+trap cleanup EXIT INT TERM
+
+env GTK_THEME=Adwaita:dark GTK_APPLICATION_PREFER_DARK_THEME=1 ADW_DISABLE_PORTAL=1 gtkgreet --layer-shell --command /usr/local/bin/niri-session

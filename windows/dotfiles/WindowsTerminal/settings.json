@@ -1,0 +1,157 @@
+{
+    "$help": "https://aka.ms/terminal-documentation",
+    "$schema": "https://aka.ms/terminal-profiles-schema",
+    "actions": 
+    [
+        {
+            "command": 
+            {
+                "action": "splitPane"
+            },
+            "id": "User.splitPane.91AB55B1"
+        },
+        {
+            "command": 
+            {
+                "action": "adjustFontSize",
+                "delta": -1
+            },
+            "id": "User.adjustFontSize.E2698FAA"
+        }
+    ],
+    "centerOnLaunch": true,
+    "copyFormatting": "none",
+    "copyOnSelect": true,
+    "defaultProfile": "{574e775e-4f2a-5b96-ac1e-a2962a402336}",
+    "disableAnimations": true,
+    "firstWindowPreference": "defaultProfile",
+    "focusFollowMouse": true,
+    "initialCols": 160,
+    "initialRows": 40,
+    "keybindings": 
+    [
+        {
+            "id": null,
+            "keys": "ctrl+c"
+        },
+        {
+            "id": null,
+            "keys": "alt+shift+minus"
+        },
+        {
+            "id": null,
+            "keys": "ctrl+shift+f"
+        },
+        {
+            "id": null,
+            "keys": "ctrl+v"
+        },
+        {
+            "id": null,
+            "keys": "alt+shift+d"
+        },
+        {
+            "id": "User.adjustFontSize.E2698FAA",
+            "keys": "ctrl+minus"
+        },
+        {
+            "id": "Terminal.DuplicatePaneDown",
+            "keys": "ctrl+shift+minus"
+        },
+        {
+            "id": "Terminal.DuplicatePaneRight",
+            "keys": "ctrl+shift+plus"
+        },
+        {
+            "id": null,
+            "keys": "alt+shift+plus"
+        }
+    ],
+    "newTabMenu": 
+    [
+        {
+            "type": "remainingProfiles"
+        }
+    ],
+    "profiles": 
+    {
+        "defaults": 
+        {
+            "colorScheme": "BlackPink",
+            "font": 
+            {
+                "face": "Iosevka NF",
+                "size": 16
+            },
+            "opacity": 100,
+            "useAcrylic": false
+        },
+        "list": 
+        [
+            {
+                "colorScheme": "BlackPink",
+                "guid": "{574e775e-4f2a-5b96-ac1e-a2962a402336}",
+                "hidden": false,
+                "name": "PowerShell",
+                "source": "Windows.Terminal.PowershellCore"
+            },
+            {
+                "guid": "{9ddc0553-00fc-55ab-a21f-b2f1175f2889}",
+                "hidden": false,
+                "name": "Ubuntu",
+                "source": "Microsoft.WSL"
+            },
+            {
+                "guid": "{862e4eb1-b58c-5c3c-ad72-016ddc31fca5}",
+                "hidden": false,
+                "name": "Developer Command Prompt for VS 2022",
+                "source": "Windows.Terminal.VisualStudio"
+            },
+            {
+                "guid": "{253f61bb-7f31-5d4e-ab08-37ae1f5e557e}",
+                "hidden": false,
+                "name": "Developer PowerShell for VS 2022",
+                "source": "Windows.Terminal.VisualStudio"
+            }
+        ]
+    },
+    "schemes": 
+    [
+        {
+            "name": "BlackPink",
+            "background": "#000000",
+            "foreground": "#d0d6e0",
+            "cursorColor": "#ff4ead",
+            "selectionBackground": "#2a0016",
+
+            "black": "#000000",
+            "brightBlack": "#2a2d36",
+
+            "red": "#f87171",
+            "brightRed": "#fca5a5",
+
+            "green": "#4ade80",
+            "brightGreen": "#86efac",
+
+            "yellow": "#facc15",
+            "brightYellow": "#fde047",
+
+            "blue": "#60a5fa",
+            "brightBlue": "#93c5fd",
+
+            "purple": "#ff4ead",
+            "brightPurple": "#ff85c8",
+
+            "cyan": "#22d3ee",
+            "brightCyan": "#67e8f9",
+
+            "white": "#d0d6e0",
+            "brightWhite": "#f0f2f7"
+        }
+    ],
+    "showTabsFullscreen": false,
+    "tabWidthMode": "equal",
+    "themes": [],
+    "useAcrylicInTabRow": false,
+    "windowingBehavior": "useExisting"
+}

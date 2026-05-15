@@ -57,6 +57,9 @@
         },
         {
           "PackageIdentifier": "cjpais.Handy"
+        },
+        {
+          "PackageIdentifier": "SST.opencode"
         }
       ],
       "SourceDetails": {

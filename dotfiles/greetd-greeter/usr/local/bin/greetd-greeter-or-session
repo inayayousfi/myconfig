@@ -20,7 +20,7 @@ for attempt in 1 2 3; do
     if [[ -f "$osk_failed" ]]; then
         echo "OSK failure marker found; bypassing greeter into user session"
         rm -f "$osk_failed"
-        exec /usr/local/bin/niri-session
+        exec niri
     fi
 
     if [[ "$status" -eq 0 ]]; then
@@ -33,4 +33,4 @@ for attempt in 1 2 3; do
 done
 
 echo "Greeter failed after retries; starting user session fallback"
-exec /usr/local/bin/niri-session
+exec niri

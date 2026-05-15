@@ -7,4 +7,4 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
-env GTK_THEME=Adwaita:dark GTK_APPLICATION_PREFER_DARK_THEME=1 ADW_DISABLE_PORTAL=1 gtkgreet --layer-shell --command /usr/local/bin/niri-session
+env GTK_THEME=Adwaita:dark GTK_APPLICATION_PREFER_DARK_THEME=1 ADW_DISABLE_PORTAL=1 gtkgreet --layer-shell --command niri

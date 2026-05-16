@@ -108,24 +108,68 @@ function Copy-DotfileSafe
 # Winget Packages Installation
 # ============================================================================
 
+function Confirm-InstallPackageGroup
+{
+  param(
+    [string]$Name,
+    [string]$Description
+  )
+
+  $confirm = Read-Host "Do you want to install $Name ($Description)? (yes/no)"
+  return ($confirm -eq "yes" -or $confirm -eq "y")
+}
+
+function Import-WingetPackageFile
+{
+  param(
+    [string]$PackagesJson,
+    [string]$Name
+  )
+
+  if (-not (Test-Path $PackagesJson))
+  {
+    Write-Log "Winget $Name packages file not found: $PackagesJson" -Level 'ERROR'
+    return $false
+  }
+
+  Write-Log "Installing winget $Name packages from $PackagesJson..."
+  winget import -i $PackagesJson --accept-source-agreements --accept-package-agreements --ignore-unavailable | ForEach-Object { Write-Host $_ }
+  Write-Log "Winget $Name packages installed" -Level 'OK'
+  return $true
+}
+
 function Install-WingetPackages
 {
   if (-not (Test-CommandExists "winget"))
   {
     Write-Log "winget not found. Please install App Installer from the Microsoft Store." -Level 'ERROR'
-    return
+    return $false
   }
 
   $packagesJson = Join-Path $WindowsDotfilesDir "winget\packages.json"
-  if (-not (Test-Path $packagesJson))
+  $devToolsJson = Join-Path $WindowsDotfilesDir "winget\packages_devtools.json"
+  $artJson = Join-Path $WindowsDotfilesDir "winget\packages_art.json"
+
+  $installedDevTools = $false
+  Import-WingetPackageFile -PackagesJson $packagesJson -Name "core" | Out-Null
+
+  if (Confirm-InstallPackageGroup -Name "DevTools" -Description "Rust, Go, NVM, Node.js/npm, and build tools")
   {
-    Write-Log "Winget packages file not found: $packagesJson" -Level 'ERROR'
-    return
+    $installedDevTools = Import-WingetPackageFile -PackagesJson $devToolsJson -Name "DevTools"
+  } else
+  {
+    Write-Log "Skipping winget DevTools packages"
   }
 
-  Write-Log "Installing winget packages from $packagesJson..."
-  winget import -i $packagesJson --accept-source-agreements --accept-package-agreements --ignore-unavailable
-  Write-Log "Winget packages installed" -Level 'OK'
+  if (Confirm-InstallPackageGroup -Name "Art" -Description "Blender, Krita, and Kdenlive")
+  {
+    Import-WingetPackageFile -PackagesJson $artJson -Name "Art" | Out-Null
+  } else
+  {
+    Write-Log "Skipping winget Art packages"
+  }
+
+  return $installedDevTools
 }
 
 # ============================================================================
@@ -442,7 +486,7 @@ function Main
   }
 
   # Install winget packages first because later steps depend on them.
-  Install-WingetPackages
+  $installedDevTools = Install-WingetPackages
 
   # Copy the core configuration files and directories.
   Install-PowerShellProfile
@@ -455,9 +499,12 @@ function Main
   # Install the supporting tools and modules that the dotfiles expect.
   Install-PSReadLineModule
   Install-IosevkaMonoFont
-  Install-LLVMPath
-  Install-PythonSetup
-  Install-NodeViaNVM
+  if ($installedDevTools)
+  {
+    Install-LLVMPath
+    Install-PythonSetup
+    Install-NodeViaNVM
+  }
 
   # Apply the Windows shell and Start menu tweaks last.
   Install-RegistryTweaks

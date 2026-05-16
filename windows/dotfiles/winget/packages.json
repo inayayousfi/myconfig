@@ -5,9 +5,6 @@
     {
       "Packages": [
         {
-          "PackageIdentifier": "CoreyButler.NVMforWindows"
-        },
-        {
           "PackageIdentifier": "7zip.7zip"
         },
         {
@@ -15,15 +12,6 @@
         },
         {
           "PackageIdentifier": "Microsoft.PowerShell"
-        },
-        {
-          "PackageIdentifier": "LLVM.LLVM"
-        },
-        {
-          "PackageIdentifier": "Microsoft.VisualStudio.2022.BuildTools"
-        },
-        {
-          "PackageIdentifier": "Rustlang.Rustup"
         },
         {
           "PackageIdentifier": "Ollama.Ollama"
@@ -35,9 +23,6 @@
           "PackageIdentifier": "Microsoft.WSL"
         },
         {
-          "PackageIdentifier": "Python.PythonInstallManager"
-        },
-        {
           "PackageIdentifier": "JanDeDobbeleer.OhMyPosh"
         },
         {
@@ -47,12 +32,6 @@
           "PackageIdentifier": "XAMPPRocky.tokei"
         },
         {
-          "PackageIdentifier": "GoLang.Go"
-        },
-        {
-          "PackageIdentifier": "Docker.DockerDesktop"
-        },
-        {
           "PackageIdentifier": "ZedIndustries.Zed"
         },
         {
@@ -60,6 +39,9 @@
         },
         {
           "PackageIdentifier": "SST.opencode"
+        },
+        {
+          "PackageIdentifier": "Microsoft.PowerToys"
         }
       ],
       "SourceDetails": {

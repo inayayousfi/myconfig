@@ -5,13 +5,25 @@
     {
       "Packages": [
         {
-          "PackageIdentifier": "BlenderFoundation.Blender"
+          "PackageIdentifier": "CoreyButler.NVMforWindows"
         },
         {
-          "PackageIdentifier": "KDE.Krita"
+          "PackageIdentifier": "Rustlang.Rustup"
         },
         {
-          "PackageIdentifier": "KDE.Kdenlive"
+          "PackageIdentifier": "GoLang.Go"
+        },
+        {
+          "PackageIdentifier": "LLVM.LLVM"
+        },
+        {
+          "PackageIdentifier": "Microsoft.VisualStudio.2022.BuildTools"
+        },
+        {
+          "PackageIdentifier": "Python.PythonInstallManager"
+        },
+        {
+          "PackageIdentifier": "Docker.DockerDesktop"
         }
       ],
       "SourceDetails": {

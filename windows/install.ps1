@@ -398,18 +398,27 @@ function Install-NodeViaNVM
 
 function Install-RegistryTweaks
 {
-  # Apply the Start menu policy tweak from a checked-in .reg file when present.
-  $regFile = Join-Path $ScriptDir "DisableRecoStartMenu.reg"
+  # Apply checked-in registry files when present.
+  $regFiles = @(
+    @{ Path = Join-Path $ScriptDir "DisableRecoStartMenu.reg"; Description = "disable Start Menu recommendations" },
+    @{ Path = Join-Path $ScriptDir "TaskbarSettings.reg"; Description = "taskbar and Explorer settings" }
+  )
 
-  if (-not (Test-Path $regFile))
+  foreach ($regFile in $regFiles)
   {
-    Write-Log "Registry file not found: $regFile" -Level 'WARNING'
-    return
-  }
+    $path = $regFile['Path']
+    $description = $regFile['Description']
 
-  Write-Log "Applying registry tweaks (disable Start Menu recommendations)..."
-  reg import $regFile 2>$null
-  Write-Log "Registry tweaks applied" -Level 'OK'
+    if (-not (Test-Path $path))
+    {
+      Write-Log "Registry file not found: $path" -Level 'WARNING'
+      continue
+    }
+
+    Write-Log "Applying registry tweaks ($description)..."
+    reg import $path 2>$null
+    Write-Log "Registry tweaks applied: $description" -Level 'OK'
+  }
 }
 
 # ============================================================================

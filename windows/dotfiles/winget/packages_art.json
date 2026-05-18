@@ -12,6 +12,12 @@
         },
         {
           "PackageIdentifier": "KDE.Kdenlive"
+        },
+        {
+          "PackageIdentifier": "Audacity.Audacity"
+        },
+        {
+          "PackageIdentifier": "OBSProject.OBSStudio"
         }
       ],
       "SourceDetails": {

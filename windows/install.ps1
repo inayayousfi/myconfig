@@ -211,7 +211,7 @@ function Install-PowerShellProfile
 function Install-OhMyPoshConfig
 {
   $source = Join-Path $WindowsDotfilesDir ".OhMyPosh"
-  $destination = Join-Path $env:USERPROFILE ".OhMyPosh"
+  $destination = Split-Path $PROFILE
 
   if (-not (Test-Path $source))
   {

@@ -60,7 +60,7 @@ function Write-Err($msg)
 if ($UseInteractiveProfile)
 {
   # --- Oh My Posh ---
-  $ohMyPoshConfig = Join-Path $env:USERPROFILE ".OhMyPosh\black-pink.omp.json"
+  $ohMyPoshConfig = Join-Path (Split-Path $PROFILE) "black-pink.omp.json"
   if (Test-Path $ohMyPoshConfig)
   {
     oh-my-posh init pwsh --config $ohMyPoshConfig | Invoke-Expression

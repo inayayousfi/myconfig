@@ -574,9 +574,9 @@ Dotfiles are managed using GNU Stow:
 
 This section documents components specific to Ubuntu Server (headless, no desktop environment).
 
-### Package Manager: Homebrew
+### Package Manager: apt
 
-All packages are installed via Homebrew (Linuxbrew), providing access to up-to-date packages and a larger repository compared to apt.
+Ubuntu Server uses apt only. Homebrew/Linuxbrew is intentionally not installed.
 
 See [ubuntu-server/install.sh](ubuntu-server/install.sh) for the complete installation script.
 
@@ -586,37 +586,32 @@ Located in `inaya.plugin.zsh` (platform detection is automatic):
 
 | Function | Description |
 |----------|-------------|
-| `update` | Updates both system (apt) and Homebrew packages |
+| `update` | Updates system packages with apt |
 | `use-tmux` | Attach or create tmux session |
 
 ### Ubuntu-Specific Environment Variables
 
 ```bash
-HOMEBREW_PREFIX="/home/linuxbrew/.linuxbrew"
-JAVA_HOME="$HOMEBREW_PREFIX/opt/openjdk@21"
-GOPATH="$HOME/go"
-PATH="$HOME/.local/bin:$HOME/.cargo/bin:$GOPATH/bin:$JAVA_HOME/bin:$HOMEBREW_PREFIX/bin:$PATH"
-VCPKG_ROOT="$HOME/vcpkg"
+PATH="$HOME/.local/bin:$PATH"
 ```
 
 ### Installed Packages
 
-All packages are installed via Homebrew:
+Only the minimal zsh/Oh My Zsh prerequisites are installed:
 
 | Category | Packages |
 |----------|----------|
-| Core | `git`, `stow`, `zsh`, `tmux`, `curl`, `wget`, `gcc`, `unzip`, `tar`, `xz`, `file`, `fontconfig` |
-| Languages | `python`, `go`, `rustup`, `nvm`, `openjdk`, `llvm`, `zig` |
-| Build Tools | `maven`, `cmake`, `make`, `meson`, `conan` |
-| CLI Tools | `eza`, `fd`, `fzf`, `ripgrep`, `bat`, `zoxide`, `lazygit`, `btop`, `fastfetch`, `jq`, `less`, `tokei`, `tree-sitter` |
-| File Manager | `yazi`, `ffmpeg`, `p7zip`, `poppler`, `resvg`, `imagemagick` |
-| Apps and Services | `1password`, `1password-cli`, `google-chrome`, `docker`, `ollama`, `codex`, `t3-code`, `blender`, `krita`, `kdenlive` |
+| Core | `ca-certificates`, `curl`, `git`, `zsh` |
 
 ### What's NOT Included (Server Edition)
 
 The Ubuntu Server installation does **not** include:
 
 - Desktop environment components
+- Homebrew/Linuxbrew
+- GNU Stow
+- Development runtimes and SDKs such as Go, Rust, Node, Java, Maven, or LLVM
+- Extra CLI tools such as tmux, Neovim, Yazi, Lazygit, fzf, ripgrep, or btop
 - Yabai (macOS-only window manager)
 - Sketchybar (macOS-only status bar)
 - GUI applications

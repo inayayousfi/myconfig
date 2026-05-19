@@ -33,8 +33,19 @@ export LC_ALL=en_US.UTF-8
 
 export VI_MODE_SET_CURSOR=true
 
-export EDITOR="zed --wait"
-export VISUAL="zed --wait"
+if has zed; then
+    export EDITOR="zed --wait"
+    export VISUAL="zed --wait"
+elif has nvim; then
+    export EDITOR="nvim"
+    export VISUAL="nvim"
+elif has vim; then
+    export EDITOR="vim"
+    export VISUAL="vim"
+else
+    export EDITOR="vi"
+    export VISUAL="vi"
+fi
 
 export TERM="xterm-256color"
 
@@ -48,25 +59,7 @@ if $IS_MACOS; then
     export PATH="$HOME/.local/bin:$PATH:$(go env GOPATH 2>/dev/null)/bin:$JAVA_HOME/bin"
     export VCPKG_ROOT="$HOME/vcpkg"
 elif $IS_LINUX; then
-    # Linux-specific paths
-    # Homebrew (Linuxbrew) paths
-    if [ -d "/home/linuxbrew/.linuxbrew" ]; then
-        eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-        export HOMEBREW_PREFIX="/home/linuxbrew/.linuxbrew"
-        export JAVA_HOME="$HOMEBREW_PREFIX/opt/openjdk@21"
-    else
-        # Fallback to system Java if Homebrew not installed
-        if command -v javac >/dev/null 2>&1; then
-            export JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")")"
-        else
-            export JAVA_HOME="/usr/lib/jvm/default-java"
-        fi
-    fi
-    export GOPATH="$HOME/go"
-    export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$GOPATH/bin:$JAVA_HOME/bin:$PATH"
-    export VCPKG_ROOT="$HOME/vcpkg"
-    export NVM_DIR="$HOME/.nvm"
-    [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
+    export PATH="$HOME/.local/bin:$PATH"
 fi
 
 # ============================================================================
@@ -138,58 +131,11 @@ mkd() { mkdir -p -- "$1" && cd -P -- "$1"; }
 
 reload-zsh() { source "$HOME/.zshrc" && echo "zsh reloaded"; }
 
-update_npm_globals() {
-    if has npm; then
-        echo "Updating global npm packages..."
-        npm update -g
-        echo "Global npm packages updated."
-    else
-        echo "npm not found, skipping global npm updates."
-    fi
-}
-
-# Quickly create a new stow package directory inside ~/.dotfiles and stow it.
-# Usage: stowgo <package-name> [target]
-#   <package-name> : name of the new package (e.g., myapp)
-#   [target]       : optional target directory (default: $HOME)
-stowgo() {
-    # If no package name is supplied, infer it from the current directory name
-    local pkg="${1:-$(basename "$PWD")}"
-    local target="${2:-$HOME}"
-
-    # Ensure we are inside the ~/dotfiles hierarchy
-    if [[ "$PWD" != "$HOME/dotfiles"* ]]; then
-        echo "stowgo: please run this command from inside a package directory under $HOME/dotfiles"
-        return 1
-    fi
-
-    local pkg_dir="$HOME/dotfiles/$pkg"
-    if [[ -d "$pkg_dir" && "$PWD" != "$pkg_dir" ]]; then
-        echo "stowgo: package '$pkg' already exists at $pkg_dir"
-        return 1
-    fi
-
-    # If the directory does not exist, create it (useful when called from the parent dir)
-    if [[ ! -d "$pkg_dir" ]]; then
-        mkdir -p "$pkg_dir"
-        echo "# Managed by setup-config – stow package $pkg" > "$pkg_dir/README.md"
-        echo "Created package directory: $pkg_dir"
-    fi
-
-    # Change into the package directory (if not already there)
-    if [[ "$PWD" != "$pkg_dir" ]]; then
-        cd "$pkg_dir" || return 1
-    fi
-
-    # Run stow to link the package
-    stow --dir="$HOME/dotfiles" --target="$target" --restow --no-folding "$pkg"
-}
-
-# Fuzzy file picker - opens selection in zed
+# Fuzzy file picker - opens selection in the configured editor
 pf() {
   local file
   file=$(fzf --preview='bat {} --color=always --style=numbers' --bind shift-up:preview-page-up,shift-down:preview-page-down)
-  [ -n "$file" ] && zed "$file"
+  [ -n "$file" ] && $EDITOR "$file"
 }
 
 # Yazi file manager wrapper - changes directory on exit
@@ -214,7 +160,6 @@ if $IS_MACOS; then
         echo "Updating packages via Homebrew..."
         brew update && brew upgrade && brew cleanup
         echo ""
-        update_npm_globals
         echo "Packages updated successfully."
     }
 
@@ -225,7 +170,7 @@ elif $IS_LINUX; then
     # Linux: use-tmux with system tmux
     use-tmux() { /bin/bash --noprofile --norc -c "tmux has-session 2>/dev/null && tmux attach-session -d || tmux new-session"; }
 
-    # Linux: Update system packages using the available package manager, plus Homebrew if present
+    # Linux: Update system packages using the available package manager
     update() {
         echo "Updating system and packages..."
         echo ""
@@ -245,17 +190,6 @@ elif $IS_LINUX; then
             echo ""
         fi
 
-        # Update Homebrew packages if installed
-        if command -v brew &>/dev/null; then
-            echo "Updating Homebrew packages..."
-            brew update && brew upgrade && brew cleanup
-            echo "Homebrew packages updated."
-        else
-            echo "Homebrew not found, skipping Homebrew updates."
-        fi
-
-        echo ""
-
         # Update Flatpak apps if flatpak is installed
         if command -v flatpak &>/dev/null; then
             echo "Updating Flatpak apps..."
@@ -266,9 +200,6 @@ elif $IS_LINUX; then
         else
             echo "Flatpak not found, skipping Flatpak updates."
         fi
-
-        echo ""
-        update_npm_globals
 
         echo ""
         echo "All updates completed successfully."

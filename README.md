@@ -2,7 +2,7 @@
 
 > A modular configuration bank for building reproducible development environments across platforms.
 
-This repository provides automated setup scripts and dotfiles for macOS, Ubuntu Server, Fedora Everything, and Windows, enabling consistent development environments with a single command.
+This repository provides automated setup scripts and dotfiles for macOS, Ubuntu Server, Fedora Everything, and Windows. Ubuntu Server is intentionally minimal and only installs the shared zsh/Oh My Zsh setup.
 
 ## Quick Start
 
@@ -45,8 +45,8 @@ The bootstrap script will:
 1. Download the latest release
 2. Extract all configuration files
 3. Run the appropriate platform installer
-4. Set up dotfiles using GNU Stow (macOS/Ubuntu) or copy to Windows locations
-5. Install all necessary tools and packages
+4. Set up dotfiles using GNU Stow where needed, or copy configs directly for minimal targets
+5. Install the packages for the selected platform
 
 ## Features
 

@@ -42,6 +42,9 @@
         },
         {
           "PackageIdentifier": "Microsoft.PowerToys"
+        },
+        {
+          "PackageIdentifier": "Oracle.VirtualBox"
         }
       ],
       "SourceDetails": {

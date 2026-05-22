@@ -45,6 +45,9 @@
         },
         {
           "PackageIdentifier": "Oracle.VirtualBox"
+        },
+        {
+          "PackageIdentifier": "TheDocumentFoundation.LibreOffice"
         }
       ],
       "SourceDetails": {

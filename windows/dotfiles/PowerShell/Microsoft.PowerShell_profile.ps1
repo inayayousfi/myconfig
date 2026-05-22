@@ -698,7 +698,45 @@ Rules:
 - no fluff
 "@
 
-    $rawMessage = opencode run --model $Model $prompt
+    $promptFile = [System.IO.Path]::ChangeExtension([System.IO.Path]::GetTempFileName(), ".md")
+    [System.IO.File]::WriteAllText($promptFile, $prompt, [System.Text.UTF8Encoding]::new($false))
+
+    try
+    {
+      $psi = [System.Diagnostics.ProcessStartInfo]::new()
+      $psi.FileName = "opencode"
+      $psi.ArgumentList.Add("run")
+      $psi.ArgumentList.Add("--model")
+      $psi.ArgumentList.Add($Model)
+      $psi.ArgumentList.Add("Write the git commit message using the attached instructions and diff.")
+      $psi.ArgumentList.Add("--file")
+      $psi.ArgumentList.Add($promptFile)
+      $psi.RedirectStandardOutput = $true
+      $psi.RedirectStandardError = $true
+      $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+      $psi.StandardErrorEncoding = [System.Text.Encoding]::UTF8
+      $psi.UseShellExecute = $false
+
+      $process = [System.Diagnostics.Process]::Start($psi)
+      $rawMessage = $process.StandardOutput.ReadToEnd()
+      $rawError = $process.StandardError.ReadToEnd()
+      $process.WaitForExit()
+    }
+    finally
+    {
+      Remove-Item -LiteralPath $promptFile -Force -ErrorAction SilentlyContinue
+    }
+
+    if ($process.ExitCode -ne 0)
+    {
+      if (-not [string]::IsNullOrWhiteSpace($rawError))
+      {
+        [Console]::Error.WriteLine($rawError.Trim())
+      }
+
+      [Console]::Error.WriteLine("❌ Failed to generate commit message.")
+      return 1
+    }
 
     if (-not $rawMessage)
     {

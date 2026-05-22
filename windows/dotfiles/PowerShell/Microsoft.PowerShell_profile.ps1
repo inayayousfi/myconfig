@@ -243,8 +243,13 @@ function repair-winget {
         $psi.Arguments = ($Arguments -join ' ')
         $psi.RedirectStandardOutput = $true
         $psi.RedirectStandardError = $true
+        $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+        $psi.StandardErrorEncoding = [System.Text.Encoding]::UTF8
         $psi.UseShellExecute = $false
         $psi.CreateNoWindow = $true
+        $psi.EnvironmentVariables["LANG"] = "en_US.UTF-8"
+        $psi.EnvironmentVariables["LC_ALL"] = "en_US.UTF-8"
+        $psi.EnvironmentVariables["UICulture"] = "en-US"
 
         $proc = New-Object System.Diagnostics.Process
         $proc.StartInfo = $psi
@@ -275,11 +280,11 @@ function repair-winget {
             )
 
             if ($result.ExitCode -ne 0) {
-                throw "Échec de winget export.`nCommande : $($result.Command)`nErreur : $($result.StdErr)`nSortie : $($result.StdOut)"
+                throw "winget export failed.`nCommand: $($result.Command)`nError: $($result.StdErr)`nOutput: $($result.StdOut)"
             }
 
             if (-not (Test-Path $tempFile)) {
-                throw "Le fichier d'export JSON n'a pas été créé."
+                throw "The JSON export file was not created."
             }
 
             $json = Get-Content -Path $tempFile -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -343,7 +348,7 @@ function repair-winget {
         )
 
         Write-Log -TextBox $LogBox -Message "----------------------------------------"
-        Write-Log -TextBox $LogBox -Message "Traitement : $Id"
+        Write-Log -TextBox $LogBox -Message "Processing: $Id"
 
         $uninstallArgs = @(
             "uninstall",
@@ -365,7 +370,7 @@ function repair-winget {
         }
 
         if ($uninstallResult.ExitCode -ne 0) {
-            Write-Log -TextBox $LogBox -Message "Échec désinstallation pour $Id (code $($uninstallResult.ExitCode))."
+            Write-Log -TextBox $LogBox -Message "Uninstall failed for $Id (code $($uninstallResult.ExitCode))."
             return
         }
 
@@ -394,10 +399,10 @@ function repair-winget {
         }
 
         if ($installResult.ExitCode -eq 0) {
-            Write-Log -TextBox $LogBox -Message "OK : $Id réinstallé."
+            Write-Log -TextBox $LogBox -Message "OK: $Id reinstalled."
         }
         else {
-            Write-Log -TextBox $LogBox -Message "Échec réinstallation pour $Id (code $($installResult.ExitCode))."
+            Write-Log -TextBox $LogBox -Message "Reinstall failed for $Id (code $($installResult.ExitCode))."
         }
     }
 
@@ -406,8 +411,8 @@ function repair-winget {
 
         if (-not $repairOk -or -not (Test-WingetAvailable)) {
             [System.Windows.Forms.MessageBox]::Show(
-                "winget.exe est introuvable, et la tentative de réparation avec App Installer a échoué.`n`nEssaie de réinstaller/réparer App Installer depuis Microsoft Store, puis relance la fonction.",
-                "WinGet introuvable",
+                "winget.exe was not found, and the App Installer repair attempt failed.`n`nRepair or reinstall App Installer from Microsoft Store, then run this function again.",
+                "WinGet Not Found",
                 [System.Windows.Forms.MessageBoxButtons]::OK,
                 [System.Windows.Forms.MessageBoxIcon]::Error
             ) | Out-Null
@@ -416,49 +421,79 @@ function repair-winget {
     }
 
     $form = New-Object System.Windows.Forms.Form
-    $form.Text = "Winget - Désinstaller / Réinstaller"
-    $form.Size = New-Object System.Drawing.Size(1050, 720)
+    $darkBack = [System.Drawing.Color]::FromArgb(24, 24, 27)
+    $darkPanel = [System.Drawing.Color]::FromArgb(39, 39, 42)
+    $darkInput = [System.Drawing.Color]::FromArgb(31, 41, 55)
+    $darkBorder = [System.Drawing.Color]::FromArgb(63, 63, 70)
+    $lightText = [System.Drawing.Color]::FromArgb(244, 244, 245)
+    $mutedText = [System.Drawing.Color]::FromArgb(212, 212, 216)
+    $accent = [System.Drawing.Color]::FromArgb(59, 130, 246)
+
+    $form.Text = "Winget - Uninstall / Reinstall"
+    $form.Size = New-Object System.Drawing.Size(1180, 740)
     $form.StartPosition = "CenterScreen"
     $form.TopMost = $false
+    $form.BackColor = $darkBack
+    $form.ForeColor = $lightText
+
+    function Set-DarkButton {
+        param([Parameter(Mandatory)][System.Windows.Forms.Button]$Button)
+
+        $Button.BackColor = $darkPanel
+        $Button.ForeColor = $lightText
+        $Button.FlatStyle = "Flat"
+        $Button.FlatAppearance.BorderColor = $darkBorder
+        $Button.FlatAppearance.MouseOverBackColor = $accent
+        $Button.FlatAppearance.MouseDownBackColor = [System.Drawing.Color]::FromArgb(37, 99, 235)
+        $Button.UseVisualStyleBackColor = $false
+    }
 
     $lblFilter = New-Object System.Windows.Forms.Label
-    $lblFilter.Text = "Filtre :"
+    $lblFilter.Text = "Filter:"
     $lblFilter.Location = New-Object System.Drawing.Point(12, 15)
     $lblFilter.AutoSize = $true
+    $lblFilter.ForeColor = $mutedText
     $form.Controls.Add($lblFilter)
 
     $txtFilter = New-Object System.Windows.Forms.TextBox
-    $txtFilter.Location = New-Object System.Drawing.Point(60, 12)
-    $txtFilter.Size = New-Object System.Drawing.Size(350, 24)
+    $txtFilter.Location = New-Object System.Drawing.Point(65, 12)
+    $txtFilter.Size = New-Object System.Drawing.Size(365, 24)
+    $txtFilter.BackColor = $darkInput
+    $txtFilter.ForeColor = $lightText
+    $txtFilter.BorderStyle = "FixedSingle"
     $form.Controls.Add($txtFilter)
 
     $btnRefresh = New-Object System.Windows.Forms.Button
-    $btnRefresh.Text = "Actualiser"
-    $btnRefresh.Location = New-Object System.Drawing.Point(425, 10)
-    $btnRefresh.Size = New-Object System.Drawing.Size(110, 28)
+    $btnRefresh.Text = "Refresh"
+    $btnRefresh.Location = New-Object System.Drawing.Point(445, 10)
+    $btnRefresh.Size = New-Object System.Drawing.Size(95, 30)
+    Set-DarkButton -Button $btnRefresh
     $form.Controls.Add($btnRefresh)
 
     $btnSelectAll = New-Object System.Windows.Forms.Button
-    $btnSelectAll.Text = "Tout cocher"
+    $btnSelectAll.Text = "Select All"
     $btnSelectAll.Location = New-Object System.Drawing.Point(550, 10)
-    $btnSelectAll.Size = New-Object System.Drawing.Size(110, 28)
+    $btnSelectAll.Size = New-Object System.Drawing.Size(105, 30)
+    Set-DarkButton -Button $btnSelectAll
     $form.Controls.Add($btnSelectAll)
 
     $btnUnselectAll = New-Object System.Windows.Forms.Button
-    $btnUnselectAll.Text = "Tout décocher"
-    $btnUnselectAll.Location = New-Object System.Drawing.Point(670, 10)
-    $btnUnselectAll.Size = New-Object System.Drawing.Size(120, 28)
+    $btnUnselectAll.Text = "Clear All"
+    $btnUnselectAll.Location = New-Object System.Drawing.Point(665, 10)
+    $btnUnselectAll.Size = New-Object System.Drawing.Size(105, 30)
+    Set-DarkButton -Button $btnUnselectAll
     $form.Controls.Add($btnUnselectAll)
 
     $btnRun = New-Object System.Windows.Forms.Button
-    $btnRun.Text = "Désinstaller puis réinstaller la sélection"
-    $btnRun.Location = New-Object System.Drawing.Point(800, 10)
-    $btnRun.Size = New-Object System.Drawing.Size(220, 28)
+    $btnRun.Text = "Reinstall Selected"
+    $btnRun.Location = New-Object System.Drawing.Point(785, 10)
+    $btnRun.Size = New-Object System.Drawing.Size(170, 30)
+    Set-DarkButton -Button $btnRun
     $form.Controls.Add($btnRun)
 
     $grid = New-Object System.Windows.Forms.DataGridView
     $grid.Location = New-Object System.Drawing.Point(12, 50)
-    $grid.Size = New-Object System.Drawing.Size(1008, 390)
+    $grid.Size = New-Object System.Drawing.Size(1140, 390)
     $grid.Anchor = "Top,Left,Right"
     $grid.AutoGenerateColumns = $false
     $grid.AllowUserToAddRows = $false
@@ -467,6 +502,19 @@ function repair-winget {
     $grid.MultiSelect = $true
     $grid.RowHeadersVisible = $false
     $grid.AutoSizeColumnsMode = "Fill"
+    $grid.BackgroundColor = $darkBack
+    $grid.BorderStyle = "FixedSingle"
+    $grid.GridColor = $darkBorder
+    $grid.EnableHeadersVisualStyles = $false
+    $grid.DefaultCellStyle.BackColor = $darkPanel
+    $grid.DefaultCellStyle.ForeColor = $lightText
+    $grid.DefaultCellStyle.SelectionBackColor = $accent
+    $grid.DefaultCellStyle.SelectionForeColor = [System.Drawing.Color]::White
+    $grid.AlternatingRowsDefaultCellStyle.BackColor = [System.Drawing.Color]::FromArgb(32, 32, 36)
+    $grid.ColumnHeadersDefaultCellStyle.BackColor = $darkInput
+    $grid.ColumnHeadersDefaultCellStyle.ForeColor = $lightText
+    $grid.ColumnHeadersDefaultCellStyle.SelectionBackColor = $darkInput
+    $grid.ColumnHeadersDefaultCellStyle.SelectionForeColor = $lightText
 
     $colCheck = New-Object System.Windows.Forms.DataGridViewCheckBoxColumn
     $colCheck.DataPropertyName = "Selected"
@@ -495,18 +543,22 @@ function repair-winget {
     $form.Controls.Add($grid)
 
     $lblLog = New-Object System.Windows.Forms.Label
-    $lblLog.Text = "Journal :"
+    $lblLog.Text = "Log:"
     $lblLog.Location = New-Object System.Drawing.Point(12, 450)
     $lblLog.AutoSize = $true
+    $lblLog.ForeColor = $mutedText
     $form.Controls.Add($lblLog)
 
     $txtLog = New-Object System.Windows.Forms.TextBox
     $txtLog.Location = New-Object System.Drawing.Point(12, 470)
-    $txtLog.Size = New-Object System.Drawing.Size(1008, 200)
+    $txtLog.Size = New-Object System.Drawing.Size(1140, 210)
     $txtLog.Multiline = $true
     $txtLog.ScrollBars = "Vertical"
     $txtLog.ReadOnly = $true
     $txtLog.Anchor = "Top,Bottom,Left,Right"
+    $txtLog.BackColor = [System.Drawing.Color]::FromArgb(17, 24, 39)
+    $txtLog.ForeColor = $lightText
+    $txtLog.BorderStyle = "FixedSingle"
     $form.Controls.Add($txtLog)
 
     $script:AllPackages = New-Object System.Collections.ArrayList
@@ -537,7 +589,7 @@ function repair-winget {
 
         try {
             $txtLog.Clear()
-            Write-Log -TextBox $txtLog -Message "Chargement des packages via winget export..."
+            Write-Log -TextBox $txtLog -Message "Loading packages with winget export..."
             $packages = Get-WingetExportPackages
 
             [void]$script:AllPackages.Clear()
@@ -546,13 +598,13 @@ function repair-winget {
             }
 
             Bind-Grid -FilterText $txtFilter.Text
-            Write-Log -TextBox $txtLog -Message "$($script:AllPackages.Count) package(s) chargé(s)."
+            Write-Log -TextBox $txtLog -Message "$($script:AllPackages.Count) package(s) loaded."
         }
         catch {
-            Write-Log -TextBox $txtLog -Message "Erreur : $($_.Exception.Message)"
+            Write-Log -TextBox $txtLog -Message "Error: $($_.Exception.Message)"
             [System.Windows.Forms.MessageBox]::Show(
                 $_.Exception.Message,
-                "Erreur",
+                "Error",
                 [System.Windows.Forms.MessageBoxButtons]::OK,
                 [System.Windows.Forms.MessageBoxIcon]::Error
             ) | Out-Null
@@ -592,7 +644,7 @@ function repair-winget {
 
         if ($selected.Count -eq 0) {
             [System.Windows.Forms.MessageBox]::Show(
-                "Aucun package sélectionné.",
+                "No packages selected.",
                 "Information",
                 [System.Windows.Forms.MessageBoxButtons]::OK,
                 [System.Windows.Forms.MessageBoxIcon]::Information
@@ -600,7 +652,7 @@ function repair-winget {
             return
         }
 
-        $msg = "Tu vas désinstaller puis réinstaller $($selected.Count) package(s).`n`nContinuer ?"
+        $msg = "This will uninstall and reinstall $($selected.Count) package(s).`n`nContinue?"
         $confirm = [System.Windows.Forms.MessageBox]::Show(
             $msg,
             "Confirmation",
@@ -621,10 +673,10 @@ function repair-winget {
                 Reinstall-WingetPackage -Id $pkg.Id -Version $pkg.Version -LogBox $txtLog
             }
 
-            Write-Log -TextBox $txtLog -Message "Terminé."
+            Write-Log -TextBox $txtLog -Message "Finished."
             [System.Windows.Forms.MessageBox]::Show(
-                "Opération terminée. Vérifie le journal pour le détail.",
-                "Terminé",
+                "Operation finished. Check the log for details.",
+                "Finished",
                 [System.Windows.Forms.MessageBoxButtons]::OK,
                 [System.Windows.Forms.MessageBoxIcon]::Information
             ) | Out-Null

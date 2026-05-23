@@ -2,20 +2,32 @@
 # Profile mode detection
 # =========================
 
-$ProfileMode = if ($env:PW_PROFILE_MODE) { $env:PW_PROFILE_MODE } else { "auto" }
+$ProfileMode = if ($env:PW_PROFILE_MODE)
+{ $env:PW_PROFILE_MODE 
+} else
+{ "auto" 
+}
 
 $IsInteractiveConsole = (
-  $Host.Name -eq "ConsoleHost" -and
-  -not [Console]::IsInputRedirected -and
-  -not [Console]::IsOutputRedirected
+    $Host.Name -eq "ConsoleHost" -and
+    -not [Console]::IsInputRedirected -and
+    -not [Console]::IsOutputRedirected
 )
 
 $UseInteractiveProfile = switch ($ProfileMode.ToLowerInvariant())
 {
-  "full"  { $true }
-  "quiet" { $false }
-  "auto"  { $IsInteractiveConsole }
-  default { $IsInteractiveConsole }
+    "full"
+    { $true 
+    }
+    "quiet"
+    { $false 
+    }
+    "auto"
+    { $IsInteractiveConsole 
+    }
+    default
+    { $IsInteractiveConsole 
+    }
 }
 
 $IsQuiet = -not $UseInteractiveProfile
@@ -26,31 +38,31 @@ $IsQuiet = -not $UseInteractiveProfile
 
 function Write-Info($msg)
 {
-  if (-not $IsQuiet)
-  {
-    Write-Host $msg -ForegroundColor Cyan
-  }
+    if (-not $IsQuiet)
+    {
+        Write-Host $msg -ForegroundColor Cyan
+    }
 }
 
 function Write-Success($msg)
 {
-  if (-not $IsQuiet)
-  {
-    Write-Host $msg -ForegroundColor Green
-  }
+    if (-not $IsQuiet)
+    {
+        Write-Host $msg -ForegroundColor Green
+    }
 }
 
 function Write-Warn($msg)
 {
-  if (-not $IsQuiet)
-  {
-    Write-Host $msg -ForegroundColor Yellow
-  }
+    if (-not $IsQuiet)
+    {
+        Write-Host $msg -ForegroundColor Yellow
+    }
 }
 
 function Write-Err($msg)
 {
-  Write-Host $msg -ForegroundColor Red
+    Write-Host $msg -ForegroundColor Red
 }
 
 # =========================
@@ -59,47 +71,57 @@ function Write-Err($msg)
 
 if ($UseInteractiveProfile)
 {
-  # --- Oh My Posh ---
-  $ohMyPoshConfig = Join-Path (Split-Path $PROFILE) "black-pink.omp.json"
-  if (Test-Path $ohMyPoshConfig)
-  {
-    oh-my-posh init pwsh --config $ohMyPoshConfig | Invoke-Expression
-  }
-
-  # --- Terminal Icons ---
-  if (Get-Module -ListAvailable -Name Terminal-Icons)
-  {
-    Import-Module Terminal-Icons
-  }
-
-  # --- PSReadLine ---
-  if (Get-Module -ListAvailable -Name PSReadLine)
-  {
-    Import-Module PSReadLine
-
-    Set-PSReadLineOption -EditMode Vi
-    Set-PSReadLineKeyHandler -Key Tab -Function MenuComplete
-
-    try
+    # --- Oh My Posh ---
+    $ohMyPoshConfig = Join-Path (Split-Path $PROFILE) "black-pink.omp.json"
+    if (Test-Path $ohMyPoshConfig)
     {
-      Set-PSReadLineOption -PredictionSource History
-      Set-PSReadLineOption -PredictionViewStyle InlineView
-    } catch {}
+        oh-my-posh init pwsh --config $ohMyPoshConfig | Invoke-Expression
+    }
 
-    try
+    # --- Terminal Icons ---
+    if (Get-Module -ListAvailable -Name Terminal-Icons)
     {
-      Set-PSReadLineOption -ViModeIndicator Script
-      Set-PSReadLineOption -ViModeChangeHandler {
-        param($mode)
-        switch ($mode)
+        Import-Module Terminal-Icons
+    }
+
+    # --- PSReadLine ---
+    if (Get-Module -ListAvailable -Name PSReadLine)
+    {
+        Import-Module PSReadLine
+
+        Set-PSReadLineOption -EditMode Vi
+        Set-PSReadLineKeyHandler -Key Tab -Function MenuComplete
+
+        try
         {
-          "Insert"  { Write-Host -NoNewline "$([char]0x1b)[5 q" }
-          "Command" { Write-Host -NoNewline "$([char]0x1b)[1 q" }
-          default   { Write-Host -NoNewline "$([char]0x1b)[5 q" }
+            Set-PSReadLineOption -PredictionSource History
+            Set-PSReadLineOption -PredictionViewStyle InlineView
+        } catch
+        {
         }
-      }
-    } catch {}
-  }
+
+        try
+        {
+            Set-PSReadLineOption -ViModeIndicator Script
+            Set-PSReadLineOption -ViModeChangeHandler {
+                param($mode)
+                switch ($mode)
+                {
+                    "Insert"
+                    { Write-Host -NoNewline "$([char]0x1b)[5 q" 
+                    }
+                    "Command"
+                    { Write-Host -NoNewline "$([char]0x1b)[1 q" 
+                    }
+                    default
+                    { Write-Host -NoNewline "$([char]0x1b)[5 q" 
+                    }
+                }
+            }
+        } catch
+        {
+        }
+    }
 }
 
 # =========================
@@ -114,14 +136,16 @@ Set-Alias which gcm
 # Core functions
 # =========================
 
-function repair-user-path {
+function repair-user-path
+{
 
     # Read the current user PATH from the registry-backed environment variable
     $currentUserPath = [Environment]::GetEnvironmentVariable("Path", "User")
 
     # Split into entries, remove surrounding whitespace, and ignore empty items
     $pathEntries = @()
-    if ($currentUserPath) {
+    if ($currentUserPath)
+    {
         $pathEntries = $currentUserPath -split ';' |
             ForEach-Object { $_.Trim() } |
             Where-Object { $_ -ne "" }
@@ -134,13 +158,16 @@ function repair-user-path {
     )
 
     # Append only missing entries
-    foreach ($pathToAdd in $requiredPaths) {
-        if (-not [string]::IsNullOrWhiteSpace($pathToAdd)) {
-            if ($pathEntries -notcontains $pathToAdd) {
+    foreach ($pathToAdd in $requiredPaths)
+    {
+        if (-not [string]::IsNullOrWhiteSpace($pathToAdd))
+        {
+            if ($pathEntries -notcontains $pathToAdd)
+            {
                 Write-Host "Adding: $pathToAdd"
                 $pathEntries += $pathToAdd
-            }
-            else {
+            } else
+            {
                 Write-Host "Already present: $pathToAdd"
             }
         }
@@ -148,8 +175,10 @@ function repair-user-path {
 
     # Remove duplicates while preserving first occurrence order
     $seen = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
-    $cleanPathEntries = foreach ($entry in $pathEntries) {
-        if ($seen.Add($entry)) {
+    $cleanPathEntries = foreach ($entry in $pathEntries)
+    {
+        if ($seen.Add($entry))
+        {
             $entry
         }
     }
@@ -165,43 +194,44 @@ function repair-user-path {
 
 function su
 {
-  $currentDir = (Get-Location).Path
+    $currentDir = (Get-Location).Path
 
-  $wtArgs = @(
-    "new-tab",
-    "-p", "PowerShell",
-    "-d", $currentDir,
-    "pwsh",
-    "-NoExit"
-  )
+    $wtArgs = @(
+        "new-tab",
+        "-p", "PowerShell",
+        "-d", $currentDir,
+        "pwsh",
+        "-NoExit"
+    )
 
-  Start-Process -FilePath "wt.exe" -Verb RunAs -ArgumentList $wtArgs
+    Start-Process -FilePath "wt.exe" -Verb RunAs -ArgumentList $wtArgs
 }
 
 function msvcenv
 {
-  $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+    $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 
-  if (Test-Path $vsWhere)
-  {
-    $installPath = & $vsWhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath 2>$null
-
-    if ($installPath)
+    if (Test-Path $vsWhere)
     {
-      $launchScript = Join-Path $installPath "Common7\Tools\Launch-VsDevShell.ps1"
-      if (Test-Path $launchScript)
-      {
-        & $launchScript
-        Write-Success "✅ MSVC environment loaded"
-        return
-      }
-    }
-  }
+        $installPath = & $vsWhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath 2>$null
 
-  Write-Err "❌ MSVC environment not found."
+        if ($installPath)
+        {
+            $launchScript = Join-Path $installPath "Common7\Tools\Launch-VsDevShell.ps1"
+            if (Test-Path $launchScript)
+            {
+                & $launchScript
+                Write-Success "✅ MSVC environment loaded"
+                return
+            }
+        }
+    }
+
+    Write-Err "❌ MSVC environment not found."
 }
 
-function repair-winget {
+function repair-winget
+{
     [CmdletBinding()]
     param()
 
@@ -211,28 +241,33 @@ function repair-winget {
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
 
-    function Test-WingetAvailable {
-        try {
+    function Test-WingetAvailable
+    {
+        try
+        {
             $null = Get-Command winget -ErrorAction Stop
             return $true
-        }
-        catch {
+        } catch
+        {
             return $false
         }
     }
 
-    function Repair-WingetClient {
-        try {
+    function Repair-WingetClient
+    {
+        try
+        {
             Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe -ErrorAction Stop
             Start-Sleep -Seconds 2
             return $true
-        }
-        catch {
+        } catch
+        {
             return $false
         }
     }
 
-    function Invoke-Winget {
+    function Invoke-Winget
+    {
         param(
             [Parameter(Mandatory)]
             [string[]]$Arguments
@@ -267,10 +302,12 @@ function repair-winget {
         }
     }
 
-    function Get-WingetExportPackages {
+    function Get-WingetExportPackages
+    {
         $tempFile = Join-Path $env:TEMP ("winget_export_" + [guid]::NewGuid().ToString() + ".json")
 
-        try {
+        try
+        {
             $result = Invoke-Winget -Arguments @(
                 "export",
                 "--output", "`"$tempFile`"",
@@ -279,55 +316,67 @@ function repair-winget {
                 "--disable-interactivity"
             )
 
-            if ($result.ExitCode -ne 0) {
+            if ($result.ExitCode -ne 0)
+            {
                 throw "winget export failed.`nCommand: $($result.Command)`nError: $($result.StdErr)`nOutput: $($result.StdOut)"
             }
 
-            if (-not (Test-Path $tempFile)) {
+            if (-not (Test-Path $tempFile))
+            {
                 throw "The JSON export file was not created."
             }
 
             $json = Get-Content -Path $tempFile -Raw -Encoding UTF8 | ConvertFrom-Json
             $packages = New-Object System.Collections.Generic.List[object]
 
-            foreach ($source in $json.Sources) {
-                $sourceName = if ($source.SourceDetails -and $source.SourceDetails.Name) {
+            foreach ($source in $json.Sources)
+            {
+                $sourceName = if ($source.SourceDetails -and $source.SourceDetails.Name)
+                {
                     $source.SourceDetails.Name
-                }
-                elseif ($source.SourceIdentifier) {
+                } elseif ($source.SourceIdentifier)
+                {
                     $source.SourceIdentifier
-                }
-                else {
+                } else
+                {
                     "unknown"
                 }
 
-                foreach ($pkg in $source.Packages) {
+                foreach ($pkg in $source.Packages)
+                {
                     $id = $pkg.PackageIdentifier
                     $version = $pkg.Version
 
-                    if ([string]::IsNullOrWhiteSpace($id)) {
+                    if ([string]::IsNullOrWhiteSpace($id))
+                    {
                         continue
                     }
 
                     $packages.Add([PSCustomObject]@{
-                        Selected = $false
-                        Id       = $id
-                        Version  = if ($version) { $version } else { "" }
-                        Source   = $sourceName
-                    })
+                            Selected = $false
+                            Id       = $id
+                            Version  = if ($version)
+                            { $version 
+                            } else
+                            { "" 
+                            }
+                            Source   = $sourceName
+                        })
                 }
             }
 
             $packages | Sort-Object Id -Unique
-        }
-        finally {
-            if (Test-Path $tempFile) {
+        } finally
+        {
+            if (Test-Path $tempFile)
+            {
                 Remove-Item -Path $tempFile -Force -ErrorAction SilentlyContinue
             }
         }
     }
 
-    function Write-Log {
+    function Write-Log
+    {
         param(
             [Parameter(Mandatory)][System.Windows.Forms.TextBox]$TextBox,
             [Parameter(Mandatory)][string]$Message
@@ -340,7 +389,8 @@ function repair-winget {
         [System.Windows.Forms.Application]::DoEvents()
     }
 
-    function Reinstall-WingetPackage {
+    function Reinstall-WingetPackage
+    {
         param(
             [Parameter(Mandatory)][string]$Id,
             [Parameter()][string]$Version,
@@ -362,14 +412,17 @@ function repair-winget {
         $uninstallResult = Invoke-Winget -Arguments $uninstallArgs
         Write-Log -TextBox $LogBox -Message $uninstallResult.Command
 
-        if ($uninstallResult.StdOut.Trim()) {
+        if ($uninstallResult.StdOut.Trim())
+        {
             Write-Log -TextBox $LogBox -Message $uninstallResult.StdOut.Trim()
         }
-        if ($uninstallResult.StdErr.Trim()) {
+        if ($uninstallResult.StdErr.Trim())
+        {
             Write-Log -TextBox $LogBox -Message "STDERR: $($uninstallResult.StdErr.Trim())"
         }
 
-        if ($uninstallResult.ExitCode -ne 0) {
+        if ($uninstallResult.ExitCode -ne 0)
+        {
             Write-Log -TextBox $LogBox -Message "Uninstall failed for $Id (code $($uninstallResult.ExitCode))."
             return
         }
@@ -384,32 +437,38 @@ function repair-winget {
             "--disable-interactivity"
         )
 
-        if (-not [string]::IsNullOrWhiteSpace($Version)) {
+        if (-not [string]::IsNullOrWhiteSpace($Version))
+        {
             $installArgs += @("--version", "`"$Version`"")
         }
 
         $installResult = Invoke-Winget -Arguments $installArgs
         Write-Log -TextBox $LogBox -Message $installResult.Command
 
-        if ($installResult.StdOut.Trim()) {
+        if ($installResult.StdOut.Trim())
+        {
             Write-Log -TextBox $LogBox -Message $installResult.StdOut.Trim()
         }
-        if ($installResult.StdErr.Trim()) {
+        if ($installResult.StdErr.Trim())
+        {
             Write-Log -TextBox $LogBox -Message "STDERR: $($installResult.StdErr.Trim())"
         }
 
-        if ($installResult.ExitCode -eq 0) {
+        if ($installResult.ExitCode -eq 0)
+        {
             Write-Log -TextBox $LogBox -Message "OK: $Id reinstalled."
-        }
-        else {
+        } else
+        {
             Write-Log -TextBox $LogBox -Message "Reinstall failed for $Id (code $($installResult.ExitCode))."
         }
     }
 
-    if (-not (Test-WingetAvailable)) {
+    if (-not (Test-WingetAvailable))
+    {
         $repairOk = Repair-WingetClient
 
-        if (-not $repairOk -or -not (Test-WingetAvailable)) {
+        if (-not $repairOk -or -not (Test-WingetAvailable))
+        {
             [System.Windows.Forms.MessageBox]::Show(
                 "winget.exe was not found, and the App Installer repair attempt failed.`n`nRepair or reinstall App Installer from Microsoft Store, then run this function again.",
                 "WinGet Not Found",
@@ -436,7 +495,8 @@ function repair-winget {
     $form.BackColor = $darkBack
     $form.ForeColor = $lightText
 
-    function Set-DarkButton {
+    function Set-DarkButton
+    {
         param([Parameter(Mandatory)][System.Windows.Forms.Button]$Button)
 
         $Button.BackColor = $darkPanel
@@ -564,7 +624,8 @@ function repair-winget {
     $script:AllPackages = New-Object System.Collections.ArrayList
     $bindingListType = "System.ComponentModel.BindingList[object]"
 
-    function Bind-Grid {
+    function Bind-Grid
+    {
         param([string]$FilterText = "")
 
         $filtered = $script:AllPackages | Where-Object {
@@ -575,32 +636,36 @@ function repair-winget {
         }
 
         $binding = New-Object $bindingListType
-        foreach ($item in $filtered) {
+        foreach ($item in $filtered)
+        {
             [void]$binding.Add($item)
         }
 
         $grid.DataSource = $binding
     }
 
-    function Load-Packages {
+    function Load-Packages
+    {
         $form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
         $btnRefresh.Enabled = $false
         $btnRun.Enabled = $false
 
-        try {
+        try
+        {
             $txtLog.Clear()
             Write-Log -TextBox $txtLog -Message "Loading packages with winget export..."
             $packages = Get-WingetExportPackages
 
             [void]$script:AllPackages.Clear()
-            foreach ($pkg in $packages) {
+            foreach ($pkg in $packages)
+            {
                 [void]$script:AllPackages.Add($pkg)
             }
 
             Bind-Grid -FilterText $txtFilter.Text
             Write-Log -TextBox $txtLog -Message "$($script:AllPackages.Count) package(s) loaded."
-        }
-        catch {
+        } catch
+        {
             Write-Log -TextBox $txtLog -Message "Error: $($_.Exception.Message)"
             [System.Windows.Forms.MessageBox]::Show(
                 $_.Exception.Message,
@@ -608,8 +673,8 @@ function repair-winget {
                 [System.Windows.Forms.MessageBoxButtons]::OK,
                 [System.Windows.Forms.MessageBoxIcon]::Error
             ) | Out-Null
-        }
-        finally {
+        } finally
+        {
             $btnRefresh.Enabled = $true
             $btnRun.Enabled = $true
             $form.Cursor = [System.Windows.Forms.Cursors]::Default
@@ -617,76 +682,82 @@ function repair-winget {
     }
 
     $txtFilter.Add_TextChanged({
-        Bind-Grid -FilterText $txtFilter.Text
-    })
+            Bind-Grid -FilterText $txtFilter.Text
+        })
 
     $btnRefresh.Add_Click({
-        Load-Packages
-    })
+            Load-Packages
+        })
 
     $btnSelectAll.Add_Click({
-        foreach ($item in $grid.DataSource) {
-            $item.Selected = $true
-        }
-        $grid.Refresh()
-    })
+            foreach ($item in $grid.DataSource)
+            {
+                $item.Selected = $true
+            }
+            $grid.Refresh()
+        })
 
     $btnUnselectAll.Add_Click({
-        foreach ($item in $grid.DataSource) {
-            $item.Selected = $false
-        }
-        $grid.Refresh()
-    })
+            foreach ($item in $grid.DataSource)
+            {
+                $item.Selected = $false
+            }
+            $grid.Refresh()
+        })
 
     $btnRun.Add_Click({
-        $grid.EndEdit()
-        $selected = @($script:AllPackages | Where-Object { $_.Selected })
+            $grid.EndEdit()
+            $selected = @($script:AllPackages | Where-Object { $_.Selected })
 
-        if ($selected.Count -eq 0) {
-            [System.Windows.Forms.MessageBox]::Show(
-                "No packages selected.",
-                "Information",
-                [System.Windows.Forms.MessageBoxButtons]::OK,
-                [System.Windows.Forms.MessageBoxIcon]::Information
-            ) | Out-Null
-            return
-        }
-
-        $msg = "This will uninstall and reinstall $($selected.Count) package(s).`n`nContinue?"
-        $confirm = [System.Windows.Forms.MessageBox]::Show(
-            $msg,
-            "Confirmation",
-            [System.Windows.Forms.MessageBoxButtons]::YesNo,
-            [System.Windows.Forms.MessageBoxIcon]::Warning
-        )
-
-        if ($confirm -ne [System.Windows.Forms.DialogResult]::Yes) {
-            return
-        }
-
-        $form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
-        $btnRun.Enabled = $false
-        $btnRefresh.Enabled = $false
-
-        try {
-            foreach ($pkg in $selected) {
-                Reinstall-WingetPackage -Id $pkg.Id -Version $pkg.Version -LogBox $txtLog
+            if ($selected.Count -eq 0)
+            {
+                [System.Windows.Forms.MessageBox]::Show(
+                    "No packages selected.",
+                    "Information",
+                    [System.Windows.Forms.MessageBoxButtons]::OK,
+                    [System.Windows.Forms.MessageBoxIcon]::Information
+                ) | Out-Null
+                return
             }
 
-            Write-Log -TextBox $txtLog -Message "Finished."
-            [System.Windows.Forms.MessageBox]::Show(
-                "Operation finished. Check the log for details.",
-                "Finished",
-                [System.Windows.Forms.MessageBoxButtons]::OK,
-                [System.Windows.Forms.MessageBoxIcon]::Information
-            ) | Out-Null
-        }
-        finally {
-            $btnRun.Enabled = $true
-            $btnRefresh.Enabled = $true
-            $form.Cursor = [System.Windows.Forms.Cursors]::Default
-        }
-    })
+            $msg = "This will uninstall and reinstall $($selected.Count) package(s).`n`nContinue?"
+            $confirm = [System.Windows.Forms.MessageBox]::Show(
+                $msg,
+                "Confirmation",
+                [System.Windows.Forms.MessageBoxButtons]::YesNo,
+                [System.Windows.Forms.MessageBoxIcon]::Warning
+            )
+
+            if ($confirm -ne [System.Windows.Forms.DialogResult]::Yes)
+            {
+                return
+            }
+
+            $form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
+            $btnRun.Enabled = $false
+            $btnRefresh.Enabled = $false
+
+            try
+            {
+                foreach ($pkg in $selected)
+                {
+                    Reinstall-WingetPackage -Id $pkg.Id -Version $pkg.Version -LogBox $txtLog
+                }
+
+                Write-Log -TextBox $txtLog -Message "Finished."
+                [System.Windows.Forms.MessageBox]::Show(
+                    "Operation finished. Check the log for details.",
+                    "Finished",
+                    [System.Windows.Forms.MessageBoxButtons]::OK,
+                    [System.Windows.Forms.MessageBoxIcon]::Information
+                ) | Out-Null
+            } finally
+            {
+                $btnRun.Enabled = $true
+                $btnRefresh.Enabled = $true
+                $form.Cursor = [System.Windows.Forms.Cursors]::Default
+            }
+        })
 
     Load-Packages
     [void]$form.ShowDialog()
@@ -698,29 +769,29 @@ function repair-winget {
 
 function aic
 {
-  param(
-    [string]$Model = "openai/gpt-5.4-mini"
-  )
+    param(
+        [string]$Model = "openai/gpt-5.4-mini"
+    )
 
-  $branch = (git rev-parse --abbrev-ref HEAD 2>$null) -join "`n"
-  $gitLog = (git log -10 --pretty=format:"<commit>%n%h%n%B%n</commit>" 2>$null) -join "`n"
-  $diffStat = (git diff --cached --stat 2>$null) -join "`n"
-  $diff = (git diff --cached 2>$null) -join "`n"
+    $branch = (git rev-parse --abbrev-ref HEAD 2>$null) -join "`n"
+    $gitLog = (git log -10 --pretty=format:"<commit>%n%h%n%B%n</commit>" 2>$null) -join "`n"
+    $diffStat = (git diff --cached --stat 2>$null) -join "`n"
+    $diff = (git diff --cached 2>$null) -join "`n"
 
-  $branch = $branch.Replace("`r`n", "`n").Replace("`r", "`n")
-  $gitLog = $gitLog.Replace("`r`n", "`n").Replace("`r", "`n")
-  $diffStat = $diffStat.Replace("`r`n", "`n").Replace("`r", "`n")
-  $diff = $diff.Replace("`r`n", "`n").Replace("`r", "`n")
+    $branch = $branch.Replace("`r`n", "`n").Replace("`r", "`n")
+    $gitLog = $gitLog.Replace("`r`n", "`n").Replace("`r", "`n")
+    $diffStat = $diffStat.Replace("`r`n", "`n").Replace("`r", "`n")
+    $diff = $diff.Replace("`r`n", "`n").Replace("`r", "`n")
 
-  if ([string]::IsNullOrWhiteSpace($diffStat))
-  {
-    [Console]::Error.WriteLine("❌ No staged changes. Run git add first.")
-    return 1
-  }
+    if ([string]::IsNullOrWhiteSpace($diffStat))
+    {
+        [Console]::Error.WriteLine("❌ No staged changes. Run git add first.")
+        return 1
+    }
 
-  while ($true)
-  {
-    $prompt = @"
+    while ($true)
+    {
+        $prompt = @"
 You are writing a git commit message.
 
 IMPORTANT:
@@ -750,105 +821,104 @@ Rules:
 - no fluff
 "@
 
-    $promptFile = [System.IO.Path]::ChangeExtension([System.IO.Path]::GetTempFileName(), ".md")
-    [System.IO.File]::WriteAllText($promptFile, $prompt, [System.Text.UTF8Encoding]::new($false))
+        $promptFile = [System.IO.Path]::ChangeExtension([System.IO.Path]::GetTempFileName(), ".md")
+        [System.IO.File]::WriteAllText($promptFile, $prompt, [System.Text.UTF8Encoding]::new($false))
 
-    try
-    {
-      $psi = [System.Diagnostics.ProcessStartInfo]::new()
-      $psi.FileName = "opencode"
-      $psi.ArgumentList.Add("run")
-      $psi.ArgumentList.Add("--model")
-      $psi.ArgumentList.Add($Model)
-      $psi.ArgumentList.Add("Write the git commit message using the attached instructions and diff.")
-      $psi.ArgumentList.Add("--file")
-      $psi.ArgumentList.Add($promptFile)
-      $psi.RedirectStandardOutput = $true
-      $psi.RedirectStandardError = $true
-      $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
-      $psi.StandardErrorEncoding = [System.Text.Encoding]::UTF8
-      $psi.UseShellExecute = $false
-
-      $process = [System.Diagnostics.Process]::Start($psi)
-      $rawMessage = $process.StandardOutput.ReadToEnd()
-      $rawError = $process.StandardError.ReadToEnd()
-      $process.WaitForExit()
-    }
-    finally
-    {
-      Remove-Item -LiteralPath $promptFile -Force -ErrorAction SilentlyContinue
-    }
-
-    if ($process.ExitCode -ne 0)
-    {
-      if (-not [string]::IsNullOrWhiteSpace($rawError))
-      {
-        [Console]::Error.WriteLine($rawError.Trim())
-      }
-
-      [Console]::Error.WriteLine("❌ Failed to generate commit message.")
-      return 1
-    }
-
-    if (-not $rawMessage)
-    {
-      [Console]::Error.WriteLine("❌ Failed to generate commit message.")
-      return 1
-    }
-
-    $message = (($rawMessage | ForEach-Object { [string]$_ }) -join "`n")
-    $message = $message.Replace("`r`n", "`n").Replace("`r", "`n")
-
-    if ([string]::IsNullOrWhiteSpace($message))
-    {
-      [Console]::Error.WriteLine("❌ opencode returned an empty commit message.")
-      return 1
-    }
-
-    Write-Host ""
-    Write-Host "──────────────── commit preview ────────────────"
-    Write-Host $message
-    Write-Host "───────────────────────────────────────────────"
-    Write-Host ""
-
-    Write-Host -NoNewline "[Y] yes  |  [R] retry  |  [C] cancel: "
-    $choice = Read-Host
-
-    switch ($choice.ToLowerInvariant())
-    {
-      "y"
-      {
-        $message | git commit -F -
-
-        if ($LASTEXITCODE -eq 0)
+        try
         {
-          Write-Host "✨ Commit created. Tiny machine goblin satisfied."
-          return 0
+            $psi = [System.Diagnostics.ProcessStartInfo]::new()
+            $psi.FileName = "opencode"
+            $psi.ArgumentList.Add("run")
+            $psi.ArgumentList.Add("--model")
+            $psi.ArgumentList.Add($Model)
+            $psi.ArgumentList.Add("Write the git commit message using the attached instructions and diff.")
+            $psi.ArgumentList.Add("--file")
+            $psi.ArgumentList.Add($promptFile)
+            $psi.RedirectStandardOutput = $true
+            $psi.RedirectStandardError = $true
+            $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+            $psi.StandardErrorEncoding = [System.Text.Encoding]::UTF8
+            $psi.UseShellExecute = $false
+
+            $process = [System.Diagnostics.Process]::Start($psi)
+            $rawMessage = $process.StandardOutput.ReadToEnd()
+            $rawError = $process.StandardError.ReadToEnd()
+            $process.WaitForExit()
+        } finally
+        {
+            Remove-Item -LiteralPath $promptFile -Force -ErrorAction SilentlyContinue
         }
 
-        [Console]::Error.WriteLine("❌ Commit failed. Nothing was committed.")
-        return 1
-      }
+        if ($process.ExitCode -ne 0)
+        {
+            if (-not [string]::IsNullOrWhiteSpace($rawError))
+            {
+                [Console]::Error.WriteLine($rawError.Trim())
+            }
 
-      "r"
-      {
-        Write-Host "🔁 Retrying... maybe the robot was feeling silly."
-        continue
-      }
+            [Console]::Error.WriteLine("❌ Failed to generate commit message.")
+            return 1
+        }
 
-      "c"
-      {
-        Write-Host "🚫 Commit cancelled. Nothing was committed."
-        return 0
-      }
+        if (-not $rawMessage)
+        {
+            [Console]::Error.WriteLine("❌ Failed to generate commit message.")
+            return 1
+        }
 
-      default
-      {
-        Write-Host "🤨 Expected Y, R, or C. Let's try again."
-        continue
-      }
+        $message = (($rawMessage | ForEach-Object { [string]$_ }) -join "`n")
+        $message = $message.Replace("`r`n", "`n").Replace("`r", "`n")
+
+        if ([string]::IsNullOrWhiteSpace($message))
+        {
+            [Console]::Error.WriteLine("❌ opencode returned an empty commit message.")
+            return 1
+        }
+
+        Write-Host ""
+        Write-Host "──────────────── commit preview ────────────────"
+        Write-Host $message
+        Write-Host "───────────────────────────────────────────────"
+        Write-Host ""
+
+        Write-Host -NoNewline "[Y] yes  |  [R] retry  |  [C] cancel: "
+        $choice = Read-Host
+
+        switch ($choice.ToLowerInvariant())
+        {
+            "y"
+            {
+                $message | git commit -F -
+
+                if ($LASTEXITCODE -eq 0)
+                {
+                    Write-Host "✨ Commit created. Tiny machine goblin satisfied."
+                    return 0
+                }
+
+                [Console]::Error.WriteLine("❌ Commit failed. Nothing was committed.")
+                return 1
+            }
+
+            "r"
+            {
+                Write-Host "🔁 Retrying... maybe the robot was feeling silly."
+                continue
+            }
+
+            "c"
+            {
+                Write-Host "🚫 Commit cancelled. Nothing was committed."
+                return 0
+            }
+
+            default
+            {
+                Write-Host "🤨 Expected Y, R, or C. Let's try again."
+                continue
+            }
+        }
     }
-  }
 }
 
 # =========================
@@ -857,35 +927,35 @@ Rules:
 
 function update
 {
-  winget upgrade -r --include-unknown --accept-package-agreements --accept-source-agreements
+    winget upgrade -r --include-unknown --accept-package-agreements --accept-source-agreements
 }
 
 function ..
 {
-  param([int]$levels = 1)
+    param([int]$levels = 1)
 
-  if ($levels -lt 1)
-  {
-    Write-Err "Please provide a positive number."
-    return
-  }
+    if ($levels -lt 1)
+    {
+        Write-Err "Please provide a positive number."
+        return
+    }
 
-  $path = (Get-Location).Path
-  for ($i = 0; $i -lt $levels; $i++)
-  {
-    $path = Split-Path $path -Parent
-  }
+    $path = (Get-Location).Path
+    for ($i = 0; $i -lt $levels; $i++)
+    {
+        $path = Split-Path $path -Parent
+    }
 
-  Set-Location $path
+    Set-Location $path
 }
 
 function reload
 {
-  . $PROFILE
-  $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
+    . $PROFILE
+    $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
 
-  if (-not $IsQuiet)
-  {
-    Clear-Host
-  }
+    if (-not $IsQuiet)
+    {
+        Clear-Host
+    }
 }

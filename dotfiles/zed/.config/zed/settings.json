@@ -1,4 +1,8 @@
 {
+  "which_key": {
+    "delay_ms": 0,
+    "enabled": true,
+  },
   "file_finder": {
     "modal_max_width": "medium",
   },

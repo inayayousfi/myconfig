@@ -1,14 +1,39 @@
 {
+  "file_finder": {
+    "modal_max_width": "medium",
+  },
+  "search": {
+    "center_on_match": true,
+  },
+  "completions": {
+    "words_min_length": 1,
+    "words": "enabled",
+  },
+  "completion_menu_item_kind": "symbol",
+  "inlay_hints": {
+    "show_background": true,
+    "enabled": true,
+  },
+  "colorize_brackets": true,
+  "code_lens": "on",
+  "allow_rewrap": "anywhere",
+  "toolbar": {
+    "code_actions": true,
+  },
+  "inline_code_actions": false,
   "diff_view_style": "split",
   "cli_default_open_behavior": "existing_window",
   "show_edit_predictions": false,
   "agent": {
+    "limit_content_width": true,
+    "default_width": 280.0,
+    "flexible": false,
     "default_profile": "ask",
     "default_model": {
       "provider": "ollama",
       // ollama pull gemma4:latest
       "model": "gemma4:latest",
-      "enable_thinking": true
+      "enable_thinking": true,
     },
     "dock": "left",
     "favorite_models": [],
@@ -18,7 +43,7 @@
   "agent_servers": {
     "opencode": {
       "favorite_config_option_values": {
-        "model": ["github-copilot/claude-opus-4.7", "openai/gpt-5.5"],
+        "model": ["openai/gpt-5.5"],
       },
       "type": "registry",
     },
@@ -37,7 +62,7 @@
   "collaboration_panel": {
     "dock": "left",
   },
-  "completion_menu_scrollbar": "auto",
+  "completion_menu_scrollbar": "always",
   "edit_predictions": {
     "mode": "eager",
     "provider": "ollama",
@@ -46,10 +71,17 @@
       // ollama pull hf.co/bartowski/zed-industries_zeta-2-GGUF:Q4_0
       "model": "hf.co/bartowski/zed-industries_zeta-2-GGUF:Q4_0",
       "prompt_format": "zeta2",
-      "max_output_tokens": 256
-    }
+      "max_output_tokens": 256,
+    },
   },
   "git_panel": {
+    "commit_title_max_length": 80,
+    "scrollbar": {
+      "show": "auto",
+    },
+    "tree_view": true,
+    "status_style": "label_color",
+    "default_width": 240.0,
     "dock": "right",
   },
   "gutter": {
@@ -63,6 +95,14 @@
     "dock": "right",
   },
   "project_panel": {
+    "auto_open": {
+      "on_create": false,
+    },
+    "diagnostic_badges": true,
+    "scrollbar": {
+      "show": "auto",
+    },
+    "entry_spacing": "standard",
     "dock": "right",
   },
   "relative_line_numbers": "enabled",
@@ -89,6 +129,8 @@
   },
   "theme": "Black & Pink",
   "title_bar": {
+    "button_layout": "platform_default",
+    "show_branch_status_icon": true,
     "show_menus": false,
     "show_onboarding_banner": true,
     "show_sign_in": false,
@@ -100,8 +142,9 @@
   "ui_font_weight": 450,
   "unnecessary_code_fade": 0,
   "vim": {
+    "gdefault": true,
     "toggle_relative_line_numbers": true,
   },
   "vim_mode": true,
-  "when_closing_with_no_tabs": "close_window",
+  "when_closing_with_no_tabs": "keep_window_open",
 }

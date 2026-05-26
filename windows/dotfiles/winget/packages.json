@@ -48,6 +48,9 @@
         },
         {
           "PackageIdentifier": "TheDocumentFoundation.LibreOffice"
+        },
+        {
+          "PackageIdentifier": "Mozilla.Thunderbird"
         }
       ],
       "SourceDetails": {

@@ -1,0 +1,52 @@
+theme: Plasma
+
+styleConstants:
+  - WindhawkBlur=<WindhawkBlur BlurAmount="15" TintColor="#cc2a2e32" />
+  - panelLeft=8
+  - panelRight=8
+  - panelTop=3
+  - panelBottom=2
+  - radius=5
+  - trayPull=-64
+  - trayPadRight=-24
+  
+controlStyles:
+  - target: Taskbar.TaskbarFrame
+    styles:
+      - HorizontalAlignment=Stretch
+      - Margin=$panelLeft,$panelTop,$panelRight,$panelBottom
+      
+  - target: Taskbar.TaskbarFrame > Grid#RootGrid
+    styles:
+      - CornerRadius=$radius
+      
+  - target: Taskbar.TaskbarFrame > Grid#RootGrid > Taskbar.TaskbarBackground > Grid > Rectangle#BackgroundFill
+    styles:
+      - Fill:=$WindhawkBlur
+      - RadiusX=$radius
+      - RadiusY=$radius
+      
+  - target: Rectangle#BackgroundStroke
+    styles:
+      - RadiusX=$radius
+      - RadiusY=$radius
+      - StrokeThickness=1
+      - Opacity=0.7
+      
+  - target: Grid#SystemTrayFrameGrid
+    styles:
+      - Margin=$trayPull,0,0,0
+      - Padding=0,0,$trayPadRight,0
+      
+  - target: Taskbar.ExperienceToggleButton#LaunchListButton[AutomationProperties.AutomationId=StartButton] > Taskbar.TaskListButtonPanel > Microsoft.UI.Xaml.Controls.AnimatedVisualPlayer#Icon
+    styles:
+      - Visibility=Visible
+      
+  - target: Taskbar.ExperienceToggleButton#LaunchListButton[AutomationProperties.AutomationId=StartButton] > Taskbar.TaskListButtonPanel > Border#BackgroundElement
+    styles:
+      - Background=Transparent
+      
+themeResourceVariables:
+  - ''
+  
+xamlDiagnosticsHandling: alert

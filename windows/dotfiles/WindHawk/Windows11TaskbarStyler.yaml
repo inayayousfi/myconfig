@@ -1,6 +1,6 @@
 theme: Plasma
 styleConstants:
-  - WindhawkBlur=<WindhawkBlur BlurAmount="15" TintColor="#93191953" />
+  - WindhawkBlur=<WindhawkBlur BlurAmount="10" TintColor="#090606a1" />
   - panelLeft=8
   - panelRight=8
   - panelTop=6

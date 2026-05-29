@@ -1,8 +1,9 @@
 theme: Plasma
 styleConstants:
-  - WindhawkBlur=<WindhawkBlur BlurAmount="10" TintColor="#090606a1" />
-  - panelLeft=8
-  - panelRight=8
+  - AcrylicPanel=<AcrylicBrush TintColor="#101010" TintOpacity="0.1" FallbackColor="#AA101010" />
+  - panelOutline=<SolidColorBrush Color="{ThemeResource SystemAccentColor}" Opacity="0.75" />
+  - panelLeft=10
+  - panelRight=10
   - panelTop=6
   - panelBottom=6
   - radius=12
@@ -10,18 +11,20 @@ controlStyles:
   - target: Taskbar.TaskbarFrame
     styles:
       - HorizontalAlignment=Stretch
-      - Margin=0
   - target: Taskbar.TaskbarFrame > Grid#RootGrid
     styles:
       - Margin=$panelLeft,$panelTop,$panelRight,$panelBottom
   - target: Taskbar.TaskbarFrame > Grid#RootGrid > Taskbar.TaskbarBackground > Grid > Rectangle#BackgroundFill
     styles:
-      - Fill:=$WindhawkBlur
+      - Fill:=$AcrylicPanel
       - RadiusX=$radius
       - RadiusY=$radius
+      - Stroke:=$panelOutline
+      - StrokeThickness=1
   - target: Taskbar.ExperienceToggleButton#LaunchListButton[AutomationProperties.AutomationId=StartButton] > Taskbar.TaskListButtonPanel > Microsoft.UI.Xaml.Controls.AnimatedVisualPlayer#Icon
     styles:
       - Visibility=Visible
+      - RenderTransform:=<TranslateTransform X="-2" />
   - target: Taskbar.ExperienceToggleButton#LaunchListButton[AutomationProperties.AutomationId=StartButton] > Taskbar.TaskListButtonPanel > Border#BackgroundElement
     styles:
       - Background=Transparent

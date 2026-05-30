@@ -466,6 +466,56 @@ function Install-RegistryTweaks
 }
 
 # ============================================================================
+# Taskbar Auto-hide
+# ============================================================================
+
+function Enable-TaskbarAutoHide {
+    Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+
+public class Taskbar {
+    [StructLayout(LayoutKind.Sequential)]
+    public struct APPBARDATA {
+        public int cbSize;
+        public IntPtr hWnd;
+        public uint uCallbackMessage;
+        public uint uEdge;
+        public RECT rc;
+        public int lParam;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RECT {
+        public int left;
+        public int top;
+        public int right;
+        public int bottom;
+    }
+
+    [DllImport("shell32.dll")]
+    public static extern UIntPtr SHAppBarMessage(uint dwMessage, ref APPBARDATA pData);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+}
+"@ -ErrorAction SilentlyContinue
+
+    $ABM_SETSTATE = 0x0000000A
+    $ABS_AUTOHIDE = 0x0000001
+    $ABS_ALWAYSONTOP = 0x0000002
+
+    $taskbar = [Taskbar]::FindWindow("Shell_TrayWnd", $null)
+
+    $data = New-Object Taskbar+APPBARDATA
+    $data.cbSize = [Runtime.InteropServices.Marshal]::SizeOf($data)
+    $data.hWnd = $taskbar
+    $data.lParam = $ABS_AUTOHIDE -bor $ABS_ALWAYSONTOP
+
+    [void][Taskbar]::SHAppBarMessage($ABM_SETSTATE, [ref]$data)
+}
+
+# ============================================================================
 # Main Installation Flow
 # ============================================================================
 
@@ -508,6 +558,7 @@ function Main
 
   # Apply the Windows shell and Start menu tweaks last.
   Install-RegistryTweaks
+  Enable-TaskbarAutoHide
 
   Write-Host ""
   Write-Host "+================================================================+" -ForegroundColor Green

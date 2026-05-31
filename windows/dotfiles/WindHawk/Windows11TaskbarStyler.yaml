@@ -1,6 +1,6 @@
 theme: Plasma
 styleConstants:
-  - AcrylicPanel=<AcrylicBrush TintColor="#101010" TintOpacity="0.1" FallbackColor="#AA101010" />
+  - AcrylicPanel=<AcrylicBrush TintColor="#101010" TintOpacity="0.5" FallbackColor="#AA101010" />
   - panelOutline=<SolidColorBrush Color="{ThemeResource SystemAccentColor}" Opacity="0.75" />
   - panelLeft=10
   - panelRight=10
@@ -24,7 +24,14 @@ controlStyles:
   - target: Taskbar.ExperienceToggleButton#LaunchListButton[AutomationProperties.AutomationId=StartButton] > Taskbar.TaskListButtonPanel > Microsoft.UI.Xaml.Controls.AnimatedVisualPlayer#Icon
     styles:
       - Visibility=Visible
-      - RenderTransform:=<TranslateTransform X="-2" />
+      - HorizontalAlignment=Center
+      - VerticalAlignment=Center
+      - RenderTransform:=<TranslateTransform X="-1.5" />
+      - Margin=0
+  - target: Taskbar.ExperienceToggleButton#LaunchListButton[AutomationProperties.AutomationId=StartButton]
+    styles:
+      - Margin=0,0,-12,0
+      - Padding=0
   - target: Taskbar.ExperienceToggleButton#LaunchListButton[AutomationProperties.AutomationId=StartButton] > Taskbar.TaskListButtonPanel > Border#BackgroundElement
     styles:
       - Background=Transparent

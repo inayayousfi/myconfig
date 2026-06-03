@@ -251,7 +251,7 @@ function Install-OllamaModels
   }
 
   $models = @(
-    "gemma4:latest",
+    "hf.co/unsloth/Qwen3.6-35B-A3B-GGUF:UD-IQ1_M",
     "hf.co/bartowski/zed-industries_zeta-2-GGUF:Q4_0"
   )
 

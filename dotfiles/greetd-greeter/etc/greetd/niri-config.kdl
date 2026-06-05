@@ -1,6 +1,0 @@
-spawn-sh-at-startup "/usr/local/bin/gtkgreet-session"
-spawn-sh-at-startup "/usr/local/bin/greetd-axidev-osk"
-
-hotkey-overlay {
-    skip-at-startup
-}

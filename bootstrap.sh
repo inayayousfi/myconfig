@@ -64,10 +64,6 @@ detect_platform() {
     elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
         if command -v apt-get &> /dev/null; then
             echo "ubuntu"
-        elif command -v dnf &> /dev/null; then
-            echo "fedora"
-        elif command -v pacman &> /dev/null; then
-            echo "unknown"
         else
             echo "unknown"
         fi
@@ -83,9 +79,7 @@ prompt_platform() {
     echo "" >&2
     echo "  1) macOS" >&2
     echo "  2) Ubuntu Server" >&2
-    echo "  3) Fedora Everything" >&2
-    echo "  4) Windows" >&2
-    echo "  5) Exit" >&2
+    echo "  3) Exit" >&2
     echo "" >&2
 
     while true; do
@@ -100,14 +94,6 @@ prompt_platform() {
                 return 0
                 ;;
             3)
-                echo "fedora"
-                return 0
-                ;;
-            4)
-                echo "windows"
-                return 0
-                ;;
-            5)
                 log_info "Installation cancelled by user"
                 exit 0
                 ;;
@@ -220,7 +206,7 @@ run_installation() {
     fi
 
     # Verify copy
-    if [ ! -d "$INSTALL_DIR/ubuntu-server" ] && [ ! -d "$INSTALL_DIR/macos" ] && [ ! -d "$INSTALL_DIR/fedora-everything" ] && [ ! -d "$INSTALL_DIR/windows" ]; then
+    if [ ! -d "$INSTALL_DIR/ubuntu-server" ] && [ ! -d "$INSTALL_DIR/macos" ] && [ ! -d "$INSTALL_DIR/windows" ]; then
         log_error "File copy failed or source directory was empty. Check $source_dir"
         exit 1
     fi
@@ -252,29 +238,6 @@ run_installation() {
             fi
             cd "$INSTALL_DIR/ubuntu-server"
             ./install.sh || install_status=$?
-            ;;
-        fedora)
-            if [ ! -f "$INSTALL_DIR/fedora-everything/install.sh" ]; then
-                log_error "Fedora install script not found at $INSTALL_DIR/fedora-everything/install.sh"
-                exit 1
-            fi
-            cd "$INSTALL_DIR/fedora-everything"
-            if [ "${EUID:-$(id -u)}" -eq 0 ]; then
-                ./install.sh || install_status=$?
-            elif command -v sudo >/dev/null 2>&1; then
-                sudo ./install.sh || install_status=$?
-            else
-                log_error "Fedora installation requires root. Re-run with sudo or install sudo first."
-                exit 1
-            fi
-            ;;
-        windows)
-            if [ ! -f "$INSTALL_DIR/windows/install.ps1" ]; then
-                log_error "Windows install script not found at $INSTALL_DIR/windows/install.ps1"
-                exit 1
-            fi
-            cd "$INSTALL_DIR/windows"
-            powershell.exe -ExecutionPolicy Bypass -File install.ps1 || install_status=$?
             ;;
         *)
             log_error "Unsupported platform: $platform"
@@ -318,10 +281,6 @@ ensure_dependencies() {
             sudo apt-get update
             sudo apt-get install -y "${missing_deps[@]}"
             ;;
-        fedora)
-            log_info "Installing missing dependencies via dnf..."
-            sudo dnf install -y "${missing_deps[@]}"
-            ;;
         macos)
             if command -v brew &> /dev/null; then
                 log_info "Installing missing dependencies via Homebrew..."
@@ -331,10 +290,6 @@ ensure_dependencies() {
                 log_info "Please install Homebrew or manually install: ${missing_deps[*]}"
                 exit 1
             fi
-            ;;
-        windows)
-            log_info "Windows detected. No extra dependencies needed."
-            log_info "PowerShell is pre-installed on Windows."
             ;;
         *)
             log_error "Please manually install the following dependencies: ${missing_deps[*]}"

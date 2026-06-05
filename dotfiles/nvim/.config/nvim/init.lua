@@ -189,7 +189,6 @@ require("nvim-tree").setup({
   end,
   view = {
     side = "right",
-    width = "100%",
   },
   actions = {
     open_file = {

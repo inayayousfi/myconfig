@@ -175,12 +175,7 @@ elif $IS_LINUX; then
         echo "Updating system and packages..."
         echo ""
 
-        if command -v dnf &>/dev/null; then
-            echo "Updating system packages (dnf)..."
-            sudo dnf upgrade --refresh -y && sudo dnf autoremove -y
-            echo "System packages updated."
-            echo ""
-        elif command -v apt &>/dev/null; then
+        if command -v apt &>/dev/null; then
             echo "Updating system packages (apt)..."
             sudo apt update && sudo apt upgrade -y && sudo apt autoremove -y && sudo apt autoclean
             echo "System packages updated."

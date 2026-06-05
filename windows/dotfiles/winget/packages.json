@@ -50,9 +50,6 @@
           "PackageIdentifier": "TheDocumentFoundation.LibreOffice"
         },
         {
-          "PackageIdentifier": "Mozilla.Thunderbird"
-        },
-        {
           "PackageIdentifier": "RamenSoftware.Windhawk"
         }
       ],

@@ -33,6 +33,8 @@ echo "$WINUSER:$WINUSER" | chpasswd
 
 sed -i 's/^# *%wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
 
+echo "$WINUSER ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
 tee -a /etc/wsl.conf >/dev/null <<EOF
 [user]
 default=$WINUSER
@@ -162,6 +164,8 @@ git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH_CUSTOM:
 eval "$(/usr/bin/wsl2-ssh-agent)"
 
 rm -rf ~/paru/
+
+mkdir -p "${HOME}/Projects"
 
 exit
 ```

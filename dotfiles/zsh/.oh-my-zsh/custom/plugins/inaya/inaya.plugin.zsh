@@ -205,7 +205,7 @@ elif $IS_LINUX; then
     
             current_node="$(node -v 2>/dev/null || true)"
     
-            for version in $(nvm ls --no-colors | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | sort -Vu); do
+            for version in $(nvm ls --no-colors | command grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | sort -Vu); do
                 echo "Using Node $version..."
                 nvm use "$version" >/dev/null
     

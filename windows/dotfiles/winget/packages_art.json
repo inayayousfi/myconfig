@@ -19,6 +19,9 @@
         {
           "PackageIdentifier": "OBSProject.OBSStudio"
         }
+        {
+          "PackageIdentifier": "Musescore.Musescore"
+        }
       ],
       "SourceDetails": {
         "Argument": "https://cdn.winget.microsoft.com/cache",

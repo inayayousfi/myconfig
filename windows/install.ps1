@@ -209,7 +209,7 @@ function Install-WingetPackages
   $installedDevTools = $false
   Import-WingetPackageFile -PackagesJson $packagesJson -Name "core" | Out-Null
 
-  if (Confirm-InstallPackageGroup -Name "DevTools" -Description "Rust, Go, NVM, Node.js/npm, and build tools")
+  if (Confirm-InstallPackageGroup -Name "DevTools" -Description "Rust, C/C++ and build tools")
   {
     $installedDevTools = Import-WingetPackageFile -PackagesJson $devToolsJson -Name "DevTools"
   } else
@@ -217,12 +217,27 @@ function Install-WingetPackages
     Write-Log "Skipping winget DevTools packages"
   }
 
-  if (Confirm-InstallPackageGroup -Name "Art" -Description "Blender, Krita, and Kdenlive")
+  if (Confirm-InstallPackageGroup -Name "Art" -Description "Blender, Krita, OBS, MuseScore and Kdenlive")
   {
     Import-WingetPackageFile -PackagesJson $artJson -Name "Art" | Out-Null
   } else
   {
     Write-Log "Skipping winget Art packages"
+  }
+
+  if (Confirm-InstallPackageGroup -Name "Arch WSL" -Description "fresh Arch Linux WSL distro with packages and dotfiles; unregisters an existing archlinux distro first")
+  {
+    $archWslScript = Join-Path $ScriptDir "setup-arch-wsl.ps1"
+    if (Test-Path $archWslScript)
+    {
+      & $archWslScript -DotfilesPath $SharedDotfilesDir
+    } else
+    {
+      Write-Log "Arch WSL setup script not found: $archWslScript" -Level 'ERROR'
+    }
+  } else
+  {
+    Write-Log "Skipping Arch WSL setup"
   }
 
   return $installedDevTools

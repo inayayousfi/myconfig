@@ -64,6 +64,7 @@ cd ..
 
 paru -Syu --noconfirm --skipreview zsh rsync stow wsl2-ssh-agent ripgrep go yazi-git ffmpeg 7zip jq poppler fd ripgrep fzf zoxide resvg imagemagick bat eza llvm nvm python	fastfetch
 
+echo "Password is $USER"
 chsh -s /usr/bin/zsh
 
 RUNZSH=no CHSH=no KEEP_ZSHRC=yes sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
@@ -162,6 +163,9 @@ git clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-~/.oh-m
 git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
   
 eval "$(/usr/bin/wsl2-ssh-agent)"
+
+nvm install --lts
+nvm use --lts
 
 rm -rf ~/paru/
 

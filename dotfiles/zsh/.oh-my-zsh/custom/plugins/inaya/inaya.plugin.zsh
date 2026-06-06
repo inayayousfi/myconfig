@@ -238,6 +238,7 @@ elif $IS_LINUX; then
     
         echo "All updates completed successfully."
     }
+fi
 
 # =========================
 # AI Commit

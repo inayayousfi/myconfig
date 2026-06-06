@@ -213,7 +213,8 @@ cd ..
 log "Installing user packages"
 paru -Syu --noconfirm --skipreview \
     zsh rsync stow wsl2-ssh-agent ripgrep go yazi-git ffmpeg 7zip jq poppler fd fzf zoxide \
-    resvg imagemagick bat eza llvm nvm python fastfetch lazygit jdk-openjdk maven make cmake
+    resvg imagemagick bat eza llvm nvm python fastfetch lazygit jdk-openjdk maven make cmake \
+    btop
 
 log "Installing Oh My Zsh"
 RUNZSH=no CHSH=no KEEP_ZSHRC=yes \

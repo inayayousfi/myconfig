@@ -104,6 +104,62 @@ function Copy-DotfileSafe
   }
 }
 
+function Move-SharedDesktopToCurrentUser
+{
+    [CmdletBinding(SupportsShouldProcess = $true)]
+    param(
+        [switch]$IncludeDefaultDesktop,
+        [switch]$MoveEverything
+    )
+
+    $dest = [Environment]::GetFolderPath("Desktop")
+    $sources = @("$env:PUBLIC\Desktop")
+
+    if ($IncludeDefaultDesktop)
+    {
+        $sources += "C:\Users\Default\Desktop"
+    }
+
+    foreach ($source in $sources)
+    {
+        if (-not (Test-Path $source))
+        { continue 
+        }
+
+        $items = if ($MoveEverything)
+        {
+            Get-ChildItem -LiteralPath $source -Force
+        } else
+        {
+            Get-ChildItem -LiteralPath $source -Force -Include *.lnk, *.url
+        }
+
+        foreach ($item in $items)
+        {
+            $target = Join-Path $dest $item.Name
+
+            if (Test-Path $target)
+            {
+                $base = [IO.Path]::GetFileNameWithoutExtension($item.Name)
+                $ext  = [IO.Path]::GetExtension($item.Name)
+                $target = Join-Path $dest "$base - déplacé$ext"
+            }
+
+            if ($PSCmdlet.ShouldProcess($item.FullName, "Déplacer vers $target"))
+            {
+                Move-Item -LiteralPath $item.FullName -Destination $target -Force
+            }
+        }
+
+        Get-ChildItem -LiteralPath $source -Force | ForEach-Object {
+            if ($PSCmdlet.ShouldProcess($_.FullName, "Supprimer définitivement du bureau partagé"))
+            {
+                Remove-Item -LiteralPath $_.FullName -Recurse -Force
+            }
+        }
+    }
+}
+
 # ============================================================================
 # Winget Packages Installation
 # ============================================================================
@@ -560,6 +616,8 @@ function Main
   Install-RegistryTweaks
   Enable-TaskbarAutoHide
 
+  Move-SharedDesktopToCurrentUser -IncludeDefaultDesktop -MoveEverything
+  
   Write-Host ""
   Write-Host "+================================================================+" -ForegroundColor Green
   Write-Host "|       Installation Complete!                                     |" -ForegroundColor Green

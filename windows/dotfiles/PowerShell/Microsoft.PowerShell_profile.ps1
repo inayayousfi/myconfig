@@ -3,9 +3,9 @@
 # =========================
 
 $ProfileMode = if ($env:PW_PROFILE_MODE)
-{ $env:PW_PROFILE_MODE 
+{ $env:PW_PROFILE_MODE
 } else
-{ "auto" 
+{ "auto"
 }
 
 $IsInteractiveConsole = (
@@ -17,16 +17,16 @@ $IsInteractiveConsole = (
 $UseInteractiveProfile = switch ($ProfileMode.ToLowerInvariant())
 {
     "full"
-    { $true 
+    { $true
     }
     "quiet"
-    { $false 
+    { $false
     }
     "auto"
-    { $IsInteractiveConsole 
+    { $IsInteractiveConsole
     }
     default
-    { $IsInteractiveConsole 
+    { $IsInteractiveConsole
     }
 }
 
@@ -108,13 +108,13 @@ if ($UseInteractiveProfile)
                 switch ($mode)
                 {
                     "Insert"
-                    { Write-Host -NoNewline "$([char]0x1b)[5 q" 
+                    { Write-Host -NoNewline "$([char]0x1b)[5 q"
                     }
                     "Command"
-                    { Write-Host -NoNewline "$([char]0x1b)[1 q" 
+                    { Write-Host -NoNewline "$([char]0x1b)[1 q"
                     }
                     default
-                    { Write-Host -NoNewline "$([char]0x1b)[5 q" 
+                    { Write-Host -NoNewline "$([char]0x1b)[5 q"
                     }
                 }
             }
@@ -135,6 +135,62 @@ Set-Alias which gcm
 # =========================
 # Core functions
 # =========================
+
+function Move-SharedDesktopToCurrentUser
+{
+    [CmdletBinding(SupportsShouldProcess = $true)]
+    param(
+        [switch]$IncludeDefaultDesktop,
+        [switch]$MoveEverything
+    )
+
+    $dest = [Environment]::GetFolderPath("Desktop")
+    $sources = @("$env:PUBLIC\Desktop")
+
+    if ($IncludeDefaultDesktop)
+    {
+        $sources += "C:\Users\Default\Desktop"
+    }
+
+    foreach ($source in $sources)
+    {
+        if (-not (Test-Path $source))
+        { continue 
+        }
+
+        $items = if ($MoveEverything)
+        {
+            Get-ChildItem -LiteralPath $source -Force
+        } else
+        {
+            Get-ChildItem -LiteralPath $source -Force -Include *.lnk, *.url
+        }
+
+        foreach ($item in $items)
+        {
+            $target = Join-Path $dest $item.Name
+
+            if (Test-Path $target)
+            {
+                $base = [IO.Path]::GetFileNameWithoutExtension($item.Name)
+                $ext  = [IO.Path]::GetExtension($item.Name)
+                $target = Join-Path $dest "$base - déplacé$ext"
+            }
+
+            if ($PSCmdlet.ShouldProcess($item.FullName, "Déplacer vers $target"))
+            {
+                Move-Item -LiteralPath $item.FullName -Destination $target -Force
+            }
+        }
+
+        Get-ChildItem -LiteralPath $source -Force | ForEach-Object {
+            if ($PSCmdlet.ShouldProcess($_.FullName, "Supprimer définitivement du bureau partagé"))
+            {
+                Remove-Item -LiteralPath $_.FullName -Recurse -Force
+            }
+        }
+    }
+}
 
 function repair-user-path
 {
@@ -356,9 +412,9 @@ function repair-winget
                             Selected = $false
                             Id       = $id
                             Version  = if ($version)
-                            { $version 
+                            { $version
                             } else
-                            { "" 
+                            { ""
                             }
                             Source   = $sourceName
                         })
@@ -928,6 +984,7 @@ Rules:
 function update
 {
     winget upgrade -r --include-unknown --accept-package-agreements --accept-source-agreements
+    Move-SharedDesktopToCurrentUser -IncludeDefaultDesktop -MoveEverything
 }
 
 function ..

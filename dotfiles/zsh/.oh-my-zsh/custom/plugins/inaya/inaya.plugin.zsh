@@ -47,8 +47,6 @@ else
     export VISUAL="vi"
 fi
 
-export TERM="xterm-256color"
-
 # ============================================================================
 # Platform-specific Environment Variables
 # ============================================================================
@@ -174,8 +172,13 @@ elif $IS_LINUX; then
     update() {
         echo "Updating system and packages..."
         echo ""
-
-        if command -v apt &>/dev/null; then
+    
+        if command -v paru &>/dev/null; then
+            echo "Updating system and AUR packages (paru)..."
+            paru -Syu --noconfirm
+            echo "System and AUR packages updated."
+            echo ""
+        elif command -v apt &>/dev/null; then
             echo "Updating system packages (apt)..."
             sudo apt update && sudo apt upgrade -y && sudo apt autoremove -y && sudo apt autoclean
             echo "System packages updated."
@@ -184,22 +187,57 @@ elif $IS_LINUX; then
             echo "No supported system package manager found."
             echo ""
         fi
-
-        # Update Flatpak apps if flatpak is installed
+    
         if command -v flatpak &>/dev/null; then
             echo "Updating Flatpak apps..."
             flatpak update -y
-            # Remove unused runtimes to reclaim disk space.
             flatpak uninstall --unused -y || true
             echo "Flatpak apps updated."
+            echo ""
         else
             echo "Flatpak not found, skipping Flatpak updates."
+            echo ""
         fi
-
-        echo ""
+    
+        if command -v nvm &>/dev/null; then
+            echo "Updating global npm packages for all nvm Node versions..."
+            echo ""
+    
+            current_node="$(node -v 2>/dev/null || true)"
+    
+            for version in $(nvm ls --no-colors | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | sort -Vu); do
+                echo "Using Node $version..."
+                nvm use "$version" >/dev/null
+    
+                if command -v npm &>/dev/null; then
+                    npm update -g
+                else
+                    echo "npm not found for Node $version, skipping."
+                fi
+    
+                echo ""
+            done
+    
+            if [ -n "$current_node" ]; then
+                nvm use "$current_node" >/dev/null 2>&1 || true
+            else
+                nvm use default >/dev/null 2>&1 || true
+            fi
+    
+            echo "Global npm packages updated for all nvm versions."
+            echo ""
+        elif command -v npm &>/dev/null; then
+            echo "Updating global npm packages..."
+            npm update -g
+            echo "Global npm packages updated."
+            echo ""
+        else
+            echo "npm/nvm not found, skipping global npm updates."
+            echo ""
+        fi
+    
         echo "All updates completed successfully."
     }
-fi
 
 # =========================
 # AI Commit
@@ -325,7 +363,7 @@ cleanup() {
     return 1
   fi
 
-  echo "Welcome to Ahri's cleanup ritual... 💫"
+  echo "Welcome to the cleanup ritual... 💫"
   echo "We'll walk through this path item by item and record your choices."
   echo ""
 
@@ -423,4 +461,6 @@ cleanup() {
 
 if has hyfetch; then
     hyfetch
+elif has fastfetch; then
+    fastfetch
 fi

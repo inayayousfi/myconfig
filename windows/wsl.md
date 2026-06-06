@@ -60,7 +60,7 @@ makepkg -si
 
 cd ..
 
-paru -Syu --noconfirm --skipreview zsh rsync stow wsl2-ssh-agent ripgrep go yazi-git ffmpeg 7zip jq poppler fd ripgrep fzf zoxide resvg imagemagick bat eza llvm nvm python
+paru -Syu --noconfirm --skipreview zsh rsync stow wsl2-ssh-agent ripgrep go yazi-git ffmpeg 7zip jq poppler fd ripgrep fzf zoxide resvg imagemagick bat eza llvm nvm python	fastfetch
 
 chsh -s /usr/bin/zsh
 

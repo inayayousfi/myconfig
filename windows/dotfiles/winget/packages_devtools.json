@@ -5,13 +5,7 @@
     {
       "Packages": [
         {
-          "PackageIdentifier": "CoreyButler.NVMforWindows"
-        },
-        {
           "PackageIdentifier": "Rustlang.Rustup"
-        },
-        {
-          "PackageIdentifier": "GoLang.Go"
         },
         {
           "PackageIdentifier": "LLVM.LLVM"

@@ -458,41 +458,6 @@ function Install-LLVMPath
 }
 
 # ============================================================================
-# Python Setup
-# ============================================================================
-
-function Install-PythonSetup
-{
-  if (-not (Test-CommandExists "py"))
-  {
-    Write-Log "Python launcher (py) not found, skipping Python setup" -Level 'WARNING'
-    return
-  }
-
-  Write-Log "Configuring Python via py launcher..."
-  py install --configure
-  Write-Log "Python configured" -Level 'OK'
-}
-
-# ============================================================================
-# Node.js via NVM
-# ============================================================================
-
-function Install-NodeViaNVM
-{
-  if (-not (Test-CommandExists "nvm"))
-  {
-    Write-Log "nvm not found, skipping Node.js installation" -Level 'WARNING'
-    return
-  }
-
-  Write-Log "Installing latest Node.js via nvm..."
-  nvm install latest
-  nvm use latest
-  Write-Log "Node.js installed via nvm" -Level 'OK'
-}
-
-# ============================================================================
 # Registry Tweaks
 # ============================================================================
 
@@ -608,8 +573,6 @@ function Main
   if ($installedDevTools)
   {
     Install-LLVMPath
-    Install-PythonSetup
-    Install-NodeViaNVM
   }
 
   # Apply the Windows shell and Start menu tweaks last.

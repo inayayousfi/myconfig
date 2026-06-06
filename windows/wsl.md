@@ -60,7 +60,8 @@ makepkg -si
 
 cd ..
 
-paru -Syu --noconfirm --skipreview zsh rsync stow wsl2-ssh-agent zoxide ripgrep fzf go yazi-git ffmpeg 7zip jq poppler fd ripgrep fzf zoxide resvg imagemagick bat eza
+paru -Syu --noconfirm --skipreview zsh rsync stow wsl2-ssh-agent ripgrep go yazi-git ffmpeg 7zip jq poppler fd ripgrep fzf zoxide resvg imagemagick bat eza llvm nvm python
+
 chsh -s /usr/bin/zsh
 
 RUNZSH=no CHSH=no KEEP_ZSHRC=yes sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"

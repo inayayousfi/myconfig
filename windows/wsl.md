@@ -164,6 +164,8 @@ git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH_CUSTOM:
   
 eval "$(/usr/bin/wsl2-ssh-agent)"
 
+export NVM_DIR="$HOME/.nvm"
+source /usr/share/nvm/init-nvm.sh
 nvm install --lts
 nvm use --lts
 

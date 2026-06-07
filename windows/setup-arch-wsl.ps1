@@ -216,6 +216,10 @@ paru -Syu --noconfirm --skipreview \
     resvg imagemagick bat eza llvm nvm python fastfetch lazygit jdk-openjdk maven make cmake \
     btop tokei
 
+log "Configuring Git core settings"
+git config --global core.sshCommand ssh.exe
+git config --global core.symlinks true
+
 log "Installing Oh My Zsh"
 RUNZSH=no CHSH=no KEEP_ZSHRC=yes \
     sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"

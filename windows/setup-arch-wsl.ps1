@@ -55,10 +55,18 @@ function ConvertTo-Lf
   return $Text.Replace("`r`n", "`n").Replace("`r", "`n")
 }
 
+function ConvertTo-Base64Script
+{
+  param([string]$Script)
+
+  $bytes = [System.Text.Encoding]::UTF8.GetBytes((ConvertTo-Lf $Script))
+  return [Convert]::ToBase64String($bytes)
+}
+
 function Invoke-WslRootScript
 {
   param([string]$Script)
-  ConvertTo-Lf $Script | wsl -d $Distro -u root -- bash -s
+  ConvertTo-Base64Script $Script | wsl -d $Distro -u root -- bash -c 'base64 -d | bash -s'
 
   if ($LASTEXITCODE -ne 0)
   {
@@ -69,7 +77,7 @@ function Invoke-WslRootScript
 function Invoke-WslUserScript
 {
   param([string]$Script)
-  ConvertTo-Lf $Script | wsl -d $Distro -- bash -s
+  ConvertTo-Base64Script $Script | wsl -d $Distro -- bash -c 'base64 -d | bash -s'
 
   if ($LASTEXITCODE -ne 0)
   {

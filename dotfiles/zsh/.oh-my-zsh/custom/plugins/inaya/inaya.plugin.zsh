@@ -17,6 +17,10 @@ case "$(uname -s)" in
         ;;
 esac
 
+if [ -n "$WSL_DISTRO_NAME" ]; then
+    IS_WSL=1
+fi
+
 has() {
     command -v "$1" >/dev/null 2>&1
 }
@@ -64,10 +68,6 @@ fi
 # Aliases (Cross-platform)
 # ============================================================================
 
-alias vim='nvim'
-alias vi='nvim'
-alias v='nvim'
-
 alias ll='ls -la'
 alias gcb='git fetch --prune && git branch -vv | grep ": gone]" | awk "{print \$1}" | xargs -n 1 git branch -d'
 
@@ -76,6 +76,12 @@ alias please='sudo'
 unalias gd 2>/dev/null || true
 
 # Tool aliases
+if has nvim; then
+    alias vim='nvim'
+    alias vi='nvim'
+    alias v='nvim'
+fi
+
 if has eza; then
     alias ls='eza --icons --group-directories-first --git --color=always'
 fi
@@ -105,6 +111,11 @@ if has opencode; then
     alias oc='opencode'
 fi
 
+if has opencode.exe; then
+    alias oc='opencode.exe'
+    alias opencode='opencode.exe'
+fi
+
 if has codex; then
     alias cx='codex'
 fi
@@ -117,7 +128,7 @@ if has tmux; then
     alias tmux='tmux -f $XDG_CONFIG_HOME/tmux/tmux.conf'
 fi
 
-if has systemctl; then 
+if has systemctl; then
     alias sus='systemctl suspend'
 fi
 
@@ -172,7 +183,7 @@ elif $IS_LINUX; then
     update() {
         echo "Updating system and packages..."
         echo ""
-    
+
         if command -v paru &>/dev/null; then
             echo "Updating system and AUR packages (paru)..."
             paru -Syu --noconfirm
@@ -187,7 +198,7 @@ elif $IS_LINUX; then
             echo "No supported system package manager found."
             echo ""
         fi
-    
+
         if command -v flatpak &>/dev/null; then
             echo "Updating Flatpak apps..."
             flatpak update -y
@@ -198,32 +209,32 @@ elif $IS_LINUX; then
             echo "Flatpak not found, skipping Flatpak updates."
             echo ""
         fi
-    
+
         if command -v nvm &>/dev/null; then
             echo "Updating global npm packages for all nvm Node versions..."
             echo ""
-    
+
             current_node="$(node -v 2>/dev/null || true)"
-    
+
             for version in $(nvm ls --no-colors | command grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | sort -Vu); do
                 echo "Using Node $version..."
                 nvm use "$version" >/dev/null
-    
+
                 if command -v npm &>/dev/null; then
                     npm update -g
                 else
                     echo "npm not found for Node $version, skipping."
                 fi
-    
+
                 echo ""
             done
-    
+
             if [ -n "$current_node" ]; then
                 nvm use "$current_node" >/dev/null 2>&1 || true
             else
                 nvm use default >/dev/null 2>&1 || true
             fi
-    
+
             echo "Global npm packages updated for all nvm versions."
             echo ""
         elif command -v npm &>/dev/null; then
@@ -235,7 +246,7 @@ elif $IS_LINUX; then
             echo "npm/nvm not found, skipping global npm updates."
             echo ""
         fi
-    
+
         echo "All updates completed successfully."
     }
 fi
@@ -350,7 +361,7 @@ EOF
 # Zoxide initialization
 # ============================================================================
 
-if command -v zoxide &>/dev/null; then
+if has zoxide; then
     eval "$(zoxide init zsh)"
 fi
 

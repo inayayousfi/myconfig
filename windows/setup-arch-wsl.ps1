@@ -48,10 +48,17 @@ function ConvertTo-WslPath
   return "/mnt/$drive$pathWithoutDrive"
 }
 
+function ConvertTo-Lf
+{
+  param([string]$Text)
+
+  return $Text.Replace("`r`n", "`n").Replace("`r", "`n")
+}
+
 function Invoke-WslRootScript
 {
   param([string]$Script)
-  ($Script -replace "`r`n", "`n") | wsl -d $Distro -u root -- bash -s
+  ConvertTo-Lf $Script | wsl -d $Distro -u root -- bash -s
 
   if ($LASTEXITCODE -ne 0)
   {
@@ -62,7 +69,7 @@ function Invoke-WslRootScript
 function Invoke-WslUserScript
 {
   param([string]$Script)
-  ($Script -replace "`r`n", "`n") | wsl -d $Distro -- bash -s
+  ConvertTo-Lf $Script | wsl -d $Distro -- bash -s
 
   if ($LASTEXITCODE -ne 0)
   {
@@ -269,6 +276,7 @@ set -u
 log "Cleaning up"
 rm -rf "$HOME/paru"
 mkdir -p "$HOME/Projects"
+
 '@
 
   Invoke-WslUserScript ($userPackagesScript.Replace('__DOTFILES_WSL_PATH__', $dotfilesWslPath))

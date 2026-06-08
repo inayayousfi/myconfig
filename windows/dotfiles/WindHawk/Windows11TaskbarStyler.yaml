@@ -1,6 +1,6 @@
 theme: Plasma
 styleConstants:
-  - AcrylicPanel=<AcrylicBrush TintColor="#101010" TintOpacity="0.5" FallbackColor="#AA101010" />
+  - AcrylicPanel=<WindhawkBlur BlurAmount="8" TintColor="#101010" TintOpacity="0.5" />
   - panelOutline=<SolidColorBrush Color="{ThemeResource SystemAccentColor}" Opacity="0.75" />
   - panelLeft=10
   - panelRight=10

@@ -122,11 +122,11 @@ function Remove-LazygitConfig {
 # ============================================================================
 
 function Remove-OhMyPoshConfig {
-    $ohMyPoshDir = Join-Path $env:USERPROFILE ".OhMyPosh"
+    $ohMyPoshConfig = Join-Path (Split-Path $PROFILE) "black-pink.omp.json"
 
-    if (Test-Path $ohMyPoshDir) {
+    if (Test-Path $ohMyPoshConfig) {
         Write-Log "Removing Oh My Posh configuration..."
-        Remove-Item -Path $ohMyPoshDir -Recurse -Force
+        Remove-Item -Path $ohMyPoshConfig -Force
         Write-Log "Oh My Posh configuration removed" -Level 'OK'
     } else {
         Write-Log "Oh My Posh configuration not found, skipping"

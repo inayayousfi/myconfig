@@ -28,15 +28,15 @@
         {
           "foreground": "#a0aabe",
           "options": {
-            "branch_ahead_icon": "<#ff4ead>\u21e1 </>",
-            "branch_behind_icon": "<#ff4ead>\u21e3 </>",
+            "branch_ahead_icon": "<#ff4ead>⇡ </>",
+            "branch_behind_icon": "<#ff4ead>⇣ </>",
             "branch_icon": "",
             "fetch_status": true,
             "fetch_upstream_icon": true,
             "github_icon": ""
           },
           "style": "plain",
-          "template": "{{ .UpstreamIcon }}{{ .HEAD }}{{if .BranchStatus }} {{ .BranchStatus }}{{ end }}{{ if .Working.Changed }}<#ff4ead>*</>{{ .Working.String }}{{ end }}{{ if and (.Working.Changed) (.Staging.Changed) }} |{{ end }}{{ if .Staging.Changed }}<#4ade80> \uf046 {{ .Staging.String }}</>{{ end }}{{ if gt .StashCount 0 }} \ueb4b {{ .StashCount }}{{ end }} ",
+          "template": "{{ .UpstreamIcon }}{{ .HEAD }}{{if .BranchStatus }} {{ .BranchStatus }}{{ end }}{{ if .Working.Changed }}<#ff4ead>*</>{{ .Working.String }}{{ end }}{{ if and (.Working.Changed) (.Staging.Changed) }} |{{ end }}{{ if .Staging.Changed }}<#4ade80>  {{ .Staging.String }}</>{{ end }}{{ if gt .StashCount 0 }}  {{ .StashCount }}{{ end }} ",
           "type": "git"
         }
       ],
@@ -70,7 +70,7 @@
             "always_enabled": true
           },
           "style": "plain",
-          "template": "\u276f ",
+          "template": "❯ ",
           "type": "status"
         }
       ],
@@ -83,7 +83,7 @@
     "foreground_templates": [
       "{{ if gt .Code 0 }}#f87171{{ end }}"
     ],
-    "template": "\u276f "
+    "template": "❯ "
   },
   "version": 4
 }

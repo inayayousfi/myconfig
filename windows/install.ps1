@@ -294,8 +294,8 @@ function Install-PowerShellProfile
 
 function Install-OhMyPoshConfig
 {
-  $source = Join-Path $WindowsDotfilesDir ".OhMyPosh"
-  $destination = Split-Path $PROFILE
+  $source = Join-Path $WindowsDotfilesDir "PowerShell\black-pink.omp.json"
+  $destination = Join-Path (Split-Path $PROFILE) "black-pink.omp.json"
 
   if (-not (Test-Path $source))
   {
@@ -303,7 +303,7 @@ function Install-OhMyPoshConfig
     return
   }
 
-  Copy-DotfileSafe -Source $source -Destination $destination -Recurse
+  Copy-DotfileSafe -Source $source -Destination $destination
   Write-Log "Oh My Posh configuration installed" -Level 'OK'
 }
 

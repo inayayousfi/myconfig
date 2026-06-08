@@ -128,8 +128,8 @@ if ($UseInteractiveProfile)
 # Aliases (always loaded)
 # =========================
 
-Set-Alias lg lazygit
-Set-Alias oc opencode
+Set-Alias lg 'wsl lazygit'
+Set-Alias oc 'wsl opencode'
 Set-Alias which gcm
 
 # =========================
@@ -155,7 +155,7 @@ function Move-SharedDesktopToCurrentUser
     foreach ($source in $sources)
     {
         if (-not (Test-Path $source))
-        { continue 
+        { continue
         }
 
         $items = if ($MoveEverything)
@@ -825,156 +825,7 @@ function repair-winget
 
 function aic
 {
-    param(
-        [string]$Model = "openai/gpt-5.4-mini"
-    )
-
-    $branch = (git rev-parse --abbrev-ref HEAD 2>$null) -join "`n"
-    $gitLog = (git log -10 --pretty=format:"<commit>%n%h%n%B%n</commit>" 2>$null) -join "`n"
-    $diffStat = (git diff --cached --stat 2>$null) -join "`n"
-    $diff = (git diff --cached 2>$null) -join "`n"
-
-    $branch = $branch.Replace("`r`n", "`n").Replace("`r", "`n")
-    $gitLog = $gitLog.Replace("`r`n", "`n").Replace("`r", "`n")
-    $diffStat = $diffStat.Replace("`r`n", "`n").Replace("`r", "`n")
-    $diff = $diff.Replace("`r`n", "`n").Replace("`r", "`n")
-
-    if ([string]::IsNullOrWhiteSpace($diffStat))
-    {
-        [Console]::Error.WriteLine("❌ No staged changes. Run git add first.")
-        return 1
-    }
-
-    while ($true)
-    {
-        $prompt = @"
-You are writing a git commit message.
-
-IMPORTANT:
-- ALWAYS use real newlines when you want a multiline commit message
-- DO NOT surround the answer with quotes
-- Return ONLY the commit message text, nothing else
-
-Branch:
-$branch
-
-Recent commits (subject + body raw):
-$gitLog
-
-Diff stat:
-$diffStat
-
-Full staged diff:
-$diff
-
-Rules:
-- concise but descriptive
-- infer the commit style from the recent commits
-- if recent commits include a body, include a body if useful
-- preserve the repository's usual formatting conventions
-- include branch name when relevant for ticket/reference context
-- no emojis
-- no fluff
-"@
-
-        $promptFile = [System.IO.Path]::ChangeExtension([System.IO.Path]::GetTempFileName(), ".md")
-        [System.IO.File]::WriteAllText($promptFile, $prompt, [System.Text.UTF8Encoding]::new($false))
-
-        try
-        {
-            $psi = [System.Diagnostics.ProcessStartInfo]::new()
-            $psi.FileName = "opencode"
-            $psi.ArgumentList.Add("run")
-            $psi.ArgumentList.Add("--model")
-            $psi.ArgumentList.Add($Model)
-            $psi.ArgumentList.Add("Write the git commit message using the attached instructions and diff.")
-            $psi.ArgumentList.Add("--file")
-            $psi.ArgumentList.Add($promptFile)
-            $psi.RedirectStandardOutput = $true
-            $psi.RedirectStandardError = $true
-            $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
-            $psi.StandardErrorEncoding = [System.Text.Encoding]::UTF8
-            $psi.UseShellExecute = $false
-
-            $process = [System.Diagnostics.Process]::Start($psi)
-            $rawMessage = $process.StandardOutput.ReadToEnd()
-            $rawError = $process.StandardError.ReadToEnd()
-            $process.WaitForExit()
-        } finally
-        {
-            Remove-Item -LiteralPath $promptFile -Force -ErrorAction SilentlyContinue
-        }
-
-        if ($process.ExitCode -ne 0)
-        {
-            if (-not [string]::IsNullOrWhiteSpace($rawError))
-            {
-                [Console]::Error.WriteLine($rawError.Trim())
-            }
-
-            [Console]::Error.WriteLine("❌ Failed to generate commit message.")
-            return 1
-        }
-
-        if (-not $rawMessage)
-        {
-            [Console]::Error.WriteLine("❌ Failed to generate commit message.")
-            return 1
-        }
-
-        $message = (($rawMessage | ForEach-Object { [string]$_ }) -join "`n")
-        $message = $message.Replace("`r`n", "`n").Replace("`r", "`n")
-
-        if ([string]::IsNullOrWhiteSpace($message))
-        {
-            [Console]::Error.WriteLine("❌ opencode returned an empty commit message.")
-            return 1
-        }
-
-        Write-Host ""
-        Write-Host "──────────────── commit preview ────────────────"
-        Write-Host $message
-        Write-Host "───────────────────────────────────────────────"
-        Write-Host ""
-
-        Write-Host -NoNewline "[Y] yes  |  [R] retry  |  [C] cancel: "
-        $choice = Read-Host
-
-        switch ($choice.ToLowerInvariant())
-        {
-            "y"
-            {
-                $message | git commit -F -
-
-                if ($LASTEXITCODE -eq 0)
-                {
-                    Write-Host "✨ Commit created. Tiny machine goblin satisfied."
-                    return 0
-                }
-
-                [Console]::Error.WriteLine("❌ Commit failed. Nothing was committed.")
-                return 1
-            }
-
-            "r"
-            {
-                Write-Host "🔁 Retrying... maybe the robot was feeling silly."
-                continue
-            }
-
-            "c"
-            {
-                Write-Host "🚫 Commit cancelled. Nothing was committed."
-                return 0
-            }
-
-            default
-            {
-                Write-Host "🤨 Expected Y, R, or C. Let's try again."
-                continue
-            }
-        }
-    }
+    wsl -u ziede zsh -ic "aic"
 }
 
 # =========================

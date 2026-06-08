@@ -70,6 +70,7 @@ fi
 
 alias ll='ls -la'
 alias gcb='git fetch --prune && git branch -vv | grep ": gone]" | awk "{print \$1}" | xargs -n 1 git branch -d'
+alias aica='git add .; aic'
 
 alias please='sudo'
 
@@ -91,7 +92,6 @@ if has fd; then
 fi
 
 if has rg; then
-    alias grep='rg'
     alias rg='rg --color=always --smart-case --hidden --glob "!.git/*" --glob "!.svn/*" --glob "!.hg/*" --glob "!node_modules/*"'
 fi
 
@@ -109,11 +109,6 @@ fi
 
 if has opencode; then
     alias oc='opencode'
-fi
-
-if has opencode.exe; then
-    alias oc='opencode.exe'
-    alias opencode='opencode.exe'
 fi
 
 if has codex; then
@@ -308,12 +303,10 @@ Rules:
 EOF
 )
 
-    if has opencode.exe; then
-        OPENCODE_BIN='opencode.exe'
-    elif has opencode; then
-          OPENCODE_BIN='opencode'
+    if has opencode; then
+        OPENCODE_BIN='opencode'
     else
-        echo "opencode isn't installed" >&2
+        echo "opencode n'est pas installé" >&2
         exit 1
     fi
 

@@ -128,8 +128,14 @@ if ($UseInteractiveProfile)
 # Aliases (always loaded)
 # =========================
 
-Set-Alias lg 'wsl lazygit'
-Set-Alias oc 'wsl opencode'
+function lg {
+    wsl -u ziede zsh -ic "lazygit $args"
+}
+
+function oc {
+    wsl -u ziede zsh -ic "opencode $args"
+}
+
 Set-Alias which gcm
 
 # =========================

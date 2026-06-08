@@ -2,17 +2,11 @@
 
 > A modular configuration bank for building reproducible development environments across platforms.
 
-This repository provides automated setup scripts and dotfiles for macOS, Ubuntu Server, Fedora Everything, and Windows. Ubuntu Server is intentionally minimal and only installs the shared zsh/Oh My Zsh setup.
+This repository provides automated setup scripts and dotfiles for Ubuntu Server and Windows. Ubuntu Server is intentionally minimal and only installs the shared zsh/Oh My Zsh setup.
 
 ## Quick Start
 
 Bootstrap your entire development environment with one command:
-
-### macOS
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/ZiedYousfi/myconfig/main/bootstrap.sh | bash -s -- macos
-```
 
 ### Ubuntu Server
 
@@ -55,7 +49,6 @@ The bootstrap script will:
 Available uninstall scripts:
 
 ```bash
-./macos/uninstall.sh          # macOS
 ./ubuntu-server/uninstall.sh  # Ubuntu Server
 ./windows/uninstall.ps1       # Windows (PowerShell)
 ```
@@ -63,13 +56,12 @@ Available uninstall scripts:
 ## Documentation
 
 See [SPECS.md](SPECS.md) for complete configuration specifications and details about all installed components.
-For the Fedora Niri target, see [fedora-everything/README.md](fedora-everything/README.md). The Fedora rEFInd boot-manager configuration (theme, mouse setting, generator script) lives in [dotfiles/refind/](dotfiles/refind/) — it is not stowed; the Fedora installer copies it onto the EFI System Partition at `/boot/efi/EFI/refind/`.
 
 ## Requirements
 
 Minimal requirements - the bootstrap script handles everything else:
 
-**macOS/Ubuntu/Fedora:**
+**Ubuntu:**
 
 - `curl` - for downloading
 - Internet connection

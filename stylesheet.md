@@ -278,7 +278,7 @@
 | Workspace inactive | `#4a4f5e` |
 | Workspace urgent | `#f87171` |
 
-### Bar / Status Bar (Waybar, Polybar…)
+### Bar / Status Bar
 
 | Element | Color |
 |---|---|

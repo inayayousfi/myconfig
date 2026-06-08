@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to report this issue! Please fill out the information below to help us debug the problem.
+        Thanks for taking the time to report this issue! Please fill out the information below to help me debug the problem.
 
   - type: dropdown
     id: platform
@@ -14,8 +14,8 @@ body:
       label: Platform
       description: Which platform are you installing on?
       options:
-        - macOS
         - Ubuntu Server
+        - Windows
         - Other Linux
         - Other (please specify)
     validations:
@@ -38,7 +38,7 @@ body:
     attributes:
       label: What happened?
       description: Please describe the issue you encountered.
-      placeholder: Tell us what went wrong!
+      placeholder: Tell me what went wrong!
     validations:
       required: true
 
@@ -87,7 +87,7 @@ body:
       label: System Information
       description: Please provide system details
       placeholder: |
-        - OS Version: macOS 14.0 / Ubuntu 22.04
+        - OS Version: Ubuntu 22.04 / Windows 11
         - Shell: zsh 5.9
         - Terminal: iTerm2 / Terminal.app / etc
       value: |

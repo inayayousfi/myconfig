@@ -1,6 +1,6 @@
 # tmux.conf.local - Custom configuration for Oh My Tmux
 # Managed by setup-config (stowed)
-# Cross-platform compatible (macOS and Linux)
+# Linux-compatible tmux overrides
 
 # -- Custom settings from setup-config ----------------------------------------
 

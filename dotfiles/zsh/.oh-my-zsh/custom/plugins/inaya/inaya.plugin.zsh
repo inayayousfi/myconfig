@@ -1,18 +1,12 @@
 # Inaya's Oh My Zsh plugin
-# Cross-platform compatible (macOS and Linux)
+# Linux-compatible shell helpers
 
 # Detect the operating system
 case "$(uname -s)" in
-    Darwin)
-        IS_MACOS=true
-        IS_LINUX=false
-        ;;
     Linux)
-        IS_MACOS=false
         IS_LINUX=true
         ;;
     *)
-        IS_MACOS=false
         IS_LINUX=false
         ;;
 esac
@@ -26,7 +20,7 @@ has() {
 }
 
 # ============================================================================
-# Environment Variables (Cross-platform)
+# Environment Variables
 # ============================================================================
 
 export XDG_CONFIG_HOME="$HOME/.config"
@@ -55,17 +49,12 @@ fi
 # Platform-specific Environment Variables
 # ============================================================================
 
-if $IS_MACOS; then
-    # macOS-specific paths
-    export JAVA_HOME="/opt/homebrew/opt/openjdk"
-    export PATH="$HOME/.local/bin:$PATH:$(go env GOPATH 2>/dev/null)/bin:$JAVA_HOME/bin"
-    export VCPKG_ROOT="$HOME/vcpkg"
-elif $IS_LINUX; then
+if $IS_LINUX; then
     export PATH="$HOME/.local/bin:$PATH"
 fi
 
 # ============================================================================
-# Aliases (Cross-platform)
+# Aliases
 # ============================================================================
 
 alias ll='ls -la'
@@ -128,7 +117,7 @@ if has systemctl; then
 fi
 
 # ============================================================================
-# Functions (Cross-platform)
+# Functions
 # ============================================================================
 
 mkd() { mkdir -p -- "$1" && cd -P -- "$1"; }
@@ -155,22 +144,7 @@ y() {
 # Platform-specific Functions
 # ============================================================================
 
-if $IS_MACOS; then
-    # macOS: use-tmux with Homebrew tmux path
-    use-tmux() { /bin/bash --noprofile --norc -c "/opt/homebrew/bin/tmux has-session 2>/dev/null && /opt/homebrew/bin/tmux attach-session -d || /opt/homebrew/bin/tmux new-session"; }
-
-    # macOS: Update packages via Homebrew
-    update() {
-        echo "Updating packages via Homebrew..."
-        brew update && brew upgrade && brew cleanup
-        echo ""
-        echo "Packages updated successfully."
-    }
-
-    # macOS-specific: bootout GUI session
-    bootout-gui() { launchctl bootout gui/$UID }
-
-elif $IS_LINUX; then
+if $IS_LINUX; then
     # Linux: use-tmux with system tmux
     use-tmux() { /bin/bash --noprofile --norc -c "tmux has-session 2>/dev/null && tmux attach-session -d || tmux new-session"; }
 

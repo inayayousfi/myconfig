@@ -4,9 +4,7 @@
 # Downloads and installs the complete development environment
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/ZiedYousfi/myconfig/main/bootstrap.sh | bash
-#   curl -fsSL https://raw.githubusercontent.com/ZiedYousfi/myconfig/main/bootstrap.sh | bash -s -- macos
 #   curl -fsSL https://raw.githubusercontent.com/ZiedYousfi/myconfig/main/bootstrap.sh | bash -s -- ubuntu
-#   curl -fsSL https://raw.githubusercontent.com/ZiedYousfi/myconfig/main/bootstrap.sh | bash -s -- fedora
 
 # set -e (Disabled to ensure script continues even if some steps fail)
 
@@ -59,9 +57,7 @@ EOF
 }
 
 detect_platform() {
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        echo "macos"
-    elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
         if command -v apt-get &> /dev/null; then
             echo "ubuntu"
         else
@@ -77,28 +73,23 @@ detect_platform() {
 prompt_platform() {
     echo -e "${BOLD}Select your platform:${NC}" >&2
     echo "" >&2
-    echo "  1) macOS" >&2
-    echo "  2) Ubuntu Server" >&2
-    echo "  3) Exit" >&2
+    echo "  1) Ubuntu Server" >&2
+    echo "  2) Exit" >&2
     echo "" >&2
 
     while true; do
-        read -p "Enter your choice (1-5): " choice
+        read -p "Enter your choice (1-2): " choice
         case $choice in
             1)
-                echo "macos"
-                return 0
-                ;;
-            2)
                 echo "ubuntu"
                 return 0
                 ;;
-            3)
+            2)
                 log_info "Installation cancelled by user"
                 exit 0
                 ;;
             *)
-                log_error "Invalid choice. Please enter 1, 2, 3, 4, or 5."
+                log_error "Invalid choice. Please enter 1 or 2."
                 ;;
         esac
     done
@@ -159,7 +150,7 @@ download_and_extract() {
     local extracted_dir=""
 
     # 1. Try to find a directory containing known platform directories (repo root markers)
-    extracted_dir=$(find . -maxdepth 2 -type d \( -name "ubuntu-server" -o -name "macos" -o -name "fedora-everything" -o -name "windows" \) -exec dirname {} \; | head -n 1)
+    extracted_dir=$(find . -maxdepth 2 -type d \( -name "ubuntu-server" -o -name "windows" \) -exec dirname {} \; | head -n 1)
 
     # 2. If not found, check if there's exactly one subdirectory
     if [ -z "$extracted_dir" ] || [ "$extracted_dir" = "." ]; then
@@ -199,14 +190,10 @@ run_installation() {
     mkdir -p "$INSTALL_DIR"
 
     # Copy files
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        cp -pR "$source_dir"/. "$INSTALL_DIR/"
-    else
-        cp -a "$source_dir"/. "$INSTALL_DIR/"
-    fi
+    cp -a "$source_dir"/. "$INSTALL_DIR/"
 
     # Verify copy
-    if [ ! -d "$INSTALL_DIR/ubuntu-server" ] && [ ! -d "$INSTALL_DIR/macos" ] && [ ! -d "$INSTALL_DIR/windows" ]; then
+    if [ ! -d "$INSTALL_DIR/ubuntu-server" ] && [ ! -d "$INSTALL_DIR/windows" ]; then
         log_error "File copy failed or source directory was empty. Check $source_dir"
         exit 1
     fi
@@ -223,14 +210,6 @@ run_installation() {
     local install_status=0
 
     case $platform in
-        macos)
-            if [ ! -f "$INSTALL_DIR/macos/install.sh" ]; then
-                log_error "macOS install script not found at $INSTALL_DIR/macos/install.sh"
-                exit 1
-            fi
-            cd "$INSTALL_DIR/macos"
-            ./install.sh || install_status=$?
-            ;;
         ubuntu)
             if [ ! -f "$INSTALL_DIR/ubuntu-server/install.sh" ]; then
                 log_error "Ubuntu install script not found at $INSTALL_DIR/ubuntu-server/install.sh"
@@ -281,16 +260,6 @@ ensure_dependencies() {
             sudo apt-get update
             sudo apt-get install -y "${missing_deps[@]}"
             ;;
-        macos)
-            if command -v brew &> /dev/null; then
-                log_info "Installing missing dependencies via Homebrew..."
-                brew install "${missing_deps[@]}"
-            else
-                log_error "Missing dependencies ${missing_deps[*]} and Homebrew is not installed."
-                log_info "Please install Homebrew or manually install: ${missing_deps[*]}"
-                exit 1
-            fi
-            ;;
         *)
             log_error "Please manually install the following dependencies: ${missing_deps[*]}"
             exit 1
@@ -326,21 +295,15 @@ main() {
         # Normalize platform argument
         platform=$(echo "$platform" | tr '[:upper:]' '[:lower:]')
         case "$platform" in
-            macos|mac|darwin)
-                platform="macos"
-                ;;
             ubuntu|linux|server)
                 platform="ubuntu"
-                ;;
-            fedora|fedora-everything)
-                platform="fedora"
                 ;;
             windows|win|mingw*|msys*|cygwin*)
                 platform="windows"
                 ;;
             *)
                 log_error "Unknown platform: $platform"
-                log_info "Supported platforms: macos, ubuntu, fedora, windows"
+                log_info "Supported platforms: ubuntu, windows"
                 exit 1
                 ;;
         esac

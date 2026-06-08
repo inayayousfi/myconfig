@@ -308,7 +308,16 @@ Rules:
 EOF
 )
 
-    rawMessage="$(opencode run --model "$MODEL" "$prompt")"
+    if has opencode.exe; then
+        OPENCODE_BIN='opencode.exe'
+    elif has opencode; then
+          OPENCODE_BIN='opencode'
+    else
+        echo "opencode isn't installed" >&2
+        exit 1
+    fi
+
+    rawMessage="$(printf "%s" "$prompt" | "$OPENCODE_BIN" run --model "$MODEL" -)"
 
     if [[ -z "$rawMessage" ]]; then
       echo "❌ Failed to generate commit message." >&2

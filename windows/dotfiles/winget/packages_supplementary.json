@@ -5,28 +5,19 @@
     {
       "Packages": [
         {
-          "PackageIdentifier": "7zip.7zip"
+          "PackageIdentifier": "Ollama.Ollama"
         },
         {
-          "PackageIdentifier": "Git.Git"
+          "PackageIdentifier": "cjpais.Handy"
         },
         {
-          "PackageIdentifier": "Microsoft.PowerShell"
+          "PackageIdentifier": "Oracle.VirtualBox"
         },
         {
-          "PackageIdentifier": "Microsoft.WindowsTerminal"
+          "PackageIdentifier": "TheDocumentFoundation.LibreOffice"
         },
         {
-          "PackageIdentifier": "Microsoft.WSL"
-        },
-        {
-          "PackageIdentifier": "JanDeDobbeleer.OhMyPosh"
-        },
-        {
-          "PackageIdentifier": "ZedIndustries.Zed"
-        },
-        {
-          "PackageIdentifier": "Microsoft.PowerToys"
+          "PackageIdentifier": "RamenSoftware.Windhawk"
         }
       ],
       "SourceDetails": {

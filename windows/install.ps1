@@ -205,8 +205,10 @@ function Install-WingetPackages
   $packagesJson = Join-Path $WindowsDotfilesDir "winget\packages.json"
   $devToolsJson = Join-Path $WindowsDotfilesDir "winget\packages_devtools.json"
   $artJson = Join-Path $WindowsDotfilesDir "winget\packages_art.json"
+  $supplementaryJson = Join-Path $WindowsDotfilesDir "winget\packages_supplementary.json"
 
   $installedDevTools = $false
+  $installedSupplementary = $false
   Import-WingetPackageFile -PackagesJson $packagesJson -Name "core" | Out-Null
 
   if (Confirm-InstallPackageGroup -Name "DevTools" -Description "Rust, C/C++ and build tools")
@@ -225,6 +227,14 @@ function Install-WingetPackages
     Write-Log "Skipping winget Art packages"
   }
 
+  if (Confirm-InstallPackageGroup -Name "Supplementary" -Description "Handy, VirtualBox, LibreOffice, Windhawk and Ollama")
+  {
+    $installedSupplementary = Import-WingetPackageFile -PackagesJson $supplementaryJson -Name "Supplementary"
+  } else
+  {
+    Write-Log "Skipping winget Supplementary packages"
+  }
+
   if (Confirm-InstallPackageGroup -Name "Arch WSL" -Description "fresh Arch Linux WSL distro with packages and dotfiles; unregisters an existing archlinux distro first")
   {
     $archWslScript = Join-Path $ScriptDir "setup-arch-wsl.ps1"
@@ -240,7 +250,10 @@ function Install-WingetPackages
     Write-Log "Skipping Arch WSL setup"
   }
 
-  return $installedDevTools
+  return @{
+    DevTools = $installedDevTools
+    Supplementary = $installedSupplementary
+  }
 }
 
 # ============================================================================
@@ -572,20 +585,23 @@ function Main
   }
 
   # Install winget packages first because later steps depend on them.
-  $installedDevTools = Install-WingetPackages
+  $installedPackages = Install-WingetPackages
 
   # Copy the core configuration files and directories.
   Install-PowerShellProfile
   Install-OhMyPoshConfig
   Install-ZedConfig
-  Install-OllamaModels
+  if ($installedPackages.Supplementary)
+  {
+    Install-OllamaModels
+  }
   Install-WindowsTerminalConfig
   Install-AHKScripts
 
   # Install the supporting tools and modules that the dotfiles expect.
   Install-PSReadLineModule
   Install-IosevkaMonoFont
-  if ($installedDevTools)
+  if ($installedPackages.DevTools)
   {
     Install-LLVMPath
   }

@@ -31,6 +31,13 @@ Windows Registry Editor Version 5.00
 "Start_RecoPersonalizedSites"=dword:00000000
 "Start_AccountNotifications"=dword:00000000
 
+; Start menu recommendations policy
+[HKEY_CURRENT_USER\Software\Policies\Microsoft\Windows\Explorer]
+"HideRecommendedSection"=-
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\Explorer]
+"HideRecommendedSection"=dword:00000001
+
 ; Developer taskbar settings
 [HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\TaskbarDeveloperSettings]
 "TaskbarEndTask"=dword:00000001

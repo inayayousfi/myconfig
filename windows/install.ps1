@@ -491,27 +491,17 @@ function Install-LLVMPath
 
 function Install-RegistryTweaks
 {
-  # Apply checked-in registry files when present.
-  $regFiles = @(
-    @{ Path = Join-Path $ScriptDir "DisableRecoStartMenu.reg"; Description = "disable Start Menu recommendations" },
-    @{ Path = Join-Path $ScriptDir "TaskbarSettings.reg"; Description = "taskbar and Explorer settings" }
-  )
+  $path = Join-Path $ScriptDir "RegistryPreferences.reg"
 
-  foreach ($regFile in $regFiles)
+  if (-not (Test-Path $path))
   {
-    $path = $regFile['Path']
-    $description = $regFile['Description']
-
-    if (-not (Test-Path $path))
-    {
-      Write-Log "Registry file not found: $path" -Level 'WARNING'
-      continue
-    }
-
-    Write-Log "Applying registry tweaks ($description)..."
-    reg import $path 2>$null
-    Write-Log "Registry tweaks applied: $description" -Level 'OK'
+    Write-Log "Registry file not found: $path" -Level 'WARNING'
+    return
   }
+
+  Write-Log "Applying registry preferences..."
+  reg import $path 2>$null
+  Write-Log "Registry preferences applied" -Level 'OK'
 }
 
 # ============================================================================

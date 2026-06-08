@@ -608,6 +608,10 @@ function Main
   Write-Host "+================================================================+" -ForegroundColor Green
   Write-Host ""
   Write-Log "Dotfiles have been copied to their target locations."
+  if ($installedPackages.Supplementary)
+  {
+    Write-Log "Windhawk was installed with the supplementary packages. Install the Windows 11 Taskbar Styler mod, then copy windows\dotfiles\WindHawk\Windows11TaskbarStyler.yaml into the mod's Details > Settings."
+  }
   Write-Log "Please restart your terminal or run '. `$PROFILE' to apply changes."
   Write-Log "You may need to restart your computer for all changes to take effect."
   Write-Host ""

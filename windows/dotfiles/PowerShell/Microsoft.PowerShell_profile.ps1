@@ -128,12 +128,18 @@ if ($UseInteractiveProfile)
 # Aliases (always loaded)
 # =========================
 
+function Invoke-WslZshCommand {
+    param([string]$Command)
+
+    wsl -u $env:USERNAME zsh -ic $Command
+}
+
 function lg {
-    wsl -u ziede zsh -ic "lazygit $args"
+    Invoke-WslZshCommand "lazygit $args"
 }
 
 function oc {
-    wsl -u ziede zsh -ic "opencode $args"
+    Invoke-WslZshCommand "opencode $args"
 }
 
 Set-Alias which gcm
@@ -831,7 +837,7 @@ function repair-winget
 
 function aic
 {
-    wsl -u ziede zsh -ic "aic"
+    Invoke-WslZshCommand "aic"
 }
 
 # =========================

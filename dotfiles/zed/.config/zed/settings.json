@@ -49,14 +49,6 @@
     "model_parameters": [],
     "show_turn_stats": true,
   },
-  "agent_servers": {
-    "opencode": {
-      "favorite_config_option_values": {
-        "model": ["openai/gpt-5.5"],
-      },
-      "type": "registry",
-    },
-  },
   "auto_update": true,
   "autosave": {
     "after_delay": {

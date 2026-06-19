@@ -228,7 +228,7 @@ cd ..
 log "Installing user packages"
 paru -Syu --noconfirm --skipreview \
     zsh rsync stow wsl2-ssh-agent ripgrep go yazi-git ffmpeg 7zip jq poppler fd fzf bat zoxide \
-    resvg imagemagick bat eza llvm nvm python fastfetch lazygit jdk-openjdk maven make cmake \
+    resvg imagemagick bat eza llvm bun python fastfetch lazygit jdk-openjdk maven make cmake \
     btop tokei
 
 log "Configuring Git core settings"
@@ -272,14 +272,6 @@ git clone https://github.com/zsh-users/zsh-syntax-highlighting.git "${ZSH_CUSTOM
 
 log "Starting wsl2-ssh-agent if available"
 eval "$(/usr/bin/wsl2-ssh-agent)" || true
-
-log "Installing latest LTS Node.js"
-export NVM_DIR="$HOME/.nvm"
-source /usr/share/nvm/init-nvm.sh
-set +u
-nvm install --lts
-nvm use --lts
-set -u
 
 log "Cleaning up"
 rm -rf "$HOME/paru"

@@ -209,40 +209,17 @@ elif $IS_LINUX; then
             echo ""
         fi
 
-        if command -v nvm &>/dev/null; then
-            echo "Updating global npm packages for all nvm Node versions..."
+        if command -v bun &>/dev/null; then
+            echo "Upgrading Bun runtime..."
+            bun upgrade
             echo ""
 
-            current_node="$(node -v 2>/dev/null || true)"
-
-            for version in $(nvm ls --no-colors | command grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | sort -Vu); do
-                echo "Using Node $version..."
-                nvm use "$version" >/dev/null
-
-                if command -v npm &>/dev/null; then
-                    npm update -g
-                else
-                    echo "npm not found for Node $version, skipping."
-                fi
-
-                echo ""
-            done
-
-            if [ -n "$current_node" ]; then
-                nvm use "$current_node" >/dev/null 2>&1 || true
-            else
-                nvm use default >/dev/null 2>&1 || true
-            fi
-
-            echo "Global npm packages updated for all nvm versions."
-            echo ""
-        elif command -v npm &>/dev/null; then
-            echo "Updating global npm packages..."
-            npm update -g
-            echo "Global npm packages updated."
+            echo "Updating global Bun packages..."
+            bun update -g || true
+            echo "Global Bun packages updated."
             echo ""
         else
-            echo "npm/nvm not found, skipping global npm updates."
+            echo "bun not found, skipping Bun updates."
             echo ""
         fi
 

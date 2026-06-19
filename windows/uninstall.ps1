@@ -300,7 +300,6 @@ function Remove-WingetPackages {
     # Packages installed by the setup (from packages.json)
     # Note: We skip critical system tools like PowerShell and WSL
     $packages = @(
-        "CoreyButler.NVMforWindows"
         "AutoHotkey.AutoHotkey"
         "ImageMagick.ImageMagick"
         "Neovim.Neovim"

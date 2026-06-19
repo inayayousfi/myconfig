@@ -208,7 +208,7 @@ Dependencies include FFmpeg, 7-Zip, Poppler, resvg, ImageMagick, and Nerd Font s
 | Python | Python / Python Install Manager | Windows DevTools, Arch WSL |
 | Go | `go` | Arch WSL |
 | Rust | `rustup` | Windows DevTools, Arch WSL |
-| JavaScript/TypeScript | `nvm`, Node.js LTS | Arch WSL |
+| JavaScript/TypeScript | `bun` | Arch WSL |
 | Java | `jdk-openjdk`, Maven | Arch WSL |
 | C/C++ | LLVM, Visual Studio Build Tools, Make, CMake | Windows DevTools, Arch WSL |
 | Containers | Docker Desktop | Windows DevTools |
@@ -261,7 +261,7 @@ These packages are intended for Unix-like targets that receive the full shared t
 - Python
 - Go
 - Rustup
-- NVM and Node.js LTS
+- Bun
 - OpenJDK
 - Maven
 - LLVM
@@ -376,12 +376,12 @@ Arch WSL is an optional Windows installer path. It creates a fresh `archlinux` d
 |-------|----------|
 | Root bootstrap | Sets root password to `root`, initializes pacman keys, updates packages, installs base tools, writes initial `/etc/wsl.conf` |
 | User setup | Creates a user named after the Windows user, enables wheel sudo, grants passwordless sudo, sets default user, generates `en_US.UTF-8` locale |
-| User packages and dotfiles | Installs Rust stable, builds `paru`, installs packages, configures Git for Windows SSH, installs Oh My Zsh, syncs and stows selected dotfiles, installs zsh plugins, installs Node.js LTS |
+| User packages and dotfiles | Installs Rust stable, builds `paru`, installs packages, configures Git for Windows SSH, installs Oh My Zsh, syncs and stows selected dotfiles, installs zsh plugins |
 | Shell enforcement | Sets and verifies zsh as the WSL user's default shell |
 
 ### Arch Package Set
 
-The Arch WSL setup installs packages through `pacman` and `paru`, including `base-devel`, `rustup`, `zsh`, `rsync`, `stow`, `wsl2-ssh-agent`, `ripgrep`, `go`, `yazi-git`, `ffmpeg`, `7zip`, `jq`, `poppler`, `fd`, `fzf`, `bat`, `zoxide`, `resvg`, `imagemagick`, `eza`, `llvm`, `nvm`, `python`, `fastfetch`, `lazygit`, `jdk-openjdk`, `maven`, `make`, `cmake`, `btop`, `tokei`, and `opencode`.
+The Arch WSL setup installs packages through `pacman` and `paru`, including `base-devel`, `rustup`, `zsh`, `rsync`, `stow`, `wsl2-ssh-agent`, `ripgrep`, `go`, `yazi-git`, `ffmpeg`, `7zip`, `jq`, `poppler`, `fd`, `fzf`, `bat`, `zoxide`, `resvg`, `imagemagick`, `eza`, `llvm`, `bun`, `python`, `fastfetch`, `lazygit`, `jdk-openjdk`, `maven`, `make`, `cmake`, `btop`, `tokei`, and `opencode`.
 
 ### Synced Dotfiles
 

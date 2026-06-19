@@ -138,8 +138,8 @@ function lg {
     Invoke-WslZshCommand "lazygit $args"
 }
 
-function oc {
-    Invoke-WslZshCommand "opencode $args"
+function cco {
+    Invoke-WslZshCommand "cco $args"
 }
 
 Set-Alias which gcm

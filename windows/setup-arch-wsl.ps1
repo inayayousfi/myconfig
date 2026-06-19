@@ -229,7 +229,7 @@ log "Installing user packages"
 paru -Syu --noconfirm --skipreview \
     zsh rsync stow wsl2-ssh-agent ripgrep go yazi-git ffmpeg 7zip jq poppler fd fzf bat zoxide \
     resvg imagemagick bat eza llvm nvm python fastfetch lazygit jdk-openjdk maven make cmake \
-    btop tokei opencode
+    btop tokei
 
 log "Configuring Git core settings"
 git config --global core.sshCommand ssh.exe
@@ -284,6 +284,8 @@ set -u
 log "Cleaning up"
 rm -rf "$HOME/paru"
 mkdir -p "$HOME/Projects"
+
+curl -fsSL https://claude.ai/install.sh | bash
 
 '@
 

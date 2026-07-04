@@ -56,12 +56,11 @@ fi
 # ============================================================================
 
 if $IS_MACOS; then
-    # macOS-specific paths
     export JAVA_HOME="/opt/homebrew/opt/openjdk"
-    export PATH="$HOME/.local/bin:$PATH:$(go env GOPATH 2>/dev/null)/bin:$JAVA_HOME/bin"
+    export PATH="$HOME/.local/bin:$PATH:$(go env GOPATH 2>/dev/null)/bin:$JAVA_HOME/bin:$(bun pm bin -g 2>/dev/null)"
     export VCPKG_ROOT="$HOME/vcpkg"
 elif $IS_LINUX; then
-    export PATH="$HOME/.local/bin:$PATH"
+    export PATH="$HOME/.local/bin:$PATH:$(bun pm bin -g 2>/dev/null)"
 fi
 
 # ============================================================================
@@ -95,6 +94,11 @@ if has rg; then
     alias rg='rg --color=always --smart-case --hidden --glob "!.git/*" --glob "!.svn/*" --glob "!.hg/*" --glob "!node_modules/*"'
 fi
 
+if has bun; then
+    alias npm='bun'
+    alias npx='bunx'
+fi
+
 if has lazygit; then
     alias lg='lazygit'
 fi
@@ -116,7 +120,7 @@ if has codex; then
 fi
 
 if has claude; then
-  alias cco='claude --dangerously-skip-permissions'
+  alias cco='IS_DEMO=1 claude --dangerously-skip-permissions'
 fi
 
 if has zoxide; then

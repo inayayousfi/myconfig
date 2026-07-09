@@ -10,14 +10,24 @@ change. In plan mode:
 - Ask clarifying questions about approach, architecture, and how pieces
   (frontend/backend/shared utils) should communicate, before writing a plan.
 - Propose the plan (contracts, shared types/utils, file ownership, sub-agent
-  breakdown if applicable) and get explicit sign-off before implementing.
+  breakdown) and get explicit sign-off before implementing. Default to a
+  multi-subagent breakdown whenever the task has parts that can be
+  researched or implemented independently — treat "one subagent does it
+  all" as the exception, not the default.
 - Only skip plan mode for trivial, unambiguous, already-fully-specified asks.
 
-## Model selection
+## Model selection and delegation
+
+Anything that isn't genuinely trivial (same bar as plan mode above) and
+touches code directly gets delegated to a sub-agent instead of implemented
+inline — the orchestrator plans, delegates, and synthesizes, it does not
+hand-edit code itself. This keeps the orchestrator's context clean for
+coordinating the work instead of filling up with diffs and tool output.
+Use the table below to pick which model each sub-agent runs on.
 
 Ratings are 1-10, higher is better. `cost` is inverse spend (10 = cheap,
-1 = expensive). When choosing which model to run inline or dispatch as a
-sub-agent, prioritize the intelligence/cost ratio, but weight cost slightly
+1 = expensive). When choosing which model to dispatch a sub-agent on,
+prioritize the intelligence/cost ratio, but weight cost slightly
 higher than intelligence — never default to the most expensive model for
 work a cheaper one can handle. Reserve the top model for planning/architecture
 and final synthesis, not for parallelizable implementation slices.

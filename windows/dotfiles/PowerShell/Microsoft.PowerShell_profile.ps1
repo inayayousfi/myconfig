@@ -832,15 +832,6 @@ function repair-winget
 }
 
 # =========================
-# AI Commit
-# =========================
-
-function aic
-{
-    Invoke-WslZshCommand "aic"
-}
-
-# =========================
 # Misc
 # =========================
 

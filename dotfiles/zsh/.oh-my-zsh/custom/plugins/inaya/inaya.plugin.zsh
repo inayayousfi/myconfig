@@ -69,7 +69,6 @@ fi
 
 alias ll='ls -la'
 alias gcb='git fetch --prune && git branch -vv | grep ": gone]" | awk "{print \$1}" | xargs -n 1 git branch -d'
-alias aica='git add .; aic'
 
 alias please='sudo'
 
@@ -230,103 +229,6 @@ elif $IS_LINUX; then
         echo "All updates completed successfully."
     }
 fi
-
-# =========================
-# AI Commit
-# =========================
-
-aic() {
-  local MODEL="${1:-haiku}"
-  local branch gitLog diffStat diff sysPrompt context message rawMessage choice
-  branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
-  gitLog="$(git log -10 --pretty=format:"<commit>%n%h%n%B%n</commit>" 2>/dev/null)"
-  diffStat="$(git diff --cached --stat 2>/dev/null)"
-  diff="$(git diff --cached 2>/dev/null)"
-  # Normalize newlines
-  branch="$(printf "%s" "$branch" | tr -d '\r')"
-  gitLog="$(printf "%s" "$gitLog" | tr -d '\r')"
-  diffStat="$(printf "%s" "$diffStat" | tr -d '\r')"
-  diff="$(printf "%s" "$diff" | tr -d '\r')"
-  if [[ -z "$diffStat" ]]; then
-    echo "❌ No staged changes. Run git add first." >&2
-    return 1
-  fi
-
-  if ! command -v claude >/dev/null 2>&1; then
-    echo "❌ claude (Claude Code) is not installed" >&2
-    return 1
-  fi
-
-  sysPrompt='You are writing a git commit message.
-- ALWAYS use real newlines when you want a multiline commit message
-- DO NOT surround the answer with quotes
-- Return ONLY the commit message text, nothing else
-Rules:
-- concise but descriptive
-- infer the commit style from the recent commits
-- if recent commits include a body, include a body if useful
-- preserve the repository'\''s usual formatting conventions
-- include branch name when relevant for ticket/reference context
-- no emojis
-- no fluff'
-
-  while true; do
-    context=$(cat <<EOF
-Branch:
-$branch
-Recent commits (subject + body raw):
-$gitLog
-Diff stat:
-$diffStat
-Full staged diff:
-$diff
-EOF
-)
-    rawMessage="$(printf "%s" "$context" | claude -p \
-      --model "$MODEL" \
-      --append-system-prompt "$sysPrompt" \
-      "Write the commit message for the staged changes provided on stdin.")"
-
-    if [[ -z "$rawMessage" ]]; then
-      echo "❌ Failed to generate commit message." >&2
-      return 1
-    fi
-    message="$(printf "%s" "$rawMessage" | tr -d '\r')"
-    if [[ -z "$(printf "%s" "$message" | tr -d '[:space:]')" ]]; then
-      echo "❌ claude returned an empty commit message." >&2
-      return 1
-    fi
-    echo ""
-    echo "──────────────── commit preview ────────────────"
-    printf "%s\n" "$message"
-    echo "───────────────────────────────────────────────"
-    echo ""
-    echo -n "[Y] yes  |  [R] retry  |  [C] cancel: "
-    read choice
-    case "${choice:l}" in
-      y)
-        if printf "%s\n" "$message" | git commit -F -; then
-          echo "✨ Commit created. Tiny machine goblin satisfied."
-          return 0
-        fi
-        echo "❌ Commit failed. Nothing was committed." >&2
-        return 1
-        ;;
-      r)
-        echo "🔁 Retrying... maybe the robot was feeling silly."
-        continue
-        ;;
-      c)
-        echo "🚫 Commit cancelled. Nothing was committed."
-        return 0
-        ;;
-      *)
-        echo "🤨 Expected Y, R, or C. Let's try again."
-        continue
-        ;;
-    esac
-  done
-}
 
 # ============================================================================
 # Zoxide initialization

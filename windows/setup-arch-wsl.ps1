@@ -244,7 +244,7 @@ mkdir -p "$USER_DOTFILES_DIR"
 
 if [ -d "$DOTFILES_REPO" ]; then
     log "Syncing dotfiles from $DOTFILES_REPO"
-    for dir in zsh yazi lazygit; do
+    for dir in zsh yazi lazygit ai; do
         if [ -d "$DOTFILES_REPO/$dir" ]; then
             rsync -a --delete "$DOTFILES_REPO/$dir/" "$USER_DOTFILES_DIR/$dir/"
         fi

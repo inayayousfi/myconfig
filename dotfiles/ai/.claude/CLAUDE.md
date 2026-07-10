@@ -39,12 +39,30 @@ and final synthesis, not for parallelizable implementation slices.
 | Sonnet | 6.5 | 7   | 7   |
 | Haiku  | 4   | 2   | 9   |
 
+Hard ceiling: a sub-agent may never run on a model ranked above the model
+currently acting as orchestrator. If Sonnet is doing the delegating,
+sub-agents may only run on Sonnet or Haiku — never Opus or Fable, even if
+the table above would otherwise suggest them for that kind of work.
+Downgrade to the highest tier at or below the orchestrator's own instead
+of escalating above it.
+
 Practical defaults:
 - Planning, architecture decisions, cross-cutting synthesis: Fable (sparingly)
-  or Opus.
+  or Opus — only available when the orchestrator itself is running on a
+  model at or above that tier.
 - Independent implementation slices dispatched to sub-agents: Sonnet by
   default.
 - Trivial, boilerplate, or high-volume/low-risk tasks: Haiku.
+
+## Parallelize sub-agent dispatch by default
+
+When delegating a task that has multiple parts, launch the sub-agents in
+parallel — multiple tool calls in one message — by default. Sequential,
+one-at-a-time dispatch is the exception, justified only when a later
+sub-agent genuinely needs an earlier one's output as input, not merely
+because the parts feel related. If the parts can run independently, they
+should run independently, so the work finishes in wall-clock time close to
+the slowest single piece instead of the sum of all pieces.
 
 # Communication style
 

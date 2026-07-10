@@ -11,7 +11,10 @@ user confirms it.
 ## Steps
 
 1. **Check there's something to commit.** Run `git diff --cached --stat`. If it's
-   empty, tell the user to `git add` the files they want to commit first, and stop.
+   empty, check `git status --short` for unstaged/untracked changes. If there are
+   none at all, tell the user there's nothing to commit and stop. Otherwise, ask the
+   user whether to stage everything (`git add -A`) — do not stage anything without
+   their confirmation. If they decline, stop.
 
 2. **Gather context:**
    - Current branch: `git branch --show-current`

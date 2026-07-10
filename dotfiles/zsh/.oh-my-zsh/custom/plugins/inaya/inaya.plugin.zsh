@@ -127,6 +127,10 @@ if has zoxide; then
     alias zeze='zoxide edit'
 fi
 
+if has hunk; then
+    alias hd='hunk diff'
+fi
+
 if has tmux; then
     alias tmux='tmux -f $XDG_CONFIG_HOME/tmux/tmux.conf'
 fi
@@ -173,6 +177,15 @@ if $IS_MACOS; then
         brew update && brew upgrade && brew cleanup
         echo ""
         echo "Packages updated successfully."
+        echo ""
+
+        if has claude; then
+            echo "Updating Claude Code..."
+            claude update
+            echo "Claude Code updated."
+        else
+            echo "claude not found, skipping Claude Code update."
+        fi
     }
 
     # macOS-specific: bootout GUI session
@@ -224,6 +237,16 @@ elif $IS_LINUX; then
             echo ""
         else
             echo "bun not found, skipping Bun updates."
+            echo ""
+        fi
+
+        if command -v claude &>/dev/null; then
+            echo "Updating Claude Code..."
+            claude update
+            echo "Claude Code updated."
+            echo ""
+        else
+            echo "claude not found, skipping Claude Code update."
             echo ""
         fi
 

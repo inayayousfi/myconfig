@@ -15,9 +15,6 @@
         },
         {
           "PackageIdentifier": "TheDocumentFoundation.LibreOffice"
-        },
-        {
-          "PackageIdentifier": "RamenSoftware.Windhawk"
         }
       ],
       "SourceDetails": {

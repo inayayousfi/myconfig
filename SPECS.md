@@ -336,7 +336,7 @@ Installed from `windows/dotfiles/winget/packages.json`:
 |-------|--------------|----------|
 | DevTools | `packages_devtools.json` | Rustup, LLVM, Visual Studio Build Tools, Python Install Manager, Docker Desktop |
 | Art | `packages_art.json` | Blender, Krita, Kdenlive, Audacity, OBS Studio, MuseScore |
-| Supplementary | `packages_supplementary.json` | Ollama, Handy, VirtualBox, LibreOffice, Windhawk |
+| Supplementary | `packages_supplementary.json` | Ollama, Handy, VirtualBox, LibreOffice |
 | Arch WSL | `setup-arch-wsl.ps1` | Fresh Arch Linux WSL distro with shared dotfiles and Linux tools |
 
 ### Installed Configuration
@@ -361,7 +361,6 @@ Installed from `windows/dotfiles/winget/packages.json`:
 | `PowerShell` | Profile and Oh My Posh theme | `$PROFILE` and profile directory |
 | `WindowsTerminal` | Windows Terminal settings | `%LOCALAPPDATA%\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json` |
 | `AutoHotkey` | Personal AutoHotkey executable/script | `%USERPROFILE%\AutoHotkey` and Startup shortcut |
-| `WindHawk` | Windhawk taskbar styling config | Used with optional Windhawk install |
 | `winget` | Core and optional package manifests | Imported by `windows/install.ps1` |
 
 ---
@@ -425,7 +424,6 @@ myconfig/
     └── dotfiles/
         ├── AutoHotkey/
         ├── PowerShell/
-        ├── WindHawk/
         ├── WindowsTerminal/
         └── winget/
 ```

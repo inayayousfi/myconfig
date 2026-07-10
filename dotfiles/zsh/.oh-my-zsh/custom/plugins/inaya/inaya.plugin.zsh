@@ -120,6 +120,7 @@ fi
 
 if has claude; then
   alias cco='IS_DEMO=1 claude --dangerously-skip-permissions'
+  alias ccor='claude remote-control --permission-mode bypassPermissions'
 fi
 
 if has zoxide; then

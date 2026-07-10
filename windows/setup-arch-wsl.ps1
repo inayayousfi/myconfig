@@ -229,7 +229,7 @@ log "Installing user packages"
 paru -Syu --noconfirm --skipreview \
     zsh rsync stow wsl2-ssh-agent ripgrep go yazi-git ffmpeg 7zip jq poppler fd fzf bat zoxide \
     resvg imagemagick bat eza llvm bun python fastfetch lazygit jdk-openjdk maven make cmake \
-    btop tokei
+    btop tokei hunk-bin
 
 log "Configuring Git core settings"
 git config --global core.sshCommand ssh.exe

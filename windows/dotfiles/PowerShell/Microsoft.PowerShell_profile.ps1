@@ -128,6 +128,9 @@ if ($UseInteractiveProfile)
 # Aliases (always loaded)
 # =========================
 
+$env:EDITOR = "nvim"
+$env:VISUAL = "nvim"
+
 function Invoke-WslZshCommand {
     param([string]$Command)
 

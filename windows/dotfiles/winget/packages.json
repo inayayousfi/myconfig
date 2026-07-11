@@ -23,9 +23,6 @@
           "PackageIdentifier": "JanDeDobbeleer.OhMyPosh"
         },
         {
-          "PackageIdentifier": "ZedIndustries.Zed"
-        },
-        {
           "PackageIdentifier": "Microsoft.PowerToys"
         }
       ],

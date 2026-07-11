@@ -146,31 +146,18 @@ Windows Terminal is the native Windows terminal emulator.
 | Config target | `%LOCALAPPDATA%\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json` |
 | Profiles | PowerShell and Developer PowerShell for VS 2022 |
 
-### Zed
-
-Zed is the primary graphical editor on Windows and shares its config from the root `dotfiles` directory.
-
-| Setting | Value |
-|---------|-------|
-| Package | `ZedIndustries.Zed` |
-| Theme | Black & Pink |
-| Font | Iosevka Nerd Font / Iosevka Nerd Font Mono |
-| Base keymap | VS Code |
-| Vim mode | Enabled |
-| Config source | `dotfiles/zed/.config/zed/` |
-| Windows target | `%APPDATA%\Zed` |
-
-Zed is configured for autosave, split diff view, relative line numbers, right-side project/git/outline panels, local Ollama-backed agent models, local Zeta edit predictions, telemetry disabled, and the `opencode` agent server.
-
 ### Neovim
 
-Neovim remains the primary terminal editor for Unix-like environments.
+Neovim is the primary editor everywhere, including Windows, where `$EDITOR`/`$VISUAL` shell out to the nvim instance running inside WSL.
 
 | Component | Value |
 |-----------|-------|
-| Distribution | LazyVim |
+| Plugin manager | native `vim.pack` |
 | Config location | `$XDG_CONFIG_HOME/nvim/` |
 | Dotfile | `dotfiles/nvim/.config/nvim/` |
+| Windows wrapper | `windows/dotfiles/bin/nvim.cmd`, installed to `%LOCALAPPDATA%\Programs\bin` and added to user PATH; shells into WSL via `wsl.exe -u <user> -- zsh -ic nvim`, converting file args with `wslpath` |
+
+`dotfiles/zed/` is kept in the repo for reference but is no longer installed or referenced by any install script.
 
 ---
 
@@ -200,7 +187,7 @@ Dependencies include FFmpeg, 7-Zip, Poppler, resvg, ImageMagick, and Nerd Font s
 | Java | `jdk-openjdk`, Maven | Arch WSL |
 | C/C++ | LLVM, Visual Studio Build Tools, Make, CMake | Windows DevTools, Arch WSL |
 | Containers | Docker Desktop | Windows DevTools |
-| Local AI | Ollama | Windows supplementary, Zed integration |
+| Local AI | Ollama | Windows supplementary |
 
 ---
 
@@ -315,7 +302,6 @@ Installed from `windows/dotfiles/winget/packages.json`:
 | `Microsoft.WindowsTerminal` | Terminal emulator |
 | `Microsoft.WSL` | Windows Subsystem for Linux |
 | `JanDeDobbeleer.OhMyPosh` | Prompt renderer |
-| `ZedIndustries.Zed` | Graphical editor |
 | `Microsoft.PowerToys` | Windows productivity utilities |
 
 ### Optional Package Groups
@@ -331,7 +317,7 @@ Installed from `windows/dotfiles/winget/packages.json`:
 
 - PowerShell profile is copied to `$PROFILE` and unblocked.
 - Oh My Posh theme is copied beside the PowerShell profile.
-- Zed config is copied from `dotfiles/zed/.config/zed/` to `%APPDATA%\Zed`.
+- nvim.cmd wrapper is copied to `%LOCALAPPDATA%\Programs\bin` and that directory is added to user PATH, so `nvim` (and `$EDITOR`/`$VISUAL`) shell into WSL nvim.
 - Ollama models are pulled only when the supplementary group was installed and `ollama` is available.
 - Windows Terminal settings are backed up and copied into the packaged Windows Terminal profile location.
 - AutoHotkey scripts are copied to `%USERPROFILE%\AutoHotkey`, and `myconfig.exe` is added to Startup when present.
@@ -412,6 +398,7 @@ myconfig/
     ├── RegistryPreferences.reg
     └── dotfiles/
         ├── AutoHotkey/
+        ├── bin/
         ├── PowerShell/
         ├── WindowsTerminal/
         └── winget/
@@ -429,7 +416,7 @@ myconfig/
 | `qbt-search` | qBittorrent search plugins | Application-specific search plugin directory |
 | `wallpaper` | Wallpaper assets | Wallpaper directory |
 | `yazi` | Yazi config and flavor | `$XDG_CONFIG_HOME/yazi/` |
-| `zed` | Zed settings, keymap, and theme | `%APPDATA%\Zed` on Windows |
+| `zed` | Zed settings, keymap, and theme (unused, kept for reference) | Not installed by any script |
 | `zsh` | `.zshrc`, Oh My Zsh theme, and custom plugin | Home directory and Oh My Zsh custom paths |
 
 ### Installation Model
@@ -437,5 +424,5 @@ myconfig/
 | Target | Dotfile Strategy |
 |--------|------------------|
 | Ubuntu Server | Direct copy of zsh files only |
-| Windows | Direct copy of Windows configs plus Zed shared config |
+| Windows | Direct copy of Windows configs |
 | Arch WSL | Sync selected shared packages, remove conflicting target files, then `stow --restow` |

@@ -308,22 +308,42 @@ function Install-OhMyPoshConfig
 }
 
 # ============================================================================
-# Zed Configuration
+# Neovim (WSL) Editor Wrapper
 # ============================================================================
 
-function Install-ZedConfig
+function Install-NvimEditorWrapper
 {
-  $source = Join-Path $SharedDotfilesDir "zed\.config\zed"
-  $destination = Join-Path $env:APPDATA "Zed"
+  $binDir = Join-Path $env:LOCALAPPDATA "Programs\bin"
+  $sourceDir = Join-Path $WindowsDotfilesDir "bin"
 
-  if (-not (Test-Path $source))
+  if (-not (Test-Path $sourceDir))
   {
-    Write-Log "Zed config source not found: $source" -Level 'ERROR'
+    Write-Log "nvim wrapper source not found: $sourceDir" -Level 'ERROR'
     return
   }
 
-  Copy-DotfileSafe -Source $source -Destination $destination -Recurse
-  Write-Log "Zed configuration installed" -Level 'OK'
+  if (-not (Test-Path $binDir))
+  {
+    New-Item -ItemType Directory -Path $binDir -Force | Out-Null
+  }
+
+  foreach ($file in @("nvim.cmd", "nvim.ps1"))
+  {
+    Copy-DotfileSafe -Source (Join-Path $sourceDir $file) -Destination (Join-Path $binDir $file)
+  }
+
+  $currentPath = [Environment]::GetEnvironmentVariable("Path", "User")
+  if ($currentPath -like "*$binDir*")
+  {
+    Write-Log "$binDir already in user PATH" -Level 'OK'
+  } else
+  {
+    Write-Log "Adding $binDir to user PATH..."
+    [Environment]::SetEnvironmentVariable("Path", "$currentPath;$binDir", "User")
+    Write-Log "$binDir added to PATH" -Level 'OK'
+  }
+
+  Write-Log "nvim (WSL) editor wrapper installed" -Level 'OK'
 }
 
 function Install-OllamaModels
@@ -335,8 +355,7 @@ function Install-OllamaModels
   }
 
   $models = @(
-    "hf.co/unsloth/Qwen3.6-35B-A3B-GGUF:UD-IQ1_M",
-    "hf.co/bartowski/zed-industries_zeta-2-GGUF:Q4_0"
+    "hf.co/unsloth/Qwen3.6-35B-A3B-GGUF:UD-IQ1_M"
   )
 
   foreach ($model in $models)
@@ -580,7 +599,7 @@ function Main
   # Copy the core configuration files and directories.
   Install-PowerShellProfile
   Install-OhMyPoshConfig
-  Install-ZedConfig
+  Install-NvimEditorWrapper
   if ($installedPackages.Supplementary)
   {
     Install-OllamaModels

@@ -142,6 +142,10 @@ function cco {
     Invoke-WslZshCommand "cco $args"
 }
 
+function hr {
+    Invoke-WslZshCommand "herdr $args"
+}
+
 Set-Alias which gcm
 
 # =========================

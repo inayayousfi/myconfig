@@ -131,6 +131,10 @@ if has hunk; then
     alias hd='hunk diff'
 fi
 
+if has herdr; then
+    alias hr='herdr'
+fi
+
 if has systemctl; then
     alias sus='systemctl suspend'
 fi

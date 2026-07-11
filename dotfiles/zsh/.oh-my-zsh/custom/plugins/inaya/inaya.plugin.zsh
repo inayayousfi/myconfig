@@ -37,10 +37,7 @@ export LC_ALL=en_US.UTF-8
 
 export VI_MODE_SET_CURSOR=true
 
-if has zed; then
-    export EDITOR="zed --wait"
-    export VISUAL="zed --wait"
-elif has nvim; then
+if has nvim; then
     export EDITOR="nvim"
     export VISUAL="nvim"
 elif has vim; then

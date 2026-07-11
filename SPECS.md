@@ -79,7 +79,7 @@ Location: `dotfiles/zsh/.oh-my-zsh/custom/plugins/inaya/inaya.plugin.zsh`
 
 Key environment defaults include XDG paths, `nvim` as editor, `xterm-256color`, UTF-8 locale, and vi-mode cursor support.
 
-Key aliases and functions include `nvim` shortcuts, modern CLI replacements for `ls`, `find`, and `grep`, `lg` for Lazygit, `ff` for Fastfetch, `y` for Yazi directory handoff, `pf` for fuzzy file opening, `mkd`, `use-tmux`, `reload-zsh`, `stowgo`, `update`, and `cleanup`.
+Key aliases and functions include `nvim` shortcuts, modern CLI replacements for `ls`, `find`, and `grep`, `lg` for Lazygit, `ff` for Fastfetch, `y` for Yazi directory handoff, `pf` for fuzzy file opening, `mkd`, `reload-zsh`, `stowgo`, `update`, and `cleanup`.
 
 ### PowerShell
 
@@ -130,18 +130,6 @@ Lazygit uses a shared Black & Pink theme.
 | Config location | `$XDG_CONFIG_HOME/lazygit/config.yml` |
 | Windows config location | `%LOCALAPPDATA%\lazygit\config.yml` |
 | Dotfile | `dotfiles/lazygit/.config/lazygit/config.yml` |
-
-### Tmux
-
-Tmux uses **Oh My Tmux** plus a local custom theme.
-
-| Component | Value |
-|-----------|-------|
-| Framework | Oh My Tmux |
-| Theme | Monokai-style custom colors |
-| Default shell | `/bin/zsh` |
-| Config location | `$XDG_CONFIG_HOME/tmux/` |
-| Dotfiles | `dotfiles/tmux/.config/tmux/` |
 
 ---
 
@@ -238,9 +226,9 @@ These packages are intended for Unix-like targets that receive the full shared t
 ### Terminal And Editors
 
 - Neovim
-- tmux
 - Yazi
 - Lazygit
+- Herdr
 
 ### CLI Tools
 
@@ -303,7 +291,7 @@ See `ubuntu-server/install.sh` for the complete installation script.
 
 ### Not Included
 
-The Ubuntu Server installation does not include GNU Stow, development runtimes, tmux, Neovim, Yazi, Lazygit, extra CLI tools, GUI apps, Docker, Ollama, or creative applications.
+The Ubuntu Server installation does not include GNU Stow, development runtimes, Neovim, Yazi, Lazygit, extra CLI tools, GUI apps, Docker, Ollama, or creative applications.
 
 ---
 
@@ -380,7 +368,7 @@ Arch WSL is an optional Windows installer path. It creates a fresh `archlinux` d
 
 ### Arch Package Set
 
-The Arch WSL setup installs packages through `pacman` and `paru`, including `base-devel`, `rustup`, `zsh`, `rsync`, `stow`, `wsl2-ssh-agent`, `ripgrep`, `go`, `yazi-git`, `ffmpeg`, `7zip`, `jq`, `poppler`, `fd`, `fzf`, `bat`, `zoxide`, `resvg`, `imagemagick`, `eza`, `llvm`, `bun`, `python`, `fastfetch`, `lazygit`, `jdk-openjdk`, `maven`, `make`, `cmake`, `btop`, `tokei`, and `opencode`.
+The Arch WSL setup installs packages through `pacman` and `paru`, including `base-devel`, `rustup`, `zsh`, `rsync`, `stow`, `wsl2-ssh-agent`, `ripgrep`, `go`, `yazi-git`, `ffmpeg`, `7zip`, `jq`, `poppler`, `fd`, `fzf`, `bat`, `zoxide`, `resvg`, `imagemagick`, `eza`, `llvm`, `bun`, `python`, `fastfetch`, `lazygit`, `jdk-openjdk`, `maven`, `make`, `cmake`, `btop`, `tokei`, `herdr-bin`, and `opencode`.
 
 ### Synced Dotfiles
 
@@ -389,6 +377,7 @@ Arch WSL syncs and stows these shared dotfile packages from the Windows-accessib
 - `zsh`
 - `yazi`
 - `lazygit`
+- `herdr`
 
 ---
 
@@ -404,11 +393,11 @@ myconfig/
 ├── bootstrap.ps1
 ├── dotfiles/
 │   ├── hermes/
+│   ├── herdr/
 │   ├── hyfetch/
 │   ├── lazygit/
 │   ├── nvim/
 │   ├── qbt-search/
-│   ├── tmux/
 │   ├── wallpaper/
 │   ├── yazi/
 │   ├── zed/
@@ -433,11 +422,11 @@ myconfig/
 | Package | Description | Primary Target |
 |---------|-------------|----------------|
 | `hermes` | Hermes config | `$XDG_CONFIG_HOME/hermes/` |
+| `herdr` | Herdr config | `$XDG_CONFIG_HOME/herdr/` |
 | `hyfetch` | Hyfetch config | `$XDG_CONFIG_HOME/hyfetch.json` |
 | `lazygit` | Lazygit theme/config | `$XDG_CONFIG_HOME/lazygit/` |
 | `nvim` | Neovim config | `$XDG_CONFIG_HOME/nvim/` |
 | `qbt-search` | qBittorrent search plugins | Application-specific search plugin directory |
-| `tmux` | Tmux config | `$XDG_CONFIG_HOME/tmux/` |
 | `wallpaper` | Wallpaper assets | Wallpaper directory |
 | `yazi` | Yazi config and flavor | `$XDG_CONFIG_HOME/yazi/` |
 | `zed` | Zed settings, keymap, and theme | `%APPDATA%\Zed` on Windows |

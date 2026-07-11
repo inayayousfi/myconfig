@@ -131,10 +131,6 @@ if has hunk; then
     alias hd='hunk diff'
 fi
 
-if has tmux; then
-    alias tmux='tmux -f $XDG_CONFIG_HOME/tmux/tmux.conf'
-fi
-
 if has systemctl; then
     alias sus='systemctl suspend'
 fi
@@ -168,9 +164,6 @@ y() {
 # ============================================================================
 
 if $IS_MACOS; then
-    # macOS: use-tmux with Homebrew tmux path
-    use-tmux() { /bin/bash --noprofile --norc -c "/opt/homebrew/bin/tmux has-session 2>/dev/null && /opt/homebrew/bin/tmux attach-session -d || /opt/homebrew/bin/tmux new-session"; }
-
     # macOS: Update packages via Homebrew
     update() {
         echo "Updating packages via Homebrew..."
@@ -192,9 +185,6 @@ if $IS_MACOS; then
     bootout-gui() { launchctl bootout gui/$UID }
 
 elif $IS_LINUX; then
-    # Linux: use-tmux with system tmux
-    use-tmux() { /bin/bash --noprofile --norc -c "tmux has-session 2>/dev/null && tmux attach-session -d || tmux new-session"; }
-
     # Linux: Update system packages using the available package manager
     update() {
         echo "Updating system and packages..."

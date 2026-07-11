@@ -153,12 +153,18 @@ log "Updating system packages"
 pacman -Syu --noconfirm
 
 log "Installing base packages"
-pacman -S --noconfirm sudo git base-devel wget curl unzip zip man-db man-pages vi rustup
+pacman -S --noconfirm sudo git base-devel wget curl unzip zip man-db man-pages vi rustup openssh
+
+log "Generating SSH host keys"
+ssh-keygen -A
 
 log "Writing /etc/wsl.conf"
 cat >/etc/wsl.conf <<'EOF'
 [interop]
 enabled=true
+
+[boot]
+command="/usr/sbin/sshd"
 EOF
 '@
 
@@ -183,6 +189,13 @@ sed -i 's/^# *%wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
 grep -q "^$WINUSER ALL=(ALL) NOPASSWD:ALL" /etc/sudoers || \
     echo "$WINUSER ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
+log "Restricting sshd to loopback and $WINUSER"
+cat >/etc/ssh/sshd_config.d/10-local-only.conf <<EOF
+ListenAddress 127.0.0.1
+ListenAddress ::1
+AllowUsers $WINUSER
+EOF
+
 log "Writing /etc/wsl.conf default user"
 cat >/etc/wsl.conf <<EOF
 [interop]
@@ -190,6 +203,9 @@ enabled=true
 
 [user]
 default=$WINUSER
+
+[boot]
+command="/usr/sbin/sshd"
 EOF
 
 log "Generating locale"

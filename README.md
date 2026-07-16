@@ -11,21 +11,31 @@ Bootstrap your entire development environment with one command:
 ### Ubuntu Server
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ZiedYousfi/myconfig/main/bootstrap.sh | bash -s -- ubuntu
+curl -fsSL https://raw.githubusercontent.com/inayayousfi/myconfig/main/bootstrap.sh | bash -s -- ubuntu
 ```
 
 ### Windows (cmd.exe)
 
-```bash
-powershell -NoProfile -ExecutionPolicy Bypass -Command "& { $p = Join-Path $env:TEMP 'bootstrap.ps1'; Invoke-WebRequest 'https://raw.githubusercontent.com/ZiedYousfi/myconfig/main/bootstrap.ps1' -OutFile $p; Unblock-File $p; & $p }"
+```powershell
+irm https://raw.githubusercontent.com/inayayousfi/myconfig/main/bootstrap.ps1 | iex
 ```
+
+This pipes the script straight into `iex` without writing anything to disk, so there's no Mark-of-the-Web flag and no execution-policy check to satisfy — it works even on locked-down/GPO-managed machines.
+
+If your environment blocks piping remote content into `iex`, fall back to:
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -Command "& { $p = Join-Path $env:TEMP 'bootstrap.ps1'; Invoke-WebRequest 'https://raw.githubusercontent.com/inayayousfi/myconfig/main/bootstrap.ps1' -OutFile $p; Unblock-File $p; & $p }"
+```
+
+After the first install, the bootstrap flow imports a self-signed code-signing certificate and sets PowerShell's `ExecutionPolicy` to `RemoteSigned` for the current user. Re-running `windows/install.ps1`, `nvim`, or the PowerShell profile script directly afterward no longer needs `-Bypass`, since those scripts are signed as part of each release.
 
 ### Interactive Mode (Auto-detect or Choose)
 
 /!\ This does not work on Windows. Use the Windows command above instead.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ZiedYousfi/myconfig/main/bootstrap.sh | bash
+curl -fsSL https://raw.githubusercontent.com/inayayousfi/myconfig/main/bootstrap.sh | bash
 ```
 
 The bootstrap script will:

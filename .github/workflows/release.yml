@@ -32,6 +32,59 @@ jobs:
             echo "tag_name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
           fi
 
+      - name: Sign PowerShell scripts
+        shell: pwsh
+        env:
+          CODESIGN_PFX_B64: ${{ secrets.CODESIGN_PFX_B64 }}
+          CODESIGN_PFX_PASSWORD: ${{ secrets.CODESIGN_PFX_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrEmpty($env:CODESIGN_PFX_B64)) {
+            Write-Warning "CODESIGN_PFX_B64 secret is not set; skipping PowerShell script signing."
+            exit 0
+          }
+
+          $pfxPath = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+
+          try {
+            [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:CODESIGN_PFX_B64))
+
+            $securePassword = ConvertTo-SecureString -String $env:CODESIGN_PFX_PASSWORD -AsPlainText -Force
+            $cert = [Security.Cryptography.X509Certificates.X509Certificate2]::new(
+              $pfxPath,
+              $securePassword,
+              [Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet
+            )
+
+            $scripts = Get-ChildItem -Path . -Recurse -Filter *.ps1 -File |
+              Where-Object { $_.FullName -notmatch [regex]::Escape([IO.Path]::DirectorySeparatorChar + '.git' + [IO.Path]::DirectorySeparatorChar) }
+
+            if (-not $scripts) {
+              Write-Host "No .ps1 files found to sign."
+            }
+
+            $failed = @()
+            foreach ($script in $scripts) {
+              Write-Host "Signing $($script.FullName)"
+              Set-AuthenticodeSignature -FilePath $script.FullName -Certificate $cert -TimestampServer 'http://timestamp.digicert.com' | Out-Null
+
+              $sig = Get-AuthenticodeSignature -FilePath $script.FullName
+              if ($sig.Status -ne 'Valid') {
+                Write-Error "Signature verification failed for $($script.FullName): $($sig.Status) - $($sig.StatusMessage)"
+                $failed += $script.FullName
+              }
+            }
+
+            if ($failed.Count -gt 0) {
+              Write-Error "The following files failed signature verification: $($failed -join ', ')"
+              exit 1
+            }
+          }
+          finally {
+            if (Test-Path $pfxPath) {
+              Remove-Item -Path $pfxPath -Force
+            }
+          }
+
       - name: Create archive
         run: |
           find . -type f -name "*.sh" -exec chmod +x {} +

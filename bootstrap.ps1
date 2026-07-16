@@ -4,14 +4,14 @@
 .DESCRIPTION
     Downloads and installs the complete development environment for Windows.
     Usage:
-        irm https://raw.githubusercontent.com/ZiedYousfi/myconfig/main/bootstrap.ps1 | iex
+        irm https://raw.githubusercontent.com/inayayousfi/myconfig/main/bootstrap.ps1 | iex
 #>
 
 $ErrorActionPreference = 'Stop'
 
 # Repository configuration
 # The bootstrap script only orchestrates download, extraction, and handoff.
-$RepoOwner = "ZiedYousfi"
+$RepoOwner = "inayayousfi"
 $RepoName = "myconfig"
 $GithubRepo = "$RepoOwner/$RepoName"
 
@@ -226,6 +226,20 @@ function Run-Installation {
     }
 
     Write-Log "Files copied to $InstallDir" -Level 'SUCCESS'
+
+    # Best-effort trust setup: import the code-signing cert (if present) and
+    # relax ExecutionPolicy to RemoteSigned. Never fatal - trust/signing is
+    # an enhancement, not a hard requirement for install to proceed.
+    $trustScript = Join-Path $InstallDir "windows\trust-cert.ps1"
+    if (Test-Path $trustScript) {
+        Write-Log "Running code-signing trust setup..."
+        & $trustScript
+        if ($LASTEXITCODE -ne 0) {
+            Write-Log "Trust setup exited with code $LASTEXITCODE, continuing with install anyway." -Level 'WARNING'
+        }
+    } else {
+        Write-Log "trust-cert.ps1 not found, skipping trust setup." -Level 'WARNING'
+    }
 
     # Hand off to the Windows installer inside the staged repo.
     Write-Log "Starting Windows installation..."

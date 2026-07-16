@@ -3,8 +3,8 @@
 # Bootstrap Script for Setup Configuration
 # Downloads and installs the complete development environment
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/ZiedYousfi/myconfig/main/bootstrap.sh | bash
-#   curl -fsSL https://raw.githubusercontent.com/ZiedYousfi/myconfig/main/bootstrap.sh | bash -s -- ubuntu
+#   curl -fsSL https://raw.githubusercontent.com/inayayousfi/myconfig/main/bootstrap.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/inayayousfi/myconfig/main/bootstrap.sh | bash -s -- ubuntu
 
 # set -e (Disabled to ensure script continues even if some steps fail)
 
@@ -18,7 +18,7 @@ BOLD='\033[1m'
 NC='\033[0m' # No Color
 
 # Repository configuration
-REPO_OWNER="ZiedYousfi"
+REPO_OWNER="inayayousfi"
 REPO_NAME="myconfig"
 GITHUB_REPO="${REPO_OWNER}/${REPO_NAME}"
 

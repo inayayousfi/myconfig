@@ -237,9 +237,11 @@ elif $IS_LINUX; then
         fi
 
         if command -v herdr &>/dev/null; then
-            echo "Handing off Herdr server to updated binary..."
-            herdr server live-handoff
-            echo ""
+            if herdr status 2>/dev/null | grep -q "status: running"; then
+                echo "Stopping Herdr server so it restarts on the updated binary..."
+                herdr server stop
+                echo ""
+            fi
         fi
 
         if command -v claude &>/dev/null; then

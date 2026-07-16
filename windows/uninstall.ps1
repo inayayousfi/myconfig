@@ -48,6 +48,7 @@ function Confirm-Uninstall {
     Write-Host "  - PSReadLine module"
     Write-Host "  - GnuWin32 PATH entry"
     Write-Host "  - Registry tweaks"
+    Write-Host "  - AI config files (CLAUDE.md, skills)"
     Write-Host "  - (Optionally) Winget packages installed by the setup"
     Write-Host ""
     $confirm = Read-Host "Are you sure you want to continue? (yes/no)"
@@ -197,6 +198,34 @@ function Remove-AHKScripts {
 }
 
 # ============================================================================
+# Remove AI Config (Claude Code CLAUDE.md + skills)
+# ============================================================================
+
+function Remove-AIConfig {
+    $claudeMd = Join-Path $env:USERPROFILE ".claude\CLAUDE.md"
+    $skillsToRemove = @("commit", "grilling")
+
+    if (Test-Path $claudeMd) {
+        Write-Log "Removing AI config CLAUDE.md..."
+        Remove-Item -Path $claudeMd -Force
+        Write-Log "AI config CLAUDE.md removed" -Level 'OK'
+    } else {
+        Write-Log "AI config CLAUDE.md not found, skipping"
+    }
+
+    foreach ($skill in $skillsToRemove) {
+        $skillPath = Join-Path $env:USERPROFILE ".claude\skills\$skill"
+        if (Test-Path $skillPath) {
+            Write-Log "Removing AI config skill: $skill..."
+            Remove-Item -Path $skillPath -Recurse -Force
+            Write-Log "AI config skill removed: $skill" -Level 'OK'
+        } else {
+            Write-Log "AI config skill not found, skipping: $skill"
+        }
+    }
+}
+
+# ============================================================================
 # Remove PowerShell Profile
 # ============================================================================
 
@@ -321,6 +350,8 @@ function Remove-WingetPackages {
         "Python.PythonInstallManager"
         "JanDeDobbeleer.OhMyPosh"
         "wez.wezterm"
+        "T3Tools.T3Code"
+        "Anthropic.ClaudeCode"
     )
 
     foreach ($package in $packages) {
@@ -357,6 +388,7 @@ function Main {
     Remove-WezTermConfig
     Remove-GlazeWMConfig
     Remove-AHKScripts
+    Remove-AIConfig
     Remove-PowerShellProfile
     Remove-PSReadLineModule
     Remove-GnuWin32Path

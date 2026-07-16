@@ -458,6 +458,29 @@ function Install-AHKScripts
 }
 
 # ============================================================================
+# AI Config (Claude Code CLAUDE.md + skills)
+# ============================================================================
+
+function Install-AIConfig
+{
+  $source = Join-Path $SharedDotfilesDir "ai\.claude"
+  $destination = Join-Path $env:USERPROFILE ".claude"
+
+  if (-not (Test-Path $source))
+  {
+    Write-Log "AI config source not found: $source" -Level 'ERROR'
+    return
+  }
+
+  New-Item -ItemType Directory -Path $destination -Force | Out-Null
+
+  Copy-DotfileSafe -Source (Join-Path $source "CLAUDE.md") -Destination (Join-Path $destination "CLAUDE.md")
+  Copy-DotfileSafe -Source (Join-Path $source "skills") -Destination (Join-Path $destination "skills") -Recurse
+
+  Write-Log "AI config installed" -Level 'OK'
+}
+
+# ============================================================================
 # PSReadLine Module
 # ============================================================================
 
@@ -606,6 +629,7 @@ function Main
   }
   Install-WindowsTerminalConfig
   Install-AHKScripts
+  Install-AIConfig
 
   # Install the supporting tools and modules that the dotfiles expect.
   Install-PSReadLineModule

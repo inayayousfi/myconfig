@@ -218,9 +218,14 @@ elif $IS_LINUX; then
         fi
 
         if command -v bun &>/dev/null; then
-            echo "Upgrading Bun runtime..."
-            bun upgrade
-            echo ""
+            if command -v paru &>/dev/null; then
+                echo "Bun is managed by paru/pacman; skipping 'bun upgrade' (already updated above)."
+                echo ""
+            else
+                echo "Upgrading Bun runtime..."
+                bun upgrade
+                echo ""
+            fi
 
             echo "Updating global Bun packages..."
             bun update -g || true
@@ -228,6 +233,12 @@ elif $IS_LINUX; then
             echo ""
         else
             echo "bun not found, skipping Bun updates."
+            echo ""
+        fi
+
+        if command -v herdr &>/dev/null; then
+            echo "Handing off Herdr server to updated binary..."
+            herdr server live-handoff
             echo ""
         fi
 

@@ -1,6 +1,6 @@
 ---
 name: commit
-description: Use when the user asks to commit staged changes, generate/write a commit message, or types /commit. Drafts a commit message from the staged diff, commits it, then reviews the resulting commit's Co-authored-by trailer for whether it names a real human vs. a bot/agent/company and amends it out if not.
+description: ALWAYS use this skill, every time, whenever the user asks to commit staged changes, wants a commit made, or asks to generate/write/draft a commit message — including implicit requests like "commit this" or "save this work" — not only on literal /commit. Drafts a commit message from the staged diff, commits it, then reviews the resulting commit's Co-authored-by trailer for whether it names a real human vs. a bot/agent/company and amends it out if not.
 ---
 
 # Commit
@@ -12,9 +12,9 @@ user confirms it.
 
 1. **Check there's something to commit.** Run `git diff --cached --stat`. If it's
    empty, check `git status --short` for unstaged/untracked changes. If there are
-   none at all, tell the user there's nothing to commit and stop. Otherwise, ask the
-   user whether to stage everything (`git add -A`) — do not stage anything without
-   their confirmation. If they decline, stop.
+   none at all, tell the user there's nothing to commit and stop. Otherwise, ask via
+   the question tool whether to stage everything (`git add -A`) — do not stage
+   anything without their confirmation. If they decline, stop.
 
 2. **Gather context:**
    - Current branch: `git branch --show-current`
@@ -32,9 +32,10 @@ user confirms it.
 4. **Preview and confirm.** Put the full drafted commit message directly into the
    conversation, as plain text the user can actually read (not just a tool-call
    argument or a UI widget they might not be able to see) — e.g. in a fenced code
-   block in your reply. Ask them to confirm, request changes, or cancel. Do not run
-   `git commit` until the user explicitly confirms the message. If they ask for
-   changes, redraft and show the updated message again in the same way.
+   block in your reply. Then ask via the question tool: confirm, request changes, or
+   cancel. Do not run `git commit` until the user explicitly confirms the message. If
+   they ask for changes, redraft, show the updated message again the same way, and
+   ask again via the question tool.
 
 5. Once confirmed, commit with the approved message (e.g. `git commit -F -` fed the
    final message, or `git commit -m`/`-m` flags as appropriate).
@@ -51,3 +52,9 @@ user confirms it.
    this each time rather than pattern-matching a hardcoded blocklist; borderline cases
    (e.g. a human's work email that looks automated) should resolve in favor of keeping
    a trailer only when you're confident it's a real person.
+
+7. **Propose pushing.** After the co-author review settles, ask via the question tool
+   whether to push the commit now. If they decline, stop. If they confirm, push with
+   `git push` if the branch already tracks an upstream, or `git push -u origin <branch>`
+   if it doesn't. Never push without this explicit confirmation, even if a push was
+   confirmed earlier in the conversation — ask fresh every time.

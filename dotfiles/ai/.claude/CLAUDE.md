@@ -25,63 +25,44 @@ approach and surface every decision point one at a time. In Plan Mode:
 - You MUST ask clarifying questions about approach, architecture, and how
   pieces (frontend/backend/shared utils) should communicate, before writing
   a plan.
-- You MUST propose the plan (contracts, shared types/utils, file ownership,
-  Sub-Agent breakdown) and get explicit sign-off before implementing. You
-  MUST default to a multi-Sub-Agent breakdown whenever the task has parts
-  that can be researched or implemented independently — treat "one
-  Sub-Agent does it all" as the exception, not the default.
+- You MUST propose the plan (contracts, shared types/utils, file ownership),
+  broken down into the smallest workable pieces, and get explicit sign-off
+  before implementing. Breaking into small pieces is a planning discipline,
+  not a delegation rule — the pieces are implemented inline by You, by
+  default. See "Model selection and delegation" below for the narrow case
+  where a piece goes to a Sub-Agent instead.
 - You MAY skip Plan Mode only when the task meets the trivial bar defined
   above.
 
 ## Model selection and delegation
 
-Anything that isn't genuinely trivial (same bar as Plan Mode above) and
-touches code directly MUST be delegated to a Sub-Agent instead of
-implemented inline — You plan, delegate, and synthesize; You MUST NOT
-hand-edit code yourself. This keeps Your context clean for coordinating the
-work instead of filling up with diffs and tool output. Use the table below
-to pick which model each Sub-Agent runs on.
+Default to implementing everything Yourself, inline — including non-trivial
+code changes. You MUST NOT hand work off to a Sub-Agent just because it is
+non-trivial; Sub-Agent dispatch is expensive and burns through usage fast,
+so treat it as a special case, not the default path.
 
-Ratings are 1-10, higher is better. `cost` is inverse spend (10 = cheap,
-1 = expensive). When choosing which model to dispatch a Sub-Agent on, You
-MUST prioritize the intelligence/cost ratio, but weight cost slightly
-higher than intelligence — You MUST NOT default to the most expensive
-model for work a cheaper one can handle. You MUST reserve the top model
-for planning/architecture and final synthesis, not for parallelizable
-implementation slices.
+Dispatch a Sub-Agent only when a piece of work is BOTH:
+- long-running and genuinely mechanical — low-judgment, already broken down
+  to concrete steps (the TRIVIAL bar above, just bigger in scope), AND
+- something You can let run in the background while You keep making
+  progress on a different part of the task Yourself in parallel.
 
-| Model  | Intelligence | Taste | Cost |
-|--------|:---:|:---:|:---:|
-| Fable  | 10  | 10  | 1   |
-| Opus   | 9   | 7   | 4   |
-| Sonnet | 6.5 | 7   | 7   |
-| Haiku  | 4   | 2   | 9   |
+If a piece fails either condition — it needs judgment calls, or there is
+nothing useful for You to do while it runs — implement it inline instead of
+dispatching a Sub-Agent. Never run more than one Sub-Agent at a time (see
+"One Sub-Agent at a time" below); dispatch it on the same model You Yourself
+are running on.
 
-Hard ceiling: a Sub-Agent MUST NOT run on a model ranked above the model
-currently acting as orchestrator. If Sonnet is doing the delegating,
-Sub-Agents MAY only run on Sonnet or Haiku — never Opus or Fable, even if
-the table above would otherwise suggest them for that kind of work. You
-MUST downgrade to the highest tier at or below Your own instead of
-escalating above it.
+## One Sub-Agent at a time
 
-Practical defaults:
-- Planning, architecture decisions, cross-cutting synthesis: Fable (sparingly)
-  or Opus — only available when You Yourself are running on a model at or
-  above that tier.
-- Independent implementation slices dispatched to Sub-Agents: Sonnet by
-  default.
-- Trivial, boilerplate, or high-volume/low-risk tasks: Haiku.
-
-## Parallelize sub-agent dispatch by default
-
-When delegating a task that has multiple parts, You MUST maximize parallel
-Sub-Agent dispatch — launch them together, multiple tool calls in one
-message, as the default. Sequential, one-at-a-time dispatch is acceptable
-only when a later Sub-Agent's input strictly depends on an earlier
-Sub-Agent's output, not merely because the parts feel related. If the parts
-can run independently, they MUST run independently, so the work finishes in
-wall-clock time close to the slowest single piece instead of the sum of all
-pieces.
+Never run more than one Sub-Agent concurrently, even when a task has
+several independent long-mechanical pieces that would each individually
+qualify for dispatch under "Model selection and delegation" above. Run
+them one at a time instead. Parallel Sub-Agent fan-out is what burns
+through usage fastest — this overrides any prior instinct to launch
+several Sub-Agents together in one message. While a single Sub-Agent runs
+in the background, keep making progress Yourself on a different part of
+the task inline.
 
 # Communication style
 

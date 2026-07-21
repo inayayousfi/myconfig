@@ -57,8 +57,12 @@ user confirms it.
    (e.g. a human's work email that looks automated) should resolve in favor of keeping
    a trailer only when you're confident it's a real person.
 
-8. **Propose pushing.** After the co-author review settles, ask via the question tool
-   whether to push the commit now. If they decline, stop. If they confirm, push with
-   `git push` if the branch already tracks an upstream, or `git push -u origin <branch>`
-   if it doesn't. Never push without this explicit confirmation, even if a push was
+8. **Propose pushing — always the question tool, no exceptions.** After the
+   co-author review settles, ask whether to push the commit now via the question
+   tool — never a plain-text question, never skipped, never inferred from context.
+   This is an absolute rule, same as the message confirmation in step 5: it applies
+   every single time this step is reached, regardless of how routine or low-stakes
+   the commit seems. If they decline, stop. If they confirm, push with `git push` if
+   the branch already tracks an upstream, or `git push -u origin <branch>` if it
+   doesn't. Never push without this explicit confirmation, even if a push was
    confirmed earlier in the conversation — ask fresh every time.

@@ -57,7 +57,7 @@ if $IS_MACOS; then
     export PATH="$HOME/.local/bin:$PATH:$(go env GOPATH 2>/dev/null)/bin:$JAVA_HOME/bin:$(bun pm bin -g 2>/dev/null)"
     export VCPKG_ROOT="$HOME/vcpkg"
 elif $IS_LINUX; then
-    export PATH="$HOME/.local/bin:$PATH:$(bun pm bin -g 2>/dev/null)"
+    export PATH="$HOME/.local/bin:$PATH:$(go env GOPATH 2>/dev/null)/bin:$(bun pm bin -g 2>/dev/null)"
 fi
 
 # ============================================================================
@@ -118,6 +118,10 @@ fi
 if has claude; then
   alias cco='IS_DEMO=1 claude --dangerously-skip-permissions'
   alias ccor='claude remote-control --permission-mode bypassPermissions'
+fi
+
+if has bun; then
+  alias t3c='bunx t3@nightly start --log-level warn --auto-bootstrap-project-from-cwd --mode web'
 fi
 
 if has zoxide; then

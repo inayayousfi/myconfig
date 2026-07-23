@@ -29,17 +29,13 @@ user confirms it.
    - Include a body only if it adds real information beyond the subject.
    - No emojis, no filler, no restating the diff line-by-line.
 
-4. **Preview — mandatory, own message, before the question.** Send a plain-text
-   reply containing nothing but the full drafted commit message in a fenced code
-   block. This has to be its own conversational message the user can read directly —
-   not a tool-call argument, not a question-tool preview/option field, not folded into
-   the question in step 5. Do not skip this step or merge it into step 5 for any
-   reason, even if it feels redundant with the question that follows.
+4. **Preview.** Output the commit message as plain text, in the chat, in a fenced code
+   block tagged `text`. No tool call. Just plain text.
 
-5. **Confirm.** Only after step 4's message has been sent, ask via the question tool:
-   confirm, request changes, or cancel. Do not run `git commit` until the user
-   explicitly confirms. If they ask for changes, redraft, repeat step 4 with the
-   updated message, then ask again via the question tool.
+5. **Confirm.** Call the question tool: Confirm / Request changes / Cancel. Do not put
+   the commit message in this tool call — it was already shown in step 4. Do not run
+   `git commit` until the user confirms. If they ask for changes, redraft, repeat
+   step 4, then ask again.
 
 6. Once confirmed, commit with the approved message (e.g. `git commit -F -` fed the
    final message, or `git commit -m`/`-m` flags as appropriate).

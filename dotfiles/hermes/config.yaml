@@ -1,6 +1,6 @@
 model:
-  default: hf.co/unsloth/Qwen3.6-35B-A3B-GGUF:UD-IQ1_M
-  provider: custom:ollama
+  default: ''
+  provider: ''
   base_url: ''
 providers: {}
 fallback_providers: []
@@ -584,10 +584,7 @@ platform_toolsets:
   - hermes-teams
   google_chat:
   - hermes-google_chat
-custom_providers:
-- name: ollama
-  base_url: http://127.0.0.1:11434/v1
-  model: hf.co/unsloth/Qwen3.6-35B-A3B-GGUF:UD-IQ1_M
+custom_providers: []
 known_plugin_toolsets:
   cli:
   - spotify

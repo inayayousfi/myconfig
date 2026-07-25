@@ -187,7 +187,6 @@ Dependencies include FFmpeg, 7-Zip, Poppler, resvg, ImageMagick, and Nerd Font s
 | Java | `jdk-openjdk`, Maven | Arch WSL |
 | C/C++ | LLVM, Visual Studio Build Tools, Make, CMake | Windows DevTools, Arch WSL |
 | Containers | Docker Desktop | Windows DevTools |
-| Local AI | Ollama | Windows supplementary |
 
 ---
 
@@ -278,7 +277,7 @@ See `ubuntu-server/install.sh` for the complete installation script.
 
 ### Not Included
 
-The Ubuntu Server installation does not include GNU Stow, development runtimes, Neovim, Yazi, Lazygit, extra CLI tools, GUI apps, Docker, Ollama, or creative applications.
+The Ubuntu Server installation does not include GNU Stow, development runtimes, Neovim, Yazi, Lazygit, extra CLI tools, GUI apps, Docker, or creative applications.
 
 ---
 
@@ -310,7 +309,7 @@ Installed from `windows/dotfiles/winget/packages.json`:
 |-------|--------------|----------|
 | DevTools | `packages_devtools.json` | Rustup, LLVM, Visual Studio Build Tools, Python Install Manager, Docker Desktop |
 | Art | `packages_art.json` | Blender, Krita, Kdenlive, Audacity, OBS Studio, MuseScore |
-| Supplementary | `packages_supplementary.json` | Ollama, Handy, VirtualBox, LibreOffice |
+| Supplementary | `packages_supplementary.json` | Handy, VirtualBox, LibreOffice |
 | Arch WSL | `setup-arch-wsl.ps1` | Fresh Arch Linux WSL distro with shared dotfiles and Linux tools |
 
 ### Installed Configuration
@@ -318,7 +317,6 @@ Installed from `windows/dotfiles/winget/packages.json`:
 - PowerShell profile is copied to `$PROFILE` and unblocked.
 - Oh My Posh theme is copied beside the PowerShell profile.
 - nvim.cmd wrapper is copied to `%LOCALAPPDATA%\Programs\bin` and that directory is added to user PATH, so `nvim` (and `$EDITOR`/`$VISUAL`) shell into WSL nvim.
-- Ollama models are pulled only when the supplementary group was installed and `ollama` is available.
 - Windows Terminal settings are backed up and copied into the packaged Windows Terminal profile location.
 - AutoHotkey scripts are copied to `%USERPROFILE%\AutoHotkey`, and `myconfig.exe` is added to Startup when present.
 - `PSReadLine` is installed for the current user when missing.

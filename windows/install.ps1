@@ -208,7 +208,6 @@ function Install-WingetPackages
   $supplementaryJson = Join-Path $WindowsDotfilesDir "winget\packages_supplementary.json"
 
   $installedDevTools = $false
-  $installedSupplementary = $false
   Import-WingetPackageFile -PackagesJson $packagesJson -Name "core" | Out-Null
 
   if (Confirm-InstallPackageGroup -Name "DevTools" -Description "Rust, C/C++ and build tools")
@@ -227,9 +226,9 @@ function Install-WingetPackages
     Write-Log "Skipping winget Art packages"
   }
 
-  if (Confirm-InstallPackageGroup -Name "Supplementary" -Description "Handy, VirtualBox, LibreOffice and Ollama")
+  if (Confirm-InstallPackageGroup -Name "Supplementary" -Description "Handy, VirtualBox and LibreOffice")
   {
-    $installedSupplementary = Import-WingetPackageFile -PackagesJson $supplementaryJson -Name "Supplementary"
+    Import-WingetPackageFile -PackagesJson $supplementaryJson -Name "Supplementary" | Out-Null
   } else
   {
     Write-Log "Skipping winget Supplementary packages"
@@ -252,7 +251,6 @@ function Install-WingetPackages
 
   return @{
     DevTools = $installedDevTools
-    Supplementary = $installedSupplementary
   }
 }
 
@@ -344,32 +342,6 @@ function Install-NvimEditorWrapper
   }
 
   Write-Log "nvim (WSL) editor wrapper installed" -Level 'OK'
-}
-
-function Install-OllamaModels
-{
-  if (-not (Test-CommandExists "ollama"))
-  {
-    Write-Log "Ollama not found, skipping model installation" -Level 'WARNING'
-    return
-  }
-
-  $models = @(
-    "hf.co/unsloth/Qwen3.6-35B-A3B-GGUF:UD-IQ1_M"
-  )
-
-  foreach ($model in $models)
-  {
-    Write-Log "Pulling Ollama model: $model..."
-    ollama pull $model
-    if ($LASTEXITCODE -eq 0)
-    {
-      Write-Log "Ollama model installed: $model" -Level 'OK'
-    } else
-    {
-      Write-Log "Failed to pull Ollama model: $model" -Level 'WARNING'
-    }
-  }
 }
 
 # ============================================================================
@@ -623,10 +595,6 @@ function Main
   Install-PowerShellProfile
   Install-OhMyPoshConfig
   Install-NvimEditorWrapper
-  if ($installedPackages.Supplementary)
-  {
-    Install-OllamaModels
-  }
   Install-WindowsTerminalConfig
   Install-AHKScripts
   Install-AIConfig

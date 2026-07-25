@@ -346,7 +346,6 @@ function Remove-WingetPackages {
         "junegunn.fzf"
         "oschwartz10612.Poppler"
         "sxyazi.yazi"
-        "Ollama.Ollama"
         "Python.PythonInstallManager"
         "JanDeDobbeleer.OhMyPosh"
         "wez.wezterm"

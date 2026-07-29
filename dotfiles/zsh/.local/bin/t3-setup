@@ -73,6 +73,33 @@ T3_BIN="$(bun pm bin -g)/t3"
 log "Using $("$T3_BIN" --version) at $T3_BIN"
 
 # ---------------------------------------------------------------------------
+# Expose t3 on the system path
+# ---------------------------------------------------------------------------
+
+# The Windows desktop app starts its backend with `wsl.exe -d <distro> -- t3`
+# when wslBackendEnabled is set. That runs a non-interactive shell, and those
+# never read .zshrc, so the bun global bin directory that .zshrc appends to PATH
+# is invisible and the lookup fails outright. /usr/local/bin is on the default
+# PATH for every shell, interactive or not.
+#
+# The link points at the bun shim rather than at its target, so a `bun add -g`
+# upgrade that rewrites the underlying dist file keeps the link valid.
+SYSTEM_BIN="/usr/local/bin/t3"
+
+if [ "$(readlink "$SYSTEM_BIN" 2>/dev/null || true)" = "$T3_BIN" ]; then
+    log "System link already points at $T3_BIN"
+else
+    log "Linking $SYSTEM_BIN to $T3_BIN"
+    sudo ln -sfn "$T3_BIN" "$SYSTEM_BIN" ||
+        fail "could not create $SYSTEM_BIN."
+fi
+
+# A dangling link is worse than no link. It fails with "no such file" instead of
+# "command not found", which sends you hunting in the wrong place.
+[ -x "$SYSTEM_BIN" ] ||
+    fail "$SYSTEM_BIN does not resolve to an executable."
+
+# ---------------------------------------------------------------------------
 # Install the background service
 # ---------------------------------------------------------------------------
 

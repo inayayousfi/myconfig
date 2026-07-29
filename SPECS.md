@@ -319,6 +319,7 @@ Installed from `windows/dotfiles/winget/packages.json`:
 - nvim.cmd wrapper is copied to `%LOCALAPPDATA%\Programs\bin` and that directory is added to user PATH, so `nvim` (and `$EDITOR`/`$VISUAL`) shell into WSL nvim.
 - Windows Terminal settings are backed up and copied into the packaged Windows Terminal profile location.
 - AutoHotkey scripts are copied to `%USERPROFILE%\AutoHotkey`, and `myconfig.exe` is added to Startup when present.
+- On the Arch WSL path only, `%UserProfile%\.wslconfig` is written and a WSL logon shortcut is added to Startup. See [Instance Persistence](#instance-persistence).
 - `PSReadLine` is installed for the current user when missing.
 - Iosevka is installed through `oh-my-posh font install Iosevka` when Oh My Posh is available.
 - LLVM is added to PATH when the DevTools group was installed and LLVM exists.
@@ -349,6 +350,20 @@ Arch WSL is an optional Windows installer path. It creates a fresh `archlinux` d
 | User setup | Creates a user named after the Windows user, enables wheel sudo, grants passwordless sudo, enables lingering so user services survive with no shell open, sets default user, generates `en_US.UTF-8` locale |
 | User packages and dotfiles | Installs Rust stable, builds `paru`, installs packages, configures Git for Windows SSH, installs Oh My Zsh, syncs and stows selected dotfiles, installs zsh plugins, runs `t3-setup` to install T3 Code and its background service |
 | Shell enforcement | Sets and verifies zsh as the WSL user's default shell |
+| Instance persistence | Writes `%UserProfile%\.wslconfig` with `instanceIdleTimeout=-1` and `vmIdleTimeout=-1`, adds a hidden logon shortcut that boots the distro, then restarts the instance under the new timeouts |
+
+### Instance Persistence
+
+The T3 Code backend runs as a systemd *user* unit. Lingering keeps it alive with no shell open, but only from inside the instance; it cannot stop WSL from tearing the instance down. Two independent timeouts do that, and both must be disabled:
+
+| Key | Section | Default | Effect |
+|-----|---------|---------|--------|
+| `instanceIdleTimeout` | `[general]` | 15000 ms | Stops the distro instance. Added in WSL 2.4.4. |
+| `vmIdleTimeout` | `[wsl2]` | 60000 ms | Stops the utility VM. |
+
+Setting only `vmIdleTimeout` leaves the instance timeout at its default, so the distro still stops 15-20 seconds after the last terminal closes.
+
+Disabling the timeouts stops WSL shutting the instance down, but nothing starts it either. `myconfig-wsl-autostart.lnk` in the Startup folder supplies that half, running `wsl.exe -d archlinux --exec /bin/true` through a hidden `powershell.exe` because `wsl.exe` is a console program. `windows/uninstall.ps1` removes both the shortcut and `.wslconfig`.
 
 ### Arch Package Set
 

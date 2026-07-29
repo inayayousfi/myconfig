@@ -112,6 +112,54 @@ function Unregister-ExistingDistro
   }
 }
 
+function Install-WslAutostart
+{
+  # The T3 Code backend is a systemd *user* unit. Lingering keeps it alive with no
+  # shell open, but only from inside the instance. It cannot stop WSL from tearing
+  # the instance down, and two independent timeouts do exactly that:
+  #
+  #   vmIdleTimeout       [wsl2]     stops the utility VM.       Default 60000 ms.
+  #   instanceIdleTimeout [general]  stops the distro instance.  Default 15000 ms.
+  #
+  # Setting only vmIdleTimeout leaves the instance timeout at its default, so the
+  # distro still stops 15-20 s after the last terminal closes. Both are needed.
+  $wslConfigPath = Join-Path $env:USERPROFILE ".wslconfig"
+  $wslConfig = @"
+[general]
+instanceIdleTimeout=-1
+
+[wsl2]
+vmIdleTimeout=-1
+"@
+
+  Write-Log "Writing $wslConfigPath"
+
+  # Not Set-Content -Encoding UTF8: on Windows PowerShell 5.1 that emits a BOM,
+  # and WSL's .wslconfig parser rejects the whole file over it, silently ignoring
+  # every key. The failure looks exactly like the timeouts never being set.
+  [System.IO.File]::WriteAllText($wslConfigPath, $wslConfig, (New-Object System.Text.UTF8Encoding $false))
+
+  # Disabling the timeouts stops WSL shutting the instance down. Nothing starts it
+  # either, so a logon shortcut supplies the other half. wsl.exe is a console
+  # program, hence the hidden PowerShell wrapper. -NoProfile matters: without it
+  # every logon loads the Oh My Posh profile this repo installs, for nothing.
+  $startupDir = [Environment]::GetFolderPath("Startup")
+  $shortcutPath = Join-Path $startupDir "myconfig-wsl-autostart.lnk"
+  $powershellPath = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+
+  Write-Log "Creating logon shortcut $shortcutPath"
+
+  $shell = New-Object -ComObject WScript.Shell
+  $shortcut = $shell.CreateShortcut($shortcutPath)
+  $shortcut.TargetPath = $powershellPath
+  $shortcut.Arguments = "-NoLogo -NoProfile -WindowStyle Hidden -Command `"wsl.exe -d $Distro --exec /bin/true`""
+  $shortcut.Description = "Boot the $Distro WSL instance at logon so its user services run without a terminal."
+  # Belt and braces: powershell.exe paints a console for a fraction of a second
+  # before it applies -WindowStyle Hidden. Minimized keeps that off the desktop.
+  $shortcut.WindowStyle = 7
+  $shortcut.Save()
+}
+
 function Main
 {
   if ([string]::IsNullOrWhiteSpace($DotfilesPath))
@@ -353,7 +401,23 @@ log "Default shell verified for $WINUSER"
 
   Invoke-WslRootScript ($shellScript.Replace('__WSL_USER__', $wslUser))
 
+  Write-Log "Phase 5: keeping the instance alive across sessions..."
+  Install-WslAutostart
+
+  # The shutdown has to come after the config write. WSL reads .wslconfig only when
+  # the VM starts, so this is what makes the new timeouts take effect at all.
   wsl --shutdown
+
+  # Bring the instance back up the same way the logon shortcut does, so the T3 Code
+  # service is already running when the script ends instead of at the next logon.
+  Write-Log "Booting $Distro under the new idle timeouts..."
+  wsl -d $Distro --exec /bin/true
+
+  if ($LASTEXITCODE -ne 0)
+  {
+    throw "Could not boot $Distro after writing .wslconfig (exit code $LASTEXITCODE)."
+  }
+
   Write-Log "Arch WSL setup finished." -Level 'OK'
 }
 

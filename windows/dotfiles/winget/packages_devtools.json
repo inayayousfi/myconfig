@@ -18,12 +18,6 @@
         },
         {
           "PackageIdentifier": "Docker.DockerDesktop"
-        },
-        {
-          "PackageIdentifier": "T3Tools.T3Code"
-        },
-        {
-          "PackageIdentifier": "Anthropic.ClaudeCode"
         }
       ],
       "SourceDetails": {

@@ -44,6 +44,7 @@ function Confirm-Uninstall {
     Write-Host "  - WezTerm configuration (restored from backup if available)"
     Write-Host "  - GlazeWM and Zebar configuration"
     Write-Host "  - AutoHotkey scripts"
+    Write-Host "  - WSL logon autostart shortcut and %UserProfile%\.wslconfig"
     Write-Host "  - PowerShell profile (restored from backup if available)"
     Write-Host "  - PSReadLine module"
     Write-Host "  - GnuWin32 PATH entry"
@@ -194,6 +195,34 @@ function Remove-AHKScripts {
         Write-Log "AutoHotkey scripts removed" -Level 'OK'
     } else {
         Write-Log "AutoHotkey scripts not found, skipping"
+    }
+}
+
+# ============================================================================
+# Remove WSL Autostart
+# ============================================================================
+
+function Remove-WslAutostart {
+    $shortcutPath = Join-Path ([Environment]::GetFolderPath("Startup")) "myconfig-wsl-autostart.lnk"
+    $wslConfigPath = Join-Path $env:USERPROFILE ".wslconfig"
+
+    if (Test-Path $shortcutPath) {
+        Write-Log "Removing WSL autostart shortcut..."
+        Remove-Item -Path $shortcutPath -Force
+        Write-Log "WSL autostart shortcut removed" -Level 'OK'
+    } else {
+        Write-Log "WSL autostart shortcut not found, skipping"
+    }
+
+    # Written wholesale by setup-arch-wsl.ps1, so it is ours to delete. Leaving it
+    # behind would keep the WSL VM pinned in memory forever after an uninstall,
+    # with nothing on screen explaining why.
+    if (Test-Path $wslConfigPath) {
+        Write-Log "Removing .wslconfig..."
+        Remove-Item -Path $wslConfigPath -Force
+        Write-Log ".wslconfig removed" -Level 'OK'
+    } else {
+        Write-Log ".wslconfig not found, skipping"
     }
 }
 
@@ -349,6 +378,10 @@ function Remove-WingetPackages {
         "Python.PythonInstallManager"
         "JanDeDobbeleer.OhMyPosh"
         "wez.wezterm"
+        # T3 Code and Claude Code are no longer installed on Windows; both now live
+        # only inside the Arch WSL distro. They stay listed here so an uninstall on
+        # a machine provisioned by an earlier version still cleans them up. winget
+        # treats a package that is not installed as a no-op.
         "T3Tools.T3Code"
         "Anthropic.ClaudeCode"
     )
@@ -387,6 +420,7 @@ function Main {
     Remove-WezTermConfig
     Remove-GlazeWMConfig
     Remove-AHKScripts
+    Remove-WslAutostart
     Remove-AIConfig
     Remove-PowerShellProfile
     Remove-PSReadLineModule

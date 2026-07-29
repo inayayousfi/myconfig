@@ -235,6 +235,11 @@ set -euo pipefail
 
 log() { printf '[arch-wsl][user packages] %s\n' "$*"; }
 
+# WSL runs this as a non-login shell, so no profile puts ~/.local/bin on PATH.
+# Stowed tools and the Claude Code installer both expect to find it there. This
+# lasts for this phase only. Interactive shells get the path from the zsh config.
+export PATH="$HOME/.local/bin:$PATH"
+
 DOTFILES_REPO="__DOTFILES_WSL_PATH__"
 USER_DOTFILES_DIR="$HOME/dotfiles"
 

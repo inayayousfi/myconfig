@@ -52,6 +52,11 @@ fi
 # Platform-specific Environment Variables
 # ============================================================================
 
+# Pin bun's global root. Without this bun falls back to $XDG_CACHE_HOME/.bun,
+# which splits globals across two dirs and puts binaries under a cache path
+# that cleaners are free to wipe.
+export BUN_INSTALL="$HOME/.bun"
+
 if $IS_MACOS; then
     export JAVA_HOME="/opt/homebrew/opt/openjdk"
     export PATH="$HOME/.local/bin:$PATH:$(go env GOPATH 2>/dev/null)/bin:$JAVA_HOME/bin:$(bun pm bin -g 2>/dev/null)"
@@ -120,8 +125,11 @@ if has claude; then
   alias ccor='claude remote-control --permission-mode bypassPermissions'
 fi
 
-if has bun; then
-  alias t3c='bunx t3@nightly start --log-level warn --auto-bootstrap-project-from-cwd --mode web'
+# t3 is installed globally (bun add -g t3@nightly) so the background service
+# has a durable binary path rather than a bunx temp dir.
+if has t3; then
+  alias t3c='t3 connect'
+  alias t3s='t3 service'
 fi
 
 if has zoxide; then

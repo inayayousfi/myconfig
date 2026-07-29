@@ -345,7 +345,7 @@ Arch WSL is an optional Windows installer path. It creates a fresh `archlinux` d
 
 | Phase | Behavior |
 |-------|----------|
-| Root bootstrap | Sets root password to `root`, initializes pacman keys, updates packages, installs base tools, writes initial `/etc/wsl.conf` |
+| Root bootstrap | Sets root password to `root`, initializes pacman keys, updates packages, installs base tools, enables `sshd` offline, writes initial `/etc/wsl.conf` with `systemd=true` |
 | User setup | Creates a user named after the Windows user, enables wheel sudo, grants passwordless sudo, sets default user, generates `en_US.UTF-8` locale |
 | User packages and dotfiles | Installs Rust stable, builds `paru`, installs packages, configures Git for Windows SSH, installs Oh My Zsh, syncs and stows selected dotfiles, installs zsh plugins |
 | Shell enforcement | Sets and verifies zsh as the WSL user's default shell |

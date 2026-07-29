@@ -158,13 +158,18 @@ pacman -S --noconfirm sudo git base-devel wget curl unzip zip man-db man-pages v
 log "Generating SSH host keys"
 ssh-keygen -A
 
+# systemd is not running yet on this first boot, so enable offline. This only
+# writes the multi-user.target.wants symlink, which the next boot acts on.
+log "Enabling sshd for systemd boot"
+SYSTEMD_OFFLINE=1 systemctl enable sshd
+
 log "Writing /etc/wsl.conf"
 cat >/etc/wsl.conf <<'EOF'
 [interop]
 enabled=true
 
 [boot]
-command="/usr/sbin/sshd"
+systemd=true
 EOF
 '@
 
@@ -205,7 +210,7 @@ enabled=true
 default=$WINUSER
 
 [boot]
-command="/usr/sbin/sshd"
+systemd=true
 EOF
 
 log "Generating locale"

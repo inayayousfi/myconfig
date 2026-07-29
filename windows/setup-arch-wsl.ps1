@@ -153,7 +153,7 @@ log "Updating system packages"
 pacman -Syu --noconfirm
 
 log "Installing base packages"
-pacman -S --noconfirm sudo git base-devel wget curl unzip zip man-db man-pages vi rustup openssh
+pacman -S --noconfirm sudo git base-devel wget curl unzip zip man-db man-pages vi rustup openssh polkit
 
 log "Generating SSH host keys"
 ssh-keygen -A
@@ -193,6 +193,12 @@ sed -i 's/^# *%wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
 
 grep -q "^$WINUSER ALL=(ALL) NOPASSWD:ALL" /etc/sudoers || \
     echo "$WINUSER ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+# User services must survive with no shell open. loginctl needs logind to be
+# up, so fall back to the on-disk marker it would have written.
+log "Enabling lingering for $WINUSER"
+loginctl enable-linger "$WINUSER" 2>/dev/null || \
+    install -Dm644 /dev/null "/var/lib/systemd/linger/$WINUSER"
 
 log "Restricting sshd to loopback and $WINUSER"
 cat >/etc/ssh/sshd_config.d/10-local-only.conf <<EOF
@@ -293,6 +299,16 @@ git clone https://github.com/zsh-users/zsh-syntax-highlighting.git "${ZSH_CUSTOM
 
 log "Starting wsl2-ssh-agent if available"
 eval "$(/usr/bin/wsl2-ssh-agent)" || true
+
+# Stowed just above. It installs t3 and its background service, and skips its own
+# linking step because there is no terminal here. Never fatal: a failure must not
+# cost the whole provisioning run.
+if [ -x "$HOME/.local/bin/t3-setup" ]; then
+    log "Setting up T3 Code"
+    "$HOME/.local/bin/t3-setup" </dev/null || log "[WARN] T3 Code setup failed, run 't3c' after login"
+else
+    log "[WARN] t3-setup not found, skipping T3 Code setup"
+fi
 
 log "Cleaning up"
 rm -rf "$HOME/paru"

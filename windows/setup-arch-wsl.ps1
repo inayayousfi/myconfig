@@ -170,6 +170,23 @@ function Main
   $dotfilesWslPath = ConvertTo-WslPath -Path $DotfilesPath
   $wslUser = [Environment]::UserName
 
+  # Git inside WSL authenticates against the Windows OpenSSH agent, so it must call
+  # the Windows client rather than Arch's. A bare "ssh.exe" only resolves while WSL
+  # appends the Windows PATH to its own, and that is off on plenty of setups, so the
+  # config silently breaks every SSH remote. Resolve it here instead, from the real
+  # Windows directory, and keep it empty when the optional OpenSSH client is absent.
+  $sshExePath = Join-Path $env:SystemRoot "System32\OpenSSH\ssh.exe"
+  $sshExeWslPath = ""
+
+  if (Test-Path -LiteralPath $sshExePath)
+  {
+    $sshExeWslPath = ConvertTo-WslPath -Path $sshExePath
+  }
+  else
+  {
+    Write-Log "Windows OpenSSH client not found at $sshExePath. Git in WSL will use Arch's own ssh." -Level 'WARNING'
+  }
+
   if (-not (Test-CommandExists "wsl"))
   {
     Write-Log "wsl not found. Install or enable Windows Subsystem for Linux first." -Level 'ERROR'
@@ -291,6 +308,10 @@ export PATH="$HOME/.local/bin:$PATH"
 DOTFILES_REPO="__DOTFILES_WSL_PATH__"
 USER_DOTFILES_DIR="$HOME/dotfiles"
 
+# Absolute path to the Windows OpenSSH client, resolved by the provisioner. Empty
+# when Windows does not ship it, in which case Arch's own ssh takes over.
+SSH_EXE="__SSH_EXE_WSL_PATH__"
+
 cd
 log "Setting Rust toolchain"
 rustup default stable
@@ -312,7 +333,14 @@ paru -Syu --noconfirm --skipreview \
     btop tokei hunk-bin herdr-bin neovim nodejs node-gyp
 
 log "Configuring Git core settings"
-git config --global core.sshCommand ssh.exe
+if [ -x "$SSH_EXE" ]; then
+    log "Using Windows ssh at $SSH_EXE"
+    git config --global core.sshCommand "$SSH_EXE"
+else
+    # --unset exits 5 when the key is absent, which set -e would treat as fatal.
+    log "[WARN] Windows ssh not usable at '$SSH_EXE'; falling back to Arch's ssh"
+    git config --global --unset core.sshCommand || true
+fi
 git config --global core.symlinks true
 
 log "Installing Oh My Zsh"
@@ -371,7 +399,7 @@ curl -fsSL https://claude.ai/install.sh | bash
 
 '@
 
-  Invoke-WslUserScript ($userPackagesScript.Replace('__DOTFILES_WSL_PATH__', $dotfilesWslPath))
+  Invoke-WslUserScript ($userPackagesScript.Replace('__DOTFILES_WSL_PATH__', $dotfilesWslPath).Replace('__SSH_EXE_WSL_PATH__', $sshExeWslPath))
 
   Write-Log "Phase 4: enforcing default shell..."
   $shellScript = @'

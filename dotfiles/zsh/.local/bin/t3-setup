@@ -31,6 +31,12 @@ command -v bun >/dev/null 2>&1 ||
 command -v jq >/dev/null 2>&1 ||
     fail "jq is missing. It reads the T3 Connect status. Run: paru -S jq"
 
+# The T3 service does not run from the bun global install. It pins its own copy by
+# running `npm install --prefix ~/.t3/runtime/versions/<version>`, because it ships
+# native dependencies that a copied bundle cannot carry.
+command -v npm >/dev/null 2>&1 ||
+    fail "npm is missing. The T3 service installs its pinned runtime with it. Run: paru -S npm"
+
 case "$(systemctl is-system-running 2>/dev/null || true)" in
 running | degraded | starting | maintenance) ;;
 *)
@@ -98,6 +104,51 @@ fi
 # "command not found", which sends you hunting in the wrong place.
 [ -x "$SYSTEM_BIN" ] ||
     fail "$SYSTEM_BIN does not resolve to an executable."
+
+# ---------------------------------------------------------------------------
+# Let the native terminal binding compile
+# ---------------------------------------------------------------------------
+
+# npm 12 refuses to run the install scripts of a dependency unless that package is
+# approved in its allow-scripts setting. It only prints a warning, then exits 0. So
+# the pinned runtime installs "successfully" with its native terminal binding
+# (node-pty) left uncompiled, and the service dies at startup with
+# NodePtyModuleLoadError. That package publishes prebuilt binaries for macOS and
+# Windows only, so Linux has to compile it here.
+NPMRC="$HOME/.npmrc"
+ALLOW_LINE='allow-scripts[]=node-pty'
+
+if [ -f "$NPMRC" ] && grep -qxF "$ALLOW_LINE" "$NPMRC"; then
+    log "npm already allows the node-pty install script"
+else
+    log "Allowing the node-pty install script in $NPMRC"
+    # Without this a file that ends mid-line would glue the entry onto that line.
+    if [ -s "$NPMRC" ] && [ -n "$(tail -c 1 "$NPMRC")" ]; then
+        printf '\n' >>"$NPMRC"
+    fi
+    printf '%s\n' "$ALLOW_LINE" >>"$NPMRC"
+fi
+
+# A runtime installed before that line existed is broken and stays broken. T3 writes
+# a sentinel file beside it and skips the reinstall while the file is there. So drop
+# any tree whose terminal binding has no loadable Linux binary, and let the service
+# install below build a fresh one.
+RUNTIME_VERSIONS="$HOME/.t3/runtime/versions"
+NODE_ARCH="$(node -p 'process.arch')"
+
+for version_dir in "$RUNTIME_VERSIONS"/*/; do
+    pty_dir="${version_dir%/}/node_modules/node-pty"
+    [ -d "$pty_dir" ] || continue
+
+    if [ -f "$pty_dir/build/Release/pty.node" ] ||
+        [ -f "$pty_dir/build/Debug/pty.node" ] ||
+        [ -f "$pty_dir/prebuilds/linux-$NODE_ARCH/pty.node" ]; then
+        continue
+    fi
+
+    log "Discarding ${version_dir%/}, its terminal binding never compiled"
+    rm -rf "${version_dir%/}"
+done
 
 # ---------------------------------------------------------------------------
 # Install the background service

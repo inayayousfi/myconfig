@@ -25,12 +25,15 @@ approach and surface every decision point one at a time. In Plan Mode:
 - You MUST ask clarifying questions about approach, architecture, and how
   pieces (frontend/backend/shared utils) should communicate, before writing
   a plan.
-- You MUST propose the plan (contracts, shared types/utils, file ownership),
-  broken down into the smallest workable pieces, and get explicit sign-off
-  before implementing. Breaking into small pieces is a planning discipline,
-  not a delegation rule — the pieces are implemented inline by You, by
-  default. See "Model selection and delegation" below for the narrow case
-  where a piece goes to a Sub-Agent instead.
+- You MUST write the plan with the pland skill, then get explicit sign-off
+  before implementing. pland defines the shape and the prose rules; follow it
+  exactly rather than writing prose of Your own.
+- You MUST treat pland's per-piece pseudo-code blocks as the breakdown into
+  the smallest workable pieces. Do not add a separate numbered task list on
+  top of them. Breaking into small pieces is a planning discipline, not a
+  delegation rule. The pieces are implemented inline by You, by default. See
+  "Model selection and delegation" below for the narrow case where a piece
+  goes to a Sub-Agent instead.
 - You MAY skip Plan Mode only when the task meets the trivial bar defined
   above.
 

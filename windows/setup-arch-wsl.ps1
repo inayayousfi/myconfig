@@ -397,6 +397,16 @@ mkdir -p "$HOME/Projects"
 
 curl -fsSL https://claude.ai/install.sh | bash
 
+# Must run after the stow loop above. Stow deletes each target file before it
+# relinks, which would drop the hook block herdr writes into settings.json.
+# Never fatal: a missing agent-state hook must not cost the whole run.
+log "Installing herdr Claude integration"
+if command -v herdr >/dev/null 2>&1; then
+    herdr integration install claude || log "[WARN] herdr Claude integration failed"
+else
+    log "[WARN] herdr not found, skipping Claude integration"
+fi
+
 '@
 
   Invoke-WslUserScript ($userPackagesScript.Replace('__DOTFILES_WSL_PATH__', $dotfilesWslPath).Replace('__SSH_EXE_WSL_PATH__', $sshExeWslPath))

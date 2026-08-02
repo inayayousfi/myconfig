@@ -79,7 +79,7 @@ Location: `dotfiles/zsh/.oh-my-zsh/custom/plugins/inaya/inaya.plugin.zsh`
 
 Key environment defaults include XDG paths, `nvim` as editor, `xterm-256color`, UTF-8 locale, and vi-mode cursor support.
 
-Key aliases and functions include `nvim` shortcuts, modern CLI replacements for `ls`, `find`, and `grep`, `lg` for Lazygit, `ff` for Fastfetch, `y` for Yazi directory handoff, `pf` for fuzzy file opening, `mkd`, `reload-zsh`, `stowgo`, `update`, and `cleanup`.
+Key aliases and functions include `nvim` shortcuts, modern CLI replacements for `ls`, `find`, and `grep`, `lg` for Lazygit, `ff` for Fastfetch, `y` for Yazi directory handoff, `pf` for fuzzy file opening, `mkd`, `reload-zsh`, `update`, and `cleanup`.
 
 ### PowerShell
 
@@ -228,7 +228,6 @@ These packages are intended for Unix-like targets that receive the full shared t
 - fastfetch
 - btop
 - tokei
-- opencode
 
 ### Programming Languages And Build Tools
 
@@ -348,7 +347,7 @@ Arch WSL is an optional Windows installer path. It creates a fresh `archlinux` d
 |-------|----------|
 | Root bootstrap | Sets root password to `root`, initializes pacman keys, updates packages, installs base tools, enables `sshd` offline, writes initial `/etc/wsl.conf` with `systemd=true` |
 | User setup | Creates a user named after the Windows user, enables wheel sudo, grants passwordless sudo, enables lingering so user services survive with no shell open, sets default user, generates `en_US.UTF-8` locale |
-| User packages and dotfiles | Installs Rust stable, builds `paru`, installs packages, configures Git for Windows SSH, installs Oh My Zsh, syncs and stows selected dotfiles, installs zsh plugins, runs `t3-setup` to install T3 Code and its background service |
+| User packages and dotfiles | Installs Rust stable, builds `paru`, installs packages, configures Git for Windows SSH, installs Oh My Zsh, syncs and stows selected dotfiles, installs zsh plugins, runs `t3-setup` to install T3 Code and its background service, installs Claude Code, then installs the herdr Claude integration |
 | Shell enforcement | Sets and verifies zsh as the WSL user's default shell |
 | Instance persistence | Writes `%UserProfile%\.wslconfig` with `instanceIdleTimeout=-1` and `vmIdleTimeout=-1`, adds a hidden logon shortcut that boots the distro, then restarts the instance under the new timeouts |
 
@@ -367,7 +366,7 @@ Disabling the timeouts stops WSL shutting the instance down, but nothing starts 
 
 ### Arch Package Set
 
-The Arch WSL setup installs packages through `pacman` and `paru`, including `base-devel`, `rustup`, `zsh`, `rsync`, `stow`, `wsl2-ssh-agent`, `ripgrep`, `go`, `yazi-git`, `ffmpeg`, `7zip`, `jq`, `poppler`, `fd`, `fzf`, `bat`, `zoxide`, `resvg`, `imagemagick`, `eza`, `llvm`, `bun`, `python`, `fastfetch`, `lazygit`, `jdk-openjdk`, `maven`, `make`, `cmake`, `btop`, `tokei`, `herdr-bin`, and `opencode`.
+The Arch WSL setup installs packages through `pacman` and `paru`, including `base-devel`, `rustup`, `zsh`, `rsync`, `stow`, `wsl2-ssh-agent`, `ripgrep`, `go`, `yazi-git`, `ffmpeg`, `7zip`, `jq`, `poppler`, `fd`, `fzf`, `bat`, `zoxide`, `resvg`, `imagemagick`, `eza`, `llvm`, `bun`, `python`, `fastfetch`, `lazygit`, `jdk-openjdk`, `maven`, `make`, `cmake`, `btop`, `tokei`, `hunk-bin`, `herdr-bin`, `neovim`, `nodejs`, and `node-gyp`.
 
 ### Synced Dotfiles
 
@@ -376,7 +375,9 @@ Arch WSL syncs and stows these shared dotfile packages from the Windows-accessib
 - `zsh`
 - `yazi`
 - `lazygit`
+- `ai`
 - `herdr`
+- `nvim`
 
 ---
 
@@ -391,6 +392,7 @@ myconfig/
 ├── bootstrap.sh
 ├── bootstrap.ps1
 ├── dotfiles/
+│   ├── ai/
 │   ├── hermes/
 │   ├── herdr/
 │   ├── hyfetch/
@@ -421,6 +423,7 @@ myconfig/
 
 | Package | Description | Primary Target |
 |---------|-------------|----------------|
+| `ai` | Claude Code global instructions, skills, and settings | `~/.claude/` |
 | `hermes` | Hermes config | `$XDG_CONFIG_HOME/hermes/` |
 | `herdr` | Herdr config | `$XDG_CONFIG_HOME/herdr/` |
 | `hyfetch` | Hyfetch config | `$XDG_CONFIG_HOME/hyfetch.json` |
@@ -431,6 +434,8 @@ myconfig/
 | `yazi` | Yazi config and flavor | `$XDG_CONFIG_HOME/yazi/` |
 | `zed` | Zed settings, keymap, and theme (unused, kept for reference) | Not installed by any script |
 | `zsh` | `.zshrc`, Oh My Zsh theme, and custom plugin | Home directory and Oh My Zsh custom paths |
+
+The `ai` package ships `settings.json` without a `hooks` key on purpose. Arch WSL runs `herdr integration install claude` after stowing, and that command merges its own `SessionStart` hook into the file with a home-relative path. Windows copies only `CLAUDE.md` and `skills/` from this package, because Claude Code runs only inside the Arch WSL distro.
 
 ### Installation Model
 

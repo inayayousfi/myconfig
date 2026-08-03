@@ -24,6 +24,7 @@ Non-negotiable. They apply to every word outside a code block.
 - Subject verb object. No subordinate clauses. No rhetoric.
 - Target 10 words per sentence. Hard cap 15.
 - **One bullet is one line.** If it needs two lines, it is two bullets.
+- **Blank line between list items.** Every list. Packed lists are hard to scan.
 - The cap is per line on screen, not per sentence.
 - Simplest word that works. Technical terms stay.
 - No em dash. Ever.
@@ -33,8 +34,11 @@ Outside code blocks, name the role first and the identifier after it, in
 parentheses. Write "the step that unpacks image layers (`extractTar`)", not
 "`extractTar`".
 
-Inside code blocks, do the opposite. Short names only. A glossary above the
-block maps them to roles. Role-first phrases make pseudo-code unreadable.
+Inside code blocks, drop the parentheses and write plain words. Name a thing
+by what it is. Write "pending uploads", not a camelCase identifier.
+
+Never invent an identifier. A made-up name in a plan is noise. The reader
+cannot check it, and the real code will not match it.
 
 ## Scope
 
@@ -104,12 +108,31 @@ If there are more than five, stop. The change is too big. Split it.
 
 One block per shippable piece, in the order they land.
 
-Each piece gets a heading naming what it delivers, a two-line glossary
-mapping short names to roles, then pseudo-code.
+Each piece gets a heading naming what it delivers, then pseudo-code.
 
-The pseudo-code carries control flow, ordering, error branches and state
-changes. It is the breakdown, so a reader can count the blocks and see how
-big the change is.
+Show everything the piece will write. Data, then behaviour.
+
+Both carry the same weight. Data comes first because behaviour reads it.
+That is reading order, not importance. Never trade one for the other.
+
+**Data.** Every structure the piece adds or changes. Name its kind: record,
+list, map, set, queue. List every field. Say what each one holds.
+
+**Behaviour.** Every function the piece adds or changes. Say what it takes
+in and what it gives back. Then the body.
+
+The body carries control flow, ordering, error branches and state changes.
+
+Write bodies in plain words with code structure. Real words, indented like
+code. Never target-language syntax.
+
+Collapse a body to one line only when it is trivial and obvious. A long
+boring body still gets written out in full.
+
+The reader authors this code. They sign off on its shape here, not at review.
+
+This is also the breakdown. A reader counts the blocks and sees the real
+size of the change. Elision hides that size, so elide almost nothing.
 
 ### Verification
 

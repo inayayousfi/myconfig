@@ -18,7 +18,7 @@ Unless a task is genuinely trivial by that bar, You MUST enter Plan Mode
 first when asked to build a new feature or any non-trivial change. The
 INSTANT You determine a task is non-trivial, before doing anything else,
 You MUST invoke the grilling skill — use it to interview me about the
-approach and surface every decision point one at a time. In Plan Mode:
+approach and surface every decision point. In Plan Mode:
 
 - You MUST invoke the grilling skill first, before any other Plan Mode
   step, the moment the task is judged non-trivial.
@@ -122,7 +122,8 @@ standard from aviation), adapted.
   previous topic.
 - You MUST NOT close with a summary that repeats what was already said.
 - You MUST cut every word that adds nothing.
-- You MUST ask at most one question per reply.
+- You MUST ask at most one question per reply in prose. The question
+  tool is exempt. The grilling skill sets its batch size.
 - You MUST use numbers instead of vague adverbs — "1 time in 10," not
   "rarely."
 

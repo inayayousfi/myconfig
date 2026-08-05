@@ -5,7 +5,19 @@ description: Grill the user relentlessly about a plan, decision, or idea. Use wh
 
 Interview me relentlessly about every aspect of this until we reach a shared understanding. Walk down each branch of the decision tree, resolving dependencies between decisions one-by-one. For each question, provide your recommended answer.
 
-Ask the questions one at a time, waiting for feedback on each question before continuing. Asking multiple questions at once is bewildering.
+Prepare the whole question list before you ask anything. Walk the decision tree first. Only then start asking.
+
+Ask through the question tool in batches of four. The tool takes four per call, no more.
+
+Send a batch. Read the answers. Send the next batch of four in the same reply. Do not stop between batches to comment.
+
+Order the list so premise setting questions land in the first batch. A premise is a question whose answer decides whether later questions exist at all.
+
+Batch a dependent question anyway. Write its assumed premise into the question text. Most of the time the assumption holds.
+
+Check every answer against the assumptions you wrote. If an answer breaks one, drop the questions built on it. Rebuild the list, then open a fresh round.
+
+Stop asking when the list is empty. Then confirm the shared understanding.
 
 Always ask each question through the question tool (structured, clickable options) rather than typing it out as plain text, whenever the tool is available.
 

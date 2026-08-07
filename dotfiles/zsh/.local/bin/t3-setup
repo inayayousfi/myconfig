@@ -14,10 +14,13 @@ set -euo pipefail
 UNIT="t3code"
 BOOT_LOG="$HOME/.t3/userdata/logs/boot-service.log"
 STATE_FILE="$HOME/.t3/runtime/service-state.json"
-# Long enough for the unit's own RestartSec=5 retry to fire once, so a server
-# that crashes on startup has already bumped its relaunch counter by the time
-# the check below reads it.
-SETTLE_SECONDS=10
+# The live server rewrites this on every start. It carries the port it bound and
+# the moment it came up, which is what the readiness poll below waits on.
+RUNTIME_FILE="$HOME/.t3/userdata/server-runtime.json"
+# A ceiling, not a cost. The poll normally returns in a couple of seconds. This
+# only has to outlast the worst legitimate start, which is a first install
+# compiling the native terminal binding.
+READY_TIMEOUT=120
 
 log() { printf '[t3-setup] %s\n' "$*"; }
 fail() {
@@ -49,6 +52,9 @@ command -v bun >/dev/null 2>&1 ||
 
 command -v jq >/dev/null 2>&1 ||
     fail "jq is missing. It reads the T3 Connect status. Run: paru -S jq"
+
+command -v curl >/dev/null 2>&1 ||
+    fail "curl is missing. The restart check probes the server with it. Run: paru -S curl"
 
 # The T3 service does not run from the bun global install. It pins its own copy by
 # running `npm install --prefix ~/.t3/runtime/versions/<version>`, because it ships
@@ -240,27 +246,66 @@ fi
 # skip is the common case, so the restart has to be unconditional here for `t3c` to
 # be a dependable way to kick the server. The guard at the top of this file is what
 # makes this safe: no caller of this script sits in the cgroup about to be killed.
+
+# Remember which server is up now, so the poll below can tell the replacement
+# from the one about to die. A missing file reads as empty, and any stamp the new
+# server writes differs from that.
+started_before="$(jq -r '.startedAt // empty' "$RUNTIME_FILE" 2>/dev/null || true)"
+
 log "Restarting the server so it picks up this install"
 log "Every session running inside it is dropped now"
 
 systemctl --user restart "$UNIT" ||
     fail "could not restart $UNIT. See $BOOT_LOG"
 
-# The unit is Type=simple, so restart returns the moment the process forks and
-# "active" right now proves nothing. A server that dies on startup is relaunched
-# every RestartSec=5, so it reads active roughly half the times you look. The
-# relaunch counter does not flicker that way. Read it after the restart, not
-# before, because whether an explicit restart resets it is undocumented; comparing
-# two post-restart reads is correct either way.
 restarts_before="$(systemctl --user show "$UNIT" -p NRestarts --value 2>/dev/null || echo unknown)"
-sleep "$SETTLE_SECONDS"
+
+# The unit is Type=simple, so restart returns the moment the process forks, and a
+# unit reading "active" only proves the launcher forked something. Wait on the
+# server's own readiness signal instead, the same one `t3 pair` uses to find a
+# live server: a freshly stamped runtime file, then its environment descriptor
+# answering with parseable JSON.
+#
+# Do not probe /health. It falls through to the single-page app and returns 200
+# with HTML for any path at all, so it proves nothing beyond a held socket. The
+# descriptor is discriminating because it has to parse.
+#
+# The origin comes out of the runtime file rather than a fixed port, since the
+# server takes --port and a fixed guess would break the moment it moves.
+server_version=""
+deadline=$((SECONDS + READY_TIMEOUT))
+
+while [ "$SECONDS" -lt "$deadline" ]; do
+    started_now="$(jq -r '.startedAt // empty' "$RUNTIME_FILE" 2>/dev/null || true)"
+
+    if [ -n "$started_now" ] && [ "$started_now" != "$started_before" ]; then
+        origin="$(jq -r '.origin // empty' "$RUNTIME_FILE" 2>/dev/null || true)"
+
+        if [ -n "$origin" ] && server_version="$(curl -fsS --max-time 5 \
+            "$origin/.well-known/t3/environment" 2>/dev/null |
+            jq -re '.serverVersion' 2>/dev/null)"; then
+            break
+        fi
+    fi
+
+    server_version=""
+    sleep 1
+done
+
+[ -n "$server_version" ] ||
+    fail "the server never answered within ${READY_TIMEOUT}s of the restart. See $BOOT_LOG"
+
+# Answering once is not staying up. A server that dies right after binding is
+# relaunched every RestartSec=5, and each relaunch moves this counter. Comparing
+# two post-restart reads catches that, and sidesteps whether an explicit restart
+# resets the counter, which is undocumented.
 restarts_after="$(systemctl --user show "$UNIT" -p NRestarts --value 2>/dev/null || echo unknown)"
 state="$(systemctl --user is-active "$UNIT" 2>/dev/null || true)"
 
 if [ "$state" != "active" ] || [ "$restarts_after" != "$restarts_before" ]; then
-    fail "the server did not stay up: state=${state:-unknown}, relaunches went from $restarts_before to $restarts_after. See $BOOT_LOG"
+    fail "the server answered but did not stay up: state=${state:-unknown}, relaunches went from $restarts_before to $restarts_after. See $BOOT_LOG"
 fi
 
-log "Server is back up"
+log "Server is back up on $server_version"
 
 log "Done"

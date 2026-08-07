@@ -9,6 +9,10 @@ Prepare the whole question list before you ask anything. Walk the decision tree 
 
 Ask through the question tool in batches of four. The tool takes four per call, no more.
 
+Aim for one batch. Two at the most. Merge questions that share an answer, and drop any question whose answer already follows from another one.
+
+A third batch needs a stated reason: an answer broke a premise, so questions that did not exist before exist now.
+
 Send a batch. Read the answers. Send the next batch of four in the same reply. Do not stop between batches to comment.
 
 Order the list so premise setting questions land in the first batch. A premise is a question whose answer decides whether later questions exist at all.

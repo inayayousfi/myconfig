@@ -34,11 +34,72 @@ Outside code blocks, name the role first and the identifier after it, in
 parentheses. Write "the step that unpacks image layers (`extractTar`)", not
 "`extractTar`".
 
-Inside code blocks, drop the parentheses and write plain words. Name a thing
-by what it is. Write "pending uploads", not a camelCase identifier.
-
 Never invent an identifier. A made-up name in a plan is noise. The reader
 cannot check it, and the real code will not match it.
+
+## Notation
+
+A code block in a plan is pseudo-code. It has to read faster than the real
+code, or it is not earning its place.
+
+Borrow the look of Rust to get there. For example a named declaration,
+parameters annotated after a colon, an arrow before what comes back, braces,
+a dot between a value and its field, and so on.
+
+The look only. Never the language, and never its hard parts. The moment Rust
+would want a lifetime, a generic, a trait, a wrapper type, etc., fall back to
+the plainness of C. Aim for the middle of the two.
+
+A block has to read like code. It must never make the reader work through a
+type system.
+
+The statements inside stay plain words, in the language of the conversation.
+
+Name a thing by what it is, not by the identifier the code happens to spell.
+For example "pending uploads" rather than a camelCase symbol. A plan reasons
+one level above the code, and a literal symbol drags it back down.
+
+The one exception is a name the plan itself decides. Proposing that name is
+a design call, so it belongs in the block.
+
+When the piece changes code that already exists, show the before and the
+after, both in this notation. Pasting the real code as the before and
+pseudo-code as the after hides the logic. The reader then compares two
+languages instead of two designs.
+
+Two habits, and these two are rules, not examples:
+
+- Never tag the fence with a language. Highlighting invents keywords that
+  are not there, and the block stops reading as pseudo-code.
+
+- Put the exits on the right, in one column. The error branches then read
+  straight down, before the real work starts.
+
+This is a default, not a law. When the thing you describe has no functions
+and no records, the shape has nothing to hold. Drop it and draw what reads
+best instead. A config file, a chain of shell commands, a data format … each
+one wants its own picture.
+
+Example:
+
+```
+struct Dll {              // record, public
+    head: Node?,          // none when the list is empty
+    destroy: Destructor?, // none when the caller frees its own data
+}
+
+fn dll_erase(list: &Dll, node: Node?) -> Status {
+    if list is a null address    -> Status.Invalid
+    if node is none              -> Status.Empty
+
+    unlink(list, node)
+    if list.destroy is set {
+        list.destroy(node.data)
+    }
+    free(node)
+                                 -> Status.Ok
+}
+```
 
 ## Scope
 
@@ -67,6 +128,10 @@ One ASCII diagram over the scope above.
 
 Keep it small. Complexity is error surface. A plain diagram that always
 renders beats a clever one that breaks.
+
+Stack it vertically. One column, branches leaving to the right, never a line
+that crosses another one. A crossing or a diagonal breaks in a terminal, and
+a broken diagram costs more than no diagram.
 
 Never Mermaid. It shows as raw syntax in a terminal, which is unreadable.
 
@@ -123,8 +188,7 @@ in and what it gives back. Then the body.
 
 The body carries control flow, ordering, error branches and state changes.
 
-Write bodies in plain words with code structure. Real words, indented like
-code. Never target-language syntax.
+Write bodies in the notation above.
 
 Collapse a body to one line only when it is trivial and obvious. A long
 boring body still gets written out in full.

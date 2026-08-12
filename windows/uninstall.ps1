@@ -399,7 +399,6 @@ function Remove-WingetPackages {
         "Gyan.FFmpeg"
         "JesseDuffield.lazygit"
         "Rustlang.Rustup"
-        "SST.opencode"
         "ajeetdsouza.zoxide"
         "jqlang.jq"
         "junegunn.fzf"

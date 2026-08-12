@@ -330,7 +330,7 @@ log "Installing user packages"
 paru -Syu --noconfirm --skipreview \
     zsh rsync stow wsl2-ssh-agent ripgrep go yazi-git ffmpeg 7zip jq poppler fd fzf bat zoxide \
     resvg imagemagick bat eza llvm bun python fastfetch lazygit jdk-openjdk maven make cmake \
-    btop tokei hunk-bin herdr-bin neovim nodejs node-gyp
+    btop tokei hunk-bin herdr-bin neovim nodejs node-gyp opencode
 
 log "Configuring Git core settings"
 if [ -x "$SSH_EXE" ]; then
@@ -414,8 +414,6 @@ fi
 log "Cleaning up"
 rm -rf "$HOME/paru"
 mkdir -p "$HOME/Projects"
-
-curl -fsSL https://claude.ai/install.sh | bash
 
 # Must run after the stow loop above. Stow deletes each target file before it
 # relinks, which would drop the hook block herdr writes into settings.json.

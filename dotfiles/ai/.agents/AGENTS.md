@@ -326,6 +326,19 @@ Text that leaves this session carries only what I dictated.
 - You MUST NOT treat this as cosmetic. A footer I never wrote makes me read
   as a bot to a maintainer who has never met me, and I lose the credit for
   work I actually directed.
+
+# Writing for someone else
+
+Whoever reads a text that leaves this session was not in it.
+
+- You MUST assume that reader has nothing: no thread, no history, no earlier
+  message of mine, and no way to guess what I meant.
+- You MUST name a thing in full the first time it appears in that text. They
+  cannot look it up in a conversation they never saw.
+- You MUST NOT point back at an exchange, a decision or a file that only
+  exists in this session. To them it reads as a gap.
+- You MUST NOT let a pronoun stand without its referent in the same place. A
+  reader who has to guess who "I" is has already stopped trusting the text.
 - You MUST read back what actually landed, after the action, every time.
   Stripping at draft time is not enough. The harness appends its lines while
   the commit or the post happens, so the text I approved and the text that

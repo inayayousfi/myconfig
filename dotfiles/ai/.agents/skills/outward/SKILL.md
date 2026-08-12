@@ -79,10 +79,21 @@ chat.
 
 Write it as a person writes to another person.
 
-Then hand the tone to the skill that removes machine cadence (`organic`).
+You MUST pass every outgoing text through the tone skill (`organic`), always,
+with no exception. Nothing leaves without that pass. It comes last on the
+wording, just before the authorship line goes on.
 
-That skill is the last pass on the wording, before the authorship line goes
-on.
+### The reader knows nothing
+
+Whoever opens this has your text and nothing else. No thread, no history, no
+idea what you meant.
+
+Write for that person. Name the whole thing the first time it appears. Never
+point back at an exchange they did not see.
+
+Then keep it short, and here is the rule that decides between the two: every
+sentence carries a new fact. A sentence that only restates the one before it
+goes.
 
 ### Length
 
@@ -97,14 +108,22 @@ Two lines, on top, on every outgoing text. No exceptions, no "this one is
 short".
 
 ```
-Typed by <model> running in <harness>, under the direction of <handle>.
-Every call here is mine, I stand behind it, and no agent did this on its own.
+Written by <handle>, typed by <model> running in <harness>.
+Every call here is <handle>'s, and no agent acted on its own.
 ```
 
 Fill in the real model and the real harness. They are useful facts for the
 reader, so name them.
 
 The handle is the user's own name on the platform this text is going to.
+
+The handle appears twice, once per line. That is deliberate, and it is not a
+legal formality. A cold reader who meets "mine" on the second line has nothing
+to attach it to, and may well attach it to the model. Repeating the handle
+costs one word and removes the question.
+
+No first-person pronoun stays in these two lines without its referent right
+there.
 
 Never stretch it past two lines. Never explain why the user does not type.
 That is private, and it is not the reader's business.

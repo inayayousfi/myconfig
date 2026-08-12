@@ -374,6 +374,26 @@ else
     echo "[WARN] Dotfiles repo not found: $DOTFILES_REPO"
 fi
 
+# Stow puts the neutral agent config in ~/.agents. Each tool then reads it from
+# its own path: Claude Code from ~/.claude/skills, OpenCode from
+# ~/.config/opencode. Stow links one source to one target, so the extra links
+# are made here. Never fatal: a missing link must not cost the whole run.
+log "Linking agent config for each tool"
+if [ -d "$HOME/.agents/skills" ]; then
+    mkdir -p "$HOME/.claude/skills" "$HOME/.config/opencode"
+
+    for skill_dir in "$HOME"/.agents/skills/*; do
+        [ -d "$skill_dir" ] || continue
+        skill="$(basename "$skill_dir")"
+        rm -rf "$HOME/.claude/skills/$skill"
+        ln -sfn "../../.agents/skills/$skill" "$HOME/.claude/skills/$skill"
+    done
+
+    ln -sfn "../../.agents/AGENTS.md" "$HOME/.config/opencode/AGENTS.md"
+else
+    echo "[WARN] ~/.agents/skills not found, skipping agent config links"
+fi
+
 log "Installing zsh plugins"
 git clone https://github.com/zsh-users/zsh-autosuggestions "${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/plugins/zsh-autosuggestions" || true
 git clone https://github.com/zsh-users/zsh-syntax-highlighting.git "${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting" || true

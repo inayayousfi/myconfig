@@ -430,24 +430,38 @@ function Install-AHKScripts
 }
 
 # ============================================================================
-# AI Config (Claude Code CLAUDE.md + skills)
+# AI Config (neutral AGENTS.md + skills, plus the Claude Code bridge)
 # ============================================================================
 
 function Install-AIConfig
 {
-  $source = Join-Path $SharedDotfilesDir "ai\.claude"
-  $destination = Join-Path $env:USERPROFILE ".claude"
+  $agentsSource = Join-Path $SharedDotfilesDir "ai\.agents"
+  $claudeSource = Join-Path $SharedDotfilesDir "ai\.claude"
+  $agentsDest = Join-Path $env:USERPROFILE ".agents"
+  $claudeDest = Join-Path $env:USERPROFILE ".claude"
 
-  if (-not (Test-Path $source))
+  if (-not (Test-Path $agentsSource))
   {
-    Write-Log "AI config source not found: $source" -Level 'ERROR'
+    Write-Log "AI config source not found: $agentsSource" -Level 'ERROR'
     return
   }
 
-  New-Item -ItemType Directory -Path $destination -Force | Out-Null
+  New-Item -ItemType Directory -Path $agentsDest -Force | Out-Null
+  New-Item -ItemType Directory -Path $claudeDest -Force | Out-Null
 
-  Copy-DotfileSafe -Source (Join-Path $source "CLAUDE.md") -Destination (Join-Path $destination "CLAUDE.md")
-  Copy-DotfileSafe -Source (Join-Path $source "skills") -Destination (Join-Path $destination "skills") -Recurse
+  # The neutral source. Any agent that reads AGENTS.md or ~/.agents/skills
+  # finds it here.
+  Copy-DotfileSafe -Source (Join-Path $agentsSource "AGENTS.md") -Destination (Join-Path $agentsDest "AGENTS.md")
+  Copy-DotfileSafe -Source (Join-Path $agentsSource "skills") -Destination (Join-Path $agentsDest "skills") -Recurse
+
+  # Claude Code reads ~\.claude\skills and nothing else. A symlink would need
+  # Administrator or Developer Mode, so the skills get copied a second time.
+  # WSL uses links instead; see setup-arch-wsl.ps1.
+  Copy-DotfileSafe -Source (Join-Path $agentsSource "skills") -Destination (Join-Path $claudeDest "skills") -Recurse
+
+  # One line, importing the neutral file. Claude Code does not read AGENTS.md.
+  Copy-DotfileSafe -Source (Join-Path $claudeSource "CLAUDE.md") -Destination (Join-Path $claudeDest "CLAUDE.md")
+  Copy-DotfileSafe -Source (Join-Path $claudeSource "settings.json") -Destination (Join-Path $claudeDest "settings.json")
 
   Write-Log "AI config installed" -Level 'OK'
 }

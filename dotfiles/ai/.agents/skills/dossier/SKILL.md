@@ -11,10 +11,13 @@ You bring me the file I do not have the energy to open. You never decide for me.
 
 One pass. The interview and the plan are the same job, not two.
 
-## Read the code first
+## Read the material first
 
-Read before you ask. Open the code the change will touch. Follow it out one
-level, to its callers and to what it calls.
+Read before you ask. Open whatever the work touches: code, files, a document,
+a configuration. Follow it out one level, to whatever depends on it.
+
+For code that means the callers and the callees. For files it means what reads
+them. For a document it means the pages that point at it.
 
 Do this before the first question. A question asked blind wastes a turn.
 
@@ -93,36 +96,43 @@ Sometimes I add one line because the case is an exception. Never assume.
 The three forms, and the rule that governs them, live in the global rules file
 under "Plan mode for real work". Follow it there rather than restating it here.
 
-## Grill the code shape too
+## Grill the units of the work
 
-I author the code. You type it. Every choice I would make while typing is
-still mine to make.
+I author this. You type it. Every choice I would make while typing is still
+mine to make.
 
 Architecture is not enough. Stopping there hands me a diagram and hands you
-the code. Grill the shape of the code itself.
+the work. Grill the shape of the thing itself.
 
-Cover every one of these:
+A unit is one thing the work adds or changes. What counts as a unit depends on
+the material:
 
-- every data structure the change adds or changes
+- code: a data structure, or a function
 
-- the kind of each one: record, list, map, set, queue
+- files: a directory, a naming convention, a move
 
-- every field it holds, and what that field means
+- a document: a section, a table, an appendix
 
-- every function the change adds or changes
+- a configuration: a key, and what its value decides
 
-- what each one takes in, and what it gives back
+For a data structure, cover its kind (record, list, map, set, queue), every
+field it holds, and what each field means.
 
-- what earns its own function, and what stays inline
+For a function, cover what it takes in, what it gives back, and what earns its
+own function rather than staying inline.
 
-Never grill a function body. The statements inside are yours to pick. "Trim
-the string, then split on commas" is not a question.
+For anything else, cover what the unit holds and what reads it.
+
+Never grill the inside of a unit. The statements in a function body, or the
+sentences in a section, are yours to pick. "Trim the string, then split on
+commas" is not a question.
 
 One question per unit. A structure with its whole field list is one question.
-A function with its whole signature is one question.
+A function with its whole signature is one question. A document section with
+its purpose is one question.
 
-Split a unit into per-field questions only when one field has real competing
-options. If the field follows from the unit, do not ask.
+Split a unit into smaller questions only when one part has real competing
+options. If the part follows from the unit, do not ask.
 
 ## Write the plan
 
@@ -164,6 +174,25 @@ cannot check it, and the real code will not match it.
 
 ### Notation
 
+Draw whatever reads fastest for this material. That is the rule, and it comes
+before every shape below.
+
+A block has to read faster than the thing it describes, or it is not earning
+its place.
+
+- code: the pseudo-code described below, by default
+
+- files: a directory tree
+
+- a document: its outline, heading by heading
+
+- a chain of commands: the commands themselves, in order
+
+- a data format: one annotated example
+
+The rest of this section is the code case. Skip it when the work touches no
+code, and draw the picture that fits instead.
+
 A code block in a plan is pseudo-code. It has to read faster than the real
 code, or it is not earning its place.
 
@@ -199,11 +228,6 @@ Two habits, and these two are rules, not examples:
 
 - Put the exits on the right, in one column. The error branches then read
   straight down, before the real work starts.
-
-This is a default, not a law. When the thing you describe has no functions and
-no records, the shape has nothing to hold. Drop it and draw what reads best
-instead. A config file, a chain of shell commands, a data format … each one
-wants its own picture.
 
 Example:
 
@@ -339,9 +363,12 @@ Named steps. Never "test it". Say which test, and say what a pass looks like.
 
 Cover every one of these that applies:
 
-- **build**: the exact build and vet command
+- **build**: the exact build and vet command, when the work produces code
 
-- **tests**: which command, which package
+- **tests**: which command, which package, when tests exist to run
+
+- **reading**: when nothing compiles and nothing runs, the read that proves
+  the piece landed, and what a pass looks like
 
 - **logic**: the case that proves the branch is right
 

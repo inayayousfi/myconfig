@@ -227,11 +227,20 @@ function Remove-WslAutostart {
 }
 
 # ============================================================================
-# Remove AI Config (Claude Code CLAUDE.md + skills)
+# Remove AI Config (neutral AGENTS.md + skills, and every per-tool copy)
 # ============================================================================
 
 function Remove-AIConfig {
-    $claudeMd = Join-Path $env:USERPROFILE ".claude\CLAUDE.md"
+    # One source of truth, several places each tool reads it from.
+    $ruleFiles = @(
+        (Join-Path $env:USERPROFILE ".agents\AGENTS.md"),
+        (Join-Path $env:USERPROFILE ".claude\CLAUDE.md"),
+        (Join-Path $env:USERPROFILE ".config\opencode\AGENTS.md")
+    )
+    $skillRoots = @(
+        (Join-Path $env:USERPROFILE ".agents\skills"),
+        (Join-Path $env:USERPROFILE ".claude\skills")
+    )
 
     # Derive the skill list from the repo instead of hardcoding names. A hardcoded
     # list goes stale the moment a skill is added, renamed or dropped, and the
@@ -239,7 +248,7 @@ function Remove-AIConfig {
     # $PSScriptRoot, not $MyInvocation: inside a function the latter describes the
     # call site, not the script file, so it would resolve to nothing here.
     $repoRoot = Split-Path -Parent $PSScriptRoot
-    $skillsSource = Join-Path $repoRoot "dotfiles\ai\.claude\skills"
+    $skillsSource = Join-Path $repoRoot "dotfiles\ai\.agents\skills"
 
     if (Test-Path $skillsSource) {
         $skillsToRemove = @(Get-ChildItem -Path $skillsSource -Directory | Select-Object -ExpandProperty Name)
@@ -248,25 +257,29 @@ function Remove-AIConfig {
         # deleting the whole skills directory would take plugins with it.
         $skillsToRemove = @()
         Write-Log "Skill source not found: $skillsSource" -Level 'WARNING'
-        Write-Log "Skipping skill removal. Delete them by hand under %USERPROFILE%\.claude\skills" -Level 'WARNING'
+        Write-Log "Skipping skill removal. Delete them by hand under %USERPROFILE%\.agents\skills and %USERPROFILE%\.claude\skills" -Level 'WARNING'
     }
 
-    if (Test-Path $claudeMd) {
-        Write-Log "Removing AI config CLAUDE.md..."
-        Remove-Item -Path $claudeMd -Force
-        Write-Log "AI config CLAUDE.md removed" -Level 'OK'
-    } else {
-        Write-Log "AI config CLAUDE.md not found, skipping"
+    foreach ($ruleFile in $ruleFiles) {
+        if (Test-Path $ruleFile) {
+            Write-Log "Removing AI rules file: $ruleFile..."
+            Remove-Item -Path $ruleFile -Force
+            Write-Log "AI rules file removed: $ruleFile" -Level 'OK'
+        } else {
+            Write-Log "AI rules file not found, skipping: $ruleFile"
+        }
     }
 
     foreach ($skill in $skillsToRemove) {
-        $skillPath = Join-Path $env:USERPROFILE ".claude\skills\$skill"
-        if (Test-Path $skillPath) {
-            Write-Log "Removing AI config skill: $skill..."
-            Remove-Item -Path $skillPath -Recurse -Force
-            Write-Log "AI config skill removed: $skill" -Level 'OK'
-        } else {
-            Write-Log "AI config skill not found, skipping: $skill"
+        foreach ($skillRoot in $skillRoots) {
+            $skillPath = Join-Path $skillRoot $skill
+            if (Test-Path $skillPath) {
+                Write-Log "Removing AI config skill: $skillPath..."
+                Remove-Item -Path $skillPath -Recurse -Force
+                Write-Log "AI config skill removed: $skillPath" -Level 'OK'
+            } else {
+                Write-Log "AI config skill not found, skipping: $skillPath"
+            }
         }
     }
 }

@@ -15,6 +15,16 @@ Maximum skepticism, every file, every pass — the default read is "what's
 wrong here", not "does anything jump out". If a pass turns up nothing,
 that's a fact about the code, not a sign to relax scrutiny on the next one.
 
+Go deep, not wide. A surface pass that skims every file and understands none
+is worth nothing. This skill is often the last read before code reaches a
+stranger, so take the time a careful human reviewer would take.
+
+Read the surrounding code before calling anything a defect. A line that looks
+wrong on its own often matches a convention two files away.
+
+Say when you are guessing. A finding you cannot prove is still worth raising,
+but it arrives labelled as a guess, never as a fact.
+
 Five peer checks, same weight, same scrutiny, no category outranks
 another. This order is presentation only, not priority:
 
@@ -36,10 +46,7 @@ branch found among `main`, `master`, `dev`.
 
 **On the default branch → full-review mode.**
 - Target named → review only that target's current on-disk state, not a diff.
-- No target → review the whole repo. Monorepo with independent top-level
-  projects → split across parallel subagents, one per project, same
-  full-depth analysis each, synthesize into one report. Single cohesive
-  project → one inline pass. Judge this from the repo, don't default to it.
+- No target → review the whole repo in one pass.
 
 **Off the default branch → diff-review mode.**
 - Find the real fork point, not a raw diff against default (stacked
@@ -49,14 +56,12 @@ branch found among `main`, `master`, `dev`.
   branch, and use whichever gives the most recent common ancestor.
 - Target named → `git diff <forkpoint>...HEAD -- <path>`. No target →
   `git diff <forkpoint>...HEAD`.
-- Always one inline pass, never split across subagents, any size. This
-  deliberately overrides this repo's global rule that non-trivial
-  code-touching work must be delegated — analysis only, not the fix step.
 
 ## Step 2: Confidence + cross-verify
 
 Every finding (all five checks, no exceptions) gets LOW/MEDIUM/HIGH.
-Anything below HIGH gets a second opinion: a fresh Sonnet subagent, handed
+Anything below HIGH gets a second opinion: a fresh subagent running the same
+model you are, handed
 only the file path and line range plus "something may be off around here,
 what do you see?" — no category hint, no first-pass reasoning. Agrees →
 upgrade. Disagrees or sees nothing → downgrade. Never drop a finding; ship
@@ -86,8 +91,9 @@ confidence tag, and cross-verification result if it ran.
 
 ## Step 5: Offer to fix, never start unprompted
 
-Ask whether to fix now, in this session. Never fix automatically, even for
-critical-looking findings — absolute rule, not a judgment call. If yes,
-the fix step is ordinary non-trivial code-touching work: not covered by
-the Step 1 override, follows this repo's normal plan-mode/delegation/model
-rules like anything else.
+Never fix anything yourself. Not even a finding that looks critical. Absolute
+rule, not a judgment call.
+
+Offer the fix to whoever asked for this review, then stop. That is the same
+move every time, whether the asker is a person or another agent. They decide,
+you never act on your own offer.

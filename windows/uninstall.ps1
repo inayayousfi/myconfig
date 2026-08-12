@@ -232,7 +232,24 @@ function Remove-WslAutostart {
 
 function Remove-AIConfig {
     $claudeMd = Join-Path $env:USERPROFILE ".claude\CLAUDE.md"
-    $skillsToRemove = @("commit", "grilling")
+
+    # Derive the skill list from the repo instead of hardcoding names. A hardcoded
+    # list goes stale the moment a skill is added, renamed or dropped, and the
+    # uninstaller then claims to have removed skills it left behind.
+    # $PSScriptRoot, not $MyInvocation: inside a function the latter describes the
+    # call site, not the script file, so it would resolve to nothing here.
+    $repoRoot = Split-Path -Parent $PSScriptRoot
+    $skillsSource = Join-Path $repoRoot "dotfiles\ai\.claude\skills"
+
+    if (Test-Path $skillsSource) {
+        $skillsToRemove = @(Get-ChildItem -Path $skillsSource -Directory | Select-Object -ExpandProperty Name)
+    } else {
+        # Without the repo we cannot tell our skills from third-party ones, and
+        # deleting the whole skills directory would take plugins with it.
+        $skillsToRemove = @()
+        Write-Log "Skill source not found: $skillsSource" -Level 'WARNING'
+        Write-Log "Skipping skill removal. Delete them by hand under %USERPROFILE%\.claude\skills" -Level 'WARNING'
+    }
 
     if (Test-Path $claudeMd) {
         Write-Log "Removing AI config CLAUDE.md..."

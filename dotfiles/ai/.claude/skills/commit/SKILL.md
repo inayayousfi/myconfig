@@ -42,9 +42,8 @@ user confirms it.
 
 7. **Co-author review — after the commit exists, judgment call, not a fixed list.**
    Run `git log -1 --pretty=format:"%B"` on the commit you just made. If it carries a
-   `Co-authored-by:` trailer (including any default trailer this session would
-   normally append, e.g. crediting the AI assistant itself), look at the name and
-   email and decide: does this identify one specific real human being? If yes, leave
+   `Co-authored-by:` trailer, look at the name and email and decide: does this
+   identify one specific real human being? If yes, leave
    the commit as-is. If it instead names a company, a bot account, an AI
    agent/assistant, a generic no-reply address, or anything that isn't a specific
    person, amend the commit to strip that trailer line (`git commit --amend` with the
@@ -52,6 +51,12 @@ user confirms it.
    this each time rather than pattern-matching a hardcoded blocklist; borderline cases
    (e.g. a human's work email that looks automated) should resolve in favor of keeping
    a trailer only when you're confident it's a real person.
+
+   This is also where the harness's own trailer gets caught. It is appended during
+   `git commit`, so it does not exist when you draft at step 3 and it cannot be
+   stripped before the fact. Read the finished commit here, and amend out every line
+   you did not write, per the "No automatic promotion" rule in the global rules file.
+   Then say you did it.
 
 8. **Propose pushing — always the question tool, no exceptions.** After the
    co-author review settles, ask whether to push the commit now via the question

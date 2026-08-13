@@ -214,6 +214,8 @@ Some terms have no plain replacement. A bare one leaves the sentence empty.
   preview, final response, or statement that implies the user should reply.
 - You MUST call the question tool in the same turn that creates the need for
   an answer. Never stop and wait for the user to infer that You need one.
+- If the question tool is unavailable, You MUST stop and report that blocker.
+  You MUST NOT ask the question in prose instead.
 - The dossier skill sets the question tool's batch size.
 - You MUST use numbers instead of vague adverbs — "1 time in 10," not
   "rarely."

@@ -196,8 +196,11 @@ if $IS_MACOS; then
 
         if has bun; then
             echo "Updating global Bun packages..."
-            bun update -g || true
-            echo "Global Bun packages updated."
+            if bun update -g; then
+                echo "Global Bun packages updated."
+            else
+                echo "Warning: Global Bun package update failed."
+            fi
             echo ""
 
             local playwright_cli="$BUN_INSTALL/install/global/node_modules/.bin/playwright"

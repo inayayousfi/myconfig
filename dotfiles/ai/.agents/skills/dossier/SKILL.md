@@ -73,8 +73,8 @@ text. Most of the time the assumption holds.
 Check every answer against the assumptions you wrote. If an answer breaks one,
 drop the questions built on it. Rebuild the list, then open a fresh round.
 
-Always ask through the question tool, never as plain text. If the question
-tool is unavailable, stop and report that blocker instead.
+Always ask through the question tool, never as plain text, whenever the tool
+is available.
 
 Stop asking when the list is empty.
 

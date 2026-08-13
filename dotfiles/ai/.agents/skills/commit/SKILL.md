@@ -30,12 +30,16 @@ user confirms it.
    - No emojis, no filler, no restating the diff line-by-line.
 
 4. **Preview.** Output the commit message as plain text, in the chat, in a fenced code
-   block tagged `text`. No tool call. Just plain text.
+   block tagged `text`. Then immediately continue to step 5 in the same turn. Never
+   end the reply after the preview.
 
-5. **Confirm.** Call the question tool: Confirm / Request changes / Cancel. Do not put
-   the commit message in this tool call — it was already shown in step 4. Do not run
-   `git commit` until the user confirms. If they ask for changes, redraft, repeat
-   step 4, then ask again.
+5. **Confirm — question tool, always.** Call the question tool: Confirm / Request
+   changes / Cancel. This call is mandatory, with no exceptions. Do not put the
+   commit message in this tool call — it was already shown in step 4. Do not ask in
+   plain text. Do not stop between the preview and this call. Do not run `git commit`
+   until the question tool returns confirmation. Never infer confirmation from the
+   user's original commit request or any earlier approval. If they ask for changes,
+   redraft, repeat step 4, then call the question tool again.
 
 6. Once confirmed, commit with the approved message (e.g. `git commit -F -` fed the
    final message, or `git commit -m`/`-m` flags as appropriate).

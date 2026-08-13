@@ -172,13 +172,19 @@ There will be more. The rule is the intent, not these two names.
 
 Output the full text in the chat, in a fenced code block tagged `text`.
 
-No tool call for this step. Plain text, so the user reads exactly what leaves.
+Plain text lets the user read exactly what leaves. Then immediately continue
+to step 7 in the same turn. Never end the reply after the preview.
 
 ## 7. Ask, then send
 
-Call the question tool: Send / Request changes / Cancel.
+Call the question tool: Send / Request changes / Cancel. This call is
+mandatory, with no exceptions.
 
 Do not put the message body in that tool call. It was already shown in step 6.
+
+Do not ask in plain text. Do not stop between the preview and the question
+tool call. Never infer confirmation from the original request or an earlier
+approval.
 
 Never send before the answer comes back. Not for a one-line comment. Not for a
 typo fix on something already sent.

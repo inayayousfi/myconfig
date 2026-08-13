@@ -303,6 +303,7 @@ log() { printf '[arch-wsl][user packages] %s\n' "$*"; }
 # WSL runs this as a non-login shell, so no profile puts ~/.local/bin on PATH.
 # Stowed tools and the Claude Code installer both expect to find it there. This
 # lasts for this phase only. Interactive shells get the path from the zsh config.
+export BUN_INSTALL="$HOME/.bun"
 export PATH="$HOME/.local/bin:$PATH"
 
 DOTFILES_REPO="__DOTFILES_WSL_PATH__"
@@ -330,7 +331,196 @@ log "Installing user packages"
 paru -Syu --noconfirm --skipreview \
     zsh rsync stow wsl2-ssh-agent ripgrep go yazi-git ffmpeg 7zip jq poppler fd fzf bat zoxide \
     resvg imagemagick bat eza llvm bun python fastfetch lazygit jdk-openjdk maven make cmake \
-    btop tokei hunk-bin herdr-bin neovim nodejs npm node-gyp opencode
+    btop tokei hunk-bin herdr-bin neovim nodejs npm node-gyp opencode at-spi2-core \
+    libxcomposite libxdamage libxrandr libxkbcommon
+
+PLAYWRIGHT_STATUS="unavailable"
+PLAYWRIGHT_REASON="installation did not complete"
+OPENCODE_CONFIG_STATUS="unavailable"
+OPENCODE_CONFIG_REASON="configuration did not complete"
+
+log "Installing Playwright MCP through Bun"
+if bun add --global @playwright/mcp@latest jsonc-parser@latest; then
+    log "Installing Chromium Headless Shell for Playwright"
+    PLAYWRIGHT_CLI="$BUN_INSTALL/install/global/node_modules/.bin/playwright"
+    PLAYWRIGHT_MODULE="$BUN_INSTALL/install/global/node_modules/playwright"
+    if [ -x "$PLAYWRIGHT_CLI" ] && \
+        "$PLAYWRIGHT_CLI" install --only-shell chromium && \
+        bun -e \
+            "const { chromium } = require('$PLAYWRIGHT_MODULE'); const browser = await chromium.launch({ headless: true }); await browser.close();"; then
+        PLAYWRIGHT_STATUS="available"
+        PLAYWRIGHT_REASON="installed for headless browser automation"
+    else
+        log "[WARN] Chromium installation or launch check failed; Playwright MCP will stay disabled"
+        PLAYWRIGHT_REASON="Chromium installation or launch check failed"
+    fi
+else
+    log "[WARN] Playwright MCP installation failed; browser automation will stay disabled"
+    PLAYWRIGHT_REASON="Playwright MCP installation failed"
+fi
+
+configure_opencode() {
+    local config_dir="$HOME/.config/opencode"
+    local config_file=""
+    local config_tmp=""
+    local parser_module="$BUN_INSTALL/install/global/node_modules/jsonc-parser"
+    local playwright_enabled=false
+
+    trap 'if [ -n "$config_tmp" ]; then rm -f -- "$config_tmp" || true; fi; trap - RETURN' RETURN
+
+    if ! mkdir -p "$config_dir"; then
+        OPENCODE_CONFIG_REASON="could not create the OpenCode configuration directory"
+        PLAYWRIGHT_STATUS="unavailable"
+        PLAYWRIGHT_REASON="OpenCode configuration failed"
+        log "[WARN] $OPENCODE_CONFIG_REASON"
+        return 0
+    fi
+
+    if [ -e "$config_dir/opencode.jsonc" ]; then
+        config_file="$config_dir/opencode.jsonc"
+    else
+        config_file="$config_dir/opencode.json"
+    fi
+
+    if [ ! -e "$config_file" ] && ! printf '{}\n' > "$config_file"; then
+        OPENCODE_CONFIG_REASON="could not initialize $config_file"
+        PLAYWRIGHT_STATUS="unavailable"
+        PLAYWRIGHT_REASON="OpenCode configuration failed"
+        log "[WARN] $OPENCODE_CONFIG_REASON"
+        return 0
+    fi
+
+    if [ ! -f "$parser_module/package.json" ]; then
+        OPENCODE_CONFIG_REASON="jsonc-parser is unavailable"
+        PLAYWRIGHT_STATUS="unavailable"
+        PLAYWRIGHT_REASON="OpenCode configuration failed"
+        log "[WARN] $OPENCODE_CONFIG_REASON"
+        return 0
+    fi
+
+    if ! OPENCODE_CONFIG="$config_file" bun -e \
+        'const parser = require(process.env.HOME + "/.bun/install/global/node_modules/jsonc-parser");
+         const text = await Bun.file(process.env.OPENCODE_CONFIG).text();
+         const errors = [];
+         const config = parser.parse(text, errors, { allowTrailingComma: true });
+         if (errors.length || !config || Array.isArray(config) || typeof config !== "object") process.exit(1);
+         if (config.mcp != null && (Array.isArray(config.mcp) || typeof config.mcp !== "object")) process.exit(1);'; then
+        OPENCODE_CONFIG_REASON="$config_file contains invalid JSON, JSONC, or configuration structure"
+        PLAYWRIGHT_STATUS="unavailable"
+        PLAYWRIGHT_REASON="OpenCode configuration failed"
+        log "[WARN] $OPENCODE_CONFIG_REASON; leaving it unchanged"
+        return 0
+    fi
+
+    if [ "$PLAYWRIGHT_STATUS" = "available" ]; then
+        playwright_enabled=true
+    fi
+
+    if ! config_tmp="$(mktemp "$config_dir/$(basename "$config_file").XXXXXX")"; then
+        OPENCODE_CONFIG_REASON="could not create a temporary OpenCode configuration file"
+        PLAYWRIGHT_STATUS="unavailable"
+        PLAYWRIGHT_REASON="OpenCode configuration failed"
+        log "[WARN] $OPENCODE_CONFIG_REASON"
+        return 0
+    fi
+
+    if ! OPENCODE_CONFIG="$config_file" \
+        OPENCODE_CONFIG_TMP="$config_tmp" \
+        PLAYWRIGHT_COMMAND="$BUN_INSTALL/bin/playwright-mcp" \
+        PLAYWRIGHT_ENABLED="$playwright_enabled" \
+        bun -e \
+        'const parser = require(process.env.HOME + "/.bun/install/global/node_modules/jsonc-parser");
+         const text = await Bun.file(process.env.OPENCODE_CONFIG).text();
+         const value = {
+             type: "local",
+             command: [process.env.PLAYWRIGHT_COMMAND, "--headless"],
+             enabled: process.env.PLAYWRIGHT_ENABLED === "true"
+         };
+         const edits = parser.modify(text, ["mcp", "playwright"], value, {
+             formattingOptions: { insertSpaces: true, tabSize: 2, eol: "\n" }
+         });
+         await Bun.write(process.env.OPENCODE_CONFIG_TMP, parser.applyEdits(text, edits));'; then
+        OPENCODE_CONFIG_REASON="could not merge Playwright MCP into $config_file"
+        PLAYWRIGHT_STATUS="unavailable"
+        PLAYWRIGHT_REASON="OpenCode configuration failed"
+        log "[WARN] $OPENCODE_CONFIG_REASON"
+        return 0
+    fi
+
+    if ! mv "$config_tmp" "$config_file"; then
+        OPENCODE_CONFIG_REASON="could not replace $config_file"
+        PLAYWRIGHT_STATUS="unavailable"
+        PLAYWRIGHT_REASON="OpenCode configuration failed"
+        log "[WARN] $OPENCODE_CONFIG_REASON"
+        return 0
+    fi
+
+    config_tmp=""
+    OPENCODE_CONFIG_STATUS="configured"
+    OPENCODE_CONFIG_REASON="Playwright MCP merged into $config_file"
+    return 0
+}
+
+log "Merging Playwright MCP into the OpenCode configuration"
+configure_opencode
+
+log "Writing environment inventory"
+cat > "$HOME/environment.md" <<EOF
+# Environment
+
+This file describes the capabilities intended by the Arch WSL installer.
+Some optional tools may be unavailable when their installation reports a warning.
+
+## Shell and system
+
+- **Zsh with Oh My Zsh**: Interactive shell with completion, highlighting, aliases, and the Black & Pink prompt.
+- **systemd user services**: Keeps user services running through WSL lingering and the Windows logon bootstrap.
+- **OpenSSH**: Runs a loopback-only SSH server and can use the Windows OpenSSH client for Git authentication.
+- **Windows interoperability**: Runs Windows commands and reaches Windows files through WSL paths.
+
+## Development runtimes and build tools
+
+- **Rust and Cargo**: Builds and manages Rust software through rustup.
+- **Go**: Builds and runs Go software.
+- **Bun, Node.js, npm, and npx**: Run JavaScript and TypeScript tools and package workflows.
+- **Python**: Runs Python programs and scripts.
+- **OpenJDK and Maven**: Build and run Java software.
+- **LLVM, Make, CMake, and base-devel**: Compile native software and Arch packages.
+
+## Editors and project tools
+
+- **Neovim**: Terminal editor with the shared configuration.
+- **Git and Lazygit**: Manage source history through commands or a terminal interface.
+- **Yazi**: Browse and manage files in the terminal.
+- **GNU Stow and rsync**: Install and synchronize dotfiles.
+- **paru and pacman**: Install Arch repository and Arch User Repository packages.
+
+## Search and command-line tools
+
+- **ripgrep, fd, fzf, and zoxide**: Search text and files, select results, and navigate directories.
+- **eza and bat**: Display directories and files with richer terminal output.
+- **jq**: Read and transform JSON data.
+- **btop, fastfetch, and tokei**: Inspect resources, system details, and source statistics.
+- **curl and wget**: Download data over network protocols.
+- **7-Zip, zip, unzip, and xz**: Read and create common archives.
+
+## Media and document tools
+
+- **FFmpeg**: Reads, converts, and writes audio and video.
+- **ImageMagick and resvg**: Convert and render image formats.
+- **Poppler**: Reads and converts PDF documents.
+
+## Agent tools
+
+- **OpenCode**: Runs coding agents and loads the shared agent instructions and skills.
+- **Claude Code configuration**: Prepares shared skills and the Herdr integration for Claude Code when that tool is installed.
+- **T3 Code**: The installer attempts to provide its coding interface and background user service. A setup warning means it is unavailable.
+- **Hunk**: Provides terminal tools for reviewing code changes.
+- **Herdr**: Stores agent state through its Claude integration.
+- **Playwright MCP**: Provides headless Chromium browser automation to OpenCode. Status: **$PLAYWRIGHT_STATUS**. Detail: $PLAYWRIGHT_REASON. OpenCode configuration: **$OPENCODE_CONFIG_STATUS**. Detail: $OPENCODE_CONFIG_REASON.
+
+Models may choose between Playwright MCP and desktop mouse automation based on the task.
+EOF
 
 log "Configuring Git core settings"
 if [ -x "$SSH_EXE" ]; then

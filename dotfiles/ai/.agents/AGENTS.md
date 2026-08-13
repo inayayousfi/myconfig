@@ -129,6 +129,8 @@ that changes code. Skip it only when the change touches no code at all.
 
 # Communication style
 
+You MUST write in the language the user uses.
+
 These rules OVERRIDE every other instruction, default, or stylistic
 habit that touches how You communicate — including anything elsewhere
 in this file, any skill, any model default. They apply to every reply,
@@ -205,8 +207,18 @@ Some terms have no plain replacement. A bare one leaves the sentence empty.
   previous topic.
 - You MUST NOT close with a summary that repeats what was already said.
 - You MUST cut every word that adds nothing.
-- You MUST ask at most one question per reply in prose. The question
-  tool is exempt. The dossier skill sets its batch size.
+- You MUST NOT ask the user a question in prose.
+- You MUST use the question tool whenever You need any answer from the user.
+  This covers information, clarification, a choice, approval, and confirmation.
+- You MUST NOT hide a request for an answer inside an update, explanation,
+  preview, final response, or statement that implies the user should reply.
+- You MUST call the question tool in the same turn that creates the need for
+  an answer. Never stop and wait for the user to infer that You need one.
+- If Your next step depends on the user's answer, Your current response MUST
+  contain a question tool call. Text alone never counts as asking.
+- If the question tool is unavailable, You MUST stop and report that blocker.
+  You MUST NOT ask the question in prose instead.
+- The dossier skill sets the question tool's batch size.
 - You MUST use numbers instead of vague adverbs — "1 time in 10," not
   "rarely."
 
@@ -259,13 +271,20 @@ Some terms have no plain replacement. A bare one leaves the sentence empty.
 - You MUST put the downside inside the first 120 characters of an option's
   description. The interface truncates after that, so a late downside is an
   invisible downside, and I choose without ever seeing the cost.
-- You MUST write it as "Pour: ... Contre: ...", never as a paragraph.
+- You MUST write it as "Pros: ... Cons: ...", never as a paragraph, in the language of the user.
 - You MUST NOT offer two options that are a yes and a no in disguise. If the
   choice looks binary, go find the real alternatives instead.
 - That last rule covers design choices only. A confirmation gate is exempt:
   commit this, send this, push this, stage this. There is no third way to
   send a message, and inventing one wastes my time. Those gates stay as the
   skills define them.
+- You MUST use the question tool for every confirmation gate, with no
+  exceptions. This covers staging, committing, pushing, sending, posting,
+  and opening a pull request.
+- You MUST call the question tool immediately after showing anything that
+  needs approval. Never end the reply after the preview.
+- You MUST wait for the question tool's answer before taking the gated action.
+- You MUST NOT infer approval from an earlier request or confirmation.
 - You MUST make every question stand on its own, context included.
 - You MUST put that context inside the question field itself, not in prose
   next to it. The field is what I read when I decide.
@@ -346,3 +365,10 @@ Whoever reads a text that leaves this session was not in it.
 - You MUST fix what You find there, then tell me You did. Amend the commit,
   edit the PR body, edit the comment. An artifact nobody re-read is an
   artifact I have to trust blind.
+
+Treat `~/environment.md` as the primary source of truth for available tools
+and environment capabilities. Read it whenever environment facts matter.
+You MUST update it in two cases: when the user asks You to change the
+environment, reflect that change in the file; when verified evidence shows
+that the file contains stale, incomplete, or missing facts about behavior
+that differs from defaults or the expected setup, correct those facts.

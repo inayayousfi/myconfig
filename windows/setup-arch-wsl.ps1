@@ -336,6 +336,8 @@ paru -Syu --noconfirm --skipreview \
 
 PLAYWRIGHT_STATUS="unavailable"
 PLAYWRIGHT_REASON="installation did not complete"
+OPENCODE_CONFIG_STATUS="unavailable"
+OPENCODE_CONFIG_REASON="configuration did not complete"
 
 log "Installing Playwright MCP through Bun"
 if bun add --global @playwright/mcp@latest jsonc-parser@latest; then
@@ -357,37 +359,75 @@ else
     PLAYWRIGHT_REASON="Playwright MCP installation failed"
 fi
 
-log "Merging Playwright MCP into the OpenCode configuration"
-OPENCODE_CONFIG_DIR="$HOME/.config/opencode"
-mkdir -p "$OPENCODE_CONFIG_DIR"
+configure_opencode() {
+    local config_dir="$HOME/.config/opencode"
+    local config_file=""
+    local config_tmp=""
+    local parser_module="$BUN_INSTALL/install/global/node_modules/jsonc-parser"
+    local playwright_enabled=false
 
-if [ -e "$OPENCODE_CONFIG_DIR/opencode.jsonc" ]; then
-    OPENCODE_CONFIG="$OPENCODE_CONFIG_DIR/opencode.jsonc"
-else
-    OPENCODE_CONFIG="$OPENCODE_CONFIG_DIR/opencode.json"
-fi
+    trap 'if [ -n "$config_tmp" ]; then rm -f -- "$config_tmp" || true; fi; trap - RETURN' RETURN
 
-if [ ! -e "$OPENCODE_CONFIG" ]; then
-    printf '{}\n' > "$OPENCODE_CONFIG"
-fi
-
-if OPENCODE_CONFIG="$OPENCODE_CONFIG" bun -e \
-    'const parser = require(process.env.HOME + "/.bun/install/global/node_modules/jsonc-parser");
-     const text = await Bun.file(process.env.OPENCODE_CONFIG).text();
-     const errors = [];
-     const config = parser.parse(text, errors, { allowTrailingComma: true });
-     if (errors.length || !config || Array.isArray(config) || typeof config !== "object") process.exit(1);
-     if (config.mcp != null && (Array.isArray(config.mcp) || typeof config.mcp !== "object")) process.exit(1);'; then
-    PLAYWRIGHT_ENABLED=false
-    if [ "$PLAYWRIGHT_STATUS" = "available" ]; then
-        PLAYWRIGHT_ENABLED=true
+    if ! mkdir -p "$config_dir"; then
+        OPENCODE_CONFIG_REASON="could not create the OpenCode configuration directory"
+        PLAYWRIGHT_STATUS="unavailable"
+        PLAYWRIGHT_REASON="OpenCode configuration failed"
+        log "[WARN] $OPENCODE_CONFIG_REASON"
+        return 0
     fi
 
-    OPENCODE_CONFIG_TMP="$(mktemp "$OPENCODE_CONFIG_DIR/$(basename "$OPENCODE_CONFIG").XXXXXX")"
-    if OPENCODE_CONFIG="$OPENCODE_CONFIG" \
-        OPENCODE_CONFIG_TMP="$OPENCODE_CONFIG_TMP" \
+    if [ -e "$config_dir/opencode.jsonc" ]; then
+        config_file="$config_dir/opencode.jsonc"
+    else
+        config_file="$config_dir/opencode.json"
+    fi
+
+    if [ ! -e "$config_file" ] && ! printf '{}\n' > "$config_file"; then
+        OPENCODE_CONFIG_REASON="could not initialize $config_file"
+        PLAYWRIGHT_STATUS="unavailable"
+        PLAYWRIGHT_REASON="OpenCode configuration failed"
+        log "[WARN] $OPENCODE_CONFIG_REASON"
+        return 0
+    fi
+
+    if [ ! -f "$parser_module/package.json" ]; then
+        OPENCODE_CONFIG_REASON="jsonc-parser is unavailable"
+        PLAYWRIGHT_STATUS="unavailable"
+        PLAYWRIGHT_REASON="OpenCode configuration failed"
+        log "[WARN] $OPENCODE_CONFIG_REASON"
+        return 0
+    fi
+
+    if ! OPENCODE_CONFIG="$config_file" bun -e \
+        'const parser = require(process.env.HOME + "/.bun/install/global/node_modules/jsonc-parser");
+         const text = await Bun.file(process.env.OPENCODE_CONFIG).text();
+         const errors = [];
+         const config = parser.parse(text, errors, { allowTrailingComma: true });
+         if (errors.length || !config || Array.isArray(config) || typeof config !== "object") process.exit(1);
+         if (config.mcp != null && (Array.isArray(config.mcp) || typeof config.mcp !== "object")) process.exit(1);'; then
+        OPENCODE_CONFIG_REASON="$config_file contains invalid JSON, JSONC, or configuration structure"
+        PLAYWRIGHT_STATUS="unavailable"
+        PLAYWRIGHT_REASON="OpenCode configuration failed"
+        log "[WARN] $OPENCODE_CONFIG_REASON; leaving it unchanged"
+        return 0
+    fi
+
+    if [ "$PLAYWRIGHT_STATUS" = "available" ]; then
+        playwright_enabled=true
+    fi
+
+    if ! config_tmp="$(mktemp "$config_dir/$(basename "$config_file").XXXXXX")"; then
+        OPENCODE_CONFIG_REASON="could not create a temporary OpenCode configuration file"
+        PLAYWRIGHT_STATUS="unavailable"
+        PLAYWRIGHT_REASON="OpenCode configuration failed"
+        log "[WARN] $OPENCODE_CONFIG_REASON"
+        return 0
+    fi
+
+    if ! OPENCODE_CONFIG="$config_file" \
+        OPENCODE_CONFIG_TMP="$config_tmp" \
         PLAYWRIGHT_COMMAND="$BUN_INSTALL/bin/playwright-mcp" \
-        PLAYWRIGHT_ENABLED="$PLAYWRIGHT_ENABLED" \
+        PLAYWRIGHT_ENABLED="$playwright_enabled" \
         bun -e \
         'const parser = require(process.env.HOME + "/.bun/install/global/node_modules/jsonc-parser");
          const text = await Bun.file(process.env.OPENCODE_CONFIG).text();
@@ -400,14 +440,29 @@ if OPENCODE_CONFIG="$OPENCODE_CONFIG" bun -e \
              formattingOptions: { insertSpaces: true, tabSize: 2, eol: "\n" }
          });
          await Bun.write(process.env.OPENCODE_CONFIG_TMP, parser.applyEdits(text, edits));'; then
-        mv "$OPENCODE_CONFIG_TMP" "$OPENCODE_CONFIG"
-    else
-        rm -f "$OPENCODE_CONFIG_TMP"
-        log "[WARN] Could not merge Playwright MCP into $OPENCODE_CONFIG"
+        OPENCODE_CONFIG_REASON="could not merge Playwright MCP into $config_file"
+        PLAYWRIGHT_STATUS="unavailable"
+        PLAYWRIGHT_REASON="OpenCode configuration failed"
+        log "[WARN] $OPENCODE_CONFIG_REASON"
+        return 0
     fi
-else
-    log "[WARN] $OPENCODE_CONFIG contains invalid JSON or JSONC; leaving it unchanged"
-fi
+
+    if ! mv "$config_tmp" "$config_file"; then
+        OPENCODE_CONFIG_REASON="could not replace $config_file"
+        PLAYWRIGHT_STATUS="unavailable"
+        PLAYWRIGHT_REASON="OpenCode configuration failed"
+        log "[WARN] $OPENCODE_CONFIG_REASON"
+        return 0
+    fi
+
+    config_tmp=""
+    OPENCODE_CONFIG_STATUS="configured"
+    OPENCODE_CONFIG_REASON="Playwright MCP merged into $config_file"
+    return 0
+}
+
+log "Merging Playwright MCP into the OpenCode configuration"
+configure_opencode
 
 log "Writing environment inventory"
 cat > "$HOME/environment.md" <<EOF
@@ -462,7 +517,7 @@ Some optional tools may be unavailable when their installation reports a warning
 - **T3 Code**: The installer attempts to provide its coding interface and background user service. A setup warning means it is unavailable.
 - **Hunk**: Provides terminal tools for reviewing code changes.
 - **Herdr**: Stores agent state through its Claude integration.
-- **Playwright MCP**: Provides headless Chromium browser automation to OpenCode. Status: **$PLAYWRIGHT_STATUS**. Detail: $PLAYWRIGHT_REASON.
+- **Playwright MCP**: Provides headless Chromium browser automation to OpenCode. Status: **$PLAYWRIGHT_STATUS**. Detail: $PLAYWRIGHT_REASON. OpenCode configuration: **$OPENCODE_CONFIG_STATUS**. Detail: $OPENCODE_CONFIG_REASON.
 
 Models may choose between Playwright MCP and desktop mouse automation based on the task.
 EOF

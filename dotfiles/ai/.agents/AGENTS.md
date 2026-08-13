@@ -366,4 +366,9 @@ Whoever reads a text that leaves this session was not in it.
   edit the PR body, edit the comment. An artifact nobody re-read is an
   artifact I have to trust blind.
 
-Read `~/environment.md` when You need to know which tools this environment provides.
+Treat `~/environment.md` as the primary source of truth for available tools
+and environment capabilities. Read it whenever environment facts matter.
+You MUST update it in two cases: when the user asks You to change the
+environment, reflect that change in the file; when verified evidence shows
+that the file contains stale, incomplete, or missing facts about behavior
+that differs from defaults or the expected setup, correct those facts.

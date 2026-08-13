@@ -331,7 +331,7 @@ log "Installing user packages"
 paru -Syu --noconfirm --skipreview \
     zsh rsync stow wsl2-ssh-agent ripgrep go yazi-git ffmpeg 7zip jq poppler fd fzf bat zoxide \
     resvg imagemagick bat eza llvm bun python fastfetch lazygit jdk-openjdk maven make cmake \
-    btop tokei hunk-bin herdr-bin neovim nodejs npm node-gyp opencode at-spi2-core \
+    btop tokei hunk-bin herdr-bin neovim nodejs npm node-gyp opencode github-cli-git at-spi2-core \
     libxcomposite libxdamage libxrandr libxkbcommon
 
 PLAYWRIGHT_STATUS="unavailable"

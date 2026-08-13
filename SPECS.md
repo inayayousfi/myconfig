@@ -347,7 +347,7 @@ Arch WSL is an optional Windows installer path. It creates a fresh `archlinux` d
 |-------|----------|
 | Root bootstrap | Sets root password to `root`, initializes pacman keys, updates packages, installs base tools, enables `sshd` offline, writes initial `/etc/wsl.conf` with `systemd=true` |
 | User setup | Creates a user named after the Windows user, enables wheel sudo, grants passwordless sudo, enables lingering so user services survive with no shell open, sets default user, generates `en_US.UTF-8` locale |
-| User packages and dotfiles | Installs Rust stable, builds `paru`, installs packages, configures Git for Windows SSH, installs Oh My Zsh, syncs and stows selected dotfiles, installs zsh plugins, runs `t3-setup` to install T3 Code and its background service, installs Claude Code, then installs the herdr Claude integration |
+| User packages and dotfiles | Installs Rust stable, builds `paru`, installs packages, installs Playwright MCP with headless Chromium, merges its OpenCode configuration, writes `~/environment.md`, configures Git for Windows SSH, installs Oh My Zsh, syncs and stows selected dotfiles, installs zsh plugins, runs `t3-setup` to install T3 Code and its background service, prepares Claude Code configuration, then installs the herdr Claude integration |
 | Shell enforcement | Sets and verifies zsh as the WSL user's default shell |
 | Instance persistence | Writes `%UserProfile%\.wslconfig` with `instanceIdleTimeout=-1` and `vmIdleTimeout=-1`, adds a hidden logon shortcut that boots the distro, then restarts the instance under the new timeouts |
 
@@ -367,6 +367,10 @@ Disabling the timeouts stops WSL shutting the instance down, but nothing starts 
 ### Arch Package Set
 
 The Arch WSL setup installs packages through `pacman` and `paru`, including `base-devel`, `rustup`, `zsh`, `rsync`, `stow`, `wsl2-ssh-agent`, `ripgrep`, `go`, `yazi-git`, `ffmpeg`, `7zip`, `jq`, `poppler`, `fd`, `fzf`, `bat`, `zoxide`, `resvg`, `imagemagick`, `eza`, `llvm`, `bun`, `python`, `fastfetch`, `lazygit`, `jdk-openjdk`, `maven`, `make`, `cmake`, `btop`, `tokei`, `hunk-bin`, `herdr-bin`, `neovim`, `nodejs`, and `node-gyp`.
+
+The user package phase installs the latest Playwright MCP package under `~/.local` and downloads Chromium for headless browser automation. It replaces only the `mcp.playwright` entry in `~/.config/opencode/opencode.json` while preserving all other valid JSON settings. Invalid existing JSON is left unchanged with a warning. A failed Playwright MCP or Chromium installation does not stop provisioning; the generated OpenCode entry remains disabled and `~/environment.md` records the failure.
+
+The generated `~/environment.md` inventories the installed shell, development, media, interoperability, and agent capabilities. The shared `AGENTS.md` points models to this file when they need to inspect available tools.
 
 ### Synced Dotfiles
 

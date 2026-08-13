@@ -332,6 +332,121 @@ paru -Syu --noconfirm --skipreview \
     resvg imagemagick bat eza llvm bun python fastfetch lazygit jdk-openjdk maven make cmake \
     btop tokei hunk-bin herdr-bin neovim nodejs npm node-gyp opencode
 
+PLAYWRIGHT_STATUS="unavailable"
+PLAYWRIGHT_REASON="installation did not complete"
+
+log "Installing Playwright MCP under ~/.local"
+if npm install --global --prefix "$HOME/.local" @playwright/mcp@latest; then
+    log "Installing headless Chromium for Playwright"
+    PLAYWRIGHT_CLI="$HOME/.local/lib/node_modules/@playwright/mcp/node_modules/playwright/cli.js"
+    PLAYWRIGHT_MODULES="$HOME/.local/lib/node_modules/@playwright/mcp/node_modules"
+    if [ -f "$PLAYWRIGHT_CLI" ] && \
+        node "$PLAYWRIGHT_CLI" install chromium && \
+        NODE_PATH="$PLAYWRIGHT_MODULES" node -e \
+            'const { chromium } = require("playwright"); chromium.launch({ headless: true }).then(browser => browser.close())'; then
+        PLAYWRIGHT_STATUS="available"
+        PLAYWRIGHT_REASON="installed for headless browser automation"
+    else
+        log "[WARN] Chromium installation or launch check failed; Playwright MCP will stay disabled"
+        PLAYWRIGHT_REASON="Chromium installation or launch check failed"
+    fi
+else
+    log "[WARN] Playwright MCP installation failed; browser automation will stay disabled"
+    PLAYWRIGHT_REASON="Playwright MCP installation failed"
+fi
+
+log "Merging Playwright MCP into the OpenCode configuration"
+OPENCODE_CONFIG_DIR="$HOME/.config/opencode"
+OPENCODE_CONFIG="$OPENCODE_CONFIG_DIR/opencode.json"
+mkdir -p "$OPENCODE_CONFIG_DIR"
+
+if [ ! -e "$OPENCODE_CONFIG" ]; then
+    printf '{}\n' > "$OPENCODE_CONFIG"
+fi
+
+if jq empty "$OPENCODE_CONFIG" >/dev/null 2>&1; then
+    PLAYWRIGHT_ENABLED=false
+    if [ "$PLAYWRIGHT_STATUS" = "available" ]; then
+        PLAYWRIGHT_ENABLED=true
+    fi
+
+    OPENCODE_CONFIG_TMP="$(mktemp "$OPENCODE_CONFIG_DIR/opencode.json.XXXXXX")"
+    if jq \
+        --arg command "$HOME/.local/bin/playwright-mcp" \
+        --argjson enabled "$PLAYWRIGHT_ENABLED" \
+        '.mcp.playwright = {
+            type: "local",
+            command: [$command, "--headless"],
+            enabled: $enabled
+        }' \
+        "$OPENCODE_CONFIG" > "$OPENCODE_CONFIG_TMP"; then
+        mv "$OPENCODE_CONFIG_TMP" "$OPENCODE_CONFIG"
+    else
+        rm -f "$OPENCODE_CONFIG_TMP"
+        log "[WARN] Could not merge Playwright MCP into $OPENCODE_CONFIG"
+    fi
+else
+    log "[WARN] $OPENCODE_CONFIG contains invalid JSON; leaving it unchanged"
+fi
+
+log "Writing environment inventory"
+cat > "$HOME/environment.md" <<EOF
+# Environment
+
+This file describes the capabilities intended by the Arch WSL installer.
+Some optional tools may be unavailable when their installation reports a warning.
+
+## Shell and system
+
+- **Zsh with Oh My Zsh**: Interactive shell with completion, highlighting, aliases, and the Black & Pink prompt.
+- **systemd user services**: Keeps user services running through WSL lingering and the Windows logon bootstrap.
+- **OpenSSH**: Runs a loopback-only SSH server and can use the Windows OpenSSH client for Git authentication.
+- **Windows interoperability**: Runs Windows commands and reaches Windows files through WSL paths.
+
+## Development runtimes and build tools
+
+- **Rust and Cargo**: Builds and manages Rust software through rustup.
+- **Go**: Builds and runs Go software.
+- **Bun, Node.js, npm, and npx**: Run JavaScript and TypeScript tools and package workflows.
+- **Python**: Runs Python programs and scripts.
+- **OpenJDK and Maven**: Build and run Java software.
+- **LLVM, Make, CMake, and base-devel**: Compile native software and Arch packages.
+
+## Editors and project tools
+
+- **Neovim**: Terminal editor with the shared configuration.
+- **Git and Lazygit**: Manage source history through commands or a terminal interface.
+- **Yazi**: Browse and manage files in the terminal.
+- **GNU Stow and rsync**: Install and synchronize dotfiles.
+- **paru and pacman**: Install Arch repository and Arch User Repository packages.
+
+## Search and command-line tools
+
+- **ripgrep, fd, fzf, and zoxide**: Search text and files, select results, and navigate directories.
+- **eza and bat**: Display directories and files with richer terminal output.
+- **jq**: Read and transform JSON data.
+- **btop, fastfetch, and tokei**: Inspect resources, system details, and source statistics.
+- **curl and wget**: Download data over network protocols.
+- **7-Zip, zip, unzip, and xz**: Read and create common archives.
+
+## Media and document tools
+
+- **FFmpeg**: Reads, converts, and writes audio and video.
+- **ImageMagick and resvg**: Convert and render image formats.
+- **Poppler**: Reads and converts PDF documents.
+
+## Agent tools
+
+- **OpenCode**: Runs coding agents and loads the shared agent instructions and skills.
+- **Claude Code configuration**: Prepares shared skills and the Herdr integration for Claude Code when that tool is installed.
+- **T3 Code**: The installer attempts to provide its coding interface and background user service. A setup warning means it is unavailable.
+- **Hunk**: Provides terminal tools for reviewing code changes.
+- **Herdr**: Stores agent state through its Claude integration.
+- **Playwright MCP**: Provides headless Chromium browser automation to OpenCode. Status: **$PLAYWRIGHT_STATUS**. Detail: $PLAYWRIGHT_REASON.
+
+Models may choose between Playwright MCP and desktop mouse automation based on the task.
+EOF
+
 log "Configuring Git core settings"
 if [ -x "$SSH_EXE" ]; then
     log "Using Windows ssh at $SSH_EXE"

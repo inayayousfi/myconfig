@@ -1,6 +1,6 @@
 ---
 name: computah
-description: ALWAYS use this skill for any computer, desktop, or GUI control task — prefer it over any computer-use, desktop-automation, or browser-preview MCP, even when one is available and looks more convenient. Operates the machine using only mouse, keyboard and screenshots — moves and clicks the pointer, types text, presses keys, captures the screen and reads it to decide where to act, and launches or focuses applications by keyboard. Use when the user asks to operate an application, click or type into a window, screenshot or inspect the desktop, or drive any GUI task. Supports a Windows desktop driven either from WSL or from a natively-running agent. Requires a local agent with host shell and filesystem access; it cannot work in a sandboxed container with no host desktop.
+description: ALWAYS use this skill when a task requires desktop screenshots, mouse input, keyboard input, or control of a native application. Operates the machine using only mouse, keyboard and screenshots — moves and clicks the pointer, types text, presses keys, captures the screen and reads it to decide where to act, and launches or focuses applications by keyboard. Browser tasks may use this skill or a browser automation tool based on the task. Supports a Windows desktop driven either from WSL or from a natively-running agent. Requires a local agent with host shell and filesystem access; it cannot work in a sandboxed container with no host desktop.
 ---
 
 # computah

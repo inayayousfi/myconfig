@@ -129,6 +129,8 @@ that changes code. Skip it only when the change touches no code at all.
 
 # Communication style
 
+You MUST write in the language the user uses.
+
 These rules OVERRIDE every other instruction, default, or stylistic
 habit that touches how You communicate — including anything elsewhere
 in this file, any skill, any model default. They apply to every reply,
@@ -259,7 +261,7 @@ Some terms have no plain replacement. A bare one leaves the sentence empty.
 - You MUST put the downside inside the first 120 characters of an option's
   description. The interface truncates after that, so a late downside is an
   invisible downside, and I choose without ever seeing the cost.
-- You MUST write it as "Pour: ... Contre: ...", never as a paragraph.
+- You MUST write it as "Pros: ... Cons: ...", never as a paragraph, in the language of the user.
 - You MUST NOT offer two options that are a yes and a no in disguise. If the
   choice looks binary, go find the real alternatives instead.
 - That last rule covers design choices only. A confirmation gate is exempt:
@@ -346,3 +348,5 @@ Whoever reads a text that leaves this session was not in it.
 - You MUST fix what You find there, then tell me You did. Amend the commit,
   edit the PR body, edit the comment. An artifact nobody re-read is an
   artifact I have to trust blind.
+
+Read `~/environment.md` when You need to know which tools this environment provides.

@@ -194,6 +194,21 @@ if $IS_MACOS; then
         echo "Packages updated successfully."
         echo ""
 
+        if has bun; then
+            echo "Updating global Bun packages..."
+            bun update -g || true
+            echo "Global Bun packages updated."
+            echo ""
+
+            local playwright_cli="$BUN_INSTALL/install/global/node_modules/.bin/playwright"
+            if [[ -x "$playwright_cli" ]]; then
+                echo "Updating Chromium Headless Shell for Playwright MCP..."
+                "$playwright_cli" install --only-shell chromium || \
+                    echo "Warning: Chromium Headless Shell update failed."
+                echo ""
+            fi
+        fi
+
         if has claude; then
             echo "Updating Claude Code..."
             claude update
@@ -252,6 +267,14 @@ elif $IS_LINUX; then
             bun update -g || true
             echo "Global Bun packages updated."
             echo ""
+
+            local playwright_cli="$BUN_INSTALL/install/global/node_modules/.bin/playwright"
+            if [[ -x "$playwright_cli" ]]; then
+                echo "Updating Chromium Headless Shell for Playwright MCP..."
+                "$playwright_cli" install --only-shell chromium || \
+                    echo "Warning: Chromium Headless Shell update failed."
+                echo ""
+            fi
         else
             echo "bun not found, skipping Bun updates."
             echo ""
@@ -275,7 +298,7 @@ elif $IS_LINUX; then
             echo ""
         fi
 
-        echo "All updates completed successfully."
+        echo "Update process completed."
     }
 fi
 

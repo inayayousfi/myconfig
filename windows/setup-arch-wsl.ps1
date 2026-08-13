@@ -303,6 +303,7 @@ log() { printf '[arch-wsl][user packages] %s\n' "$*"; }
 # WSL runs this as a non-login shell, so no profile puts ~/.local/bin on PATH.
 # Stowed tools and the Claude Code installer both expect to find it there. This
 # lasts for this phase only. Interactive shells get the path from the zsh config.
+export BUN_INSTALL="$HOME/.bun"
 export PATH="$HOME/.local/bin:$PATH"
 
 DOTFILES_REPO="__DOTFILES_WSL_PATH__"
@@ -330,20 +331,21 @@ log "Installing user packages"
 paru -Syu --noconfirm --skipreview \
     zsh rsync stow wsl2-ssh-agent ripgrep go yazi-git ffmpeg 7zip jq poppler fd fzf bat zoxide \
     resvg imagemagick bat eza llvm bun python fastfetch lazygit jdk-openjdk maven make cmake \
-    btop tokei hunk-bin herdr-bin neovim nodejs npm node-gyp opencode
+    btop tokei hunk-bin herdr-bin neovim nodejs npm node-gyp opencode at-spi2-core \
+    libxcomposite libxdamage libxrandr libxkbcommon
 
 PLAYWRIGHT_STATUS="unavailable"
 PLAYWRIGHT_REASON="installation did not complete"
 
-log "Installing Playwright MCP under ~/.local"
-if npm install --global --prefix "$HOME/.local" @playwright/mcp@latest; then
-    log "Installing headless Chromium for Playwright"
-    PLAYWRIGHT_CLI="$HOME/.local/lib/node_modules/@playwright/mcp/node_modules/playwright/cli.js"
-    PLAYWRIGHT_MODULES="$HOME/.local/lib/node_modules/@playwright/mcp/node_modules"
-    if [ -f "$PLAYWRIGHT_CLI" ] && \
-        node "$PLAYWRIGHT_CLI" install chromium && \
-        NODE_PATH="$PLAYWRIGHT_MODULES" node -e \
-            'const { chromium } = require("playwright"); chromium.launch({ headless: true }).then(browser => browser.close())'; then
+log "Installing Playwright MCP through Bun"
+if bun add --global @playwright/mcp@latest; then
+    log "Installing Chromium Headless Shell for Playwright"
+    PLAYWRIGHT_CLI="$BUN_INSTALL/install/global/node_modules/.bin/playwright"
+    PLAYWRIGHT_MODULE="$BUN_INSTALL/install/global/node_modules/playwright"
+    if [ -x "$PLAYWRIGHT_CLI" ] && \
+        "$PLAYWRIGHT_CLI" install --only-shell chromium && \
+        bun -e \
+            "const { chromium } = require('$PLAYWRIGHT_MODULE'); const browser = await chromium.launch({ headless: true }); await browser.close();"; then
         PLAYWRIGHT_STATUS="available"
         PLAYWRIGHT_REASON="installed for headless browser automation"
     else
@@ -372,7 +374,7 @@ if jq empty "$OPENCODE_CONFIG" >/dev/null 2>&1; then
 
     OPENCODE_CONFIG_TMP="$(mktemp "$OPENCODE_CONFIG_DIR/opencode.json.XXXXXX")"
     if jq \
-        --arg command "$HOME/.local/bin/playwright-mcp" \
+        --arg command "$BUN_INSTALL/bin/playwright-mcp" \
         --argjson enabled "$PLAYWRIGHT_ENABLED" \
         '.mcp.playwright = {
             type: "local",

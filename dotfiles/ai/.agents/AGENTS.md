@@ -80,8 +80,8 @@ are running on.
 
 There is a second case, and it is separate from the one above. Dispatch a
 Sub-Agent when the ABSENCE of context is the whole point: the work has to be
-judged by someone who did not do it and cannot see why it exists. A cold
-review of a diff is that case. It needs heavy judgment, which the rule above
+judged by someone who did not do it and cannot see why it exists. Running
+KISS on changes is that case. It needs heavy judgment, which the rule above
 would forbid, and that judgment is exactly why a fresh agent has to do it.
 This case is still ONE agent at a time, it runs on Your own model, and it
 never edits a file.
@@ -103,7 +103,7 @@ see whether a doubtful finding survives a blind look. Those may run several at
 once, because the whole value is that each one is cheap, blind and short. They
 still run on Your own model, never a cheaper one.
 
-## Cold review
+## Run KISS on changes
 
 Code that leaves this machine gets read by someone who has no idea why it
 exists. Do that pass Yourself first, before they do.
@@ -113,14 +113,15 @@ that changes code. Skip it only when the change touches no code at all.
 
 - You MUST dispatch a generic Sub-Agent for this. Pick whichever type the
   harness offers. The type is not what matters, the missing context is.
-- You MUST hand it the diff and nothing else. No intent, no plan, no ticket,
-  no reason the change exists. That emptiness is the entire point, and it is
-  the one thing You cannot get back once You give it away.
-- You MUST tell it to run the review skill (kiss) over what it received, and
-  You MUST name the target when You do. Say "the uncommitted change set" or
-  "the diff of this branch", whichever is the thing going out. Left to pick
-  for itself on the default branch, kiss reviews the entire repository and
-  reports on the wrong files without ever saying so.
+- You MUST tell it to load the review skill (kiss), then directly name what
+  You want reviewed. When other dirty work exists, name only the changes or
+  paths You made in this session. For staged, unstaged or untracked changes,
+  state the Git state and exact paths. For committed changes, name the latest
+  commit.
+- You MUST NOT send it a diff, intent, plan, ticket or reason. The Sub-Agent
+  inspects the named target in the repository itself. That emptiness is the
+  entire point, and it is the one thing You cannot get back once You give it
+  away.
 - You MUST NOT let it edit, write or stage a file. It reports, I decide.
 - You MUST NOT let it approve anything. "Looks good" is not a finding.
 - You MUST bring me its findings ranked by severity, with every guess

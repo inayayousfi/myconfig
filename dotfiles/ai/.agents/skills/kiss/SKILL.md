@@ -29,9 +29,10 @@ Five peer checks, same weight, same scrutiny, no category outranks
 another. This order is presentation only, not priority:
 
 1. **Bugs** — actual correctness bugs.
-2. **Over-engineering** — abstraction, indirection, generality, or config
-   the problem never asked for.
-3. **Pattern drift** — doesn't follow this codebase's own conventions; a
+2. **Over-engineering** — abstraction, indirection, generality, config the
+   problem never asked for, poor cohesion, or a unit without one clear purpose.
+3. **Pattern drift** — doesn't follow this codebase's conventions for names,
+   vocabulary, control flow, visible data flow, comments or structure; a
    newcomer couldn't tell which one is "the" pattern.
 4. **Naive edge cases** — clunky, roundabout, or overly defensive handling
    where a simpler construct already covers it.
@@ -40,13 +41,26 @@ another. This order is presentation only, not priority:
 
 ## Step 1: Decide what to review
 
+Honor the target exactly as the caller names it before applying any branch
+default. A target may describe changes or name current files, modules, or the
+whole repository. Derive the target from the repository state yourself; never
+require the caller to construct or paste a diff. When the caller limits their
+changes to named paths, never broaden the review beyond those paths. Do not
+try to attribute individual lines within a named path to different sessions;
+any overlap inside that path belongs to the review.
+
+If the caller names staged, unstaged or untracked changes, they must also name
+the exact paths. Inspect that state regardless of the current branch. If the
+caller names committed changes, review the latest commit. If the caller names
+current files or modules, inspect their complete on-disk state. Use the branch
+defaults below only when the caller gives no more precise target.
+
 Resolve the default branch: `git symbolic-ref refs/remotes/origin/HEAD`
 (strip the `refs/remotes/origin/` prefix); if that fails, first local
 branch found among `main`, `master`, `dev`.
 
 **On the default branch → full-review mode.**
-- Target named → review only that target's current on-disk state, not a diff.
-- No target → review the whole repo in one pass.
+- Review the whole repo in one pass.
 
 **Off the default branch → diff-review mode.**
 - Find the real fork point, not a raw diff against default (stacked
@@ -54,8 +68,20 @@ branch found among `main`, `master`, `dev`.
   try `git merge-base --fork-point <default> HEAD`; if empty/unreliable,
   compute `git merge-base` against default and against every other local
   branch, and use whichever gives the most recent common ancestor.
-- Target named → `git diff <forkpoint>...HEAD -- <path>`. No target →
-  `git diff <forkpoint>...HEAD`.
+- Review `git diff <forkpoint>...HEAD`.
+
+Before calling anything a defect, discover how this repository expresses its
+style. Inspect nearby code. When a credible one exists, find a similarly sized
+module in the same architectural layer that does something different; compare
+nonblank code lines when choosing it. Use that module only as supplemental
+calibration; never let its size outweigh relevance or stronger evidence. Read
+any written repository style guidance. Search the target directory first, then
+its architectural layer, then the repository.
+
+Use the strongest credible source as evidence. If written guidance conflicts
+with repeated repository code, report that conflict instead of silently
+choosing either side. Code outside the named target is evidence only, never an
+additional source of findings.
 
 ## Step 2: Confidence + cross-verify
 
@@ -72,8 +98,7 @@ it at whatever confidence it lands on.
 Wherever a finding's validity can be checked by running something — tests,
 a small repro, a snippet — do it, for any of the five checks, not just
 bugs. Never leave artifacts in the repo: delete scratch/temp files after,
-or work in `/tmp` to begin with. Confirm clean `git status --porcelain`
-before reporting.
+or work in `/tmp` to begin with.
 
 ## Step 4: Report
 
@@ -88,6 +113,9 @@ Each finding: `file:line`, what's wrong, why it's wrong *for this
 codebase* (point at the actual convention/example it violates), the
 directional fix in words (not a diff — the user may change direction),
 confidence tag, and cross-verification result if it ran.
+
+For pattern-drift findings, cite the strongest credible repository evidence.
+Keep uncertain readability concerns and label their confidence honestly.
 
 ## Step 5: Offer to fix, never start unprompted
 

@@ -374,16 +374,16 @@ Cover every one of these that applies:
 
 - **real**: the entry point a user actually touches
 
-- **cold review**: a fresh reader who gets the diff and nothing else
+- **run KISS on changes**: a fresh agent loads KISS and inspects the named target
 
 - **docs**: which design-doc claim this changes, and where it gets fixed
 
 - **clean**: what must NOT have changed
 
-The cold review is not optional when the piece changes code.
+Running KISS on changes is not optional when the piece changes code.
 
-The procedure lives in the global rules file, under "Cold review". Follow it
-there rather than restating it here.
+The procedure lives in the global rules file, under "Run KISS on changes".
+Follow it there rather than restating it here.
 
 ## Revisions
 

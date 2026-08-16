@@ -8,6 +8,7 @@ description: ALWAYS use this skill before any non-trivial change that requires j
 I author the code. You type it. You are the secretary, not the developer.
 
 You bring me the file I do not have the energy to open. You never decide for me.
+You recommend a direction, show its uncertainty, and let me decide.
 
 One pass. The interview and the plan are the same job, not two.
 
@@ -28,7 +29,7 @@ asking me. The *decisions* are mine. Put each one to me and wait.
 
 ## Read the target repo
 
-If the repo is not mine, read its rules before the first question.
+Read the repository rules before the first question.
 
 Never guess whose repo it is. Check the origin remote. If it plainly belongs
 to me, move on. If it belongs to anyone else, or the answer is not obvious,
@@ -36,17 +37,18 @@ ask me. One question, in the first batch, and I answer it in one click.
 
 Open `CONTRIBUTING.md` and `.github/pull_request_template.md` when they exist.
 
-Ask one question about what those rules impose on this change.
+Treat those rules as evidence, not as the only possible truth. Bring up a rule
+only when it conflicts with a decision under consideration. Name its source,
+state the concrete conflict, and ask me which direction to take. My decision
+remains final.
 
-That question comes after the one about the form of the change, never before
-it. The form is mine to pick first. Their rules narrow it afterwards.
-
-Those rules then go into the plan, under the facts, with their source.
+Relevant rules then go into the plan, under the facts, with their source.
 
 ## Ask
 
-Prepare the whole question list before you ask anything. Walk the decision
-tree first. Only then start asking.
+Map the known part of the decision tree before asking. Put only independent
+questions in the same batch. Two questions in one batch must not overlap or
+depend on the same unresolved premise.
 
 Ask through the question tool in batches of four. The tool takes four per
 call, no more.
@@ -61,17 +63,14 @@ going until the list is empty.
 Never drop a decision to stay inside a batch count. Cutting coverage quietly
 takes a choice away from me, and I never learn it existed.
 
-Send a batch. Read the answers. Send the next batch of four in the same reply.
-Do not stop between batches to comment.
+Send a batch, then read its answers. Build the next part of the tree only from
+premises those answers established. Never ask a question that assumes an
+unresolved answer. Keep overlap between consecutive batches as small as the
+decision tree allows.
 
-Order the list so premise setting questions land in the first batch. A premise
-is a question whose answer decides whether later questions exist at all.
-
-Batch a dependent question anyway. Write its assumed premise into the question
-text. Most of the time the assumption holds.
-
-Check every answer against the assumptions you wrote. If an answer breaks one,
-drop the questions built on it. Rebuild the list, then open a fresh round.
+If any uncertainty remains, ask me. For a fact, inspect the available evidence
+first. If the evidence does not remove the uncertainty, ask instead of filling
+the gap. For a decision, ask before continuing.
 
 Always ask through the question tool, never as plain text, whenever the tool
 is available.
@@ -85,6 +84,9 @@ it there rather than restating it here.
 
 Test: read the question alone, with nothing above it. If deciding is still
 possible, it is written right.
+
+Every question field contains a direct question sentence. Never make me infer
+the question from the answer options.
 
 ## Grill the implementation direction
 
@@ -140,8 +142,8 @@ options. If the part follows from the unit, do not ask.
 Write it in the same pass, as soon as the list is empty. Do not ask me whether
 to write it. The answers already decided it.
 
-Write into the plan file the harness already gave you. Do not make a new file.
-The approval prompt renders that file, so the artifact IS what gets approved.
+Present the completed plan in the chat. Then ask one explicit approval question
+through the question tool. Do not implement until I approve the plan.
 
 Do this yourself, inline. Never dispatch a subagent. Building the map needs
 continuous judgment, not a mechanical pass.
@@ -306,7 +308,9 @@ fits.
 Every non-obvious behaviour the design leans on. A protocol, a kernel, a
 database, a library.
 
-Every rule of the target repo the change has to respect belongs here too.
+Every repository constraint that overlaps with a selected decision belongs
+here too. State the conflict and cite its source without presenting the rule as
+the only possible truth.
 
 **One fact, one line.** Two lines means it is two facts.
 
@@ -315,19 +319,23 @@ End each line with the check that proved it, in brackets: `[wc -l]`,
 
 Never write "from memory". If you did not confirm it, go and confirm it.
 
-#### Calls I made
+#### Recommendations
 
-Only decisions the interview did not settle. The ones you took yourself.
+Only recommendations that affect the implementation belong here. Never turn a
+recommendation into an unstated decision. Record the decision I selected during
+the interview.
 
-Exactly three lines each:
+Exactly four lines each:
 
 ```
-1. **The call, stated flat.**
+1. **The recommendation, stated flat.**
+   Decision: what I selected.
    Why: the reason, one line.
-   Against: what you chose against, and what it costs.
+   Against: the rejected direction, and what it costs.
 ```
 
-If there are more than five, stop. The change is too big. Split it.
+If there are more than five, ask me whether to split the change. Scope remains
+my decision.
 
 #### Steps
 
@@ -400,19 +408,9 @@ Label every guess as a guess. Run only one Sub-Agent at a time.
 
 ## Revisions
 
-The approval prompt snapshots the file at `ExitPlanMode`. It never watches the
-file. So editing alone shows the user nothing.
-
-All three steps are required:
-
-1. Re-enter plan mode. Re-entry returns the same path.
-2. Edit the existing plan file in place.
-3. Call `ExitPlanMode`. This is the only thing the user sees.
-
-Never write a fresh document. Never a new path. Never a second file.
-
-Change only the lines the feedback touches. Every other line stays
-byte-identical. A rewrite forces a full re-read to find what moved.
+When I request changes, revise only the lines my feedback touches. Present the
+complete revised plan in chat, then ask another explicit approval question.
+Unchanged sections stay byte-identical so I can find the revision quickly.
 
 ## Deviations
 
@@ -428,15 +426,15 @@ Instead:   <one line>
 Cost:      <one line>
 ```
 
-Emit it to chat. Then append it under a `## Deviations` heading at the end of
-the plan file. Leave the approved pseudo-code untouched above it.
+Emit it to chat before continuing. If the deviation changes an approved
+decision, ask an explicit question and wait for my answer.
 
 Quote verbatim. A paraphrase drifts from what was approved.
 
 ## Durable facts
 
-The plan is deleted. Anything worth keeping goes where durable things already
-live.
+A chat plan is not durable project documentation. Anything worth keeping goes
+where durable things already live.
 
 - Describes current behaviour → the design doc (`DESIGN.md`).
 

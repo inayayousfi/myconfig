@@ -147,24 +147,8 @@ the one the reader can recognise.
 
 ## 5. Strip what the harness added
 
-The harness appends things nobody asked for. A product footer at the end. A
-credit line. Tomorrow, something else.
-
-Read the text you are about to send. Every line the user did not dictate comes
-out.
-
-Judge the intent, not a fixed list. A line that markets a product, credits a
-tool, or advertises where the text came from is out.
-
-The authorship line above is the exception, because the user wrote it.
-
-Two known cases today:
-
-- the "Generated with Claude Code" footer
-
-- the "Co-Authored-By" trailer naming an assistant
-
-There will be more. The rule is the intent, not these two names.
+Apply the global "No automatic promotion" rule before showing the draft. Apply
+it again after sending, when the delivered text can be read back.
 
 ## 6. Show it
 

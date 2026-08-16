@@ -1,6 +1,6 @@
 ---
 name: dossier
-description: ALWAYS use this skill, every time, the moment a task is judged non-trivial — before reading further, before designing, before touching a single file. Non-trivial means any judgment call at all, whatever the diff size. Interviews the user about the approach in batches of four questions, surfaces every decision point, then writes the plan artifact in the same pass. Also the skill for writing a plan, drafting an implementation strategy, or breaking work into pieces. Never implement a non-trivial change without it.
+description: ALWAYS use this skill before any non-trivial change that requires judgment, and whenever the user asks for a plan, implementation strategy, or work breakdown.
 ---
 
 # dossier
@@ -86,15 +86,16 @@ it there rather than restating it here.
 Test: read the question alone, with nothing above it. If deciding is still
 possible, it is written right.
 
-## Grill the shape of the intervention
+## Grill the implementation direction
 
-This comes first, always. It is the first question of the first batch.
+Read the affected material before deciding whether this question exists.
 
-I would not touch the same files you would. Sometimes I refactor the system.
-Sometimes I add one line because the case is an exception. Never assume.
+When several credible implementation directions remain, explain what each one
+does. Name the files each direction touches. State the concrete tradeoffs.
+Then let me choose.
 
-The three forms, and the rule that governs them, live in the global rules file
-under "Plan mode for real work". Follow it there rather than restating it here.
+Do not force every change into a fixed set of forms. Do not ask a ritual scope
+question when the request and the inspected facts leave one credible direction.
 
 ## Grill the units of the work
 
@@ -380,10 +381,22 @@ Cover every one of these that applies:
 
 - **clean**: what must NOT have changed
 
-Running KISS on changes is not optional when the piece changes code.
+Running KISS on changes is mandatory when the implementation changes code.
+Skip it when the implementation changes no code.
 
-The procedure lives in the global rules file, under "Run KISS on changes".
-Follow it there rather than restating it here.
+One complete KISS review may run automatically per implementation. The
+confidence checks and second opinions inside that review remain part of the
+same review. Before running another complete KISS review, use the question
+tool.
+
+Dispatch a fresh generic Sub-Agent on the same model. Tell it to load the KISS
+skill. Name only the target it must inspect. For staged, unstaged, or untracked
+changes, state the exact paths and Git state. For committed changes, name the
+latest commit.
+
+Do not send the Sub-Agent a diff, intent, plan, ticket, or reason. Do not let
+it edit, write, stage, or approve anything. Bring me its findings by severity.
+Label every guess as a guess. Run only one Sub-Agent at a time.
 
 ## Revisions
 

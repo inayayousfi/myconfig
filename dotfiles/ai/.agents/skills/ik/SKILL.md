@@ -1,6 +1,6 @@
 ---
 name: ik
-description: Explore this repo (or a focused subsystem of it) and produce a single self-contained HTML page diagramming the systems and how they interact, explained generically first with the real repo-specific name given immediately in parentheses. Use when the user runs /ik, or asks to be shown/explained/mapped/diagrammed how the codebase or a part of it is put together and interacts.
+description: Use when the user asks for a visual map or explanation of how a repository or focused subsystem is structured and interacts.
 ---
 
 # ik

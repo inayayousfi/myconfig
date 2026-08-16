@@ -1,6 +1,6 @@
 ---
 name: commit
-description: ALWAYS use this skill, every time, whenever the user asks to commit staged changes, wants a commit made, or asks to generate/write/draft a commit message — including implicit requests like "commit this" or "save this work" — not only on literal /commit. Drafts a commit message from the staged diff, commits it, then reviews the resulting commit's Co-authored-by trailer for whether it names a real human vs. a bot/agent/company and amends it out if not.
+description: ALWAYS use this skill when the user asks to create a Git commit or draft a commit message, including implicit requests whose intended result is a commit. Do not use it for other outgoing text.
 ---
 
 # Commit

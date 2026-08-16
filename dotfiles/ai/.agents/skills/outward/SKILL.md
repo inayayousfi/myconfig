@@ -1,6 +1,6 @@
 ---
 name: outward
-description: ALWAYS use this skill, every time, whenever text will be read by someone other than the user in this session. Any channel, any subject, technical or not. Triggers on implicit requests too ("reply to them", "file that", "answer this", "fill this in", "open a PR"). Examples: an email, a support ticket, a web form, a message to a person, an issue, a comment, a reply to a reviewer, a pull request body. Drafts the text, strips anything the harness added on its own, puts the authorship line on top, shows it in plain text, and sends only after confirmation. Not for commit messages, which belong to the commit skill.
+description: ALWAYS use this skill whenever You write or edit text whose primary purpose is to communicate with any person other than the user in this session, even when delivery is implicit or happens later. Do not use it for messages shown only to the user in this session.
 ---
 
 # outward
@@ -28,8 +28,6 @@ Examples, none of them special:
 - an issue, a comment, a reply to a reviewer
 
 - a pull request body or title
-
-Not a commit message. That belongs to the commit skill.
 
 Not a message to the user in this session. That is just talking.
 

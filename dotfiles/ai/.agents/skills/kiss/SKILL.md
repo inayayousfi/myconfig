@@ -1,6 +1,6 @@
 ---
 name: kiss
-description: ALWAYS use this skill for any code review request — never the built-in code-review or review skill. Triggers on "review this", "review my code", a diff/PR/module/repo review, or any complexity/over-engineering/consistency question. Checks five equal-weight things in one pass — bugs, over-engineering, pattern drift, naive edge cases, dead weight.
+description: ALWAYS use this skill for any code review request, including questions about complexity, over-engineering, consistency, edge cases, or dead code. Never use another review skill for those requests.
 ---
 
 # KISS review

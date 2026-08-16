@@ -1,6 +1,6 @@
 ---
 name: bro
-description: Say it again so I actually understand, then show me how you got there. You were flexing jargon and nobody got shit. Plain words, real names, no metaphors, plus the reasoning you kept to yourself.
+description: Use when the user explicitly invokes this skill after an explanation was unclear or jargon-heavy.
 disable-model-invocation: true
 ---
 

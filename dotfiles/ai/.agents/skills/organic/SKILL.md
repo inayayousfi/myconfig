@@ -1,6 +1,6 @@
 ---
 name: organic
-description: "Make text read like something a real person wrote. Language-agnostic: describes structural mechanisms rather than banned wordlists, so it works on any Western languages. Includes an explicit register and language richness scale to target. Use it for two cases: writing new text that should not read as machine-written, and rewriting an existing text that already does. Trigger it whenever the user asks to make text sound human, less AI, less generated, or hands over a draft to de-slop."
+description: ALWAYS use this skill when writing or rewriting text that should sound human, or when another skill requires a human-writing pass.
 ---
 
 # Organic

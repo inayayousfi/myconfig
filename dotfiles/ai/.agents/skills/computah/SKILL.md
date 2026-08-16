@@ -1,6 +1,6 @@
 ---
 name: computah
-description: ALWAYS use this skill when a task requires desktop screenshots, mouse input, keyboard input, or control of a native application. Operates the machine using only mouse, keyboard and screenshots — moves and clicks the pointer, types text, presses keys, captures the screen and reads it to decide where to act, and launches or focuses applications by keyboard. Browser tasks may use this skill or a browser automation tool based on the task. Supports a Windows desktop driven either from WSL or from a natively-running agent. Requires a local agent with host shell and filesystem access; it cannot work in a sandboxed container with no host desktop.
+description: ALWAYS use this skill when a task requires direct desktop control and no purpose-built tool or MCP fits, or after the fitting tool fails and cannot be repaired.
 ---
 
 # computah
@@ -8,10 +8,19 @@ description: ALWAYS use this skill when a task requires desktop screenshots, mou
 Operate the computer the way a person does. Look at the screen. Move the mouse.
 Press keys.
 
-That is the whole primitive set for **acting**. No accessibility trees, no
-application APIs, no automation frameworks. Those work in one app and break in
-the next. Mouse and keyboard work everywhere, including canvas apps, games,
-remote desktops and installers.
+Use an existing purpose-built tool or MCP when one fits the task. If that tool
+fails, diagnose and repair it before changing methods. Do not build a custom
+parser, API client, accessibility bridge, or other ad hoc automation merely to
+avoid this skill.
+
+When no natural tool fits, use this skill. Mouse and keyboard work everywhere,
+including canvas apps, games, remote desktops, and installers.
+
+## Confirmation
+
+Ask through the question tool before the first desktop capture or input.
+Loading this skill does not require confirmation. A valid global bypass that
+explicitly names desktop control satisfies this gate.
 
 **Capture is not acting.** Use whatever method the platform reference specifies
 for taking a screenshot. Operating systems defend against synthetic capture
@@ -20,9 +29,9 @@ nothing.
 
 ## Platform dispatch
 
-Read the reference for the target desktop **before issuing any command**. Do not
-compose commands from memory — the details that matter are ordering constraints
-and silent-failure modes, and they are not guessable.
+After confirmation, read the reference for the target desktop **before issuing
+any command**. Do not compose commands from memory. The details that matter are
+ordering constraints and silent-failure modes, and they are not guessable.
 
 | Target desktop | Reference |
 | --- | --- |

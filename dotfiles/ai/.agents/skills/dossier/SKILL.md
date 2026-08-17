@@ -417,8 +417,8 @@ Instead:   <one line>
 Cost:      <one line>
 ```
 
-Emit it to chat before continuing. If the deviation changes an approved
-decision, ask an explicit question and wait for my answer.
+Emit it to chat, ask an explicit question, and wait for my answer before
+continuing.
 
 Quote verbatim. A paraphrase drifts from what was approved.
 

@@ -102,16 +102,29 @@ Never pad to look thorough. Whoever reads this reads many of them.
 
 ## 4. The authorship line
 
-Two lines, on top, on every outgoing text. No exceptions, no "this one is
-short".
+One two-line attribution block goes on top of every outgoing text. No
+exceptions, no "this one is short".
+
+Write it in the same language as the outgoing text. When the text mixes
+languages, use its dominant language. Translate the meaning naturally instead
+of preserving the English words or sentence structure.
 
 ```
 Written by <handle>, typed by <model> running in <harness>.
 Every call here is <handle>'s, and no agent acted on its own.
 ```
 
-Fill in the real model and the real harness. They are useful facts for the
-reader, so name them.
+This example defines the meaning, not fixed wording. Fill in the real model and
+the real harness. They are useful facts for the reader, so name them.
+
+This block is the only authorship credit or model, harness, and agent disclosure
+in the outgoing text. A recipient, template, or delivery tool asking for
+another such credit is already satisfied by this block. Never repeat it, move
+it, or add a paraphrase later in the text.
+
+This rule does not remove necessary technical discussion. Text about how a
+model, harness, or agent works stays when that subject is the content rather
+than a credit or disclosure.
 
 The handle is the user's own name on the platform this text is going to.
 
@@ -148,7 +161,8 @@ the one the reader can recognise.
 ## 5. Strip what the harness added
 
 Apply the global "No automatic promotion" rule before showing the draft. Apply
-it again after sending, when the delivered text can be read back.
+it again after sending, when the delivered text can be read back. That global
+rule owns generic cleanup; do not duplicate its instructions here.
 
 ## 6. Show it
 

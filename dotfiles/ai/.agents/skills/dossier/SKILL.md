@@ -72,6 +72,11 @@ If any uncertainty remains, ask me. For a fact, inspect the available evidence
 first. If the evidence does not remove the uncertainty, ask instead of filling
 the gap. For a decision, ask before continuing.
 
+You MUST NOT make an implementation call for me. Present every implementation
+choice through the question tool, including the direction you recommend. A
+recommendation is an option for me to choose, never a decision you place into
+the plan afterward.
+
 Always ask through the question tool, never as plain text, whenever the tool
 is available.
 
@@ -141,6 +146,10 @@ options. If the part follows from the unit, do not ask.
 
 Write it in the same pass, as soon as the list is empty. Do not ask me whether
 to write it. The answers already decided it.
+
+Before writing, audit every planned choice against my answers. If any choice
+lacks an answer, return to the interview. The plan contains no new call for me
+to discover during approval.
 
 Present the completed plan in the chat. Then ask one explicit approval question
 through the question tool. Do not implement until I approve the plan.
@@ -318,24 +327,6 @@ End each line with the check that proved it, in brackets: `[wc -l]`,
 `[git status]`, `[read the SDK source]`.
 
 Never write "from memory". If you did not confirm it, go and confirm it.
-
-#### Recommendations
-
-Only recommendations that affect the implementation belong here. Never turn a
-recommendation into an unstated decision. Record the decision I selected during
-the interview.
-
-Exactly four lines each:
-
-```
-1. **The recommendation, stated flat.**
-   Decision: what I selected.
-   Why: the reason, one line.
-   Against: the rejected direction, and what it costs.
-```
-
-If there are more than five, ask me whether to split the change. Scope remains
-my decision.
 
 #### Steps
 

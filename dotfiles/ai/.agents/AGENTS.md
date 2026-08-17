@@ -288,13 +288,16 @@ requires.
 - You MUST judge additions by intent, never by a fixed string list. Marketing,
   tool credit, and source advertising are additions even when their wording
   changes.
-- You MUST keep an addition when I explicitly ask to keep it or when the target
-  repository requires it.
+- You MUST remove repeated generated material by intent, even when its wording
+  changes.
+- You MUST keep an addition when I explicitly ask to keep it.
+- You MUST keep target-required content only when the text does not already
+  satisfy that requirement elsewhere.
 - You MUST NOT remove text added later by a maintainer, repository automation,
   or another remote service. Those edits did not come from this session's
   model, harness, or delivery command.
-- You MUST keep the authorship line the outward skill writes. I wrote that
-  line, so it stays.
+- You MUST preserve necessary technical content. A technical mention of a
+  model, harness, or tool is not promotion by itself.
 - You MUST NOT treat this as cosmetic. An unapproved footer makes me read as a
   bot, and I lose credit for work I directed.
 

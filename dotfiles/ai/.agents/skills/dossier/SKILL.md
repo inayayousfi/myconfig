@@ -1,24 +1,20 @@
 ---
 name: dossier
-description: ALWAYS use this skill before any non-trivial change that requires judgment, and whenever the user asks for a plan, implementation strategy, or work breakdown.
+description: ALWAYS use this skill before any non-trivial work that requires judgment, and whenever the user asks for a plan, execution strategy, or work breakdown.
 ---
 
 # dossier
 
-I author the code. You type it. You are the secretary, not the developer.
-
-You bring me the file I do not have the energy to open. You never decide for me.
-You recommend a direction, show its uncertainty, and let me decide.
+You are my eyes and hands here. Inspect and report. Bring me facts, risks,
+options, and recommendations. Carry out only what I decide.
 
 One pass. The interview and the plan are the same job, not two.
 
 ## Read the material first
 
-Read before you ask. Open whatever the work touches: code, files, a document,
-a configuration. Follow it out one level, to whatever depends on it.
-
-For code that means the callers and the callees. For files it means what reads
-them. For a document it means the pages that point at it.
+Read before you ask. Open the target and every available resource that can
+change the work. Follow its context until more context cannot change a
+decision, constraint, recipient, or verification.
 
 Do this before the first question. A question asked blind wastes a turn.
 
@@ -27,22 +23,17 @@ You are loading context, not collecting rules. Nothing you read is binding.
 If a *fact* can be found by exploring the environment, look it up rather than
 asking me. The *decisions* are mine. Put each one to me and wait.
 
-## Read the target repo
+## Read the governing context
 
-Read the repository rules before the first question.
+Inspect who owns the target and who governs its destination. Open every
+available instruction, template, convention, and requirement.
 
-Never guess whose repo it is. Check the origin remote. If it plainly belongs
-to me, move on. If it belongs to anyone else, or the answer is not obvious,
-ask me. One question, in the first batch, and I answer it in one click.
-
-Open `CONTRIBUTING.md` and `.github/pull_request_template.md` when they exist.
-
-Treat those rules as evidence, not as the only possible truth. Bring up a rule
+Treat each as evidence, not as the only possible truth. Bring up a constraint
 only when it conflicts with a decision under consideration. Name its source,
 state the concrete conflict, and ask me which direction to take. My decision
 remains final.
 
-Relevant rules then go into the plan, under the facts, with their source.
+Relevant constraints then go into the plan, under the facts, with their source.
 
 ## Ask
 
@@ -72,8 +63,8 @@ If any uncertainty remains, ask me. For a fact, inspect the available evidence
 first. If the evidence does not remove the uncertainty, ask instead of filling
 the gap. For a decision, ask before continuing.
 
-You MUST NOT make an implementation call for me. Present every implementation
-choice through the question tool, including the direction you recommend. A
+You MUST NOT make an execution call for me. Present every execution choice
+through the question tool, including the direction you recommend. A
 recommendation is an option for me to choose, never a decision you place into
 the plan afterward.
 
@@ -93,54 +84,30 @@ possible, it is written right.
 Every question field contains a direct question sentence. Never make me infer
 the question from the answer options.
 
-## Grill the implementation direction
+## Grill the execution direction
 
 Read the affected material before deciding whether this question exists.
 
-When several credible implementation directions remain, explain what each one
-does. Name the files each direction touches. State the concrete tradeoffs.
-Then let me choose.
+When several credible execution directions remain, explain what each one does.
+Name what each direction affects. State the concrete tradeoffs. Then let me
+choose.
 
-Do not force every change into a fixed set of forms. Do not ask a ritual scope
+Do not force every task into a fixed set of forms. Do not ask a ritual scope
 question when the request and the inspected facts leave one credible direction.
 
-## Grill the units of the work
+## Grill the outcomes
 
-I author this. You type it. Every choice I would make while typing is still
-mine to make.
+The direction is not enough. Stopping there hands me a map and hands you the
+work. Grill the shape of every outcome.
 
-Architecture is not enough. Stopping there hands me a diagram and hands you
-the work. Grill the shape of the thing itself.
+For each outcome, cover its purpose, contents, inputs, outputs, and consumers.
+Every choice I would make while producing it is still mine to make.
 
-A unit is one thing the work adds or changes. What counts as a unit depends on
-the material:
+Never grill the mechanical details inside an outcome. Those details are Yours
+to pick after I approve its shape.
 
-- code: a data structure, or a function
-
-- files: a directory, a naming convention, a move
-
-- a document: a section, a table, an appendix
-
-- a configuration: a key, and what its value decides
-
-For a data structure, cover its kind (record, list, map, set, queue), every
-field it holds, and what each field means.
-
-For a function, cover what it takes in, what it gives back, and what earns its
-own function rather than staying inline.
-
-For anything else, cover what the unit holds and what reads it.
-
-Never grill the inside of a unit. The statements in a function body, or the
-sentences in a section, are yours to pick. "Trim the string, then split on
-commas" is not a question.
-
-One question per unit. A structure with its whole field list is one question.
-A function with its whole signature is one question. A document section with
-its purpose is one question.
-
-Split a unit into smaller questions only when one part has real competing
-options. If the part follows from the unit, do not ask.
+Ask one question per outcome. Split it only when one part has real competing
+options. If a part follows from the outcome, do not ask.
 
 ## Write the plan
 
@@ -152,7 +119,7 @@ lacks an answer, return to the interview. The plan contains no new call for me
 to discover during approval.
 
 Present the completed plan in the chat. Then ask one explicit approval question
-through the question tool. Do not implement until I approve the plan.
+through the question tool. Do not execute it until I approve the plan.
 
 Do this yourself, inline. Never dispatch a subagent. Building the map needs
 continuous judgment, not a mechanical pass.
@@ -177,13 +144,6 @@ Non-negotiable. They apply to every word outside a code block.
 
 - Test: readable with your brain off. If not, cut it.
 
-Outside code blocks, name the role first and the identifier after it, in
-parentheses. Write "the step that unpacks image layers (`extractTar`)", not
-"`extractTar`".
-
-Never invent an identifier. A made-up name in a plan is noise. The reader
-cannot check it, and the real code will not match it.
-
 ### Notation
 
 Draw whatever reads fastest for this material. That is the rule, and it comes
@@ -204,6 +164,13 @@ its place.
 
 The rest of this section is the code case. Skip it when the work touches no
 code, and draw the picture that fits instead.
+
+Outside code blocks, name the role first and the identifier after it, in
+parentheses. Write "the step that unpacks image layers (`extractTar`)", not
+"`extractTar`".
+
+Never invent an identifier. A made-up name in a plan is noise. The reader
+cannot check it, and the real code will not match it.
 
 A code block in a plan is pseudo-code. It has to read faster than the real
 code, or it is not earning its place.
@@ -264,18 +231,12 @@ fn dll_erase(list: &Dll, node: Node?) -> Status {
 
 ### Scope
 
-Mechanical, so the size is predictable:
+Include the target, every relevant dependency, every boundary the work crosses,
+and the point of real use. Continue until more context cannot change a
+decision, constraint, recipient, or verification.
 
-- the changed code
-
-- its direct callers and callees, one level out
-
-- every process boundary the change crosses
-
-- the entry point a user actually touches, always, however far out it sits
-
-That last one is not optional. A map with no way in is useless when you come
-back to it cold.
+The point of real use is not optional. A map with no way in is useless when
+you come back to it cold.
 
 ### The shape
 
@@ -314,76 +275,40 @@ fits.
 
 #### Facts this rests on
 
-Every non-obvious behaviour the design leans on. A protocol, a kernel, a
-database, a library.
-
-Every repository constraint that overlaps with a selected decision belongs
-here too. State the conflict and cite its source without presenting the rule as
-the only possible truth.
+Every non-obvious fact the plan relies on belongs here. Every governing
+constraint that overlaps with a selected decision belongs here too. State any
+conflict and cite its source without presenting the constraint as the only
+possible truth.
 
 **One fact, one line.** Two lines means it is two facts.
 
-End each line with the check that proved it, in brackets: `[wc -l]`,
-`[git status]`, `[read the SDK source]`.
+End every fact with the exact evidence I can inspect myself to recover that
+same fact. Put that evidence in brackets.
 
 Never write "from memory". If you did not confirm it, go and confirm it.
 
-#### Steps
+#### Outcomes
 
-One block per shippable piece, in the order they land.
+One block per outcome, in execution order. Each block gets a heading naming
+the completed result, then the representation that exposes every decision.
 
-Each piece gets a heading naming what it delivers, then pseudo-code.
-
-Show everything the piece will write. Data, then behaviour.
-
-Both carry the same weight. Data comes first because behaviour reads it. That
-is reading order, not importance. Never trade one for the other.
-
-**Data.** Every structure the piece adds or changes. Name its kind: record,
-list, map, set, queue. List every field. Say what each one holds.
-
-**Behaviour.** Every function the piece adds or changes. Say what it takes in
-and what it gives back. Then the body.
-
-The body carries control flow, ordering, error branches and state changes.
-
-Write bodies in the notation above.
-
-Collapse a body to one line only when it is trivial and obvious. A long boring
-body still gets written out in full.
-
-The reader authors this code. They sign off on its shape here, not at review.
+Show the outcome's purpose, contents, inputs, outputs, and consumers. Use the
+notation that fits the material. Use the code-only pseudo-code rules when an
+outcome changes code.
 
 This is also the breakdown. A reader counts the blocks and sees the real size
-of the change. Elision hides that size, so elide almost nothing.
+of the work. Elision hides that size, so elide almost nothing.
 
 #### Verification
 
-Named steps. Never "test it". Say which test, and say what a pass looks like.
+For every outcome, name its evidence, passing result, point of real use, and
+unchanged constraints. Never say only "test it". Name the check and define a
+pass.
 
-Cover every one of these that applies:
+When code changes, include the exact build and test checks, then run KISS.
+Skip KISS when no code changes.
 
-- **build**: the exact build and vet command, when the work produces code
-
-- **tests**: which command, which package, when tests exist to run
-
-- **reading**: when nothing compiles and nothing runs, the read that proves
-  the piece landed, and what a pass looks like
-
-- **logic**: the case that proves the branch is right
-
-- **real**: the entry point a user actually touches
-
-- **run KISS on changes**: a fresh agent loads KISS and inspects the named target
-
-- **docs**: which design-doc claim this changes, and where it gets fixed
-
-- **clean**: what must NOT have changed
-
-Running KISS on changes is mandatory when the implementation changes code.
-Skip it when the implementation changes no code.
-
-One complete KISS review may run automatically per implementation. The
+One complete KISS review may run automatically per execution. The
 confidence checks and second opinions inside that review remain part of the
 same review. Before running another complete KISS review, use the question
 tool.
@@ -405,7 +330,7 @@ Unchanged sections stay byte-identical so I can find the revision quickly.
 
 ## Deviations
 
-Implementation will meet reality and lose. Report it when it happens.
+Execution will meet reality and lose. Report it when it happens.
 
 Four lines, self-contained, so the user never reopens the plan to judge it:
 
@@ -424,12 +349,6 @@ Quote verbatim. A paraphrase drifts from what was approved.
 
 ## Durable facts
 
-A chat plan is not durable project documentation. Anything worth keeping goes
-where durable things already live.
-
-- Describes current behaviour → the design doc (`DESIGN.md`).
-
-- A gap that still needs a decision → the todo file (`TODO.md`).
-
-Never create a new committed file for this. A per-change design record
-duplicates the commit message and rots the moment nobody maintains it.
+A chat plan is not a durable resource. Find where lasting facts and unresolved
+decisions already belong. Use that resource. If no suitable resource exists,
+ask me before creating or choosing one.

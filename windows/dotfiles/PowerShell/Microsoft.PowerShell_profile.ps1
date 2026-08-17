@@ -2,10 +2,10 @@
 # Profile mode detection
 # =========================
 
-$ProfileMode = if ($env:PW_PROFILE_MODE)
-{ $env:PW_PROFILE_MODE
-} else
-{ "auto"
+$ProfileMode = if ($env:PW_PROFILE_MODE) {
+    $env:PW_PROFILE_MODE
+} else {
+    "auto"
 }
 
 $IsInteractiveConsole = (
@@ -14,19 +14,18 @@ $IsInteractiveConsole = (
     -not [Console]::IsOutputRedirected
 )
 
-$UseInteractiveProfile = switch ($ProfileMode.ToLowerInvariant())
-{
-    "full"
-    { $true
+$UseInteractiveProfile = switch ($ProfileMode.ToLowerInvariant()) {
+    "full" {
+        $true
     }
-    "quiet"
-    { $false
+    "quiet" {
+        $false
     }
-    "auto"
-    { $IsInteractiveConsole
+    "auto" {
+        $IsInteractiveConsole
     }
-    default
-    { $IsInteractiveConsole
+    default {
+        $IsInteractiveConsole
     }
 }
 
@@ -36,32 +35,25 @@ $IsQuiet = -not $UseInteractiveProfile
 # Quiet-safe helpers
 # =========================
 
-function Write-Info($msg)
-{
-    if (-not $IsQuiet)
-    {
+function Write-Info($msg) {
+    if (-not $IsQuiet) {
         Write-Host $msg -ForegroundColor Cyan
     }
 }
 
-function Write-Success($msg)
-{
-    if (-not $IsQuiet)
-    {
+function Write-Success($msg) {
+    if (-not $IsQuiet) {
         Write-Host $msg -ForegroundColor Green
     }
 }
 
-function Write-Warn($msg)
-{
-    if (-not $IsQuiet)
-    {
+function Write-Warn($msg) {
+    if (-not $IsQuiet) {
         Write-Host $msg -ForegroundColor Yellow
     }
 }
 
-function Write-Err($msg)
-{
+function Write-Err($msg) {
     Write-Host $msg -ForegroundColor Red
 }
 
@@ -69,57 +61,48 @@ function Write-Err($msg)
 # UI / Interactive only
 # =========================
 
-if ($UseInteractiveProfile)
-{
+if ($UseInteractiveProfile) {
     # --- Oh My Posh ---
     $ohMyPoshConfig = Join-Path (Split-Path $PROFILE) "black-pink.omp.json"
-    if (Test-Path $ohMyPoshConfig)
-    {
+    if (Test-Path $ohMyPoshConfig) {
         oh-my-posh init pwsh --config $ohMyPoshConfig | Invoke-Expression
     }
 
     # --- Terminal Icons ---
-    if (Get-Module -ListAvailable -Name Terminal-Icons)
-    {
+    if (Get-Module -ListAvailable -Name Terminal-Icons) {
         Import-Module Terminal-Icons
     }
 
     # --- PSReadLine ---
-    if (Get-Module -ListAvailable -Name PSReadLine)
-    {
+    if (Get-Module -ListAvailable -Name PSReadLine) {
         Import-Module PSReadLine
 
         Set-PSReadLineOption -EditMode Vi
         Set-PSReadLineKeyHandler -Key Tab -Function MenuComplete
 
-        try
-        {
+        try {
             Set-PSReadLineOption -PredictionSource History
             Set-PSReadLineOption -PredictionViewStyle InlineView
-        } catch
-        {
+        } catch {
         }
 
-        try
-        {
+        try {
             Set-PSReadLineOption -ViModeIndicator Script
             Set-PSReadLineOption -ViModeChangeHandler {
                 param($mode)
-                switch ($mode)
-                {
-                    "Insert"
-                    { Write-Host -NoNewline "$([char]0x1b)[5 q"
+                switch ($mode) {
+                    "Insert" {
+                        Write-Host -NoNewline "$([char]0x1b)[5 q"
                     }
-                    "Command"
-                    { Write-Host -NoNewline "$([char]0x1b)[1 q"
+                    "Command" {
+                        Write-Host -NoNewline "$([char]0x1b)[1 q"
                     }
-                    default
-                    { Write-Host -NoNewline "$([char]0x1b)[5 q"
+                    default {
+                        Write-Host -NoNewline "$([char]0x1b)[5 q"
                     }
                 }
             }
-        } catch
-        {
+        } catch {
         }
     }
 }
@@ -161,8 +144,7 @@ if (Get-Command nvim -ErrorAction SilentlyContinue) {
 # Core functions
 # =========================
 
-function Move-SharedDesktopToCurrentUser
-{
+function Move-SharedDesktopToCurrentUser {
     [CmdletBinding(SupportsShouldProcess = $true)]
     param(
         [switch]$IncludeDefaultDesktop,
@@ -172,61 +154,51 @@ function Move-SharedDesktopToCurrentUser
     $dest = [Environment]::GetFolderPath("Desktop")
     $sources = @("$env:PUBLIC\Desktop")
 
-    if ($IncludeDefaultDesktop)
-    {
+    if ($IncludeDefaultDesktop) {
         $sources += "C:\Users\Default\Desktop"
     }
 
-    foreach ($source in $sources)
-    {
-        if (-not (Test-Path $source))
-        { continue
+    foreach ($source in $sources) {
+        if (-not (Test-Path $source)) {
+            continue
         }
 
-        $items = if ($MoveEverything)
-        {
+        $items = if ($MoveEverything) {
             Get-ChildItem -LiteralPath $source -Force
-        } else
-        {
+        } else {
             Get-ChildItem -LiteralPath $source -Force -Include *.lnk, *.url
         }
 
-        foreach ($item in $items)
-        {
+        foreach ($item in $items) {
             $target = Join-Path $dest $item.Name
 
-            if (Test-Path $target)
-            {
+            if (Test-Path $target) {
                 $base = [IO.Path]::GetFileNameWithoutExtension($item.Name)
-                $ext  = [IO.Path]::GetExtension($item.Name)
+                $ext = [IO.Path]::GetExtension($item.Name)
                 $target = Join-Path $dest "$base - déplacé$ext"
             }
 
-            if ($PSCmdlet.ShouldProcess($item.FullName, "Déplacer vers $target"))
-            {
+            if ($PSCmdlet.ShouldProcess($item.FullName, "Déplacer vers $target")) {
                 Move-Item -LiteralPath $item.FullName -Destination $target -Force
             }
         }
 
         Get-ChildItem -LiteralPath $source -Force | ForEach-Object {
-            if ($PSCmdlet.ShouldProcess($_.FullName, "Supprimer définitivement du bureau partagé"))
-            {
+            if ($PSCmdlet.ShouldProcess($_.FullName, "Supprimer définitivement du bureau partagé")) {
                 Remove-Item -LiteralPath $_.FullName -Recurse -Force
             }
         }
     }
 }
 
-function repair-user-path
-{
+function repair-user-path {
 
     # Read the current user PATH from the registry-backed environment variable
     $currentUserPath = [Environment]::GetEnvironmentVariable("Path", "User")
 
     # Split into entries, remove surrounding whitespace, and ignore empty items
     $pathEntries = @()
-    if ($currentUserPath)
-    {
+    if ($currentUserPath) {
         $pathEntries = $currentUserPath -split ';' |
             ForEach-Object { $_.Trim() } |
             Where-Object { $_ -ne "" }
@@ -239,16 +211,12 @@ function repair-user-path
     )
 
     # Append only missing entries
-    foreach ($pathToAdd in $requiredPaths)
-    {
-        if (-not [string]::IsNullOrWhiteSpace($pathToAdd))
-        {
-            if ($pathEntries -notcontains $pathToAdd)
-            {
+    foreach ($pathToAdd in $requiredPaths) {
+        if (-not [string]::IsNullOrWhiteSpace($pathToAdd)) {
+            if ($pathEntries -notcontains $pathToAdd) {
                 Write-Host "Adding: $pathToAdd"
                 $pathEntries += $pathToAdd
-            } else
-            {
+            } else {
                 Write-Host "Already present: $pathToAdd"
             }
         }
@@ -256,10 +224,8 @@ function repair-user-path
 
     # Remove duplicates while preserving first occurrence order
     $seen = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
-    $cleanPathEntries = foreach ($entry in $pathEntries)
-    {
-        if ($seen.Add($entry))
-        {
+    $cleanPathEntries = foreach ($entry in $pathEntries) {
+        if ($seen.Add($entry)) {
             $entry
         }
     }
@@ -273,8 +239,7 @@ function repair-user-path
     Write-Host "Open a new terminal session to reload the updated PATH."
 }
 
-function su
-{
+function su {
     $currentDir = (Get-Location).Path
 
     $wtArgs = @(
@@ -288,19 +253,15 @@ function su
     Start-Process -FilePath "wt.exe" -Verb RunAs -ArgumentList $wtArgs
 }
 
-function msvcenv
-{
+function msvcenv {
     $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 
-    if (Test-Path $vsWhere)
-    {
+    if (Test-Path $vsWhere) {
         $installPath = & $vsWhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath 2>$null
 
-        if ($installPath)
-        {
+        if ($installPath) {
             $launchScript = Join-Path $installPath "Common7\Tools\Launch-VsDevShell.ps1"
-            if (Test-Path $launchScript)
-            {
+            if (Test-Path $launchScript) {
                 & $launchScript
                 Write-Success "✅ MSVC environment loaded"
                 return
@@ -311,8 +272,7 @@ function msvcenv
     Write-Err "❌ MSVC environment not found."
 }
 
-function repair-winget
-{
+function repair-winget {
     [CmdletBinding()]
     param()
 
@@ -322,33 +282,26 @@ function repair-winget
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
 
-    function Test-WingetAvailable
-    {
-        try
-        {
+    function Test-WingetAvailable {
+        try {
             $null = Get-Command winget -ErrorAction Stop
             return $true
-        } catch
-        {
+        } catch {
             return $false
         }
     }
 
-    function Repair-WingetClient
-    {
-        try
-        {
+    function Repair-WingetClient {
+        try {
             Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe -ErrorAction Stop
             Start-Sleep -Seconds 2
             return $true
-        } catch
-        {
+        } catch {
             return $false
         }
     }
 
-    function Invoke-Winget
-    {
+    function Invoke-Winget {
         param(
             [Parameter(Mandatory)]
             [string[]]$Arguments
@@ -383,12 +336,10 @@ function repair-winget
         }
     }
 
-    function Get-WingetExportPackages
-    {
+    function Get-WingetExportPackages {
         $tempFile = Join-Path $env:TEMP ("winget_export_" + [guid]::NewGuid().ToString() + ".json")
 
-        try
-        {
+        try {
             $result = Invoke-Winget -Arguments @(
                 "export",
                 "--output", "`"$tempFile`"",
@@ -397,49 +348,41 @@ function repair-winget
                 "--disable-interactivity"
             )
 
-            if ($result.ExitCode -ne 0)
-            {
+            if ($result.ExitCode -ne 0) {
                 throw "winget export failed.`nCommand: $($result.Command)`nError: $($result.StdErr)`nOutput: $($result.StdOut)"
             }
 
-            if (-not (Test-Path $tempFile))
-            {
+            if (-not (Test-Path $tempFile)) {
                 throw "The JSON export file was not created."
             }
 
             $json = Get-Content -Path $tempFile -Raw -Encoding UTF8 | ConvertFrom-Json
             $packages = New-Object System.Collections.Generic.List[object]
 
-            foreach ($source in $json.Sources)
-            {
-                $sourceName = if ($source.SourceDetails -and $source.SourceDetails.Name)
-                {
+            foreach ($source in $json.Sources) {
+                $sourceName = if ($source.SourceDetails -and $source.SourceDetails.Name) {
                     $source.SourceDetails.Name
-                } elseif ($source.SourceIdentifier)
-                {
+                } elseif ($source.SourceIdentifier) {
                     $source.SourceIdentifier
-                } else
-                {
+                } else {
                     "unknown"
                 }
 
-                foreach ($pkg in $source.Packages)
-                {
+                foreach ($pkg in $source.Packages) {
                     $id = $pkg.PackageIdentifier
                     $version = $pkg.Version
 
-                    if ([string]::IsNullOrWhiteSpace($id))
-                    {
+                    if ([string]::IsNullOrWhiteSpace($id)) {
                         continue
                     }
 
                     $packages.Add([PSCustomObject]@{
                             Selected = $false
                             Id       = $id
-                            Version  = if ($version)
-                            { $version
-                            } else
-                            { ""
+                            Version  = if ($version) {
+                                $version
+                            } else {
+                                ""
                             }
                             Source   = $sourceName
                         })
@@ -447,17 +390,14 @@ function repair-winget
             }
 
             $packages | Sort-Object Id -Unique
-        } finally
-        {
-            if (Test-Path $tempFile)
-            {
+        } finally {
+            if (Test-Path $tempFile) {
                 Remove-Item -Path $tempFile -Force -ErrorAction SilentlyContinue
             }
         }
     }
 
-    function Write-Log
-    {
+    function Write-Log {
         param(
             [Parameter(Mandatory)][System.Windows.Forms.TextBox]$TextBox,
             [Parameter(Mandatory)][string]$Message
@@ -470,8 +410,7 @@ function repair-winget
         [System.Windows.Forms.Application]::DoEvents()
     }
 
-    function Reinstall-WingetPackage
-    {
+    function Reinstall-WingetPackage {
         param(
             [Parameter(Mandatory)][string]$Id,
             [Parameter()][string]$Version,
@@ -493,17 +432,14 @@ function repair-winget
         $uninstallResult = Invoke-Winget -Arguments $uninstallArgs
         Write-Log -TextBox $LogBox -Message $uninstallResult.Command
 
-        if ($uninstallResult.StdOut.Trim())
-        {
+        if ($uninstallResult.StdOut.Trim()) {
             Write-Log -TextBox $LogBox -Message $uninstallResult.StdOut.Trim()
         }
-        if ($uninstallResult.StdErr.Trim())
-        {
+        if ($uninstallResult.StdErr.Trim()) {
             Write-Log -TextBox $LogBox -Message "STDERR: $($uninstallResult.StdErr.Trim())"
         }
 
-        if ($uninstallResult.ExitCode -ne 0)
-        {
+        if ($uninstallResult.ExitCode -ne 0) {
             Write-Log -TextBox $LogBox -Message "Uninstall failed for $Id (code $($uninstallResult.ExitCode))."
             return
         }
@@ -518,38 +454,31 @@ function repair-winget
             "--disable-interactivity"
         )
 
-        if (-not [string]::IsNullOrWhiteSpace($Version))
-        {
+        if (-not [string]::IsNullOrWhiteSpace($Version)) {
             $installArgs += @("--version", "`"$Version`"")
         }
 
         $installResult = Invoke-Winget -Arguments $installArgs
         Write-Log -TextBox $LogBox -Message $installResult.Command
 
-        if ($installResult.StdOut.Trim())
-        {
+        if ($installResult.StdOut.Trim()) {
             Write-Log -TextBox $LogBox -Message $installResult.StdOut.Trim()
         }
-        if ($installResult.StdErr.Trim())
-        {
+        if ($installResult.StdErr.Trim()) {
             Write-Log -TextBox $LogBox -Message "STDERR: $($installResult.StdErr.Trim())"
         }
 
-        if ($installResult.ExitCode -eq 0)
-        {
+        if ($installResult.ExitCode -eq 0) {
             Write-Log -TextBox $LogBox -Message "OK: $Id reinstalled."
-        } else
-        {
+        } else {
             Write-Log -TextBox $LogBox -Message "Reinstall failed for $Id (code $($installResult.ExitCode))."
         }
     }
 
-    if (-not (Test-WingetAvailable))
-    {
+    if (-not (Test-WingetAvailable)) {
         $repairOk = Repair-WingetClient
 
-        if (-not $repairOk -or -not (Test-WingetAvailable))
-        {
+        if (-not $repairOk -or -not (Test-WingetAvailable)) {
             [System.Windows.Forms.MessageBox]::Show(
                 "winget.exe was not found, and the App Installer repair attempt failed.`n`nRepair or reinstall App Installer from Microsoft Store, then run this function again.",
                 "WinGet Not Found",
@@ -576,8 +505,7 @@ function repair-winget
     $form.BackColor = $darkBack
     $form.ForeColor = $lightText
 
-    function Set-DarkButton
-    {
+    function Set-DarkButton {
         param([Parameter(Mandatory)][System.Windows.Forms.Button]$Button)
 
         $Button.BackColor = $darkPanel
@@ -705,8 +633,7 @@ function repair-winget
     $script:AllPackages = New-Object System.Collections.ArrayList
     $bindingListType = "System.ComponentModel.BindingList[object]"
 
-    function Bind-Grid
-    {
+    function Bind-Grid {
         param([string]$FilterText = "")
 
         $filtered = $script:AllPackages | Where-Object {
@@ -717,36 +644,31 @@ function repair-winget
         }
 
         $binding = New-Object $bindingListType
-        foreach ($item in $filtered)
-        {
+        foreach ($item in $filtered) {
             [void]$binding.Add($item)
         }
 
         $grid.DataSource = $binding
     }
 
-    function Load-Packages
-    {
+    function Load-Packages {
         $form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
         $btnRefresh.Enabled = $false
         $btnRun.Enabled = $false
 
-        try
-        {
+        try {
             $txtLog.Clear()
             Write-Log -TextBox $txtLog -Message "Loading packages with winget export..."
             $packages = Get-WingetExportPackages
 
             [void]$script:AllPackages.Clear()
-            foreach ($pkg in $packages)
-            {
+            foreach ($pkg in $packages) {
                 [void]$script:AllPackages.Add($pkg)
             }
 
             Bind-Grid -FilterText $txtFilter.Text
             Write-Log -TextBox $txtLog -Message "$($script:AllPackages.Count) package(s) loaded."
-        } catch
-        {
+        } catch {
             Write-Log -TextBox $txtLog -Message "Error: $($_.Exception.Message)"
             [System.Windows.Forms.MessageBox]::Show(
                 $_.Exception.Message,
@@ -754,8 +676,7 @@ function repair-winget
                 [System.Windows.Forms.MessageBoxButtons]::OK,
                 [System.Windows.Forms.MessageBoxIcon]::Error
             ) | Out-Null
-        } finally
-        {
+        } finally {
             $btnRefresh.Enabled = $true
             $btnRun.Enabled = $true
             $form.Cursor = [System.Windows.Forms.Cursors]::Default
@@ -771,16 +692,14 @@ function repair-winget
         })
 
     $btnSelectAll.Add_Click({
-            foreach ($item in $grid.DataSource)
-            {
+            foreach ($item in $grid.DataSource) {
                 $item.Selected = $true
             }
             $grid.Refresh()
         })
 
     $btnUnselectAll.Add_Click({
-            foreach ($item in $grid.DataSource)
-            {
+            foreach ($item in $grid.DataSource) {
                 $item.Selected = $false
             }
             $grid.Refresh()
@@ -790,8 +709,7 @@ function repair-winget
             $grid.EndEdit()
             $selected = @($script:AllPackages | Where-Object { $_.Selected })
 
-            if ($selected.Count -eq 0)
-            {
+            if ($selected.Count -eq 0) {
                 [System.Windows.Forms.MessageBox]::Show(
                     "No packages selected.",
                     "Information",
@@ -809,8 +727,7 @@ function repair-winget
                 [System.Windows.Forms.MessageBoxIcon]::Warning
             )
 
-            if ($confirm -ne [System.Windows.Forms.DialogResult]::Yes)
-            {
+            if ($confirm -ne [System.Windows.Forms.DialogResult]::Yes) {
                 return
             }
 
@@ -818,10 +735,8 @@ function repair-winget
             $btnRun.Enabled = $false
             $btnRefresh.Enabled = $false
 
-            try
-            {
-                foreach ($pkg in $selected)
-                {
+            try {
+                foreach ($pkg in $selected) {
                     Reinstall-WingetPackage -Id $pkg.Id -Version $pkg.Version -LogBox $txtLog
                 }
 
@@ -832,8 +747,7 @@ function repair-winget
                     [System.Windows.Forms.MessageBoxButtons]::OK,
                     [System.Windows.Forms.MessageBoxIcon]::Information
                 ) | Out-Null
-            } finally
-            {
+            } finally {
                 $btnRun.Enabled = $true
                 $btnRefresh.Enabled = $true
                 $form.Cursor = [System.Windows.Forms.Cursors]::Default
@@ -848,38 +762,32 @@ function repair-winget
 # Misc
 # =========================
 
-function update
-{
+function update {
     winget upgrade -r --include-unknown --accept-package-agreements --accept-source-agreements
     Move-SharedDesktopToCurrentUser -IncludeDefaultDesktop -MoveEverything
 }
 
-function ..
-{
+function .. {
     param([int]$levels = 1)
 
-    if ($levels -lt 1)
-    {
+    if ($levels -lt 1) {
         Write-Err "Please provide a positive number."
         return
     }
 
     $path = (Get-Location).Path
-    for ($i = 0; $i -lt $levels; $i++)
-    {
+    for ($i = 0; $i -lt $levels; $i++) {
         $path = Split-Path $path -Parent
     }
 
     Set-Location $path
 }
 
-function reload
-{
+function reload {
     . $PROFILE
     $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
 
-    if (-not $IsQuiet)
-    {
+    if (-not $IsQuiet) {
         Clear-Host
     }
 }

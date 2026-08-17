@@ -44,7 +44,7 @@ log_error() {
 
 print_banner() {
     echo -e "${CYAN}${BOLD}" >&2
-    cat << "EOF" >&2
+    cat <<"EOF" >&2
 ╔═══════════════════════════════════════════════════════════╗
 ║                                                           ║
 ║        Setup Configuration Bootstrap Script               ║
@@ -58,7 +58,7 @@ EOF
 
 detect_platform() {
     if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-        if command -v apt-get &> /dev/null; then
+        if command -v apt-get &>/dev/null; then
             echo "ubuntu"
         else
             echo "unknown"
@@ -124,7 +124,7 @@ download_and_extract() {
         local archive_url="https://github.com/${GITHUB_REPO}/releases/download/${tag}/setup-config.zip"
 
         # If release asset doesn't exist, fall back to archive
-        if ! curl -fsSL --head "$archive_url" > /dev/null 2>&1; then
+        if ! curl -fsSL --head "$archive_url" >/dev/null 2>&1; then
             log_warning "Release asset not found, downloading from archive..."
             archive_url="https://github.com/${GITHUB_REPO}/archive/refs/tags/${tag}.zip"
         fi
@@ -240,11 +240,11 @@ ensure_dependencies() {
     local platform="$1"
     local missing_deps=()
 
-    if ! command -v curl &> /dev/null; then
+    if ! command -v curl &>/dev/null; then
         missing_deps+=("curl")
     fi
 
-    if ! command -v unzip &> /dev/null; then
+    if ! command -v unzip &>/dev/null; then
         missing_deps+=("unzip")
     fi
 
@@ -295,10 +295,10 @@ main() {
         # Normalize platform argument
         platform=$(echo "$platform" | tr '[:upper:]' '[:lower:]')
         case "$platform" in
-            ubuntu|linux|server)
+            ubuntu | linux | server)
                 platform="ubuntu"
                 ;;
-            windows|win|mingw*|msys*|cygwin*)
+            windows | win | mingw* | msys* | cygwin*)
                 platform="windows"
                 ;;
             *)

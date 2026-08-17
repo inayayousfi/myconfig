@@ -1,28 +1,28 @@
 {
   "which_key": {
     "delay_ms": 0,
-    "enabled": true,
+    "enabled": true
   },
   "file_finder": {
-    "modal_max_width": "medium",
+    "modal_max_width": "medium"
   },
   "search": {
-    "center_on_match": true,
+    "center_on_match": true
   },
   "completions": {
     "words_min_length": 1,
-    "words": "enabled",
+    "words": "enabled"
   },
   "completion_menu_item_kind": "symbol",
   "inlay_hints": {
     "show_background": true,
-    "enabled": true,
+    "enabled": true
   },
   "colorize_brackets": true,
   "code_lens": "on",
   "allow_rewrap": "anywhere",
   "toolbar": {
-    "code_actions": true,
+    "code_actions": true
   },
   "inline_code_actions": false,
   "diff_view_style": "split",
@@ -36,13 +36,13 @@
     "dock": "left",
     "favorite_models": [],
     "model_parameters": [],
-    "show_turn_stats": true,
+    "show_turn_stats": true
   },
   "auto_update": true,
   "autosave": {
     "after_delay": {
-      "milliseconds": 2000,
-    },
+      "milliseconds": 2000
+    }
   },
   "base_keymap": "VSCode",
   "buffer_font_family": "Iosevka Nerd Font Mono",
@@ -50,61 +50,61 @@
   "buffer_font_weight": 450,
   "buffer_line_height": "standard",
   "collaboration_panel": {
-    "dock": "left",
+    "dock": "left"
   },
   "completion_menu_scrollbar": "always",
   "git_panel": {
     "commit_title_max_length": 80,
     "scrollbar": {
-      "show": "auto",
+      "show": "auto"
     },
     "tree_view": true,
     "status_style": "label_color",
     "default_width": 240.0,
-    "dock": "right",
+    "dock": "right"
   },
   "gutter": {
-    "folds": false,
+    "folds": false
   },
   "hide_mouse": "never",
   "icon_theme": "Zed (Default)",
   "max_tabs": 1,
   "on_last_window_closed": "quit_app",
   "outline_panel": {
-    "dock": "right",
+    "dock": "right"
   },
   "project_panel": {
     "auto_open": {
-      "on_create": false,
+      "on_create": false
     },
     "diagnostic_badges": true,
     "scrollbar": {
-      "show": "auto",
+      "show": "auto"
     },
     "entry_spacing": "standard",
-    "dock": "right",
+    "dock": "right"
   },
   "relative_line_numbers": "enabled",
   "restore_on_startup": "launchpad",
   "rounded_selection": false,
   "scrollbar": {
-    "show": "never",
+    "show": "never"
   },
   "session": {
-    "trust_all_worktrees": true,
+    "trust_all_worktrees": true
   },
   "soft_wrap": "editor_width",
   "tab_bar": {
-    "show": false,
+    "show": false
   },
   "telemetry": {
     "diagnostics": false,
-    "metrics": false,
+    "metrics": false
   },
   "terminal": {
     "scrollbar": {
-      "show": "always",
-    },
+      "show": "always"
+    }
   },
   "theme": "Black & Pink",
   "title_bar": {
@@ -114,7 +114,7 @@
     "show_onboarding_banner": true,
     "show_sign_in": false,
     "show_user_menu": false,
-    "show_user_picture": false,
+    "show_user_picture": false
   },
   "ui_font_family": "Iosevka Nerd Font",
   "ui_font_size": 20,
@@ -122,8 +122,8 @@
   "unnecessary_code_fade": 0,
   "vim": {
     "gdefault": true,
-    "toggle_relative_line_numbers": true,
+    "toggle_relative_line_numbers": true
   },
   "vim_mode": true,
-  "when_closing_with_no_tabs": "keep_window_open",
+  "when_closing_with_no_tabs": "keep_window_open"
 }

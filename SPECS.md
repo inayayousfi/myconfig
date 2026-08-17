@@ -26,10 +26,10 @@ This document describes the current setup scripts, package groups, dotfiles, and
 
 The root bootstrap scripts download the latest GitHub release when available, fall back to the main branch when needed, stage the repository under `~/.setup-config`, back up any previous staged install, and hand off to the platform installer.
 
-| Platform | Bootstrap | Installer |
-|----------|-----------|-----------|
-| Ubuntu Server | `bootstrap.sh` | `ubuntu-server/install.sh` |
-| Windows | `bootstrap.ps1` | `windows/install.ps1` |
+| Platform      | Bootstrap       | Installer                  |
+| ------------- | --------------- | -------------------------- |
+| Ubuntu Server | `bootstrap.sh`  | `ubuntu-server/install.sh` |
+| Windows       | `bootstrap.ps1` | `windows/install.ps1`      |
 
 ### Linux Bootstrap
 
@@ -49,23 +49,23 @@ The Linux bootstrap ensures `curl` and `unzip` exist before downloading the arch
 
 The Unix-like shell is **Zsh** with **Oh My Zsh**.
 
-| Component | Value |
-|-----------|-------|
-| Shell | `zsh` |
-| Framework | Oh My Zsh |
-| Theme | `blacknpink` |
-| Config location | `~/.zshrc` |
-| Custom files | `~/.oh-my-zsh/custom/` |
+| Component       | Value                  |
+| --------------- | ---------------------- |
+| Shell           | `zsh`                  |
+| Framework       | Oh My Zsh              |
+| Theme           | `blacknpink`           |
+| Config location | `~/.zshrc`             |
+| Custom files    | `~/.oh-my-zsh/custom/` |
 
 #### Plugins
 
-| Plugin | Source | Description |
-|--------|--------|-------------|
-| `git` | Built-in | Git aliases and completions |
-| `vi-mode` | Built-in | Vi keybindings in shell |
-| `zsh-autosuggestions` | `zsh-users/zsh-autosuggestions` | Fish-like autosuggestions |
-| `zsh-syntax-highlighting` | `zsh-users/zsh-syntax-highlighting` | Syntax highlighting |
-| `inaya` | Custom dotfile | Personal aliases, functions, and environment |
+| Plugin                    | Source                              | Description                                  |
+| ------------------------- | ----------------------------------- | -------------------------------------------- |
+| `git`                     | Built-in                            | Git aliases and completions                  |
+| `vi-mode`                 | Built-in                            | Vi keybindings in shell                      |
+| `zsh-autosuggestions`     | `zsh-users/zsh-autosuggestions`     | Fish-like autosuggestions                    |
+| `zsh-syntax-highlighting` | `zsh-users/zsh-syntax-highlighting` | Syntax highlighting                          |
+| `inaya`                   | Custom dotfile                      | Personal aliases, functions, and environment |
 
 #### Custom Theme: `blacknpink`
 
@@ -85,13 +85,13 @@ Key aliases and functions include `nvim` shortcuts, modern CLI replacements for 
 
 Windows uses **PowerShell Core** with **Oh My Posh**.
 
-| Component | Value |
-|-----------|-------|
-| Shell | PowerShell Core (`pwsh`) |
-| Prompt | Oh My Posh |
-| Theme | `black-pink.omp.json` |
-| Profile | `windows/dotfiles/PowerShell/Microsoft.PowerShell_profile.ps1` |
-| Modules | `PSReadLine`, `Terminal-Icons` |
+| Component | Value                                                          |
+| --------- | -------------------------------------------------------------- |
+| Shell     | PowerShell Core (`pwsh`)                                       |
+| Prompt    | Oh My Posh                                                     |
+| Theme     | `black-pink.omp.json`                                          |
+| Profile   | `windows/dotfiles/PowerShell/Microsoft.PowerShell_profile.ps1` |
+| Modules   | `PSReadLine`, `Terminal-Icons`                                 |
 
 PowerShell profile features include vi mode keybindings, history predictions, cursor shape changes for insert and normal modes, terminal icons, and Windows Terminal integration helpers.
 
@@ -101,35 +101,35 @@ PowerShell profile features include vi mode keybindings, history predictions, cu
 
 ### Core Utilities
 
-| Tool | Purpose | Replaces |
-|------|---------|----------|
-| `eza` | Modern ls with icons and git integration | `ls` |
-| `fd` | Fast, user-friendly find | `find` |
-| `ripgrep` (`rg`) | Fast recursive grep | `grep` |
-| `bat` | Cat with syntax highlighting | `cat` |
-| `fzf` | Fuzzy finder | - |
-| `zoxide` | Smart cd with frecency | `cd` |
-| `btop` | Resource monitor | `top`, `htop` |
-| `fastfetch` | System information display | `neofetch` |
-| `jq` | JSON processor | - |
-| `tokei` | Code statistics | - |
+| Tool             | Purpose                                  | Replaces      |
+| ---------------- | ---------------------------------------- | ------------- |
+| `eza`            | Modern ls with icons and git integration | `ls`          |
+| `fd`             | Fast, user-friendly find                 | `find`        |
+| `ripgrep` (`rg`) | Fast recursive grep                      | `grep`        |
+| `bat`            | Cat with syntax highlighting             | `cat`         |
+| `fzf`            | Fuzzy finder                             | -             |
+| `zoxide`         | Smart cd with frecency                   | `cd`          |
+| `btop`           | Resource monitor                         | `top`, `htop` |
+| `fastfetch`      | System information display               | `neofetch`    |
+| `jq`             | JSON processor                           | -             |
+| `tokei`          | Code statistics                          | -             |
 
 ### Git Tools
 
-| Tool | Purpose |
-|------|---------|
-| `git` | Version control |
+| Tool      | Purpose             |
+| --------- | ------------------- |
+| `git`     | Version control     |
 | `lazygit` | Terminal UI for git |
 
 ### Lazygit
 
 Lazygit uses a shared Black & Pink theme.
 
-| Setting | Value |
-|---------|-------|
-| Config location | `$XDG_CONFIG_HOME/lazygit/config.yml` |
-| Windows config location | `%LOCALAPPDATA%\lazygit\config.yml` |
-| Dotfile | `dotfiles/lazygit/.config/lazygit/config.yml` |
+| Setting                 | Value                                         |
+| ----------------------- | --------------------------------------------- |
+| Config location         | `$XDG_CONFIG_HOME/lazygit/config.yml`         |
+| Windows config location | `%LOCALAPPDATA%\lazygit\config.yml`           |
+| Dotfile                 | `dotfiles/lazygit/.config/lazygit/config.yml` |
 
 ---
 
@@ -139,19 +139,19 @@ Lazygit uses a shared Black & Pink theme.
 
 Windows Terminal is the native Windows terminal emulator.
 
-| Setting | Value |
-|---------|-------|
-| Package | `Microsoft.WindowsTerminal` |
-| Config source | `windows/dotfiles/WindowsTerminal/settings.json` |
+| Setting       | Value                                                                                      |
+| ------------- | ------------------------------------------------------------------------------------------ |
+| Package       | `Microsoft.WindowsTerminal`                                                                |
+| Config source | `windows/dotfiles/WindowsTerminal/settings.json`                                           |
 | Config target | `%LOCALAPPDATA%\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json` |
-| Profiles | PowerShell and Developer PowerShell for VS 2022 |
+| Profiles      | PowerShell and Developer PowerShell for VS 2022                                            |
 
 ### Neovim
 
 Neovim is the primary editor everywhere, including Windows, where `$EDITOR`/`$VISUAL` shell out to the nvim instance running inside WSL.
 
 | Component | Value |
-|-----------|-------|
+| --- | --- |
 | Plugin manager | native `vim.pack` |
 | Config location | `$XDG_CONFIG_HOME/nvim/` |
 | Dotfile | `dotfiles/nvim/.config/nvim/` |
@@ -167,10 +167,10 @@ Neovim is the primary editor everywhere, including Windows, where `$EDITOR`/`$VI
 
 Yazi is the terminal file manager for Unix-like environments and Arch WSL.
 
-| Setting | Value |
-|---------|-------|
-| Theme | Black & Pink / configured flavor files |
-| Config source | `dotfiles/yazi/.config/yazi/config/` |
+| Setting       | Value                                  |
+| ------------- | -------------------------------------- |
+| Theme         | Black & Pink / configured flavor files |
+| Config source | `dotfiles/yazi/.config/yazi/config/`   |
 
 Dependencies include FFmpeg, 7-Zip, Poppler, resvg, ImageMagick, and Nerd Font symbols for previews and icons.
 
@@ -178,15 +178,15 @@ Dependencies include FFmpeg, 7-Zip, Poppler, resvg, ImageMagick, and Nerd Font s
 
 ## Development Languages And Runtimes
 
-| Language/Runtime | Tool | Primary Target |
-|------------------|------|----------------|
-| Python | Python / Python Install Manager | Windows DevTools, Arch WSL |
-| Go | `go` | Arch WSL |
-| Rust | `rustup` | Windows DevTools, Arch WSL |
-| JavaScript/TypeScript | `bun` | Arch WSL |
-| Java | `jdk-openjdk`, Maven | Arch WSL |
-| C/C++ | LLVM, Visual Studio Build Tools, Make, CMake | Windows DevTools, Arch WSL |
-| Containers | Docker Desktop | Windows DevTools |
+| Language/Runtime      | Tool                                         | Primary Target             |
+| --------------------- | -------------------------------------------- | -------------------------- |
+| Python                | Python / Python Install Manager              | Windows DevTools, Arch WSL |
+| Go                    | `go`                                         | Arch WSL                   |
+| Rust                  | `rustup`                                     | Windows DevTools, Arch WSL |
+| JavaScript/TypeScript | `bun`                                        | Arch WSL                   |
+| Java                  | `jdk-openjdk`, Maven                         | Arch WSL                   |
+| C/C++                 | LLVM, Visual Studio Build Tools, Make, CMake | Windows DevTools, Arch WSL |
+| Containers            | Docker Desktop                               | Windows DevTools           |
 
 ---
 
@@ -262,9 +262,9 @@ See `ubuntu-server/install.sh` for the complete installation script.
 
 ### Installed Packages
 
-| Category | Packages |
-|----------|----------|
-| Core | `ca-certificates`, `curl`, `git`, `zsh` |
+| Category | Packages                                |
+| -------- | --------------------------------------- |
+| Core     | `ca-certificates`, `curl`, `git`, `zsh` |
 
 ### Installed Configuration
 
@@ -292,20 +292,20 @@ See `windows/install.ps1` for the complete installation script.
 
 Installed from `windows/dotfiles/winget/packages.json`:
 
-| Package Identifier | Purpose |
-|--------------------|---------|
-| `7zip.7zip` | Archive tooling |
-| `Git.Git` | Version control |
-| `Microsoft.PowerShell` | PowerShell Core |
-| `Microsoft.WindowsTerminal` | Terminal emulator |
-| `Microsoft.WSL` | Windows Subsystem for Linux |
-| `JanDeDobbeleer.OhMyPosh` | Prompt renderer |
-| `Microsoft.PowerToys` | Windows productivity utilities |
+| Package Identifier          | Purpose                        |
+| --------------------------- | ------------------------------ |
+| `7zip.7zip`                 | Archive tooling                |
+| `Git.Git`                   | Version control                |
+| `Microsoft.PowerShell`      | PowerShell Core                |
+| `Microsoft.WindowsTerminal` | Terminal emulator              |
+| `Microsoft.WSL`             | Windows Subsystem for Linux    |
+| `JanDeDobbeleer.OhMyPosh`   | Prompt renderer                |
+| `Microsoft.PowerToys`       | Windows productivity utilities |
 
 ### Optional Package Groups
 
 | Group | Package File | Contents |
-|-------|--------------|----------|
+| --- | --- | --- |
 | DevTools | `packages_devtools.json` | Rustup, LLVM, Visual Studio Build Tools, Python Install Manager, Docker Desktop |
 | Art | `packages_art.json` | Blender, Krita, Kdenlive, Audacity, OBS Studio, MuseScore |
 | Supplementary | `packages_supplementary.json` | Handy, VirtualBox, LibreOffice |
@@ -329,7 +329,7 @@ Installed from `windows/dotfiles/winget/packages.json`:
 ### Windows Dotfiles
 
 | Package | Description | Target |
-|---------|-------------|--------|
+| --- | --- | --- |
 | `PowerShell` | Profile and Oh My Posh theme | `$PROFILE` and profile directory |
 | `WindowsTerminal` | Windows Terminal settings | `%LOCALAPPDATA%\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json` |
 | `AutoHotkey` | Personal AutoHotkey executable/script | `%USERPROFILE%\AutoHotkey` and Startup shortcut |
@@ -344,7 +344,7 @@ Arch WSL is an optional Windows installer path. It creates a fresh `archlinux` d
 ### Setup Phases
 
 | Phase | Behavior |
-|-------|----------|
+| --- | --- |
 | Root bootstrap | Sets root password to `root`, initializes pacman keys, updates packages, installs base tools, enables `sshd` offline, writes initial `/etc/wsl.conf` with `systemd=true` |
 | User setup | Creates a user named after the Windows user, enables wheel sudo, grants passwordless sudo, enables lingering so user services survive with no shell open, sets default user, generates `en_US.UTF-8` locale |
 | User packages and dotfiles | Installs Rust stable, builds `paru`, installs packages, installs Playwright MCP with headless Chromium, merges its OpenCode configuration, writes `~/environment.md`, configures Git for Windows SSH, installs Oh My Zsh, syncs and stows selected dotfiles, installs zsh plugins, runs `t3-setup` to install T3 Code and its background service, prepares Claude Code configuration, then installs the herdr Claude integration |
@@ -353,12 +353,12 @@ Arch WSL is an optional Windows installer path. It creates a fresh `archlinux` d
 
 ### Instance Persistence
 
-The T3 Code backend runs as a systemd *user* unit. Lingering keeps it alive with no shell open, but only from inside the instance; it cannot stop WSL from tearing the instance down. Two independent timeouts do that, and both must be disabled:
+The T3 Code backend runs as a systemd _user_ unit. Lingering keeps it alive with no shell open, but only from inside the instance; it cannot stop WSL from tearing the instance down. Two independent timeouts do that, and both must be disabled:
 
-| Key | Section | Default | Effect |
-|-----|---------|---------|--------|
+| Key                   | Section     | Default  | Effect                                         |
+| --------------------- | ----------- | -------- | ---------------------------------------------- |
 | `instanceIdleTimeout` | `[general]` | 15000 ms | Stops the distro instance. Added in WSL 2.4.4. |
-| `vmIdleTimeout` | `[wsl2]` | 60000 ms | Stops the utility VM. |
+| `vmIdleTimeout`       | `[wsl2]`    | 60000 ms | Stops the utility VM.                          |
 
 Setting only `vmIdleTimeout` leaves the instance timeout at its default, so the distro still stops 15-20 seconds after the last terminal closes.
 
@@ -428,7 +428,7 @@ myconfig/
 ### Shared Dotfiles
 
 | Package | Description | Primary Target |
-|---------|-------------|----------------|
+| --- | --- | --- |
 | `ai` | Claude Code global instructions, skills, and settings | `~/.claude/` |
 | `hermes` | Hermes config | `$XDG_CONFIG_HOME/hermes/` |
 | `herdr` | Herdr config | `$XDG_CONFIG_HOME/herdr/` |
@@ -445,8 +445,8 @@ The `ai` package ships `settings.json` without a `hooks` key on purpose. Arch WS
 
 ### Installation Model
 
-| Target | Dotfile Strategy |
-|--------|------------------|
-| Ubuntu Server | Direct copy of zsh files only |
-| Windows | Direct copy of Windows configs |
-| Arch WSL | Sync selected shared packages, remove conflicting target files, then `stow --restow` |
+| Target        | Dotfile Strategy                                                                     |
+| ------------- | ------------------------------------------------------------------------------------ |
+| Ubuntu Server | Direct copy of zsh files only                                                        |
+| Windows       | Direct copy of Windows configs                                                       |
+| Arch WSL      | Sync selected shared packages, remove conflicting target files, then `stow --restow` |

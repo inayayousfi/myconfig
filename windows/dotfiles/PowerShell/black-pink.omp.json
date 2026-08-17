@@ -63,9 +63,7 @@
       "segments": [
         {
           "foreground": "#ff4ead",
-          "foreground_templates": [
-            "{{ if gt .Code 0 }}#f87171{{ end }}"
-          ],
+          "foreground_templates": ["{{ if gt .Code 0 }}#f87171{{ end }}"],
           "options": {
             "always_enabled": true
           },
@@ -80,9 +78,7 @@
   "console_title_template": "{{if .Root}}(Admin){{end}} {{.PWD}}",
   "transient_prompt": {
     "foreground": "#ff4ead",
-    "foreground_templates": [
-      "{{ if gt .Code 0 }}#f87171{{ end }}"
-    ],
+    "foreground_templates": ["{{ if gt .Code 0 }}#f87171{{ end }}"],
     "template": "❯ "
   },
   "version": 4

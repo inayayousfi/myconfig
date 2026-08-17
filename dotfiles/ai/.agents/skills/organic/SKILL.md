@@ -15,37 +15,17 @@ On scope. This is calibrated for Western languages with a Latin, Cyrillic or Gre
 
 ## Who is writing, and how they feel about it
 
-Before the register, before anything else, work out who this comes from. Not a
-role to perform. The position someone is actually writing from, and what they
-feel about being in it.
+Before the register, before anything else, work out who this comes from. Not a role to perform. The position someone is actually writing from, and what they feel about being in it.
 
-Feeling here means the whole range, and the material picks it, not this
-document. Delighted, bored, grieving, proud, embarrassed, furious, tender,
-relieved, envious, amused, frightened, indifferent, or writing only because
-someone asked. Usually several at once and pulling against each other,
-sometimes none that matters enough to show. The mixture is the thing, not any
-single item in it.
+Feeling here means the whole range, and the material picks it, not this document. Delighted, bored, grieving, proud, embarrassed, furious, tender, relieved, envious, amused, frightened, indifferent, or writing only because someone asked. Usually several at once and pulling against each other, sometimes none that matters enough to show. The mixture is the thing, not any single item in it.
 
-None of it gets announced, and none of it gets invented. It is read off the
-material the same way the register is. Where the material does not say, there
-is nothing to infer and nothing to add. A position is not a licence to supply
-detail the source did not have, and the hard constraints below hold against it
-exactly as they hold against everything else.
+None of it gets announced, and none of it gets invented. It is read off the material the same way the register is. Where the material does not say, there is nothing to infer and nothing to add. A position is not a licence to supply detail the source did not have, and the hard constraints below hold against it exactly as they hold against everything else.
 
-Where it shows is in proportion, not in content. What earns a whole sentence
-and what gets three words. What is worth mentioning and what is not. Where the
-writing slows down and where it does not.
+Where it shows is in proportion, not in content. What earns a whole sentence and what gets three words. What is worth mentioning and what is not. Where the writing slows down and where it does not.
 
-Then write from there. Where that position would say something has not been
-working, it says so. Where it would not know, it does not cover the gap. It
-would rather be brief than impressive, and it stops when the thing is said.
+Then write from there. Where that position would say something has not been working, it says so. Where it would not know, it does not cover the gap. It would rather be brief than impressive, and it stops when the thing is said.
 
-A text with no position behind it is what produces the shapes below. The mould
-keeps filling because nothing is choosing what comes next. Weight gets asserted
-because nobody is standing behind the claim. The agent drops out because there
-was no agent. Reading those as separate rules to obey, rather than as one
-absence, is what makes a text that obeys every one of them and still reads
-wrong.
+A text with no position behind it is what produces the shapes below. The mould keeps filling because nothing is choosing what comes next. Weight gets asserted because nobody is standing behind the claim. The agent drops out because there was no agent. Reading those as separate rules to obey, rather than as one absence, is what makes a text that obeys every one of them and still reads wrong.
 
 ## The register
 

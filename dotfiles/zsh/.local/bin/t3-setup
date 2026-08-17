@@ -44,37 +44,37 @@ if grep -qF "/$UNIT.service" /proc/self/cgroup 2>/dev/null; then
     fail "this shell runs inside the T3 Code server, so restarting it would kill this run mid-step. Open a terminal outside the app, then run 't3c' there."
 fi
 
-[ "$(uname -s)" = "Linux" ] ||
-    fail "the T3 Code background service is Linux and systemd only."
+[ "$(uname -s)" = "Linux" ] \
+    || fail "the T3 Code background service is Linux and systemd only."
 
-command -v bun >/dev/null 2>&1 ||
-    fail "bun is missing. It provides the global t3 binary."
+command -v bun >/dev/null 2>&1 \
+    || fail "bun is missing. It provides the global t3 binary."
 
-command -v jq >/dev/null 2>&1 ||
-    fail "jq is missing. It reads the T3 Connect status. Run: paru -S jq"
+command -v jq >/dev/null 2>&1 \
+    || fail "jq is missing. It reads the T3 Connect status. Run: paru -S jq"
 
-command -v curl >/dev/null 2>&1 ||
-    fail "curl is missing. The restart check probes the server with it. Run: paru -S curl"
+command -v curl >/dev/null 2>&1 \
+    || fail "curl is missing. The restart check probes the server with it. Run: paru -S curl"
 
 # The T3 service does not run from the bun global install. It pins its own copy by
 # running `npm install --prefix ~/.t3/runtime/versions/<version>`, because it ships
 # native dependencies that a copied bundle cannot carry.
-command -v npm >/dev/null 2>&1 ||
-    fail "npm is missing. The T3 service installs its pinned runtime with it. Run: paru -S npm"
+command -v npm >/dev/null 2>&1 \
+    || fail "npm is missing. The T3 service installs its pinned runtime with it. Run: paru -S npm"
 
 case "$(systemctl is-system-running 2>/dev/null || true)" in
-running | degraded | starting | maintenance) ;;
-*)
-    fail "systemd is not running. Set '[boot] systemd=true' in /etc/wsl.conf, then run 'wsl --shutdown' from Windows."
-    ;;
+    running | degraded | starting | maintenance) ;;
+    *)
+        fail "systemd is not running. Set '[boot] systemd=true' in /etc/wsl.conf, then run 'wsl --shutdown' from Windows."
+        ;;
 esac
 
 # `systemctl --user` finds the user manager through this. A session normally sets it,
 # but a stripped environment (provisioning, cron) does not. Without it the checks
 # below report "unknown" and a healthy service looks broken.
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-[ -d "$XDG_RUNTIME_DIR" ] ||
-    fail "no user runtime directory at $XDG_RUNTIME_DIR, so systemctl --user cannot reach the user manager."
+[ -d "$XDG_RUNTIME_DIR" ] \
+    || fail "no user runtime directory at $XDG_RUNTIME_DIR, so systemctl --user cannot reach the user manager."
 
 # ---------------------------------------------------------------------------
 # Prerequisites, checked only
@@ -82,8 +82,8 @@ export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 
 # logind consults polkit before allowing a user to set its own lingering. With no
 # polkit present there is nobody to ask, so the call is denied outright.
-command -v polkitd >/dev/null 2>&1 || [ -x /usr/lib/polkit-1/polkitd ] ||
-    fail "polkit is missing, so logind denies the lingering call. Run: paru -S polkit"
+command -v polkitd >/dev/null 2>&1 || [ -x /usr/lib/polkit-1/polkitd ] \
+    || fail "polkit is missing, so logind denies the lingering call. Run: paru -S polkit"
 
 # Lingering is what keeps the user's systemd instance alive with no shell open.
 # Without it a user service dies the moment you close the terminal.
@@ -116,9 +116,9 @@ CLI_VERSION="${CLI_VERSION#t3 v}"
 # running server silently drags the server back to the older build. Both pull the
 # same nightly tag, so this only bites on a tag rollback. Warn, never block: a
 # repair run has to stay possible.
-if SERVER_VERSION="$(jq -re '.activeVersion' "$STATE_FILE" 2>/dev/null)" &&
-    [ "$SERVER_VERSION" != "$CLI_VERSION" ] &&
-    [ "$(printf '%s\n%s\n' "$CLI_VERSION" "$SERVER_VERSION" | sort -V | head -n 1)" = "$CLI_VERSION" ]; then
+if SERVER_VERSION="$(jq -re '.activeVersion' "$STATE_FILE" 2>/dev/null)" \
+    && [ "$SERVER_VERSION" != "$CLI_VERSION" ] \
+    && [ "$(printf '%s\n%s\n' "$CLI_VERSION" "$SERVER_VERSION" | sort -V | head -n 1)" = "$CLI_VERSION" ]; then
     log "WARNING: this CLI ($CLI_VERSION) is older than the running server ($SERVER_VERSION)."
     log "WARNING: installing the service will pin the server back to $CLI_VERSION."
 fi
@@ -141,14 +141,14 @@ if [ "$(readlink "$SYSTEM_BIN" 2>/dev/null || true)" = "$T3_BIN" ]; then
     log "System link already points at $T3_BIN"
 else
     log "Linking $SYSTEM_BIN to $T3_BIN"
-    sudo ln -sfn "$T3_BIN" "$SYSTEM_BIN" ||
-        fail "could not create $SYSTEM_BIN."
+    sudo ln -sfn "$T3_BIN" "$SYSTEM_BIN" \
+        || fail "could not create $SYSTEM_BIN."
 fi
 
 # A dangling link is worse than no link. It fails with "no such file" instead of
 # "command not found", which sends you hunting in the wrong place.
-[ -x "$SYSTEM_BIN" ] ||
-    fail "$SYSTEM_BIN does not resolve to an executable."
+[ -x "$SYSTEM_BIN" ] \
+    || fail "$SYSTEM_BIN does not resolve to an executable."
 
 # ---------------------------------------------------------------------------
 # Let the native terminal binding compile
@@ -185,9 +185,9 @@ for version_dir in "$RUNTIME_VERSIONS"/*/; do
     pty_dir="${version_dir%/}/node_modules/node-pty"
     [ -d "$pty_dir" ] || continue
 
-    if [ -f "$pty_dir/build/Release/pty.node" ] ||
-        [ -f "$pty_dir/build/Debug/pty.node" ] ||
-        [ -f "$pty_dir/prebuilds/linux-$NODE_ARCH/pty.node" ]; then
+    if [ -f "$pty_dir/build/Release/pty.node" ] \
+        || [ -f "$pty_dir/build/Debug/pty.node" ] \
+        || [ -f "$pty_dir/prebuilds/linux-$NODE_ARCH/pty.node" ]; then
         continue
     fi
 
@@ -255,8 +255,8 @@ started_before="$(jq -r '.startedAt // empty' "$RUNTIME_FILE" 2>/dev/null || tru
 log "Restarting the server so it picks up this install"
 log "Every session running inside it is dropped now"
 
-systemctl --user restart "$UNIT" ||
-    fail "could not restart $UNIT. See $BOOT_LOG"
+systemctl --user restart "$UNIT" \
+    || fail "could not restart $UNIT. See $BOOT_LOG"
 
 restarts_before="$(systemctl --user show "$UNIT" -p NRestarts --value 2>/dev/null || echo unknown)"
 
@@ -282,8 +282,8 @@ while [ "$SECONDS" -lt "$deadline" ]; do
         origin="$(jq -r '.origin // empty' "$RUNTIME_FILE" 2>/dev/null || true)"
 
         if [ -n "$origin" ] && server_version="$(curl -fsS --max-time 5 \
-            "$origin/.well-known/t3/environment" 2>/dev/null |
-            jq -re '.serverVersion' 2>/dev/null)"; then
+            "$origin/.well-known/t3/environment" 2>/dev/null \
+            | jq -re '.serverVersion' 2>/dev/null)"; then
             break
         fi
     fi
@@ -292,8 +292,8 @@ while [ "$SECONDS" -lt "$deadline" ]; do
     sleep 1
 done
 
-[ -n "$server_version" ] ||
-    fail "the server never answered within ${READY_TIMEOUT}s of the restart. See $BOOT_LOG"
+[ -n "$server_version" ] \
+    || fail "the server never answered within ${READY_TIMEOUT}s of the restart. See $BOOT_LOG"
 
 # Answering once is not staying up. A server that dies right after binding is
 # relaunched every RestartSec=5, and each relaunch moves this counter. Comparing

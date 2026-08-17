@@ -121,24 +121,24 @@ if has codex; then
 fi
 
 if has claude; then
-  alias cco='IS_DEMO=1 claude --dangerously-skip-permissions'
-  alias ccor='claude remote-control --permission-mode bypassPermissions'
+    alias cco='IS_DEMO=1 claude --dangerously-skip-permissions'
+    alias ccor='claude remote-control --permission-mode bypassPermissions'
 fi
 
 # t3 is installed globally (bun add -g t3@nightly) so the background service has a
 # durable binary path rather than a bunx temp dir. Guard on bun, not t3, because
 # bare t3c has to work before t3 exists.
 if has bun; then
-  # Bare t3c sets everything up. With arguments it is a t3 connect passthrough.
-  t3c() {
-    if [ $# -eq 0 ]; then
-      t3-setup
-    else
-      t3 connect "$@"
-    fi
-  }
+    # Bare t3c sets everything up. With arguments it is a t3 connect passthrough.
+    t3c() {
+        if [ $# -eq 0 ]; then
+            t3-setup
+        else
+            t3 connect "$@"
+        fi
+    }
 
-  alias t3s='t3 service'
+    alias t3s='t3 service'
 fi
 
 if has zoxide; then
@@ -167,18 +167,18 @@ reload-zsh() { source "$HOME/.zshrc" && echo "zsh reloaded"; }
 
 # Fuzzy file picker - opens selection in the configured editor
 pf() {
-  local file
-  file=$(fzf --preview='bat {} --color=always --style=numbers' --bind shift-up:preview-page-up,shift-down:preview-page-down)
-  [ -n "$file" ] && $EDITOR "$file"
+    local file
+    file=$(fzf --preview='bat {} --color=always --style=numbers' --bind shift-up:preview-page-up,shift-down:preview-page-down)
+    [ -n "$file" ] && $EDITOR "$file"
 }
 
 # Yazi file manager wrapper - changes directory on exit
 y() {
-  local tmp="$(mktemp -t "yazi-cwd.XXXXXX")" cwd
-  command yazi "$@" --cwd-file="$tmp"
-  IFS= read -r -d '' cwd < "$tmp"
-  [ -n "$cwd" ] && [ "$cwd" != "$PWD" ] && builtin cd -- "$cwd"
-  rm -f -- "$tmp"
+    local tmp="$(mktemp -t "yazi-cwd.XXXXXX")" cwd
+    command yazi "$@" --cwd-file="$tmp"
+    IFS= read -r -d '' cwd <"$tmp"
+    [ -n "$cwd" ] && [ "$cwd" != "$PWD" ] && builtin cd -- "$cwd"
+    rm -f -- "$tmp"
 }
 
 # ============================================================================
@@ -206,8 +206,8 @@ if $IS_MACOS; then
             local playwright_cli="$BUN_INSTALL/install/global/node_modules/.bin/playwright"
             if [[ -x "$playwright_cli" ]]; then
                 echo "Updating Chromium Headless Shell for Playwright MCP..."
-                "$playwright_cli" install --only-shell chromium || \
-                    echo "Warning: Chromium Headless Shell update failed."
+                "$playwright_cli" install --only-shell chromium \
+                    || echo "Warning: Chromium Headless Shell update failed."
                 echo ""
             fi
         fi
@@ -222,7 +222,7 @@ if $IS_MACOS; then
     }
 
     # macOS-specific: bootout GUI session
-    bootout-gui() { launchctl bootout gui/$UID }
+    bootout-gui() { launchctl bootout gui/$UID; }
 
 elif $IS_LINUX; then
     # Linux: Update system packages using the available package manager
@@ -274,8 +274,8 @@ elif $IS_LINUX; then
             local playwright_cli="$BUN_INSTALL/install/global/node_modules/.bin/playwright"
             if [[ -x "$playwright_cli" ]]; then
                 echo "Updating Chromium Headless Shell for Playwright MCP..."
-                "$playwright_cli" install --only-shell chromium || \
-                    echo "Warning: Chromium Headless Shell update failed."
+                "$playwright_cli" install --only-shell chromium \
+                    || echo "Warning: Chromium Headless Shell update failed."
                 echo ""
             fi
         else
@@ -318,105 +318,105 @@ fi
 # ============================================================================
 
 cleanup() {
-  if [[ -z "$PS1" ]]; then
-    echo "cleanup: this command is intended for interactive use."
-    return 1
-  fi
-
-  echo "Welcome to the cleanup ritual... 💫"
-  echo "We'll walk through this path item by item and record your choices."
-  echo ""
-
-  typeset -A deletions_to_perform
-
-  for item in .* *; do
-    if [[ "$item" == "." || "$item" == ".." ]]; then
-      continue
+    if [[ -z "$PS1" ]]; then
+        echo "cleanup: this command is intended for interactive use."
+        return 1
     fi
 
-    if [[ ! -e "$item" && ! -L "$item" ]]; then
-      continue
-    fi
+    echo "Welcome to the cleanup ritual... 💫"
+    echo "We'll walk through this path item by item and record your choices."
+    echo ""
+
+    typeset -A deletions_to_perform
+
+    for item in .* *; do
+        if [[ "$item" == "." || "$item" == ".." ]]; then
+            continue
+        fi
+
+        if [[ ! -e "$item" && ! -L "$item" ]]; then
+            continue
+        fi
+
+        echo "------------------------------------------------------"
+        echo "Do you want to delete '$item'? (y/n/q to quit)"
+        read -q "choice? Your choice, shooting star: "
+        echo ""
+
+        case "$choice" in
+            y | Y)
+                if [[ -d "$item" && ! -L "$item" ]]; then
+                    echo "Note: '$item' (directory) is marked for recursive deletion. 🌬️"
+                    deletions_to_perform["$item"]="directory"
+                else
+                    echo "Note: '$item' (file) is marked for deletion. 🍂"
+                    deletions_to_perform["$item"]="file"
+                fi
+                ;;
+            n | N)
+                echo "'$item' will stay for now. 💖"
+                ;;
+            q | Q)
+                echo "The ritual is paused. Nothing will be deleted today. May serenity stay with you. 🌟"
+                return 0
+                ;;
+            *)
+                echo "Unknown choice. '$item' will stay. 🤫"
+                ;;
+        esac
+        echo ""
+    done
 
     echo "------------------------------------------------------"
-    echo "Do you want to delete '$item'? (y/n/q to quit)"
-    read -q "choice? Your choice, shooting star: "
-    echo ""
+    echo "🌟 Summary of your choices 🌟"
+    echo "These are the items you chose to release:"
 
-    case "$choice" in
-      y|Y)
-        if [[ -d "$item" && ! -L "$item" ]]; then
-          echo "Note: '$item' (directory) is marked for recursive deletion. 🌬️"
-          deletions_to_perform["$item"]="directory"
-        else
-          echo "Note: '$item' (file) is marked for deletion. 🍂"
-          deletions_to_perform["$item"]="file"
-        fi
-        ;;
-      n|N)
-        echo "'$item' will stay for now. 💖"
-        ;;
-      q|Q)
-        echo "The ritual is paused. Nothing will be deleted today. May serenity stay with you. 🌟"
+    if ((${#deletions_to_perform[@]} == 0)); then
+        echo "No items were marked for deletion. The path is clear. ✨"
+        echo "Process complete. May the light guide your steps. 🌟"
         return 0
-        ;;
-      *)
-        echo "Unknown choice. '$item' will stay. 🤫"
-        ;;
-    esac
-    echo ""
-  done
+    fi
 
-  echo "------------------------------------------------------"
-  echo "🌟 Summary of your choices 🌟"
-  echo "These are the items you chose to release:"
-
-  if (( ${#deletions_to_perform[@]} == 0 )); then
-    echo "No items were marked for deletion. The path is clear. ✨"
-    echo "Process complete. May the light guide your steps. 🌟"
-    return 0
-  fi
-
-  integer i=1
-  for item in ${(k)deletions_to_perform}; do
-    local type="${deletions_to_perform[$item]}"
-    echo "$((i++)). '$item' (Type: $type)"
-  done
-
-  echo ""
-  read -q "final_choice?Are you sure you want to proceed with these deletions? (y/n): "
-  echo ""
-
-  if [[ "$final_choice" == "y" || "$final_choice" == "Y" ]]; then
-    echo ""
-    echo "The deletion ritual begins... irreversible once started. 🌌"
+    integer i=1
     for item in ${(k)deletions_to_perform}; do
-      local type="${deletions_to_perform[$item]}"
-      if [[ "$type" == "directory" ]]; then
-        echo "Releasing directory '$item' and its contents... 🌬️"
-        rm -rf -- "$item"
-        if [ $? -eq 0 ]; then
-          echo "'$item' has joined the wind. ✨"
-        else
-          echo "An invisible force blocked the release of '$item'. 💔"
-        fi
-      else
-        echo "Releasing file '$item'... 🍂"
-        rm -- "$item"
-        if [ $? -eq 0 ]; then
-          echo "'$item' has dissolved into the ether. 🍃"
-        else
-          echo "An invisible force blocked the release of '$item'. 💔"
-        fi
-      fi
+        local type="${deletions_to_perform[$item]}"
+        echo "$((i++)). '$item' (Type: $type)"
     done
-    echo ""
-    echo "Every item in this path has been handled according to your wishes. The ritual is complete. May peace reign. 💖"
-  else
-    echo "The deletion ritual was cancelled. Marked items remain in place. Flexibility is strength, Inaya. 💫"
-  fi
 
-  echo "Process complete. May the light guide your steps. 🌟"
+    echo ""
+    read -q "final_choice?Are you sure you want to proceed with these deletions? (y/n): "
+    echo ""
+
+    if [[ "$final_choice" == "y" || "$final_choice" == "Y" ]]; then
+        echo ""
+        echo "The deletion ritual begins... irreversible once started. 🌌"
+        for item in ${(k)deletions_to_perform}; do
+            local type="${deletions_to_perform[$item]}"
+            if [[ "$type" == "directory" ]]; then
+                echo "Releasing directory '$item' and its contents... 🌬️"
+                rm -rf -- "$item"
+                if [ $? -eq 0 ]; then
+                    echo "'$item' has joined the wind. ✨"
+                else
+                    echo "An invisible force blocked the release of '$item'. 💔"
+                fi
+            else
+                echo "Releasing file '$item'... 🍂"
+                rm -- "$item"
+                if [ $? -eq 0 ]; then
+                    echo "'$item' has dissolved into the ether. 🍃"
+                else
+                    echo "An invisible force blocked the release of '$item'. 💔"
+                fi
+            fi
+        done
+        echo ""
+        echo "Every item in this path has been handled according to your wishes. The ritual is complete. May peace reign. 💖"
+    else
+        echo "The deletion ritual was cancelled. Marked items remain in place. Flexibility is strength, Inaya. 💫"
+    fi
+
+    echo "Process complete. May the light guide your steps. 🌟"
 }
 
 if has hyfetch; then

@@ -35,7 +35,11 @@ check_sudo() {
     log_info "This script requires sudo privileges to install packages and set the shell."
 
     if sudo -v; then
-        while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &
+        while true; do
+            sudo -n true
+            sleep 60
+            kill -0 "$$" || exit
+        done 2>/dev/null &
         log_success "Sudo access granted"
     else
         log_error "Sudo access is required."
@@ -118,7 +122,7 @@ set_default_shell() {
     log_info "Setting zsh as default shell ($zsh_path)..."
 
     if ! grep -Fxq "$zsh_path" /etc/shells; then
-        echo "$zsh_path" | sudo tee -a /etc/shells > /dev/null
+        echo "$zsh_path" | sudo tee -a /etc/shells >/dev/null
     fi
 
     if sudo chsh -s "$zsh_path" "$USER"; then

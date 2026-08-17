@@ -18,10 +18,10 @@ function Write-Log {
         [ValidateSet('INFO', 'OK', 'WARNING', 'ERROR')][string]$Level = 'INFO'
     )
     switch ($Level) {
-        'OK'      { Write-Host "[OK] $Message" -ForegroundColor $Colors.Success }
+        'OK' { Write-Host "[OK] $Message" -ForegroundColor $Colors.Success }
         'WARNING' { Write-Host "[WARNING] $Message" -ForegroundColor $Colors.Warning }
-        'ERROR'   { Write-Host "[ERROR] $Message" -ForegroundColor $Colors.Error }
-        default   { Write-Host "[INFO] $Message" -ForegroundColor $Colors.Info }
+        'ERROR' { Write-Host "[ERROR] $Message" -ForegroundColor $Colors.Error }
+        default { Write-Host "[INFO] $Message" -ForegroundColor $Colors.Info }
     }
 }
 

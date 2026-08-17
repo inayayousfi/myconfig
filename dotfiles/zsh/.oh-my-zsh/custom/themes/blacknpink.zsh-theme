@@ -12,10 +12,10 @@ zstyle ':vcs_info:*' enable git hg bzr
 zstyle ':vcs_info:*:*' check-for-changes true
 zstyle ':vcs_info:*:*' unstagedstr '!'
 zstyle ':vcs_info:*:*' stagedstr '+'
-zstyle ':vcs_info:git:*'   formats       '%b' '%u%c'
-zstyle ':vcs_info:git:*'   actionformats '%b|%a' '%u%c'
-zstyle ':vcs_info:hg:*'    formats       '%b' '%u%c'
-zstyle ':vcs_info:bzr:*'   formats       '%b' '%u%c'
+zstyle ':vcs_info:git:*' formats '%b' '%u%c'
+zstyle ':vcs_info:git:*' actionformats '%b|%a' '%u%c'
+zstyle ':vcs_info:hg:*' formats '%b' '%u%c'
+zstyle ':vcs_info:bzr:*' formats '%b' '%u%c'
 
 blacknpink_git_dirty() {
     command git rev-parse --is-inside-work-tree &>/dev/null || return
@@ -42,9 +42,9 @@ blacknpink_repo_information() {
 blacknpink_cmd_exec_time() {
     local stop="${EPOCHSECONDS:-$(date +%s)}"
     local start="${cmd_timestamp:-$stop}"
-    local elapsed=$(( stop - start ))
+    local elapsed=$((stop - start))
 
-    (( elapsed > 5 )) && print -n " %F{yellow}${elapsed}s%f"
+    ((elapsed > 5)) && print -n " %F{yellow}${elapsed}s%f"
 }
 
 preexec() {

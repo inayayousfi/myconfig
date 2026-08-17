@@ -1,193 +1,179 @@
 {
-    "$help": "https://aka.ms/terminal-documentation",
-    "$schema": "https://aka.ms/terminal-profiles-schema",
-    "actions": 
-    [
-        {
-            "command": 
-            {
-                "action": "splitPane"
-            },
-            "id": "User.splitPane.91AB55B1"
-        },
-        {
-            "command": 
-            {
-                "action": "adjustFontSize",
-                "delta": -1
-            },
-            "id": "User.adjustFontSize.E2698FAA"
-        }
-    ],
-    "centerOnLaunch": true,
-    "copyFormatting": "none",
-    "copyOnSelect": true,
-    "defaultProfile": "{574e775e-4f2a-5b96-ac1e-a2962a402336}",
-    "disableAnimations": true,
-    "firstWindowPreference": "defaultProfile",
-    "focusFollowMouse": false,
-    "initialCols": 120,
-    "initialRows": 30,
-    "keybindings": 
-    [
-        {
-            "id": null,
-            "keys": "alt+shift+minus"
-        },
-        {
-            "id": null,
-            "keys": "ctrl+c"
-        },
-        {
-            "id": null,
-            "keys": "ctrl+v"
-        },
-        {
-            "id": null,
-            "keys": "ctrl+shift+f"
-        },
-        {
-            "id": "User.adjustFontSize.E2698FAA",
-            "keys": "ctrl+minus"
-        },
-        {
-            "id": null,
-            "keys": "alt+shift+d"
-        },
-        {
-            "id": "Terminal.DuplicatePaneDown",
-            "keys": "ctrl+shift+minus"
-        },
-        {
-            "id": "Terminal.DuplicatePaneRight",
-            "keys": "ctrl+shift+plus"
-        },
-        {
-            "id": null,
-            "keys": "alt+shift+plus"
-        },
-        {
-            "command": 
-            {
-                "action": "moveFocus",
-                "direction": "left"
-            },
-            "keys": "ctrl+shift+h"
-        },
-        {
-            "command": 
-            {
-                "action": "moveFocus",
-                "direction": "down"
-            },
-            "keys": "ctrl+shift+j"
-        },
-        {
-            "command": 
-            {
-                "action": "moveFocus",
-                "direction": "up"
-            },
-            "keys": "ctrl+shift+k"
-        },
-        {
-            "command": 
-            {
-                "action": "moveFocus",
-                "direction": "right"
-            },
-            "keys": "ctrl+shift+l"
-        },
-        {
-            "command": "closePane",
-            "keys": "ctrl+shift+x"
-        },
-        {
-            "command": "closeTab",
-            "keys": "ctrl+shift+w"
-        }
-    ],
-    "newTabMenu": 
-    [
-        {
-            "type": "remainingProfiles"
-        }
-    ],
-    "profiles": 
+  "$help": "https://aka.ms/terminal-documentation",
+  "$schema": "https://aka.ms/terminal-profiles-schema",
+  "actions": [
     {
-        "defaults": 
-        {
-            "colorScheme": "BlackPink",
-            "font": 
-            {
-                "face": "Iosevka NF",
-                "size": 16
-            },
-            "opacity": 100,
-            "useAcrylic": false
-        },
-        "list": 
-        [
-            {
-                "colorScheme": "BlackPink",
-                "guid": "{574e775e-4f2a-5b96-ac1e-a2962a402336}",
-                "hidden": false,
-                "name": "PowerShell",
-                "source": "Windows.Terminal.PowershellCore"
-            },
-            {
-                "guid": "{9ddc0553-00fc-55ab-a21f-b2f1175f2889}",
-                "hidden": false,
-                "name": "Ubuntu",
-                "source": "Microsoft.WSL"
-            },
-            {
-                "guid": "{862e4eb1-b58c-5c3c-ad72-016ddc31fca5}",
-                "hidden": false,
-                "name": "Developer Command Prompt for VS 2022",
-                "source": "Windows.Terminal.VisualStudio"
-            },
-            {
-                "guid": "{253f61bb-7f31-5d4e-ab08-37ae1f5e557e}",
-                "hidden": false,
-                "name": "Developer PowerShell for VS 2022",
-                "source": "Windows.Terminal.VisualStudio"
-            }
-        ]
+      "command": {
+        "action": "splitPane"
+      },
+      "id": "User.splitPane.91AB55B1"
     },
-    "schemes": 
-    [
-        {
-            "background": "#000000",
-            "black": "#000000",
-            "blue": "#60A5FA",
-            "brightBlack": "#2A2D36",
-            "brightBlue": "#93C5FD",
-            "brightCyan": "#67E8F9",
-            "brightGreen": "#86EFAC",
-            "brightPurple": "#FF85C8",
-            "brightRed": "#FCA5A5",
-            "brightWhite": "#F0F2F7",
-            "brightYellow": "#FDE047",
-            "cursorColor": "#FF4EAD",
-            "cyan": "#22D3EE",
-            "foreground": "#D0D6E0",
-            "green": "#4ADE80",
-            "name": "BlackPink",
-            "purple": "#FF4EAD",
-            "red": "#F87171",
-            "selectionBackground": "#2A0016",
-            "white": "#D0D6E0",
-            "yellow": "#FACC15"
-        }
-    ],
-    "searchWebDefaultQueryUrl": "https://www.google.com/search?q=%s",
-    "showTabsFullscreen": true,
-    "tabWidthMode": "equal",
-    "themes": [],
-    "useAcrylicInTabRow": true,
-    "warning.confirmCloseAllTabs": false,
-    "warning.inputService": false,
-    "warning.largePaste": false,
-    "windowingBehavior": "useExisting"
+    {
+      "command": {
+        "action": "adjustFontSize",
+        "delta": -1
+      },
+      "id": "User.adjustFontSize.E2698FAA"
+    }
+  ],
+  "centerOnLaunch": true,
+  "copyFormatting": "none",
+  "copyOnSelect": true,
+  "defaultProfile": "{574e775e-4f2a-5b96-ac1e-a2962a402336}",
+  "disableAnimations": true,
+  "firstWindowPreference": "defaultProfile",
+  "focusFollowMouse": false,
+  "initialCols": 120,
+  "initialRows": 30,
+  "keybindings": [
+    {
+      "id": null,
+      "keys": "alt+shift+minus"
+    },
+    {
+      "id": null,
+      "keys": "ctrl+c"
+    },
+    {
+      "id": null,
+      "keys": "ctrl+v"
+    },
+    {
+      "id": null,
+      "keys": "ctrl+shift+f"
+    },
+    {
+      "id": "User.adjustFontSize.E2698FAA",
+      "keys": "ctrl+minus"
+    },
+    {
+      "id": null,
+      "keys": "alt+shift+d"
+    },
+    {
+      "id": "Terminal.DuplicatePaneDown",
+      "keys": "ctrl+shift+minus"
+    },
+    {
+      "id": "Terminal.DuplicatePaneRight",
+      "keys": "ctrl+shift+plus"
+    },
+    {
+      "id": null,
+      "keys": "alt+shift+plus"
+    },
+    {
+      "command": {
+        "action": "moveFocus",
+        "direction": "left"
+      },
+      "keys": "ctrl+shift+h"
+    },
+    {
+      "command": {
+        "action": "moveFocus",
+        "direction": "down"
+      },
+      "keys": "ctrl+shift+j"
+    },
+    {
+      "command": {
+        "action": "moveFocus",
+        "direction": "up"
+      },
+      "keys": "ctrl+shift+k"
+    },
+    {
+      "command": {
+        "action": "moveFocus",
+        "direction": "right"
+      },
+      "keys": "ctrl+shift+l"
+    },
+    {
+      "command": "closePane",
+      "keys": "ctrl+shift+x"
+    },
+    {
+      "command": "closeTab",
+      "keys": "ctrl+shift+w"
+    }
+  ],
+  "newTabMenu": [
+    {
+      "type": "remainingProfiles"
+    }
+  ],
+  "profiles": {
+    "defaults": {
+      "colorScheme": "BlackPink",
+      "font": {
+        "face": "Iosevka NF",
+        "size": 16
+      },
+      "opacity": 100,
+      "useAcrylic": false
+    },
+    "list": [
+      {
+        "colorScheme": "BlackPink",
+        "guid": "{574e775e-4f2a-5b96-ac1e-a2962a402336}",
+        "hidden": false,
+        "name": "PowerShell",
+        "source": "Windows.Terminal.PowershellCore"
+      },
+      {
+        "guid": "{9ddc0553-00fc-55ab-a21f-b2f1175f2889}",
+        "hidden": false,
+        "name": "Ubuntu",
+        "source": "Microsoft.WSL"
+      },
+      {
+        "guid": "{862e4eb1-b58c-5c3c-ad72-016ddc31fca5}",
+        "hidden": false,
+        "name": "Developer Command Prompt for VS 2022",
+        "source": "Windows.Terminal.VisualStudio"
+      },
+      {
+        "guid": "{253f61bb-7f31-5d4e-ab08-37ae1f5e557e}",
+        "hidden": false,
+        "name": "Developer PowerShell for VS 2022",
+        "source": "Windows.Terminal.VisualStudio"
+      }
+    ]
+  },
+  "schemes": [
+    {
+      "background": "#000000",
+      "black": "#000000",
+      "blue": "#60A5FA",
+      "brightBlack": "#2A2D36",
+      "brightBlue": "#93C5FD",
+      "brightCyan": "#67E8F9",
+      "brightGreen": "#86EFAC",
+      "brightPurple": "#FF85C8",
+      "brightRed": "#FCA5A5",
+      "brightWhite": "#F0F2F7",
+      "brightYellow": "#FDE047",
+      "cursorColor": "#FF4EAD",
+      "cyan": "#22D3EE",
+      "foreground": "#D0D6E0",
+      "green": "#4ADE80",
+      "name": "BlackPink",
+      "purple": "#FF4EAD",
+      "red": "#F87171",
+      "selectionBackground": "#2A0016",
+      "white": "#D0D6E0",
+      "yellow": "#FACC15"
+    }
+  ],
+  "searchWebDefaultQueryUrl": "https://www.google.com/search?q=%s",
+  "showTabsFullscreen": true,
+  "tabWidthMode": "equal",
+  "themes": [],
+  "useAcrylicInTabRow": true,
+  "warning.confirmCloseAllTabs": false,
+  "warning.inputService": false,
+  "warning.largePaste": false,
+  "windowingBehavior": "useExisting"
 }

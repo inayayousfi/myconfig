@@ -22,10 +22,10 @@ $TempDir = Join-Path $env:TEMP "setup-config-$pid"
 
 # Colors
 $Colors = @{
-    Info = 'Cyan'
+    Info    = 'Cyan'
     Success = 'Green'
     Warning = 'Yellow'
-    Error = 'Red'
+    Error   = 'Red'
 }
 
 function Write-Log {
@@ -36,8 +36,8 @@ function Write-Log {
     switch ($Level) {
         'SUCCESS' { Write-Host "[OK] $Message" -ForegroundColor $Colors.Success }
         'WARNING' { Write-Host "[WARNING] $Message" -ForegroundColor $Colors.Warning }
-        'ERROR'   { Write-Host "[FAIL] $Message" -ForegroundColor $Colors.Error }
-        default    { Write-Host "[INFO] $Message" -ForegroundColor $Colors.Info }
+        'ERROR' { Write-Host "[FAIL] $Message" -ForegroundColor $Colors.Error }
+        default { Write-Host "[INFO] $Message" -ForegroundColor $Colors.Info }
     }
 }
 

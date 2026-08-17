@@ -1,6 +1,6 @@
 param(
-  [string]$Distro = "archlinux",
-  [string]$DotfilesPath
+    [string]$Distro = "archlinux",
+    [string]$DotfilesPath
 )
 
 $ErrorActionPreference = "Stop"
@@ -9,122 +9,105 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot = Split-Path -Parent $ScriptDir
 
 $Colors = @{
-  Info    = 'Cyan'
-  Success = 'Green'
-  Warning = 'Yellow'
-  Error   = 'Red'
+    Info    = 'Cyan'
+    Success = 'Green'
+    Warning = 'Yellow'
+    Error   = 'Red'
 }
 
-function Write-Log
-{
-  param(
-    [string]$Message,
-    [ValidateSet('INFO', 'OK', 'WARNING', 'ERROR')][string]$Level = 'INFO'
-  )
+function Write-Log {
+    param(
+        [string]$Message,
+        [ValidateSet('INFO', 'OK', 'WARNING', 'ERROR')][string]$Level = 'INFO'
+    )
 
-  switch ($Level)
-  {
-    'OK' { Write-Host "[OK] $Message" -ForegroundColor $Colors.Success }
-    'WARNING' { Write-Host "[WARNING] $Message" -ForegroundColor $Colors.Warning }
-    'ERROR' { Write-Host "[ERROR] $Message" -ForegroundColor $Colors.Error }
-    default { Write-Host "[INFO] $Message" -ForegroundColor $Colors.Info }
-  }
+    switch ($Level) {
+        'OK' { Write-Host "[OK] $Message" -ForegroundColor $Colors.Success }
+        'WARNING' { Write-Host "[WARNING] $Message" -ForegroundColor $Colors.Warning }
+        'ERROR' { Write-Host "[ERROR] $Message" -ForegroundColor $Colors.Error }
+        default { Write-Host "[INFO] $Message" -ForegroundColor $Colors.Info }
+    }
 }
 
-function Test-CommandExists
-{
-  param([string]$Command)
-  return [bool](Get-Command $Command -ErrorAction SilentlyContinue)
+function Test-CommandExists {
+    param([string]$Command)
+    return [bool](Get-Command $Command -ErrorAction SilentlyContinue)
 }
 
-function ConvertTo-WslPath
-{
-  param([string]$Path)
+function ConvertTo-WslPath {
+    param([string]$Path)
 
-  $resolvedPath = [System.IO.Path]::GetFullPath($Path)
-  $drive = $resolvedPath.Substring(0, 1).ToLowerInvariant()
-  $pathWithoutDrive = $resolvedPath.Substring(2).Replace('\', '/')
+    $resolvedPath = [System.IO.Path]::GetFullPath($Path)
+    $drive = $resolvedPath.Substring(0, 1).ToLowerInvariant()
+    $pathWithoutDrive = $resolvedPath.Substring(2).Replace('\', '/')
 
-  return "/mnt/$drive$pathWithoutDrive"
+    return "/mnt/$drive$pathWithoutDrive"
 }
 
-function ConvertTo-Lf
-{
-  param([string]$Text)
+function ConvertTo-Lf {
+    param([string]$Text)
 
-  return $Text.Replace("`r`n", "`n").Replace("`r", "`n")
+    return $Text.Replace("`r`n", "`n").Replace("`r", "`n")
 }
 
-function ConvertTo-Base64Script
-{
-  param([string]$Script)
+function ConvertTo-Base64Script {
+    param([string]$Script)
 
-  $bytes = [System.Text.Encoding]::UTF8.GetBytes((ConvertTo-Lf $Script))
-  return [Convert]::ToBase64String($bytes)
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes((ConvertTo-Lf $Script))
+    return [Convert]::ToBase64String($bytes)
 }
 
-function Invoke-WslRootScript
-{
-  param([string]$Script)
-  ConvertTo-Base64Script $Script | wsl -d $Distro -u root -- bash -c 'base64 -d | bash -s'
+function Invoke-WslRootScript {
+    param([string]$Script)
+    ConvertTo-Base64Script $Script | wsl -d $Distro -u root -- bash -c 'base64 -d | bash -s'
 
-  if ($LASTEXITCODE -ne 0)
-  {
-    throw "WSL root script failed with exit code $LASTEXITCODE."
-  }
+    if ($LASTEXITCODE -ne 0) {
+        throw "WSL root script failed with exit code $LASTEXITCODE."
+    }
 }
 
-function Invoke-WslUserScript
-{
-  param([string]$Script)
-  ConvertTo-Base64Script $Script | wsl -d $Distro -- bash -c 'base64 -d | bash -s'
+function Invoke-WslUserScript {
+    param([string]$Script)
+    ConvertTo-Base64Script $Script | wsl -d $Distro -- bash -c 'base64 -d | bash -s'
 
-  if ($LASTEXITCODE -ne 0)
-  {
-    throw "WSL user script failed with exit code $LASTEXITCODE."
-  }
+    if ($LASTEXITCODE -ne 0) {
+        throw "WSL user script failed with exit code $LASTEXITCODE."
+    }
 }
 
-function Install-Distro
-{
-  $installArgs = @('--install', '--distribution', $Distro, '--no-launch')
+function Install-Distro {
+    $installArgs = @('--install', '--distribution', $Distro, '--no-launch')
 
-  try
-  {
-    & wsl @installArgs
-  }
-  catch
-  {
-    Write-Log "WSL install with --no-launch failed; retrying without it..." -Level 'WARNING'
-    & wsl --install --distribution $Distro
-  }
+    try {
+        & wsl @installArgs
+    } catch {
+        Write-Log "WSL install with --no-launch failed; retrying without it..." -Level 'WARNING'
+        & wsl --install --distribution $Distro
+    }
 }
 
-function Unregister-ExistingDistro
-{
-  $existingDistros = @(wsl --list --quiet 2>$null | ForEach-Object { $_.Trim([char]0xFEFF).Trim() } | Where-Object { $_ })
+function Unregister-ExistingDistro {
+    $existingDistros = @(wsl --list --quiet 2>$null | ForEach-Object { $_.Trim([char]0xFEFF).Trim() } | Where-Object { $_ })
 
-  if ($existingDistros -contains $Distro)
-  {
-    Write-Log "Existing WSL distro '$Distro' found. Unregistering it before reinstalling..." -Level 'WARNING'
-    wsl --terminate $Distro 2>$null
-    wsl --unregister $Distro
-  }
+    if ($existingDistros -contains $Distro) {
+        Write-Log "Existing WSL distro '$Distro' found. Unregistering it before reinstalling..." -Level 'WARNING'
+        wsl --terminate $Distro 2>$null
+        wsl --unregister $Distro
+    }
 }
 
-function Install-WslAutostart
-{
-  # The T3 Code backend is a systemd *user* unit. Lingering keeps it alive with no
-  # shell open, but only from inside the instance. It cannot stop WSL from tearing
-  # the instance down, and two independent timeouts do exactly that:
-  #
-  #   vmIdleTimeout       [wsl2]     stops the utility VM.       Default 60000 ms.
-  #   instanceIdleTimeout [general]  stops the distro instance.  Default 15000 ms.
-  #
-  # Setting only vmIdleTimeout leaves the instance timeout at its default, so the
-  # distro still stops 15-20 s after the last terminal closes. Both are needed.
-  $wslConfigPath = Join-Path $env:USERPROFILE ".wslconfig"
-  $wslConfig = @"
+function Install-WslAutostart {
+    # The T3 Code backend is a systemd *user* unit. Lingering keeps it alive with no
+    # shell open, but only from inside the instance. It cannot stop WSL from tearing
+    # the instance down, and two independent timeouts do exactly that:
+    #
+    #   vmIdleTimeout       [wsl2]     stops the utility VM.       Default 60000 ms.
+    #   instanceIdleTimeout [general]  stops the distro instance.  Default 15000 ms.
+    #
+    # Setting only vmIdleTimeout leaves the instance timeout at its default, so the
+    # distro still stops 15-20 s after the last terminal closes. Both are needed.
+    $wslConfigPath = Join-Path $env:USERPROFILE ".wslconfig"
+    $wslConfig = @"
 [general]
 instanceIdleTimeout=-1
 
@@ -132,77 +115,71 @@ instanceIdleTimeout=-1
 vmIdleTimeout=-1
 "@
 
-  Write-Log "Writing $wslConfigPath"
+    Write-Log "Writing $wslConfigPath"
 
-  # Not Set-Content -Encoding UTF8: on Windows PowerShell 5.1 that emits a BOM,
-  # and WSL's .wslconfig parser rejects the whole file over it, silently ignoring
-  # every key. The failure looks exactly like the timeouts never being set.
-  [System.IO.File]::WriteAllText($wslConfigPath, $wslConfig, (New-Object System.Text.UTF8Encoding $false))
+    # Not Set-Content -Encoding UTF8: on Windows PowerShell 5.1 that emits a BOM,
+    # and WSL's .wslconfig parser rejects the whole file over it, silently ignoring
+    # every key. The failure looks exactly like the timeouts never being set.
+    [System.IO.File]::WriteAllText($wslConfigPath, $wslConfig, (New-Object System.Text.UTF8Encoding $false))
 
-  # Disabling the timeouts stops WSL shutting the instance down. Nothing starts it
-  # either, so a logon shortcut supplies the other half. wsl.exe is a console
-  # program, hence the hidden PowerShell wrapper. -NoProfile matters: without it
-  # every logon loads the Oh My Posh profile this repo installs, for nothing.
-  $startupDir = [Environment]::GetFolderPath("Startup")
-  $shortcutPath = Join-Path $startupDir "myconfig-wsl-autostart.lnk"
-  $powershellPath = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+    # Disabling the timeouts stops WSL shutting the instance down. Nothing starts it
+    # either, so a logon shortcut supplies the other half. wsl.exe is a console
+    # program, hence the hidden PowerShell wrapper. -NoProfile matters: without it
+    # every logon loads the Oh My Posh profile this repo installs, for nothing.
+    $startupDir = [Environment]::GetFolderPath("Startup")
+    $shortcutPath = Join-Path $startupDir "myconfig-wsl-autostart.lnk"
+    $powershellPath = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
 
-  Write-Log "Creating logon shortcut $shortcutPath"
+    Write-Log "Creating logon shortcut $shortcutPath"
 
-  $shell = New-Object -ComObject WScript.Shell
-  $shortcut = $shell.CreateShortcut($shortcutPath)
-  $shortcut.TargetPath = $powershellPath
-  $shortcut.Arguments = "-NoLogo -NoProfile -WindowStyle Hidden -Command `"wsl.exe -d $Distro --exec /bin/true`""
-  $shortcut.Description = "Boot the $Distro WSL instance at logon so its user services run without a terminal."
-  # Belt and braces: powershell.exe paints a console for a fraction of a second
-  # before it applies -WindowStyle Hidden. Minimized keeps that off the desktop.
-  $shortcut.WindowStyle = 7
-  $shortcut.Save()
+    $shell = New-Object -ComObject WScript.Shell
+    $shortcut = $shell.CreateShortcut($shortcutPath)
+    $shortcut.TargetPath = $powershellPath
+    $shortcut.Arguments = "-NoLogo -NoProfile -WindowStyle Hidden -Command `"wsl.exe -d $Distro --exec /bin/true`""
+    $shortcut.Description = "Boot the $Distro WSL instance at logon so its user services run without a terminal."
+    # Belt and braces: powershell.exe paints a console for a fraction of a second
+    # before it applies -WindowStyle Hidden. Minimized keeps that off the desktop.
+    $shortcut.WindowStyle = 7
+    $shortcut.Save()
 }
 
-function Main
-{
-  if ([string]::IsNullOrWhiteSpace($DotfilesPath))
-  {
-    $DotfilesPath = Join-Path $RepoRoot "dotfiles"
-  }
+function Main {
+    if ([string]::IsNullOrWhiteSpace($DotfilesPath)) {
+        $DotfilesPath = Join-Path $RepoRoot "dotfiles"
+    }
 
-  $dotfilesWslPath = ConvertTo-WslPath -Path $DotfilesPath
-  $wslUser = [Environment]::UserName
+    $dotfilesWslPath = ConvertTo-WslPath -Path $DotfilesPath
+    $wslUser = [Environment]::UserName
 
-  # Git inside WSL authenticates against the Windows OpenSSH agent, so it must call
-  # the Windows client rather than Arch's. A bare "ssh.exe" only resolves while WSL
-  # appends the Windows PATH to its own, and that is off on plenty of setups, so the
-  # config silently breaks every SSH remote. Resolve it here instead, from the real
-  # Windows directory, and keep it empty when the optional OpenSSH client is absent.
-  $sshExePath = Join-Path $env:SystemRoot "System32\OpenSSH\ssh.exe"
-  $sshExeWslPath = ""
+    # Git inside WSL authenticates against the Windows OpenSSH agent, so it must call
+    # the Windows client rather than Arch's. A bare "ssh.exe" only resolves while WSL
+    # appends the Windows PATH to its own, and that is off on plenty of setups, so the
+    # config silently breaks every SSH remote. Resolve it here instead, from the real
+    # Windows directory, and keep it empty when the optional OpenSSH client is absent.
+    $sshExePath = Join-Path $env:SystemRoot "System32\OpenSSH\ssh.exe"
+    $sshExeWslPath = ""
 
-  if (Test-Path -LiteralPath $sshExePath)
-  {
-    $sshExeWslPath = ConvertTo-WslPath -Path $sshExePath
-  }
-  else
-  {
-    Write-Log "Windows OpenSSH client not found at $sshExePath. Git in WSL will use Arch's own ssh." -Level 'WARNING'
-  }
+    if (Test-Path -LiteralPath $sshExePath) {
+        $sshExeWslPath = ConvertTo-WslPath -Path $sshExePath
+    } else {
+        Write-Log "Windows OpenSSH client not found at $sshExePath. Git in WSL will use Arch's own ssh." -Level 'WARNING'
+    }
 
-  if (-not (Test-CommandExists "wsl"))
-  {
-    Write-Log "wsl not found. Install or enable Windows Subsystem for Linux first." -Level 'ERROR'
-    exit 1
-  }
+    if (-not (Test-CommandExists "wsl")) {
+        Write-Log "wsl not found. Install or enable Windows Subsystem for Linux first." -Level 'ERROR'
+        exit 1
+    }
 
-  Write-Log "Using dotfiles path: $DotfilesPath"
-  Write-Log "Using WSL dotfiles path: $dotfilesWslPath"
+    Write-Log "Using dotfiles path: $DotfilesPath"
+    Write-Log "Using WSL dotfiles path: $dotfilesWslPath"
 
-  Unregister-ExistingDistro
+    Unregister-ExistingDistro
 
-  Write-Log "Installing $Distro..."
-  Install-Distro
+    Write-Log "Installing $Distro..."
+    Install-Distro
 
-  Write-Log "Phase 1: root bootstrap..."
-  Invoke-WslRootScript @'
+    Write-Log "Phase 1: root bootstrap..."
+    Invoke-WslRootScript @'
 set -euo pipefail
 
 log() { printf '[arch-wsl][root bootstrap] %s\n' "$*"; }
@@ -238,11 +215,11 @@ systemd=true
 EOF
 '@
 
-  wsl --shutdown
-  wsl -s $Distro
+    wsl --shutdown
+    wsl -s $Distro
 
-  Write-Log "Phase 2: user setup..."
-  $userSetupScript = @'
+    Write-Log "Phase 2: user setup..."
+    $userSetupScript = @'
 set -euo pipefail
 
 log() { printf '[arch-wsl][user setup] %s\n' "$*"; }
@@ -290,12 +267,12 @@ locale-gen
 echo 'LANG=en_US.UTF-8' > /etc/locale.conf
 '@
 
-  Invoke-WslRootScript ($userSetupScript.Replace('__WSL_USER__', $wslUser))
+    Invoke-WslRootScript ($userSetupScript.Replace('__WSL_USER__', $wslUser))
 
-  wsl --shutdown
+    wsl --shutdown
 
-  Write-Log "Phase 3: user packages and dotfiles..."
-  $userPackagesScript = @'
+    Write-Log "Phase 3: user packages and dotfiles..."
+    $userPackagesScript = @'
 set -euo pipefail
 
 log() { printf '[arch-wsl][user packages] %s\n' "$*"; }
@@ -617,10 +594,10 @@ fi
 
 '@
 
-  Invoke-WslUserScript ($userPackagesScript.Replace('__DOTFILES_WSL_PATH__', $dotfilesWslPath).Replace('__SSH_EXE_WSL_PATH__', $sshExeWslPath))
+    Invoke-WslUserScript ($userPackagesScript.Replace('__DOTFILES_WSL_PATH__', $dotfilesWslPath).Replace('__SSH_EXE_WSL_PATH__', $sshExeWslPath))
 
-  Write-Log "Phase 4: enforcing default shell..."
-  $shellScript = @'
+    Write-Log "Phase 4: enforcing default shell..."
+    $shellScript = @'
 set -euo pipefail
 
 log() { printf '[arch-wsl][shell] %s\n' "$*"; }
@@ -645,26 +622,25 @@ fi
 log "Default shell verified for $WINUSER"
 '@
 
-  Invoke-WslRootScript ($shellScript.Replace('__WSL_USER__', $wslUser))
+    Invoke-WslRootScript ($shellScript.Replace('__WSL_USER__', $wslUser))
 
-  Write-Log "Phase 5: keeping the instance alive across sessions..."
-  Install-WslAutostart
+    Write-Log "Phase 5: keeping the instance alive across sessions..."
+    Install-WslAutostart
 
-  # The shutdown has to come after the config write. WSL reads .wslconfig only when
-  # the VM starts, so this is what makes the new timeouts take effect at all.
-  wsl --shutdown
+    # The shutdown has to come after the config write. WSL reads .wslconfig only when
+    # the VM starts, so this is what makes the new timeouts take effect at all.
+    wsl --shutdown
 
-  # Bring the instance back up the same way the logon shortcut does, so the T3 Code
-  # service is already running when the script ends instead of at the next logon.
-  Write-Log "Booting $Distro under the new idle timeouts..."
-  wsl -d $Distro --exec /bin/true
+    # Bring the instance back up the same way the logon shortcut does, so the T3 Code
+    # service is already running when the script ends instead of at the next logon.
+    Write-Log "Booting $Distro under the new idle timeouts..."
+    wsl -d $Distro --exec /bin/true
 
-  if ($LASTEXITCODE -ne 0)
-  {
-    throw "Could not boot $Distro after writing .wslconfig (exit code $LASTEXITCODE)."
-  }
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not boot $Distro after writing .wslconfig (exit code $LASTEXITCODE)."
+    }
 
-  Write-Log "Arch WSL setup finished." -Level 'OK'
+    Write-Log "Arch WSL setup finished." -Level 'OK'
 }
 
 Main

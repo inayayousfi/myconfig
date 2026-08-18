@@ -29,17 +29,15 @@ Relevant constraints then go into the plan, under the facts, with their source.
 
 ## Ask
 
-Map the known part of the decision tree before asking. Put only independent questions in the same batch. Two questions in one batch must not overlap or depend on the same unresolved premise.
+Draw the known decision tree before asking. Treat the task as its root and each unresolved decision as a node. Place each node beneath the earlier answer that exposes it. Its path from the root records every premise it assumes.
 
-Ask through the question tool in batches of four. The tool takes four per call, no more.
+Traverse the tree breadth first, one depth per batch. Put every unanswered node at the shallowest open depth into the same batch, but only when every answer on its path from the root is known. A child never shares a batch with an unanswered parent.
 
-Aim for one batch. Merge questions that share an answer, and drop any question whose answer already follows from another one.
+Send the batch and read every answer before expanding any branch. Add the child decisions exposed by those answers, then ask the complete next depth.
 
-Two batches is a target, not a ceiling. Coverage wins over brevity, every time. If the change holds ten decisions, that is ten questions, and you keep going until the list is empty.
+Questions in one batch must be independent. None may require an answer from the same batch. Merge nodes when one answer resolves several decisions. Remove a node when another answer already determines it.
 
-Never drop a decision to stay inside a batch count. Cutting coverage quietly takes a choice away from me, and I never learn it existed.
-
-Send a batch, then read its answers. Build the next part of the tree only from premises those answers established. Never ask a question that assumes an unresolved answer. Keep overlap between consecutive batches as small as the decision tree allows.
+Tree depth controls the number and size of batches. Never split one answerable depth merely to shorten a batch. Never pull a later depth forward to reduce the number of rounds. Never drop a decision from the tree.
 
 If any uncertainty remains, ask me. For a fact, inspect the available evidence first. If the evidence does not remove the uncertainty, ask instead of filling the gap. For a decision, ask before continuing.
 

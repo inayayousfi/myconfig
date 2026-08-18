@@ -1,0 +1,50 @@
+// CS2 — Custom Radial Quick Inventory
+//
+// File name:
+//   radial_ispaghul.txt
+//
+// Installation location:
+//   <CS2 Installation Directory>\game\csgo\radial_ispaghul.txt
+//
+// Enable with:
+//   cl_quickinventory_filename "radial_ispaghul.txt"
+//
+// Recommended: put the command above in autoexec.cfg so it is
+// automatically applied when CS2 starts.
+//
+// Layout:
+//
+//                 PISTOL / PRIMARY
+//                       ▲
+//                ┌──────────────┐
+//          ┌─────┘              └─────┐
+//     GRENADES                    PRIMARY
+//        │                            │
+//        │                         MELEE
+//        │                           C4
+//         \                          /
+//          └──────── UTILITY ───────┘
+//
+// UTILITY intentionally occupies a large portion of the bottom of the
+// wheel, creating an effectively unused area.
+//
+// Weights:
+//   Pistol    1.0
+//   Primary   2.5
+//   Melee     1.0
+//   C4        1.0
+//   Utility   3.0
+//   Grenades  2.5
+
+"settings"
+{
+    TOP_SLOT PISTOL
+    ROTATION_OFFSET 0.0
+
+    PISTOL    1.0
+    RIFLE     2.5
+    MELEE     1.0
+    C4        1.0
+    UTILITY   3.0
+    GRENADES  2.5
+}

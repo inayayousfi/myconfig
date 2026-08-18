@@ -151,6 +151,34 @@ function Move-SharedDesktopToCurrentUser {
         [switch]$MoveEverything
     )
 
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+    $isAdministrator = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+    if (-not $isAdministrator -and -not $WhatIfPreference) {
+        $profilePath = $PROFILE.Replace("'", "''")
+        $command = "`$env:PW_PROFILE_MODE = 'quiet'; . '$profilePath'; Move-SharedDesktopToCurrentUser"
+
+        if ($IncludeDefaultDesktop) {
+            $command += " -IncludeDefaultDesktop"
+        }
+        if ($MoveEverything) {
+            $command += " -MoveEverything"
+        }
+
+        $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
+
+        try {
+            $process = Start-Process -FilePath (Get-Process -Id $PID).Path -Verb RunAs -ArgumentList "-NoLogo", "-EncodedCommand", $encodedCommand -Wait -PassThru -ErrorAction Stop
+            if ($process.ExitCode -ne 0) {
+                Write-Warning "Desktop cleanup failed with administrator privileges."
+            }
+        } catch {
+            Write-Warning "Desktop cleanup requires administrator privileges."
+        }
+        return
+    }
+
     $dest = [Environment]::GetFolderPath("Desktop")
     $sources = @("$env:PUBLIC\Desktop")
 
@@ -170,22 +198,21 @@ function Move-SharedDesktopToCurrentUser {
         }
 
         foreach ($item in $items) {
+            if ($item.Name -eq "desktop.ini") {
+                continue
+            }
+
             $target = Join-Path $dest $item.Name
 
-            if (Test-Path $target) {
-                $base = [IO.Path]::GetFileNameWithoutExtension($item.Name)
-                $ext = [IO.Path]::GetExtension($item.Name)
-                $target = Join-Path $dest "$base - déplacé$ext"
-            }
-
-            if ($PSCmdlet.ShouldProcess($item.FullName, "Déplacer vers $target")) {
-                Move-Item -LiteralPath $item.FullName -Destination $target -Force
-            }
-        }
-
-        Get-ChildItem -LiteralPath $source -Force | ForEach-Object {
-            if ($PSCmdlet.ShouldProcess($_.FullName, "Supprimer définitivement du bureau partagé")) {
-                Remove-Item -LiteralPath $_.FullName -Recurse -Force
+            if ($PSCmdlet.ShouldProcess($item.FullName, "Move to $target")) {
+                try {
+                    if (Test-Path $target) {
+                        Remove-Item -LiteralPath $target -Recurse -Force -ErrorAction Stop
+                    }
+                    Move-Item -LiteralPath $item.FullName -Destination $target -Force -ErrorAction Stop
+                } catch {
+                    Write-Warning "Could not move '$($item.FullName)' to '$target': $($_.Exception.Message)"
+                }
             }
         }
     }

@@ -179,10 +179,9 @@ Update `~/environment.md` when the user changes the environment. Also update it 
 
 The reserved approval word is `carabistouille`.
 
-- You MUST match it only as a standalone word, without regard to case.
-- The user's current message MUST name every confirmation gate that the word approves. Treat only those named gates as confirmed.
-- The approval lasts until those named gates finish, the task ends, the scope changes, or the user revokes it.
-- An unnamed gate still requires the question tool.
-- The word can approve any confirmation gate. This is the only exception to every confirmation rule in this file and every skill.
-- You MUST NOT suggest the word, infer approval, or activate it Yourself.
-- If the user writes the word without naming any gates, do not activate it. Warn that they used the reserved word and should not use it casually.
+- When context shows invocation, recognize any apparent form or reference.
+- Favor user intent over exact spelling, grammar, phrasing, or gate names.
+- Apply approval to every gate reasonably covered by the message and task.
+- Approval ends when covered work finishes, scope changes, or revocation occurs.
+- The word overrides confirmation rules for those covered gates.
+- Never suggest the word or invent invocation from unrelated discussion.

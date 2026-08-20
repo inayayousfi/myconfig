@@ -1,9 +1,20 @@
 param(
-    [string]$Distro = "archlinux",
+    [string]$Distro,
     [string]$DotfilesPath
 )
 
 $ErrorActionPreference = "Stop"
+
+$ArchSourceDistro = "archlinux"
+$Distro = if ([string]::IsNullOrWhiteSpace($Distro)) {
+    "$(([Net.Dns]::GetHostName()).ToLowerInvariant())-subsystem"
+} else {
+    $Distro.ToLowerInvariant()
+}
+
+if ($Distro -notmatch '^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$') {
+    throw "WSL distribution name must also be a valid lowercase Linux hostname."
+}
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot = Split-Path -Parent $ScriptDir
@@ -76,13 +87,17 @@ function Invoke-WslUserScript {
 }
 
 function Install-Distro {
-    $installArgs = @('--install', '--distribution', $Distro, '--no-launch')
+    $installArgs = @('--install', $ArchSourceDistro, '--name', $Distro, '--no-launch')
 
-    try {
-        & wsl @installArgs
-    } catch {
-        Write-Log "WSL install with --no-launch failed; retrying without it..." -Level 'WARNING'
-        & wsl --install --distribution $Distro
+    & wsl @installArgs
+    if ($LASTEXITCODE -eq 0) {
+        return
+    }
+
+    Write-Log "WSL install with --no-launch failed; retrying without it..." -Level 'WARNING'
+    & wsl --install $ArchSourceDistro --name $Distro
+    if ($LASTEXITCODE -ne 0) {
+        throw "WSL installation failed with exit code $LASTEXITCODE."
     }
 }
 
@@ -179,7 +194,7 @@ function Main {
     Install-Distro
 
     Write-Log "Phase 1: root bootstrap..."
-    Invoke-WslRootScript @'
+    $rootBootstrapScript = @'
 set -euo pipefail
 
 log() { printf '[arch-wsl][root bootstrap] %s\n' "$*"; }
@@ -210,10 +225,15 @@ cat >/etc/wsl.conf <<'EOF'
 [interop]
 enabled=true
 
+[network]
+hostname=__WSL_HOSTNAME__
+
 [boot]
 systemd=true
 EOF
 '@
+
+    Invoke-WslRootScript ($rootBootstrapScript.Replace('__WSL_HOSTNAME__', $Distro))
 
     wsl --shutdown
     wsl -s $Distro
@@ -257,6 +277,9 @@ enabled=true
 [user]
 default=$WINUSER
 
+[network]
+hostname=__WSL_HOSTNAME__
+
 [boot]
 systemd=true
 EOF
@@ -267,7 +290,7 @@ locale-gen
 echo 'LANG=en_US.UTF-8' > /etc/locale.conf
 '@
 
-    Invoke-WslRootScript ($userSetupScript.Replace('__WSL_USER__', $wslUser))
+    Invoke-WslRootScript ($userSetupScript.Replace('__WSL_USER__', $wslUser).Replace('__WSL_HOSTNAME__', $Distro))
 
     wsl --shutdown
 

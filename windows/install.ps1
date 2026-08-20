@@ -229,7 +229,7 @@ function Install-WingetPackages {
         Write-Log "Skipping winget Supplementary packages"
     }
 
-    if (Confirm-InstallPackageGroup -Name "Arch WSL" -Description "fresh Arch Linux WSL distro with packages and dotfiles; unregisters an existing archlinux distro first") {
+    if (Confirm-InstallPackageGroup -Name "Arch WSL" -Description "fresh Arch Linux WSL distro named after this computer; unregisters an existing distro with that name first") {
         $archWslScript = Join-Path $ScriptDir "setup-arch-wsl.ps1"
         if (Test-Path $archWslScript) {
             & $archWslScript -DotfilesPath $SharedDotfilesDir

@@ -309,7 +309,7 @@ Installed from `windows/dotfiles/winget/packages.json`:
 | DevTools | `packages_devtools.json` | Rustup, LLVM, Visual Studio Build Tools, Python Install Manager, Docker Desktop |
 | Art | `packages_art.json` | Blender, Krita, Kdenlive, Audacity, OBS Studio, MuseScore |
 | Supplementary | `packages_supplementary.json` | Handy, VirtualBox, LibreOffice |
-| Arch WSL | `setup-arch-wsl.ps1` | Fresh Arch Linux WSL distro with shared dotfiles and Linux tools |
+| Arch WSL | `setup-arch-wsl.ps1` | Fresh Arch Linux WSL distro named `<windows-hostname>-subsystem`, with shared dotfiles and Linux tools |
 
 ### Installed Configuration
 
@@ -339,17 +339,45 @@ Installed from `windows/dotfiles/winget/packages.json`:
 
 ## Platform-Specific: Arch WSL
 
-Arch WSL is an optional Windows installer path. It creates a fresh `archlinux` distro and intentionally unregisters an existing distro with the same name before reinstalling.
+Arch WSL is an optional Windows installer path. It installs the online `archlinux` image under the generated name `<windows-hostname>-subsystem`. The installer uses that same value as the Linux hostname and intentionally unregisters an existing distro with that name before reinstalling. Passing `-Distro` overrides both names.
+
+### Distribution Identity
+
+The online source name, WSL registration name, and Linux hostname have separate roles:
+
+| Identity | Value | Purpose |
+| --- | --- | --- |
+| Online source | `archlinux` | Selects the Arch Linux image from `wsl --list --online` |
+| WSL registration | `<windows-hostname>-subsystem` | Identifies the installed instance to `wsl.exe -d` |
+| Linux hostname | `<windows-hostname>-subsystem` | Identifies the running Arch environment inside Linux |
+
+For example, Windows host `INTERNET-GYAL-TERMINAL` produces the WSL registration and Linux hostname `internet-gyal-terminal-subsystem`.
 
 ### Setup Phases
 
 | Phase | Behavior |
 | --- | --- |
-| Root bootstrap | Sets root password to `root`, initializes pacman keys, updates packages, installs base tools, enables `sshd` offline, writes initial `/etc/wsl.conf` with `systemd=true` |
-| User setup | Creates a user named after the Windows user, enables wheel sudo, grants passwordless sudo, enables lingering so user services survive with no shell open, sets default user, generates `en_US.UTF-8` locale |
+| Root bootstrap | Sets root password to `root`, initializes pacman keys, updates packages, installs base tools, enables `sshd` offline, writes initial `/etc/wsl.conf` with systemd and the generated hostname |
+| User setup | Creates a user named after the Windows user, enables wheel sudo, grants passwordless sudo, enables lingering so user services survive with no shell open, sets the default user and hostname, generates `en_US.UTF-8` locale |
 | User packages and dotfiles | Installs Rust stable, builds `paru`, installs packages, installs Playwright MCP with headless Chromium, merges its OpenCode configuration, writes `~/environment.md`, configures Git for Windows SSH, installs Oh My Zsh, syncs and stows selected dotfiles, installs zsh plugins, runs `t3-setup` to install T3 Code and its background service, prepares Claude Code configuration, then installs the herdr Claude integration |
 | Shell enforcement | Sets and verifies zsh as the WSL user's default shell |
 | Instance persistence | Writes `%UserProfile%\.wslconfig` with `instanceIdleTimeout=-1` and `vmIdleTimeout=-1`, adds a hidden logon shortcut that boots the distro, then restarts the instance under the new timeouts |
+
+### User Service Stack
+
+`user@<uid>.service` is not a custom application service. It is systemd's standard template for starting one service manager per Linux user. The system systemd process runs it as the matching user, and that process then manages the user's background services.
+
+```text
+Windows logon shortcut
+  -> WSL distribution
+    -> system systemd (PID 1)
+      -> user@<uid>.service
+        -> user systemd manager
+          -> user D-Bus socket at /run/user/<uid>/bus
+          -> T3 Code and other user services
+```
+
+The template belongs to the Arch systemd package, normally under `/usr/lib/systemd/system/user@.service`. An instance such as `user@1000.service` means the template is running for Linux user ID `1000`. The repo enables lingering so this manager survives after the user's last shell closes. Lingering cannot keep the surrounding WSL distribution alive.
 
 ### Instance Persistence
 
@@ -362,7 +390,7 @@ The T3 Code backend runs as a systemd _user_ unit. Lingering keeps it alive with
 
 Setting only `vmIdleTimeout` leaves the instance timeout at its default, so the distro still stops 15-20 seconds after the last terminal closes.
 
-Disabling the timeouts stops WSL shutting the instance down, but nothing starts it either. `myconfig-wsl-autostart.lnk` in the Startup folder supplies that half, running `wsl.exe -d archlinux --exec /bin/true` through a hidden `powershell.exe` because `wsl.exe` is a console program. `windows/uninstall.ps1` removes both the shortcut and `.wslconfig`.
+Disabling the timeouts stops WSL shutting the instance down, but nothing starts it either. `myconfig-wsl-autostart.lnk` in the Startup folder supplies that half, running `wsl.exe -d <windows-hostname>-subsystem --exec /bin/true` through a hidden `powershell.exe` because `wsl.exe` is a console program. `windows/uninstall.ps1` removes both the shortcut and `.wslconfig`.
 
 ### Arch Package Set
 

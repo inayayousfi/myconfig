@@ -8,7 +8,7 @@
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot = Split-Path -Parent $ScriptDir
-$CertPath = Join-Path $RepoRoot "windows\codesign\myconfig-codesign.cer"
+$CertPath = Join-Path $RepoRoot "windows-workstation\codesign\myconfig-codesign.cer"
 
 # Colors
 # Centralize output colors so log messages stay consistent.
@@ -72,7 +72,7 @@ function Test-CertAlreadyTrusted {
 
 function Main {
     if (-not (Test-Path $CertPath)) {
-        Write-Log "Code-signing certificate not found at $CertPath - skipping trust setup (see windows/CODESIGNING.md)." -Level 'WARNING'
+        Write-Log "Code-signing certificate not found at $CertPath - skipping trust setup (see windows-workstation/CODESIGNING.md)." -Level 'WARNING'
         exit 0
     }
 

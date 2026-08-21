@@ -7,15 +7,15 @@ This repo's Windows PowerShell scripts are Authenticode-signed on release. Setti
 ```powershell
 $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=inayayousfi myconfig" `
   -CertStoreLocation Cert:\CurrentUser\My -NotAfter (Get-Date).AddYears(10)
-Export-Certificate -Cert $cert -FilePath windows\codesign\myconfig-codesign.cer
+Export-Certificate -Cert $cert -FilePath windows-workstation\codesign\myconfig-codesign.cer
 Export-PfxCertificate -Cert $cert -FilePath myconfig-codesign.pfx -Password (Read-Host -AsSecureString)
 ```
 
-The certificate is self-signed and valid for 10 years. It is only trusted on machines where `windows/trust-cert.ps1` has explicitly imported it — it is **not** trusted by default on arbitrary machines.
+The certificate is self-signed and valid for 10 years. It is only trusted on machines where `windows-workstation/trust-cert.ps1` has explicitly imported it — it is **not** trusted by default on arbitrary machines.
 
 ## 2. Commit the public certificate
 
-Commit the resulting `windows/codesign/myconfig-codesign.cer` (public key only) to the repo. CI and `windows/trust-cert.ps1` use this file to verify and trust signed scripts.
+Commit the resulting `windows-workstation/codesign/myconfig-codesign.cer` (public key only) to the repo. CI and `windows-workstation/trust-cert.ps1` use this file to verify and trust signed scripts.
 
 ## 3. Store the private key as GitHub secrets
 

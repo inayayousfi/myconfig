@@ -5,6 +5,7 @@
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/inayayousfi/myconfig/main/bootstrap.sh | bash
 #   curl -fsSL https://raw.githubusercontent.com/inayayousfi/myconfig/main/bootstrap.sh | bash -s -- ubuntu
+#   curl -fsSL https://raw.githubusercontent.com/inayayousfi/myconfig/main/bootstrap.sh | bash -s -- cachyos
 
 # set -e (Disabled to ensure script continues even if some steps fail)
 
@@ -58,7 +59,9 @@ EOF
 
 detect_platform() {
     if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-        if command -v apt-get &>/dev/null; then
+        if [ -r /etc/os-release ] && grep -q '^ID=cachyos$' /etc/os-release; then
+            echo "cachyos"
+        elif command -v apt-get &>/dev/null; then
             echo "ubuntu"
         else
             echo "unknown"
@@ -73,23 +76,28 @@ detect_platform() {
 prompt_platform() {
     echo -e "${BOLD}Select your platform:${NC}" >&2
     echo "" >&2
-    echo "  1) Ubuntu Server" >&2
-    echo "  2) Exit" >&2
+    echo "  1) CachyOS Workstation" >&2
+    echo "  2) Ubuntu Server" >&2
+    echo "  3) Exit" >&2
     echo "" >&2
 
     while true; do
-        read -p "Enter your choice (1-2): " choice
+        read -p "Enter your choice (1-3): " choice
         case $choice in
             1)
-                echo "ubuntu"
+                echo "cachyos"
                 return 0
                 ;;
             2)
+                echo "ubuntu"
+                return 0
+                ;;
+            3)
                 log_info "Installation cancelled by user"
                 exit 0
                 ;;
             *)
-                log_error "Invalid choice. Please enter 1 or 2."
+                log_error "Invalid choice. Please enter 1, 2, or 3."
                 ;;
         esac
     done
@@ -150,7 +158,7 @@ download_and_extract() {
     local extracted_dir=""
 
     # 1. Try to find a directory containing known platform directories (repo root markers)
-    extracted_dir=$(find . -maxdepth 2 -type d \( -name "ubuntu-server" -o -name "windows" \) -exec dirname {} \; | head -n 1)
+    extracted_dir=$(find . -maxdepth 2 -type d \( -name "ubuntu-server" -o -name "windows-workstation" -o -name "cachyos" \) -exec dirname {} \; | head -n 1)
 
     # 2. If not found, check if there's exactly one subdirectory
     if [ -z "$extracted_dir" ] || [ "$extracted_dir" = "." ]; then
@@ -193,7 +201,7 @@ run_installation() {
     cp -a "$source_dir"/. "$INSTALL_DIR/"
 
     # Verify copy
-    if [ ! -d "$INSTALL_DIR/ubuntu-server" ] && [ ! -d "$INSTALL_DIR/windows" ]; then
+    if [ ! -d "$INSTALL_DIR/ubuntu-server" ] || [ ! -d "$INSTALL_DIR/cachyos" ] || [ ! -d "$INSTALL_DIR/linux" ]; then
         log_error "File copy failed or source directory was empty. Check $source_dir"
         exit 1
     fi
@@ -201,7 +209,7 @@ run_installation() {
     log_success "Files copied to $INSTALL_DIR"
 
     # Make install scripts executable
-    chmod +x "$INSTALL_DIR"/*/install.sh 2>/dev/null || true
+    chmod +x "$INSTALL_DIR"/*/install.sh "$INSTALL_DIR"/linux/*.sh 2>/dev/null || true
 
     # Run the appropriate installation script
     log_info "Starting ${platform} installation..."
@@ -216,6 +224,14 @@ run_installation() {
                 exit 1
             fi
             cd "$INSTALL_DIR/ubuntu-server"
+            ./install.sh || install_status=$?
+            ;;
+        cachyos)
+            if [ ! -f "$INSTALL_DIR/cachyos/install.sh" ]; then
+                log_error "CachyOS install script not found at $INSTALL_DIR/cachyos/install.sh"
+                exit 1
+            fi
+            cd "$INSTALL_DIR/cachyos"
             ./install.sh || install_status=$?
             ;;
         *)
@@ -260,6 +276,10 @@ ensure_dependencies() {
             sudo apt-get update
             sudo apt-get install -y "${missing_deps[@]}"
             ;;
+        cachyos)
+            log_info "Installing missing dependencies via pacman..."
+            sudo pacman -S --needed --noconfirm "${missing_deps[@]}"
+            ;;
         *)
             log_error "Please manually install the following dependencies: ${missing_deps[*]}"
             exit 1
@@ -298,12 +318,15 @@ main() {
             ubuntu | linux | server)
                 platform="ubuntu"
                 ;;
+            cachyos)
+                platform="cachyos"
+                ;;
             windows | win | mingw* | msys* | cygwin*)
                 platform="windows"
                 ;;
             *)
                 log_error "Unknown platform: $platform"
-                log_info "Supported platforms: ubuntu, windows"
+                log_info "Supported platforms: cachyos, ubuntu"
                 exit 1
                 ;;
         esac

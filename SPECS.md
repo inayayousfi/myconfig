@@ -1,6 +1,6 @@
 # Configuration Specifications
 
-> A modular configuration bank for building reproducible development environments across Ubuntu Server, Windows, and optional Arch WSL.
+> A modular configuration bank for CachyOS, Ubuntu Server, Windows Workstation, and Arch WSL.
 
 This document describes the current setup scripts, package groups, dotfiles, and platform-specific behavior in this repository.
 
@@ -9,6 +9,7 @@ This document describes the current setup scripts, package groups, dotfiles, and
 ## Table of Contents
 
 - [Bootstrap Flow](#bootstrap-flow)
+- [Shared Linux Installer](#shared-linux-installer)
 - [Shell](#shell)
 - [CLI Tools](#cli-tools)
 - [Terminal And Editors](#terminal-and-editors)
@@ -16,7 +17,8 @@ This document describes the current setup scripts, package groups, dotfiles, and
 - [Development Languages And Runtimes](#development-languages-and-runtimes)
 - [Shared Non-Windows Package Baseline](#shared-non-windows-package-baseline)
 - [Platform-Specific: Ubuntu Server](#platform-specific-ubuntu-server)
-- [Platform-Specific: Windows](#platform-specific-windows)
+- [Platform-Specific: CachyOS](#platform-specific-cachyos)
+- [Platform-Specific: Windows Workstation](#platform-specific-windows-workstation)
 - [Platform-Specific: Arch WSL](#platform-specific-arch-wsl)
 - [Dotfiles Summary](#dotfiles-summary)
 
@@ -26,20 +28,39 @@ This document describes the current setup scripts, package groups, dotfiles, and
 
 The root bootstrap scripts download the latest GitHub release when available, fall back to the main branch when needed, stage the repository under `~/.setup-config`, back up any previous staged install, and hand off to the platform installer.
 
-| Platform      | Bootstrap       | Installer                  |
-| ------------- | --------------- | -------------------------- |
-| Ubuntu Server | `bootstrap.sh`  | `ubuntu-server/install.sh` |
-| Windows       | `bootstrap.ps1` | `windows/install.ps1`      |
+| Platform            | Bootstrap       | Installer                         |
+| ------------------- | --------------- | --------------------------------- |
+| Ubuntu Server       | `bootstrap.sh`  | `ubuntu-server/install.sh`        |
+| CachyOS             | `bootstrap.sh`  | `cachyos/install.sh`              |
+| Windows Workstation | `bootstrap.ps1` | `windows-workstation/install.ps1` |
 
 ### Linux Bootstrap
 
-`bootstrap.sh` supports `ubuntu`, `linux`, and `server` as Ubuntu Server aliases. Interactive mode can auto-detect apt-based Linux systems or prompt for Ubuntu Server.
+`bootstrap.sh` supports the `cachyos` target. It also supports `ubuntu`, `linux`, and `server` as Ubuntu Server aliases. Interactive mode detects CachyOS and apt-based Linux systems.
 
 The Linux bootstrap ensures `curl` and `unzip` exist before downloading the archive.
 
 ### Windows Bootstrap
 
-`bootstrap.ps1` downloads and validates the ZIP archive, extracts with `Expand-Archive` or a .NET fallback, unblocks PowerShell files, and runs `windows/install.ps1` from the staged repository.
+`bootstrap.ps1` downloads and validates the ZIP archive, extracts with `Expand-Archive` or a .NET fallback, unblocks PowerShell files, and runs `windows-workstation/install.ps1` from the staged repository.
+
+---
+
+## Shared Linux Installer
+
+`linux/install.sh` runs one fixed profile selected by a platform entry point. Capability modules are private and cannot be selected from the public bootstrap command.
+
+| Profile         | Package adapter            | Modules                                |
+| --------------- | -------------------------- | -------------------------------------- |
+| `cachyos`       | Arch (`pacman` and `paru`) | Complete development profile           |
+| `arch-wsl`      | Arch (`pacman` and `paru`) | Complete profile with WSL integrations |
+| `ubuntu-server` | apt                        | Base, Zsh, and Zsh dotfiles            |
+
+Modules request logical package identifiers. `linux/registry/packages.sh` maps each identifier to an exact package source and name. A target override can replace either value, such as `fd` becoming `fd-find` on apt. Arch User Repository packages use the explicit `aur:` source. Unsupported sources and missing mappings stop the profile.
+
+Linux profiles copy selected packages into `~/dotfiles`, back up the previous tree, back up conflicting home files, and run GNU Stow. CachyOS and Arch WSL select `zsh`, `yazi`, `lazygit`, `ai`, `herdr`, and `nvim`. Ubuntu Server selects only `zsh`.
+
+The complete profiles install Tailscale as a system service. They also install T3 Code as a systemd user service with lingering. CachyOS calls T3's native service installer directly. Arch WSL uses `machinectl` because WSL shells lack the login session expected by `loginctl enable-linger`.
 
 ---
 
@@ -85,13 +106,13 @@ Key aliases and functions include `nvim` shortcuts, modern CLI replacements for 
 
 Windows uses **PowerShell Core** with **Oh My Posh**.
 
-| Component | Value                                                          |
-| --------- | -------------------------------------------------------------- |
-| Shell     | PowerShell Core (`pwsh`)                                       |
-| Prompt    | Oh My Posh                                                     |
-| Theme     | `black-pink.omp.json`                                          |
-| Profile   | `windows/dotfiles/PowerShell/Microsoft.PowerShell_profile.ps1` |
-| Modules   | `PSReadLine`, `Terminal-Icons`                                 |
+| Component | Value                                                                      |
+| --------- | -------------------------------------------------------------------------- |
+| Shell     | PowerShell Core (`pwsh`)                                                   |
+| Prompt    | Oh My Posh                                                                 |
+| Theme     | `black-pink.omp.json`                                                      |
+| Profile   | `windows-workstation/dotfiles/PowerShell/Microsoft.PowerShell_profile.ps1` |
+| Modules   | `PSReadLine`, `Terminal-Icons`                                             |
 
 PowerShell profile features include vi mode keybindings, history predictions, cursor shape changes for insert and normal modes, terminal icons, and Windows Terminal integration helpers.
 
@@ -142,7 +163,7 @@ Windows Terminal is the native Windows terminal emulator.
 | Setting       | Value                                                                                      |
 | ------------- | ------------------------------------------------------------------------------------------ |
 | Package       | `Microsoft.WindowsTerminal`                                                                |
-| Config source | `windows/dotfiles/WindowsTerminal/settings.json`                                           |
+| Config source | `windows-workstation/dotfiles/WindowsTerminal/settings.json`                               |
 | Config target | `%LOCALAPPDATA%\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json` |
 | Profiles      | PowerShell and Developer PowerShell for VS 2022                                            |
 
@@ -155,7 +176,7 @@ Neovim is the primary editor everywhere, including Windows, where `$EDITOR`/`$VI
 | Plugin manager | native `vim.pack` |
 | Config location | `$XDG_CONFIG_HOME/nvim/` |
 | Dotfile | `dotfiles/nvim/.config/nvim/` |
-| Windows wrapper | `windows/dotfiles/bin/nvim.cmd`, installed to `%LOCALAPPDATA%\Programs\bin` and added to user PATH; shells into WSL via `wsl.exe -u <user> -- zsh -ic nvim`, converting file args with `wslpath` |
+| Windows wrapper | `windows-workstation/dotfiles/bin/nvim.cmd`, installed to `%LOCALAPPDATA%\Programs\bin` and added to user PATH; shells into WSL via `wsl.exe -u <user> -- zsh -ic nvim`, converting file args with `wslpath` |
 
 `dotfiles/zed/` is kept in the repo for reference but is no longer installed or referenced by any install script.
 
@@ -192,7 +213,7 @@ Dependencies include FFmpeg, 7-Zip, Poppler, resvg, ImageMagick, and Nerd Font s
 
 ## Shared Non-Windows Package Baseline
 
-These packages are intended for Unix-like targets that receive the full shared toolchain, currently the optional Arch WSL setup. Ubuntu Server intentionally installs only a minimal shell baseline.
+These packages form the complete CachyOS and Arch WSL profiles. Ubuntu Server intentionally installs only a minimal shell baseline.
 
 ### Shell And Dotfiles
 
@@ -280,17 +301,25 @@ The Ubuntu Server installation does not include GNU Stow, development runtimes, 
 
 ---
 
-## Platform-Specific: Windows
+## Platform-Specific: CachyOS
+
+CachyOS uses the complete shared Linux profile after the graphical operating-system installer finishes. The profile installs development packages, sets Zsh as the default shell, deploys shared dotfiles, configures agent tools, and offers GitHub and Tailscale authentication.
+
+The installer does not change sudoers, SSH services, locale, kernel, drivers, desktop settings, or power settings. T3 Code uses `t3code-nightly-bin` from the Arch User Repository. Bun installs `t3@nightly`, and T3 installs its normal systemd user service. Tailscale installs its system service separately.
+
+---
+
+## Platform-Specific: Windows Workstation
 
 Windows uses Winget for packages and direct-copy dotfile installation. The installer prompts for optional package groups so a run can stay minimal or install the broader workstation setup.
 
 ### Package Manager: Winget
 
-See `windows/install.ps1` for the complete installation script.
+See `windows-workstation/install.ps1` for the complete installation script.
 
 ### Core Packages
 
-Installed from `windows/dotfiles/winget/packages.json`:
+Installed from `windows-workstation/dotfiles/winget/packages.json`:
 
 | Package Identifier          | Purpose                        |
 | --------------------------- | ------------------------------ |
@@ -333,7 +362,7 @@ Installed from `windows/dotfiles/winget/packages.json`:
 | `PowerShell` | Profile and Oh My Posh theme | `$PROFILE` and profile directory |
 | `WindowsTerminal` | Windows Terminal settings | `%LOCALAPPDATA%\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json` |
 | `AutoHotkey` | Personal AutoHotkey executable/script | `%USERPROFILE%\AutoHotkey` and Startup shortcut |
-| `winget` | Core and optional package manifests | Imported by `windows/install.ps1` |
+| `winget` | Core and optional package manifests | Imported by `windows-workstation/install.ps1` |
 
 ---
 
@@ -345,11 +374,11 @@ Arch WSL is an optional Windows installer path. It installs the online `archlinu
 
 The online source name, WSL registration name, and Linux hostname have separate roles:
 
-| Identity | Value | Purpose |
-| --- | --- | --- |
-| Online source | `archlinux` | Selects the Arch Linux image from `wsl --list --online` |
-| WSL registration | `<windows-hostname>-subsystem` | Identifies the installed instance to `wsl.exe -d` |
-| Linux hostname | `<windows-hostname>-subsystem` | Identifies the running Arch environment inside Linux |
+| Identity         | Value                          | Purpose                                                 |
+| ---------------- | ------------------------------ | ------------------------------------------------------- |
+| Online source    | `archlinux`                    | Selects the Arch Linux image from `wsl --list --online` |
+| WSL registration | `<windows-hostname>-subsystem` | Identifies the installed instance to `wsl.exe -d`       |
+| Linux hostname   | `<windows-hostname>-subsystem` | Identifies the running Arch environment inside Linux    |
 
 For example, Windows host `INTERNET-GYAL-TERMINAL` produces the WSL registration and Linux hostname `internet-gyal-terminal-subsystem`.
 
@@ -359,7 +388,7 @@ For example, Windows host `INTERNET-GYAL-TERMINAL` produces the WSL registration
 | --- | --- |
 | Root bootstrap | Sets root password to `root`, initializes pacman keys, updates packages, installs base tools, enables `sshd` offline, writes initial `/etc/wsl.conf` with systemd and the generated hostname |
 | User setup | Creates a user named after the Windows user, enables wheel sudo, grants passwordless sudo, enables lingering so user services survive with no shell open, sets the default user and hostname, generates `en_US.UTF-8` locale |
-| User packages and dotfiles | Installs Rust stable, builds `paru`, installs packages, installs Playwright MCP with headless Chromium, merges its OpenCode configuration, writes `~/environment.md`, configures Git for Windows SSH, installs Oh My Zsh, syncs and stows selected dotfiles, installs zsh plugins, runs `t3-setup` to install T3 Code and its background service, prepares Claude Code configuration, then installs the herdr Claude integration |
+| Shared Arch WSL profile | Calls `linux/install.sh arch-wsl` for packages, shell tools, dotfiles, agents, Windows SSH configuration, and the environment inventory |
 | Shell enforcement | Sets and verifies zsh as the WSL user's default shell |
 | Instance persistence | Writes `%UserProfile%\.wslconfig` with `instanceIdleTimeout=-1` and `vmIdleTimeout=-1`, adds a hidden logon shortcut that boots the distro, then restarts the instance under the new timeouts |
 
@@ -390,13 +419,17 @@ The T3 Code backend runs as a systemd _user_ unit. Lingering keeps it alive with
 
 Setting only `vmIdleTimeout` leaves the instance timeout at its default, so the distro still stops 15-20 seconds after the last terminal closes.
 
-Disabling the timeouts stops WSL shutting the instance down, but nothing starts it either. `myconfig-wsl-autostart.lnk` in the Startup folder supplies that half, running `wsl.exe -d <windows-hostname>-subsystem --exec /bin/true` through a hidden `powershell.exe` because `wsl.exe` is a console program. `windows/uninstall.ps1` removes both the shortcut and `.wslconfig`.
+Disabling the timeouts stops WSL shutting the instance down, but nothing starts it either. `myconfig-wsl-autostart.lnk` in the Startup folder supplies that half, running `wsl.exe -d <windows-hostname>-subsystem --exec /bin/true` through a hidden `powershell.exe` because `wsl.exe` is a console program. `windows-workstation/uninstall.ps1` removes both the shortcut and `.wslconfig`.
 
 ### Arch Package Set
 
-The Arch WSL setup installs packages through `pacman` and `paru`, including `base-devel`, `rustup`, `zsh`, `rsync`, `stow`, `wsl2-ssh-agent`, `ripgrep`, `go`, `yazi-git`, `ffmpeg`, `7zip`, `jq`, `poppler`, `fd`, `fzf`, `bat`, `zoxide`, `resvg`, `imagemagick`, `eza`, `llvm`, `bun`, `python`, `fastfetch`, `lazygit`, `jdk-openjdk`, `maven`, `make`, `cmake`, `btop`, `tokei`, `hunk-bin`, `herdr-bin`, `neovim`, `nodejs`, and `node-gyp`.
+The Arch WSL setup installs packages through `pacman` and `paru`, including `base-devel`, `rustup`, `zsh`, `rsync`, `stow`, `wsl2-ssh-agent`, `ripgrep`, `go`, `yazi-git`, `ffmpeg`, `7zip`, `jq`, `poppler`, `fd`, `fzf`, `bat`, `zoxide`, `resvg`, `imagemagick`, `eza`, `llvm`, `bun`, `python`, `fastfetch`, `lazygit`, `jdk-openjdk`, `maven`, `make`, `cmake`, `btop`, `tokei`, `hunk-bin`, `herdr-bin`, `neovim`, `nodejs`, `npm`, `node-gyp`, `opencode`, and `github-cli`.
 
-The user package phase installs the latest Playwright MCP package and `jsonc-parser` through Bun, then downloads only its matching Chromium Headless Shell. The Arch package list includes the browser's required shared libraries. The installer prefers an existing `~/.config/opencode/opencode.jsonc`, otherwise uses `opencode.json`, and replaces only the `mcp.playwright` entry while preserving unrelated settings, comments, and trailing commas. Invalid existing JSON or JSONC is left unchanged with a warning. A failed Playwright MCP or Chromium installation does not stop provisioning; the generated OpenCode entry remains disabled and `~/environment.md` records the failure.
+The shared profile installs the latest Playwright MCP package and `jsonc-parser` through Bun, then downloads only its matching Chromium Headless Shell. The installer prefers an existing `~/.config/opencode/opencode.jsonc`, otherwise uses `opencode.json`, and replaces only the `mcp.playwright` entry while preserving unrelated settings, comments, and trailing commas. Invalid configuration, browser failures, T3 service failures, and Herdr integration failures stop the profile. Missing GitHub or Tailscale authentication offers an interactive login, or prints the deferred command without failing.
+
+### T3 Commands
+
+The shared Zsh plugin provides three commands. `t3u` performs the complete CLI update, service repair, restart, and readiness check. `t3c` always runs `t3u`, then runs `t3 connect link` without arguments or forwards arguments to `t3 connect`. `t3t` always runs `t3u`, then runs `t3 pair --tailscale`. Every `t3c` and `t3t` invocation restarts T3 and closes active sessions.
 
 The shared `update()` function updates global Bun packages, then updates Chromium Headless Shell when the Playwright command exists in Bun's global package workspace. Browser update failures produce a warning and do not stop later updates. The same browser step runs after Homebrew updates on macOS.
 
@@ -437,10 +470,19 @@ myconfig/
 │   ├── yazi/
 │   ├── zed/
 │   └── zsh/
+├── linux/
+│   ├── adapters/
+│   ├── lib/
+│   ├── modules/
+│   ├── profiles/
+│   ├── registry/
+│   └── install.sh
+├── cachyos/
+│   └── install.sh
 ├── ubuntu-server/
 │   ├── install.sh
 │   └── uninstall.sh
-└── windows/
+└── windows-workstation/
     ├── install.ps1
     ├── setup-arch-wsl.ps1
     ├── uninstall.ps1
@@ -469,12 +511,13 @@ myconfig/
 | `zed` | Zed settings, keymap, and theme (unused, kept for reference) | Not installed by any script |
 | `zsh` | `.zshrc`, Oh My Zsh theme, and custom plugin | Home directory and Oh My Zsh custom paths |
 
-The `ai` package ships `settings.json` without a `hooks` key on purpose. Arch WSL runs `herdr integration install claude` after stowing, and that command merges its own `SessionStart` hook into the file with a home-relative path. Windows copies only `CLAUDE.md` and `skills/` from this package, because Claude Code runs only inside the Arch WSL distro.
+The `ai` package ships `settings.json` without a `hooks` key on purpose. CachyOS and Arch WSL run `herdr integration install claude` after stowing, and that command merges its own `SessionStart` hook into the file with a home-relative path. Windows Workstation copies only `CLAUDE.md` and `skills/` from this package.
 
 ### Installation Model
 
-| Target        | Dotfile Strategy                                                                     |
-| ------------- | ------------------------------------------------------------------------------------ |
-| Ubuntu Server | Direct copy of zsh files only                                                        |
-| Windows       | Direct copy of Windows configs                                                       |
-| Arch WSL      | Sync selected shared packages, remove conflicting target files, then `stow --restow` |
+| Target              | Dotfile Strategy                                                                 |
+| ------------------- | -------------------------------------------------------------------------------- |
+| CachyOS             | Back up `~/dotfiles`, copy six packages, back up conflicts, then `stow --restow` |
+| Ubuntu Server       | Back up `~/dotfiles`, copy Zsh, back up conflicts, then `stow --restow`          |
+| Windows Workstation | Direct copy of Windows configs                                                   |
+| Arch WSL            | Back up `~/dotfiles`, copy six packages, back up conflicts, then `stow --restow` |

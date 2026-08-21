@@ -1,4 +1,4 @@
-# Windows Development Environment Setup Script
+# Windows Workstation Development Environment Setup Script
 # This script is idempotent - running it multiple times is safe
 # Dotfiles are copied directly to their target locations (no stow on Windows)
 # Keep the script readable for future maintenance and review.
@@ -548,7 +548,7 @@ public class Taskbar {
 function Main {
     Write-Host ""
     Write-Host "+================================================================+" -ForegroundColor Cyan
-    Write-Host "|       Windows Development Environment Setup                     |" -ForegroundColor Cyan
+    Write-Host "|       Windows Workstation Development Environment Setup         |" -ForegroundColor Cyan
     Write-Host "|                (Direct copy dotfiles)                            |" -ForegroundColor Cyan
     Write-Host "+================================================================+" -ForegroundColor Cyan
     Write-Host ""

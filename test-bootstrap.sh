@@ -74,7 +74,10 @@ log_info "Checking for required files in archive..."
 
 required_files=(
     "myconfig-main/bootstrap.sh"
+    "myconfig-main/cachyos/install.sh"
+    "myconfig-main/linux/install.sh"
     "myconfig-main/ubuntu-server/install.sh"
+    "myconfig-main/windows-workstation/install.ps1"
     "myconfig-main/dotfiles"
     "myconfig-main/SPECS.md"
 )
@@ -105,10 +108,22 @@ if [ -f "myconfig-main/ubuntu-server/install.sh" ]; then
     bash -n "myconfig-main/ubuntu-server/install.sh" && log_success "Ubuntu install.sh: syntax OK"
 fi
 
+if [ -f "myconfig-main/cachyos/install.sh" ]; then
+    bash -n "myconfig-main/cachyos/install.sh" && log_success "CachyOS install.sh: syntax OK"
+fi
+
+while IFS= read -r -d '' script; do
+    bash -n "$script"
+done < <(find "myconfig-main/linux" -type f -name '*.sh' -print0)
+log_success "Shared Linux scripts: syntax OK"
+
 # Test bootstrap script syntax
 if [ -f "myconfig-main/bootstrap.sh" ]; then
     bash -n "myconfig-main/bootstrap.sh" && log_success "bootstrap.sh: syntax OK"
 fi
+
+bash "myconfig-main/test-linux.sh"
+log_success "Linux installer behavior: OK"
 
 # Archive size check
 echo "" >&2

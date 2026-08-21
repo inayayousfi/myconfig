@@ -125,17 +125,25 @@ if has claude; then
     alias ccor='claude remote-control --permission-mode bypassPermissions'
 fi
 
-# t3 is installed globally (bun add -g t3@nightly) so the background service has a
-# durable binary path rather than a bunx temp dir. Guard on bun, not t3, because
-# bare t3c has to work before t3 exists.
+# T3 commands always repair the CLI and service before connecting or pairing.
+# Guard on bun, not t3, because t3u also installs a missing CLI.
 if has bun; then
-    # Bare t3c sets everything up. With arguments it is a t3 connect passthrough.
+    t3u() {
+        t3-setup
+    }
+
     t3c() {
+        t3u || return 1
         if [ $# -eq 0 ]; then
-            t3-setup
+            t3 connect link
         else
             t3 connect "$@"
         fi
+    }
+
+    t3t() {
+        t3u || return 1
+        t3 pair --tailscale "$@"
     }
 
     alias t3s='t3 service'
@@ -280,6 +288,12 @@ elif $IS_LINUX; then
             fi
         else
             echo "bun not found, skipping Bun updates."
+            echo ""
+        fi
+
+        if has t3-setup; then
+            echo "Updating and repairing T3 Code..."
+            t3u || return 1
             echo ""
         fi
 

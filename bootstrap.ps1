@@ -220,7 +220,7 @@ function Run-Installation {
     Unblock-PowerShellFiles -Path $InstallDir
 
     # Verify the Windows installer was copied before we execute it.
-    if (!(Test-Path (Join-Path $InstallDir "windows\install.ps1"))) {
+    if (!(Test-Path (Join-Path $InstallDir "windows-workstation\install.ps1"))) {
         Write-Log "File copy failed or source directory was incomplete. Check $InstallDir" -Level 'ERROR'
         exit 1
     }
@@ -230,7 +230,7 @@ function Run-Installation {
     # Best-effort trust setup: import the code-signing cert (if present) and
     # relax ExecutionPolicy to RemoteSigned. Never fatal - trust/signing is
     # an enhancement, not a hard requirement for install to proceed.
-    $trustScript = Join-Path $InstallDir "windows\trust-cert.ps1"
+    $trustScript = Join-Path $InstallDir "windows-workstation\trust-cert.ps1"
     if (Test-Path $trustScript) {
         Write-Log "Running code-signing trust setup..."
         & $trustScript
@@ -242,11 +242,11 @@ function Run-Installation {
     }
 
     # Hand off to the Windows installer inside the staged repo.
-    Write-Log "Starting Windows installation..."
+    Write-Log "Starting Windows Workstation installation..."
     Write-Host ""
 
-    $installScript = Join-Path $InstallDir "windows\install.ps1"
-    Set-Location (Join-Path $InstallDir "windows")
+    $installScript = Join-Path $InstallDir "windows-workstation\install.ps1"
+    Set-Location (Join-Path $InstallDir "windows-workstation")
     & $installScript
 }
 
@@ -274,7 +274,7 @@ function Main {
     Write-Log "Installation complete!" -Level 'SUCCESS'
     Write-Log "Configuration installed to: $InstallDir"
     Write-Host ""
-    Write-Log "Windows setup complete!"
+    Write-Log "Windows Workstation setup complete!"
     Write-Log "GlazeWM and Zebar will start on your next login."
     Write-Log "WSL Ubuntu setup will run automatically if installed."
     Write-Log "Please restart your computer for all changes to take effect."

@@ -29,7 +29,7 @@ source "$REPO_ROOT/linux/registry/packages.sh"
     || myconfig_fail "Ubuntu package override did not resolve"
 
 MYCONFIG_PROFILE=cachyos
-[ "$(resolve_package github_cli)" = official:github-cli ] \
+[ "${MYCONFIG_PACKAGE_DEFAULTS[github_cli]}" = aur:github-cli-git ] \
     || myconfig_fail "GitHub CLI package did not resolve"
 [ "$(resolve_package tailscale)" = official:tailscale ] \
     || myconfig_fail "Tailscale package did not resolve"

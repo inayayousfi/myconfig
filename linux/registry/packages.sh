@@ -29,7 +29,7 @@ register_package jq official:jq
 register_package fastfetch official:fastfetch
 register_package btop official:btop
 register_package tokei official:tokei
-register_package github_cli official:github-cli
+register_package github_cli aur:github-cli-git
 register_package hunk aur:hunk-bin
 
 register_package go official:go

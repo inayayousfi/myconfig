@@ -1,6 +1,6 @@
 ---
 name: dossier
-description: ALWAYS use this skill before any non-trivial work that requires judgment, and whenever the user asks for a plan, execution strategy, or work breakdown.
+description: Use for state-changing tasks that need a decision tree because broad choices expose or constrain later choices. Do not use for read-only work, simple actions, or isolated questions.
 ---
 
 # dossier
@@ -25,59 +25,45 @@ Inspect who owns the target and who governs its destination. Open every availabl
 
 Treat each as evidence, not as the only possible truth. Bring up a constraint only when it conflicts with a decision under consideration. Name its source, state the concrete conflict, and ask me which direction to take. My decision remains final.
 
-Relevant constraints then go into the plan, under the facts, with their source.
+Relevant constraints then go into the plan with their source.
 
-## Ask
+## Present the briefing
 
-Draw the known decision tree before asking. Treat the task as its root and each unresolved decision as a node. Place each node beneath the earlier answer that exposes it. Its path from the root records every premise it assumes.
+Before asking anything, present one short briefing. Define any required specialized terms first, then show the inspected facts and the constraints already established by the user or the available material.
 
-Traverse the tree breadth first, one depth per batch. Put every unanswered node at the shallowest open depth into the same batch, but only when every answer on its path from the root is known. A child never shares a batch with an unanswered parent.
+Do not hide these facts inside question fields or repeat the briefing in every question. Include only information that affects a decision, constraint, action, or check.
 
-Send the batch and read every answer before expanding any branch. Add the child decisions exposed by those answers, then ask the complete next depth.
+## Build the decision tree
 
-Questions in one batch must be independent. None may require an answer from the same batch. Merge nodes when one answer resolves several decisions. Remove a node when another answer already determines it.
+Build the decision tree from broad choices toward specific details. Ask only about choices that remain unresolved, and never ask the user to repeat something already established.
 
-Tree depth controls the number and size of batches. Never split one answerable depth merely to shorten a batch. Never pull a later depth forward to reduce the number of rounds. Never drop a decision from the tree.
+Begin with the constraints. A constraint is anything the work must achieve, preserve, or avoid. Anything the work must provide is also a constraint, so do not create a separate stage for needs.
 
-If any uncertainty remains, ask me. For a fact, inspect the available evidence first. If the evidence does not remove the uncertainty, ask instead of filling the gap. For a decision, ask before continuing.
+State every known constraint. If You have any doubt about one, ask the user. If the work appears to need something the user did not specify, ask whether to add it. Never silently add, remove, or change a constraint.
 
-You MUST NOT make an execution call for me. Present every execution choice through the question tool, including the direction you recommend. A recommendation is an option for me to choose, never a decision you place into the plan afterward.
+Once the constraints are clear, describe the real things involved in the work and how they relate to each other. These things are the primitives. Their nature comes from the task itself, so never impose fixed categories or require the user to know the word “primitive.”
 
-Always ask through the question tool, never as plain text, whenever the tool is available.
+Present the relevant primitives, their roles, and their relationships together at a broad level. Ask whether something should be added, removed, joined, separated, redirected, or given a different role. Do not create a larger list merely to make the process look complete.
 
-Stop asking when the list is empty.
+Keep these questions independent from the specific actions that could carry out the work. Do not approach them with a preferred execution direction already selected, and do not use hypothetical examples that could steer the user's answer.
 
-### Every question carries its own context
+After the broad shape is settled, move down the decision tree into the specific actions required to produce it. Each answer may expose more detailed questions. Ask those questions only after the broader choices they depend on have been settled.
 
-The rule lives in the global rules file, under "Options and tradeoffs". Follow it there rather than restating it here.
+When the actions are clear, discuss how the completed result will be checked. Establish what can be observed, what would prove success, and how every agreed constraint will be confirmed. Verification must address the actual result, not merely whether the planned actions occurred.
 
-Test: read the question alone, with nothing above it. If deciding is still possible, it is written right.
+If a later answer exposes a missing constraint, primitive, or relationship, return to that earlier part of the decision tree. Do not force the new information into the current level.
 
-Every question field contains a direct question sentence. Never make me infer the question from the answer options.
+Ask every unanswered question at the shallowest open level in the same batch. Questions in one batch must be independent. A question never shares a batch with another question whose answer it depends on.
 
-## Grill the execution direction
+Use the question tool whenever it is available. Every question field must contain a direct question sentence. Follow the global rules for plain language, options, recommendations, and tradeoffs.
 
-Read the affected material before deciding whether this question exists.
-
-When several credible execution directions remain, explain what each one does. Name what each direction affects. State the concrete tradeoffs. Then let me choose.
-
-Do not force every task into a fixed set of forms. Do not ask a ritual scope question when the request and the inspected facts leave one credible direction.
-
-## Grill the outcomes
-
-The direction is not enough. Stopping there hands me a map and hands you the work. Grill the shape of every outcome.
-
-For each outcome, cover its purpose, contents, inputs, outputs, and consumers. Every choice I would make while producing it is still mine to make.
-
-Never grill the mechanical details inside an outcome. Those details are Yours to pick after I approve its shape.
-
-Ask one question per outcome. Split it only when one part has real competing options. If a part follows from the outcome, do not ask.
+Stop asking only when the constraints, primitives, relationships, actions, and checks contain no unresolved choice.
 
 ## Write the plan
 
 Write it in the same pass, as soon as the list is empty. Do not ask me whether to write it. The answers already decided it.
 
-Before writing, audit every planned choice against my answers. If any choice lacks an answer, return to the interview. The plan contains no new call for me to discover during approval.
+Before writing, audit every constraint, primitive, relationship, action, and check against my answers. If any choice remains unresolved, return to the interview. The plan must record the discussion without introducing a new decision.
 
 Present the completed plan in the chat. Then ask one explicit approval question through the question tool. Do not execute it until I approve the plan.
 
@@ -85,23 +71,7 @@ Do this yourself, inline. Never dispatch a subagent. Building the map needs cont
 
 ### Prose rules
 
-Non-negotiable. They apply to every word outside a code block.
-
-- Subject verb object. No subordinate clauses. No rhetoric.
-
-- Target 10 words per sentence. Hard cap 15.
-
-- **One bullet is one line.** If it needs two lines, it is two bullets.
-
-- **Blank line between list items.** Every list. Packed lists are hard to scan.
-
-- The cap is per line on screen, not per sentence.
-
-- Simplest word that works. Technical terms stay.
-
-- No em dash. Ever.
-
-- Test: readable with your brain off. If not, cut it.
+Follow the global communication rules. Write connected paragraphs when ideas belong together, and use lists only when the content is genuinely a list. Dossier has no separate sentence length, line length, or paragraph length limit.
 
 ### Notation
 
@@ -182,7 +152,7 @@ Write every heading in the language of the conversation. The names below are Eng
 
 #### Problem
 
-Context on a cold reopen. Not justification. Three to five short sentences, one idea each. Readable in five seconds. If it is not, cut it.
+Give enough context to understand the problem on a cold reopen. Use one connected paragraph unless the material requires another shape. Explain the problem rather than justifying the work.
 
 #### Shape
 
@@ -200,11 +170,9 @@ Emit a horizontal rule here.
 
 Space above the fold is the scarcest thing in the document. Only the problem and the diagram earn a place there. If it runs past one screen, cut until it fits.
 
-#### Facts this rests on
+#### Facts and constraints
 
-Every non-obvious fact the plan relies on belongs here. Every governing constraint that overlaps with a selected decision belongs here too. State any conflict and cite its source without presenting the constraint as the only possible truth.
-
-**One fact, one line.** Two lines means it is two facts.
+Include every non-obvious fact and agreed constraint that the plan relies on. State any conflict and cite its source without presenting that source as the only possible truth.
 
 End every fact with the exact evidence I can inspect myself to recover that same fact. Put that evidence in brackets.
 
@@ -214,7 +182,7 @@ Never write "from memory". If you did not confirm it, go and confirm it.
 
 One block per outcome, in execution order. Each block gets a heading naming the completed result, then the representation that exposes every decision.
 
-Show the outcome's purpose, contents, inputs, outputs, and consumers. Use the notation that fits the material. Use the code-only pseudo-code rules when an outcome changes code.
+Show the outcome's purpose, the primitives and relationships it affects, the actions that produce it, and who or what uses the result. Use the representation that best fits the material. Use the code-only pseudo-code rules only when an outcome changes code.
 
 This is also the breakdown. A reader counts the blocks and sees the real size of the work. Elision hides that size, so elide almost nothing.
 

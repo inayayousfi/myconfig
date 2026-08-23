@@ -79,34 +79,6 @@ fi
 [ "$(cat "$HOME/dotfiles-existing/keep")" = keep ] \
     || myconfig_fail "validation changed the existing dotfiles tree"
 
-plugin="$REPO_ROOT/dotfiles/zsh/.oh-my-zsh/custom/plugins/inaya/inaya.plugin.zsh"
-connect_output="$(zsh -f -c '
-    source "$1" >/dev/null
-    t3u() { print -r -- repair; }
-    t3() { print -r -- "t3:$*"; }
-    t3c status
-' _ "$plugin")"
-[ "$connect_output" = $'repair\nt3:connect status' ] \
-    || myconfig_fail "t3c did not repair before forwarding Connect arguments"
-
-link_output="$(zsh -f -c '
-    source "$1" >/dev/null
-    t3u() { print -r -- repair; }
-    t3() { print -r -- "t3:$*"; }
-    t3c
-' _ "$plugin")"
-[ "$link_output" = $'repair\nt3:connect link' ] \
-    || myconfig_fail "bare t3c did not repair before linking Connect"
-
-tailscale_output="$(zsh -f -c '
-    source "$1" >/dev/null
-    t3u() { print -r -- repair; }
-    t3() { print -r -- "t3:$*"; }
-    t3t --ttl 1h
-' _ "$plugin")"
-[ "$tailscale_output" = $'repair\nt3:pair --tailscale --ttl 1h' ] \
-    || myconfig_fail "t3t did not repair before Tailscale pairing"
-
 source "$REPO_ROOT/linux/modules/authentication.sh"
 auth_output="$(offer_authentication Test "test login" false)"
 [[ "$auth_output" == *"Test is not authenticated. Run: test login"* ]] \

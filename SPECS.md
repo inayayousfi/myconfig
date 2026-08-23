@@ -58,9 +58,9 @@ The Linux bootstrap ensures `curl` and `unzip` exist before downloading the arch
 
 Modules request logical package identifiers. `linux/registry/packages.sh` maps each identifier to an exact package source and name. A target override can replace either value, such as `fd` becoming `fd-find` on apt. Arch User Repository packages use the explicit `aur:` source. Unsupported sources and missing mappings stop the profile.
 
-Linux profiles copy selected packages into `~/dotfiles`, back up the previous tree, back up conflicting home files, and run GNU Stow. CachyOS and Arch WSL select `zsh`, `yazi`, `lazygit`, `ai`, `herdr`, and `nvim`. Ubuntu Server selects only `zsh`.
+Linux profiles copy selected packages into `~/dotfiles`, back up the previous tree, back up conflicting home files, and run GNU Stow. CachyOS and Arch WSL select `zsh`, `yazi`, `lazygit`, `ai`, `herdr`, `nvim`, and `opencode`. Ubuntu Server selects only `zsh`.
 
-The complete profiles install Tailscale as a system service. They also install T3 Code as a systemd user service with lingering. CachyOS calls T3's native service installer directly. Arch WSL uses `machinectl` because WSL shells lack the login session expected by `loginctl enable-linger`.
+The complete profiles configure OpenSSH as a system service that listens on all IPv4 and IPv6 interfaces and allows only the current user. They also install Tailscale as a system service. The installer validates the SSH daemon configuration before enabling and restarting it, but leaves authentication policy and network perimeter security at OpenSSH and system defaults.
 
 ---
 
@@ -303,9 +303,9 @@ The Ubuntu Server installation does not include GNU Stow, development runtimes, 
 
 ## Platform-Specific: CachyOS
 
-CachyOS uses the complete shared Linux profile after the graphical operating-system installer finishes. The profile installs development packages, sets Zsh as the default shell, deploys shared dotfiles, configures agent tools, and offers GitHub and Tailscale authentication.
+CachyOS uses the complete shared Linux profile after the graphical operating-system installer finishes. The profile installs development packages, configures the OpenSSH service, sets Zsh as the default shell, deploys shared dotfiles, configures agent tools, and offers GitHub and Tailscale authentication.
 
-The installer does not change sudoers, SSH services, locale, kernel, drivers, desktop settings, or power settings. T3 Code uses `t3code-nightly-bin` from the Arch User Repository. Bun installs `t3@nightly`, and T3 installs its normal systemd user service. Tailscale installs its system service separately.
+The installer does not change sudoers, locale, kernel, drivers, desktop settings, or power settings. It installs OpenSSH, generates missing host keys, writes the shared listener policy, and enables the system service. Tailscale installs its system service separately.
 
 ---
 
@@ -386,13 +386,13 @@ For example, Windows host `INTERNET-GYAL-TERMINAL` produces the WSL registration
 
 | Phase | Behavior |
 | --- | --- |
-| Root bootstrap | Sets root password to `root`, initializes pacman keys, updates packages, installs base tools, enables `sshd` offline, writes initial `/etc/wsl.conf` with systemd and the generated hostname |
+| Root bootstrap | Sets root password to `root`, initializes pacman keys, updates packages, installs base tools, writes initial `/etc/wsl.conf` with systemd and the generated hostname |
 | User setup | Creates a user named after the Windows user, enables wheel sudo, grants passwordless sudo, enables lingering so user services survive with no shell open, sets the default user and hostname, generates `en_US.UTF-8` locale |
-| Shared Arch WSL profile | Calls `linux/install.sh arch-wsl` for packages, shell tools, dotfiles, agents, Windows SSH configuration, and the environment inventory |
+| Shared Arch WSL profile | Calls `linux/install.sh arch-wsl` for packages, the OpenSSH service, shell tools, dotfiles, agents, Windows Git SSH configuration, and the environment inventory |
 | Shell enforcement | Sets and verifies zsh as the WSL user's default shell |
 | Instance persistence | Writes `%UserProfile%\.wslconfig` with `instanceIdleTimeout=-1` and `vmIdleTimeout=-1`, adds a hidden logon shortcut that boots the distro, then restarts the instance under the new timeouts |
 
-### User Service Stack
+### Background Service Stack
 
 `user@<uid>.service` is not a custom application service. It is systemd's standard template for starting one service manager per Linux user. The system systemd process runs it as the matching user, and that process then manages the user's background services.
 
@@ -400,17 +400,17 @@ For example, Windows host `INTERNET-GYAL-TERMINAL` produces the WSL registration
 Windows logon shortcut
   -> WSL distribution
     -> system systemd (PID 1)
+      -> sshd.service
       -> user@<uid>.service
         -> user systemd manager
           -> user D-Bus socket at /run/user/<uid>/bus
-          -> T3 Code and other user services
 ```
 
 The template belongs to the Arch systemd package, normally under `/usr/lib/systemd/system/user@.service`. An instance such as `user@1000.service` means the template is running for Linux user ID `1000`. The repo enables lingering so this manager survives after the user's last shell closes. Lingering cannot keep the surrounding WSL distribution alive.
 
 ### Instance Persistence
 
-The T3 Code backend runs as a systemd _user_ unit. Lingering keeps it alive with no shell open, but only from inside the instance; it cannot stop WSL from tearing the instance down. Two independent timeouts do that, and both must be disabled:
+The OpenSSH server runs as a system unit, but systemd cannot stop WSL from tearing the instance down. Two independent timeouts do that, and both must be disabled:
 
 | Key                   | Section     | Default  | Effect                                         |
 | --------------------- | ----------- | -------- | ---------------------------------------------- |
@@ -419,17 +419,13 @@ The T3 Code backend runs as a systemd _user_ unit. Lingering keeps it alive with
 
 Setting only `vmIdleTimeout` leaves the instance timeout at its default, so the distro still stops 15-20 seconds after the last terminal closes.
 
-Disabling the timeouts stops WSL shutting the instance down, but nothing starts it either. `myconfig-wsl-autostart.lnk` in the Startup folder supplies that half, running `wsl.exe -d <windows-hostname>-subsystem --exec /bin/true` through a hidden `powershell.exe` because `wsl.exe` is a console program. `windows-workstation/uninstall.ps1` removes both the shortcut and `.wslconfig`.
+Disabling the timeouts stops WSL shutting the instance down, but nothing starts it either. `myconfig-wsl-autostart.lnk` in the Startup folder supplies that half, running `wsl.exe -d <windows-hostname>-subsystem --exec /bin/true` through a hidden `powershell.exe` because `wsl.exe` is a console program. This keeps the SSH server available after Windows login. `windows-workstation/uninstall.ps1` removes both the shortcut and `.wslconfig`.
 
 ### Arch Package Set
 
-The Arch WSL setup installs packages through `pacman` and `paru`, including `base-devel`, `rustup`, `zsh`, `rsync`, `stow`, `wsl2-ssh-agent`, `ripgrep`, `go`, `yazi-git`, `ffmpeg`, `7zip`, `jq`, `poppler`, `fd`, `fzf`, `bat`, `zoxide`, `resvg`, `imagemagick`, `eza`, `llvm`, `bun`, `python`, `fastfetch`, `lazygit`, `jdk-openjdk`, `maven`, `make`, `cmake`, `btop`, `tokei`, `hunk-bin`, `herdr-bin`, `neovim`, `nodejs`, `npm`, `node-gyp`, `opencode`, and `github-cli`.
+The Arch WSL setup installs packages through `pacman` and `paru`, including `base-devel`, `rustup`, `openssh`, `zsh`, `rsync`, `stow`, `wsl2-ssh-agent`, `ripgrep`, `go`, `yazi-git`, `ffmpeg`, `7zip`, `jq`, `poppler`, `fd`, `fzf`, `bat`, `zoxide`, `resvg`, `imagemagick`, `eza`, `llvm`, `bun`, `python`, `fastfetch`, `lazygit`, `jdk-openjdk`, `maven`, `make`, `cmake`, `btop`, `tokei`, `hunk-bin`, `herdr-bin`, `neovim`, `nodejs`, `npm`, `node-gyp`, `opencode`, and `github-cli`.
 
-The shared profile installs the latest Playwright MCP package and `jsonc-parser` through Bun, then downloads only its matching Chromium Headless Shell. The installer prefers an existing `~/.config/opencode/opencode.jsonc`, otherwise uses `opencode.json`, and replaces only the `mcp.playwright` entry while preserving unrelated settings, comments, and trailing commas. Invalid configuration, browser failures, T3 service failures, and Herdr integration failures stop the profile. Missing GitHub or Tailscale authentication offers an interactive login, or prints the deferred command without failing.
-
-### T3 Commands
-
-The shared Zsh plugin provides three commands. `t3u` performs the complete CLI update, service repair, restart, and readiness check. `t3c` always runs `t3u`, then runs `t3 connect link` without arguments or forwards arguments to `t3 connect`. `t3t` always runs `t3u`, then runs `t3 pair --tailscale`. Every `t3c` and `t3t` invocation restarts T3 and closes active sessions.
+The shared profile installs the latest Playwright MCP package through Bun, then downloads only its matching Chromium Headless Shell. The `opencode` Stow package owns the shared `opencode.jsonc`, `tui.json`, and `themes/blacknpink.json`: it launches Playwright through `{env:HOME}`, applies the Black & Pink theme, and binds half-page message scrolling to `Ctrl+U` and `Ctrl+D`. Machine-specific MCP servers can live in untracked `~/.config/opencode/config.json`, which OpenCode merges with the tracked runtime file. Existing conflicting configs are backed up but not migrated automatically. The installer validates the merged runtime configuration after Stow. Invalid configuration, browser failures, SSH service failures, and Herdr integration failures stop the profile. Missing GitHub or Tailscale authentication offers an interactive login, or prints the deferred command without failing.
 
 The shared `update()` function updates global Bun packages, then updates Chromium Headless Shell when the Playwright command exists in Bun's global package workspace. Browser update failures produce a warning and do not stop later updates. The same browser step runs after Homebrew updates on macOS.
 
@@ -445,6 +441,7 @@ Arch WSL syncs and stows these shared dotfile packages from the Windows-accessib
 - `ai`
 - `herdr`
 - `nvim`
+- `opencode`
 
 ---
 
@@ -465,6 +462,7 @@ myconfig/
 │   ├── hyfetch/
 │   ├── lazygit/
 │   ├── nvim/
+│   ├── opencode/
 │   ├── qbt-search/
 │   ├── wallpaper/
 │   ├── yazi/
@@ -505,6 +503,7 @@ myconfig/
 | `hyfetch` | Hyfetch config | `$XDG_CONFIG_HOME/hyfetch.json` |
 | `lazygit` | Lazygit theme/config | `$XDG_CONFIG_HOME/lazygit/` |
 | `nvim` | Neovim config | `$XDG_CONFIG_HOME/nvim/` |
+| `opencode` | OpenCode runtime, TUI, and Black & Pink theme | `$XDG_CONFIG_HOME/opencode/` |
 | `qbt-search` | qBittorrent search plugins | Application-specific search plugin directory |
 | `wallpaper` | Wallpaper assets | Wallpaper directory |
 | `yazi` | Yazi config and flavor | `$XDG_CONFIG_HOME/yazi/` |
@@ -515,9 +514,9 @@ The `ai` package ships `settings.json` without a `hooks` key on purpose. CachyOS
 
 ### Installation Model
 
-| Target              | Dotfile Strategy                                                                 |
-| ------------------- | -------------------------------------------------------------------------------- |
-| CachyOS             | Back up `~/dotfiles`, copy six packages, back up conflicts, then `stow --restow` |
-| Ubuntu Server       | Back up `~/dotfiles`, copy Zsh, back up conflicts, then `stow --restow`          |
-| Windows Workstation | Direct copy of Windows configs                                                   |
-| Arch WSL            | Back up `~/dotfiles`, copy six packages, back up conflicts, then `stow --restow` |
+| Target              | Dotfile Strategy                                                                   |
+| ------------------- | ---------------------------------------------------------------------------------- |
+| CachyOS             | Back up `~/dotfiles`, copy seven packages, back up conflicts, then `stow --restow` |
+| Ubuntu Server       | Back up `~/dotfiles`, copy Zsh, back up conflicts, then `stow --restow`            |
+| Windows Workstation | Direct copy of Windows configs                                                     |
+| Arch WSL            | Back up `~/dotfiles`, copy seven packages, back up conflicts, then `stow --restow` |

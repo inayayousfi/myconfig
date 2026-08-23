@@ -407,11 +407,6 @@ function Remove-WingetPackages {
         "Python.PythonInstallManager"
         "JanDeDobbeleer.OhMyPosh"
         "wez.wezterm"
-        # T3 Code and Claude Code are no longer installed on Windows; both now live
-        # only inside the Arch WSL distro. They stay listed here so an uninstall on
-        # a machine provisioned by an earlier version still cleans them up. winget
-        # treats a package that is not installed as a no-op.
-        "T3Tools.T3Code"
         "Anthropic.ClaudeCode"
     )
 

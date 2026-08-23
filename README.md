@@ -64,14 +64,6 @@ The bootstrap script will:
 - **Documented**: Full specifications in [SPECS.md](SPECS.md)
 - **Backed Up**: Automatically backs up existing configurations
 
-## T3 Code Commands
-
-- `t3u` updates the T3 CLI, repairs its user service, and restarts its server.
-- `t3c` runs `t3u`, then links or manages T3 Connect.
-- `t3t` runs `t3u`, then creates a pairing code through Tailscale Serve.
-
-Both `t3c` and `t3t` restart T3 first. That restart closes active T3 sessions.
-
 ## Uninstalling
 
 Available uninstall scripts:

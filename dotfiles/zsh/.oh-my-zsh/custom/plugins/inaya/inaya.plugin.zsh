@@ -113,7 +113,7 @@ if has hyfetch; then
 fi
 
 if has opencode; then
-    alias oc='opencode'
+    alias oc='opencode --auto'
 fi
 
 if has codex; then
@@ -123,30 +123,6 @@ fi
 if has claude; then
     alias cco='IS_DEMO=1 claude --dangerously-skip-permissions'
     alias ccor='claude remote-control --permission-mode bypassPermissions'
-fi
-
-# T3 commands always repair the CLI and service before connecting or pairing.
-# Guard on bun, not t3, because t3u also installs a missing CLI.
-if has bun; then
-    t3u() {
-        t3-setup
-    }
-
-    t3c() {
-        t3u || return 1
-        if [ $# -eq 0 ]; then
-            t3 connect link
-        else
-            t3 connect "$@"
-        fi
-    }
-
-    t3t() {
-        t3u || return 1
-        t3 pair --tailscale "$@"
-    }
-
-    alias t3s='t3 service'
 fi
 
 if has zoxide; then
@@ -288,12 +264,6 @@ elif $IS_LINUX; then
             fi
         else
             echo "bun not found, skipping Bun updates."
-            echo ""
-        fi
-
-        if has t3-setup; then
-            echo "Updating and repairing T3 Code..."
-            t3u || return 1
             echo ""
         fi
 

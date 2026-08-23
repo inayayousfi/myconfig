@@ -2,6 +2,7 @@
 
 run_profile() {
     module_base
+    module_ssh
     module_cli
     module_runtimes
     module_zsh
@@ -11,7 +12,6 @@ run_profile() {
     module_agents_packages
     module_dotfiles
     module_agents_configure
-    module_t3
     module_authentication
     write_environment_inventory
 }

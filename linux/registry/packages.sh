@@ -63,5 +63,4 @@ register_package libxdamage official:libxdamage
 register_package libxrandr official:libxrandr
 register_package libxkbcommon official:libxkbcommon
 register_package wsl_ssh_agent aur:wsl2-ssh-agent
-register_package t3code_desktop aur:t3code-nightly-bin
 register_package tailscale official:tailscale

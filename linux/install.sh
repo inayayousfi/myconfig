@@ -27,7 +27,7 @@ require_function adapter_install_specs
 
 source "$LINUX_DIR/registry/packages.sh"
 
-for module in base cli runtimes zsh neovim terminal-tools tailscale agents dotfiles t3 authentication; do
+for module in base ssh cli runtimes zsh neovim terminal-tools tailscale agents dotfiles authentication; do
     source "$LINUX_DIR/modules/$module.sh"
 done
 

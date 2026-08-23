@@ -10,5 +10,5 @@ module_base() {
 
     install_package_ids \
         ca_certificates sudo git curl wget rsync stow tar unzip zip xz file \
-        man_db man_pages base_devel rustup openssh polkit
+        man_db man_pages base_devel rustup polkit
 }

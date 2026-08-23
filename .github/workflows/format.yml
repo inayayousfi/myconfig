@@ -31,8 +31,7 @@ jobs:
         run: |
           mapfile -d '' files < <(git ls-files -z '*.sh')
           "$(go env GOPATH)/bin/shfmt" -d -i 4 -ci -bn \
-            "${files[@]}" \
-            dotfiles/zsh/.local/bin/t3-setup
+            "${files[@]}"
 
       - name: Check Zsh formatting
         run: |

@@ -112,9 +112,8 @@ function Unregister-ExistingDistro {
 }
 
 function Install-WslAutostart {
-    # The T3 Code backend is a systemd *user* unit. Lingering keeps it alive with no
-    # shell open, but only from inside the instance. It cannot stop WSL from tearing
-    # the instance down, and two independent timeouts do exactly that:
+    # The OpenSSH server starts with systemd, but systemd cannot stop WSL from tearing
+    # the instance down. Two independent timeouts do exactly that:
     #
     #   vmIdleTimeout       [wsl2]     stops the utility VM.       Default 60000 ms.
     #   instanceIdleTimeout [general]  stops the distro instance.  Default 15000 ms.
@@ -151,7 +150,7 @@ vmIdleTimeout=-1
     $shortcut = $shell.CreateShortcut($shortcutPath)
     $shortcut.TargetPath = $powershellPath
     $shortcut.Arguments = "-NoLogo -NoProfile -WindowStyle Hidden -Command `"wsl.exe -d $Distro --exec /bin/true`""
-    $shortcut.Description = "Boot the $Distro WSL instance at logon so its user services run without a terminal."
+    $shortcut.Description = "Boot the $Distro WSL instance at logon so its SSH server stays available."
     # Belt and braces: powershell.exe paints a console for a fraction of a second
     # before it applies -WindowStyle Hidden. Minimized keeps that off the desktop.
     $shortcut.WindowStyle = 7
@@ -211,15 +210,7 @@ log "Updating system packages"
 pacman -Syu --noconfirm
 
 log "Installing base packages"
-pacman -S --noconfirm sudo git base-devel wget curl unzip zip man-db man-pages vi rustup openssh polkit
-
-log "Generating SSH host keys"
-ssh-keygen -A
-
-# systemd is not running yet on this first boot, so enable offline. This only
-# writes the multi-user.target.wants symlink, which the next boot acts on.
-log "Enabling sshd for systemd boot"
-SYSTEMD_OFFLINE=1 systemctl enable sshd
+pacman -S --noconfirm sudo git base-devel wget curl unzip zip man-db man-pages vi rustup polkit
 
 log "Writing /etc/wsl.conf"
 cat >/etc/wsl.conf <<'EOF'
@@ -262,13 +253,6 @@ grep -q "^$WINUSER ALL=(ALL) NOPASSWD:ALL" /etc/sudoers || \
 log "Enabling lingering for $WINUSER"
 loginctl enable-linger "$WINUSER" 2>/dev/null || \
     install -Dm644 /dev/null "/var/lib/systemd/linger/$WINUSER"
-
-log "Restricting sshd to loopback and $WINUSER"
-cat >/etc/ssh/sshd_config.d/10-local-only.conf <<EOF
-ListenAddress 127.0.0.1
-ListenAddress ::1
-AllowUsers $WINUSER
-EOF
 
 log "Writing /etc/wsl.conf default user"
 cat >/etc/wsl.conf <<EOF
@@ -341,7 +325,7 @@ log "Default shell verified for $WINUSER"
     # the VM starts, so this is what makes the new timeouts take effect at all.
     wsl --shutdown
 
-    # Bring the instance back up the same way the logon shortcut does, so the T3 Code
+    # Bring the instance back up the same way the logon shortcut does, so the SSH
     # service is already running when the script ends instead of at the next logon.
     Write-Log "Booting $Distro under the new idle timeouts..."
     wsl -d $Distro --exec /bin/true

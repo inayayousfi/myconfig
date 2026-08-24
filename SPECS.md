@@ -319,6 +319,16 @@ After installation, the profile uses the Axidev OSK command line to configure th
 
 This module runs only for CachyOS. Arch WSL and Ubuntu Server neither install nor configure Axidev OSK.
 
+### Virtual Machine Testing
+
+`vm/cachyos.sh` provides an interactive QEMU and KVM test environment for the complete CachyOS profile. The `install` action discovers the current official Desktop ISO, downloads its adjacent SHA-256 file, verifies the image, and boots the graphical installer with UEFI. The VM defaults to 8 GiB RAM, 6 virtual CPUs, and a 100 GiB sparse disk. QEMU uses its local SPICE display and QXL graphics device, installs the Arch `virt-viewer` host package when needed, and exposes the guest-agent channel so viewer resizing requests a matching CachyOS resolution instead of scaling a low-resolution framebuffer.
+
+The `seal` action requires the default unencrypted CachyOS Btrfs layout. It installs the Arch host packages `linux`, `libguestfs`, and `guestfs-tools` when the libguestfs commands or helper kernel are missing. WSL does not boot this Arch kernel; libguestfs uses it only for offline disk access. Sealing explicitly mounts the `@` and `@home` subvolumes so installation snapshots are not mistaken for separate operating systems. It then detects the single desktop user, enables the installed OpenSSH service offline, injects a dedicated VM key, and adds a one-time boot service that allows TCP port 22 through UFW before SSH starts. It boots the manually installed system, forwards localhost port 2222 to guest SSH, and waits for SSH. After QEMU exits and the user confirms the desktop worked, sealing copies that user's QXL output layout to the Plasma Login greeter inside the VM so login-screen input can be tested at the same crisp resolution. It then marks the system as the clean base. The `run` action creates or reuses a copy-on-write test disk backed by that sealed base. The `reset` action removes only the test disk and its UEFI variables, leaving the installed base, SSH state, and ISO cache intact.
+
+During test boots, QEMU exposes the current repository through a writable 9p mount tagged `myconfig`. This makes unstaged and untracked host files available to the guest without a release, but guest root can also modify or delete the checkout as the host user running QEMU. The harness waits for SSH, mounts the share at `/mnt/myconfig`, and starts `cachyos/install.sh` in an interactive terminal. Installation and sealing boots do not receive the repository device. VM state and its dedicated SSH key live under `${XDG_DATA_HOME:-$HOME/.local/share}/myconfig/cachyos-vm`; ISO files live under `${XDG_CACHE_HOME:-$HOME/.cache}/myconfig/cachyos-vm`.
+
+The VM covers installation flow, packages, login-manager integration, desktop startup, and virtual input. It does not validate physical GPU, touch-screen, firmware, device-driver, or native-performance behavior. The complete interactive procedure is documented in [`vm/README.md`](vm/README.md).
+
 ---
 
 ## Platform-Specific: Windows Workstation

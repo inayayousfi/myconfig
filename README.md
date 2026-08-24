@@ -58,6 +58,10 @@ The bootstrap script will:
 4. Copy Linux dotfiles into `~/dotfiles`, back up conflicts, and link them with GNU Stow
 5. Install the packages for the selected platform
 
+### CachyOS Virtual Machine Testing
+
+The [CachyOS VM harness](vm/README.md) installs the Desktop ISO interactively, preserves a clean base system, and tests the current working tree without a commit or release.
+
 ## Features
 
 - **Repeatable**: Safe to rerun, with timestamped backups before replacement

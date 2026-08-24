@@ -45,6 +45,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y rsync stow zsh
           ./test-linux.sh
+          ./vm/test-cachyos.sh
 
       - name: Install Rust formatters
         run: |

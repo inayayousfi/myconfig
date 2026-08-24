@@ -79,6 +79,7 @@ required_files=(
     "myconfig-main/ubuntu-server/install.sh"
     "myconfig-main/windows-workstation/install.ps1"
     "myconfig-main/dotfiles"
+    "myconfig-main/vm/cachyos.sh"
     "myconfig-main/SPECS.md"
 )
 
@@ -124,6 +125,8 @@ fi
 
 bash "myconfig-main/test-linux.sh"
 log_success "Linux installer behavior: OK"
+bash "myconfig-main/vm/test-cachyos.sh"
+log_success "CachyOS VM lifecycle: OK"
 
 # Archive size check
 echo "" >&2

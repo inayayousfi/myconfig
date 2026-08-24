@@ -26,6 +26,8 @@ peach = "#fca5a5"
 
 [keys]
 prefix = "ctrl+a"
+goto = "prefix+a"
+toggle_sidebar = "prefix+s"
 
 [ui]
 show_agent_labels_on_pane_borders = true

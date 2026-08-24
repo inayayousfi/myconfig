@@ -62,5 +62,10 @@ register_package libxcomposite official:libxcomposite
 register_package libxdamage official:libxdamage
 register_package libxrandr official:libxrandr
 register_package libxkbcommon official:libxkbcommon
+register_package pyside6 official:pyside6
+register_package qt6_wayland official:qt6-wayland
+register_package layer_shell_qt official:layer-shell-qt
+register_package libinput official:libinput
+register_package systemd official:systemd
 register_package wsl_ssh_agent aur:wsl2-ssh-agent
 register_package tailscale official:tailscale

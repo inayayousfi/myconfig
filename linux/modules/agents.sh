@@ -62,6 +62,15 @@ This file describes the capabilities installed for the $platform.
 - **Terminal tools**: Yazi, ripgrep, fd, fzf, zoxide, eza, bat, jq, and btop.
 - **Agent tools**: OpenCode, Herdr, and Playwright MCP.
 - **Remote access**: OpenSSH server and Tailscale service with optional login during setup.
+EOF
+
+    if [ "$MYCONFIG_PROFILE" = cachyos ]; then
+        cat >>"$HOME/environment.md" <<'EOF'
+- **On-screen keyboard**: Axidev OSK with desktop and login-screen startup.
+EOF
+    fi
+
+    cat >>"$HOME/environment.md" <<'EOF'
 
 All selected installer modules completed successfully.
 EOF

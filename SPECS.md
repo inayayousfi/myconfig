@@ -52,11 +52,13 @@ The Linux bootstrap ensures `curl` and `unzip` exist before downloading the arch
 
 | Profile         | Package adapter            | Modules                                |
 | --------------- | -------------------------- | -------------------------------------- |
-| `cachyos`       | Arch (`pacman` and `paru`) | Complete development profile           |
+| `cachyos`       | Arch (`pacman` and `paru`) | Complete profile with Axidev OSK       |
 | `arch-wsl`      | Arch (`pacman` and `paru`) | Complete profile with WSL integrations |
 | `ubuntu-server` | apt                        | Base, Zsh, and Zsh dotfiles            |
 
 Modules request logical package identifiers. `linux/registry/packages.sh` maps each identifier to an exact package source and name. A target override can replace either value, such as `fd` becoming `fd-find` on apt. Arch User Repository packages use the explicit `aur:` source. Unsupported sources and missing mappings stop the profile.
+
+The shared installer validates sudo once before package preparation and refreshes that credential every 60 seconds until the profile exits. Long package builds therefore do not ask for the same password again. The refresh process is stopped on both successful and failed exits.
 
 Linux profiles copy selected packages into `~/dotfiles`, back up the previous tree, back up conflicting home files, and run GNU Stow. CachyOS and Arch WSL select `zsh`, `yazi`, `lazygit`, `ai`, `herdr`, `nvim`, and `opencode`. Ubuntu Server selects only `zsh`.
 
@@ -303,9 +305,19 @@ The Ubuntu Server installation does not include GNU Stow, development runtimes, 
 
 ## Platform-Specific: CachyOS
 
-CachyOS uses the complete shared Linux profile after the graphical operating-system installer finishes. The profile installs development packages, configures the OpenSSH service, sets Zsh as the default shell, deploys shared dotfiles, configures agent tools, and offers GitHub and Tailscale authentication.
+CachyOS uses the complete shared Linux profile after the graphical operating-system installer finishes. The profile installs development packages and Axidev OSK, configures the OpenSSH service, sets Zsh as the default shell, deploys shared dotfiles, configures agent tools, and offers GitHub and Tailscale authentication.
 
 The installer does not change sudoers, locale, kernel, drivers, desktop settings, or power settings. It installs OpenSSH, generates missing host keys, writes the shared listener policy, and enables the system service. Tailscale installs its system service separately.
+
+### Axidev OSK
+
+The CachyOS profile installs the latest published [Axidev OSK](https://github.com/axide-dev/axidev-osk) Linux release. A first run downloads the project's lifecycle installer; later profile runs use `axidev-osk-install upgrade`. The lifecycle installer keeps the active payload under `/opt/axidev-osk`, retains one rollback payload, and exposes the application through `/usr/local/bin/axidev-osk`.
+
+The profile installs the Arch host dependencies for Python, PySide6, Qt Wayland, LayerShellQt, libinput, systemd, and libxkbcommon. The downloaded lifecycle installer verifies the payload against the release checksum manifest before activation. The installer and checksum manifest come from the same GitHub release, so this check detects download corruption but does not independently authenticate the publisher.
+
+After installation, the profile uses the Axidev OSK command line to configure the `uinput` kernel module, udev rule, shared input group, current-user membership, and desktop-session autostart. It then connects the command's login-manager menu directly to the terminal and configures greeter startup for the selected supported manager. The menu supports Plasma Login Manager, greetd, and LightDM. Log out and back in after a new group membership is added; restart the selected login manager or reboot to activate greeter startup.
+
+This module runs only for CachyOS. Arch WSL and Ubuntu Server neither install nor configure Axidev OSK.
 
 ---
 

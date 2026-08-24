@@ -19,14 +19,19 @@ adapter_ensure_paru() {
     command -v paru >/dev/null 2>&1 && return 0
 
     myconfig_log "Bootstrapping paru"
-    sudo pacman -S --needed --noconfirm base-devel git
+    sudo pacman -S --needed --noconfirm base-devel git rustup
+    if ! cargo --version >/dev/null 2>&1; then
+        rustup default stable
+    fi
 
     local build_dir
     build_dir="$(mktemp -d)"
     git clone https://aur.archlinux.org/paru.git "$build_dir/paru"
     (
         cd "$build_dir/paru"
-        makepkg -si --noconfirm --needed
+        makepkg --noconfirm
+        mapfile -t packages < <(makepkg --packagelist)
+        sudo pacman -U --needed --noconfirm "${packages[@]}"
     )
     rm -rf "$build_dir"
 }

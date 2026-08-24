@@ -27,13 +27,14 @@ require_function adapter_install_specs
 
 source "$LINUX_DIR/registry/packages.sh"
 
-for module in base ssh cli runtimes zsh neovim terminal-tools tailscale agents dotfiles authentication; do
+for module in base ssh cli runtimes zsh neovim terminal-tools axidev-osk tailscale agents dotfiles authentication; do
     source "$LINUX_DIR/modules/$module.sh"
 done
 
 source "$LINUX_DIR/profiles/$MYCONFIG_PROFILE.sh"
 require_function run_profile
 
+start_sudo_keepalive
 adapter_prepare
 run_profile
 myconfig_log "Profile completed successfully"

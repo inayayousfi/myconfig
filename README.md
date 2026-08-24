@@ -16,6 +16,8 @@ Run this after completing the CachyOS graphical installer:
 curl -fsSL https://raw.githubusercontent.com/inayayousfi/myconfig/main/bootstrap.sh | bash -s -- cachyos
 ```
 
+The CachyOS profile installs Axidev OSK and opens an arrow-key menu to select the installed login manager. The keyboard starts on the login screen and again after desktop login. Log out and back in so the new input-device group membership applies, then restart the selected login manager or reboot to activate login-screen startup.
+
 The final authentication step offers GitHub and Tailscale login. Declining either prompt prints the command for later.
 
 ### Ubuntu Server

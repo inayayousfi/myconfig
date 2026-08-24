@@ -49,7 +49,7 @@ cp -r "$SCRIPT_DIR"/.* "$ARCHIVE_DIR/" 2>/dev/null || true
 log_info "Creating setup-config.zip..."
 cd "$TEMP_TEST_DIR"
 zip -r setup-config.zip myconfig-main/ -q \
-    -x "*.git*" \
+    -x "myconfig-main/.git/*" \
     -x "*.DS_Store" \
     -x "*__pycache__*" \
     -x "*.pyc"

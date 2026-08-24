@@ -43,7 +43,7 @@ jobs:
       - name: Test Linux installers
         run: |
           sudo apt-get update
-          sudo apt-get install -y zsh
+          sudo apt-get install -y rsync stow zsh
           ./test-linux.sh
 
       - name: Install Rust formatters

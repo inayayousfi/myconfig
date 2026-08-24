@@ -62,6 +62,10 @@ backup_dotfile_conflicts() {
 
             [ -e "$target" ] || [ -L "$target" ] || continue
 
+            if [ -e "$target" ] && [ "$target" -ef "$file" ]; then
+                continue
+            fi
+
             if [ -L "$target" ]; then
                 expected="$(readlink -f "$file" 2>/dev/null || true)"
                 actual="$(readlink -f "$target" 2>/dev/null || true)"
@@ -86,6 +90,34 @@ validate_dotfile_packages() {
     done
 }
 
+validate_staged_dotfiles() {
+    local source_dir="$1"
+    local staging_dir="$2"
+    shift 2
+
+    local package differences file
+    for package in "$@"; do
+        if ! differences="$(
+            rsync -a --checksum --delete --dry-run --itemize-changes \
+                "$source_dir/$package/" "$staging_dir/$package/"
+        )"; then
+            myconfig_fail "could not verify staged dotfile package: $package"
+            return 1
+        fi
+        [ -z "$differences" ] || {
+            myconfig_fail "staged dotfile package differs from source: $package"
+            return 1
+        }
+
+        while IFS= read -r -d '' file; do
+            if LC_ALL=C grep -Iq $'\r' "$file"; then
+                myconfig_fail "dotfile contains CRLF or CR line endings: ${file#"$staging_dir/"}"
+                return 1
+            fi
+        done < <(find "$staging_dir/$package" -type f -print0)
+    done
+}
+
 module_dotfiles() {
     myconfig_log "Copying and stowing dotfiles"
     require_command rsync
@@ -101,13 +133,20 @@ module_dotfiles() {
     validate_dotfile_packages "$source_dir" "${packages[@]}"
 
     staging_dir="$(mktemp -d "$HOME/.dotfiles-stage.XXXXXX")"
-    trap 'rm -rf "$staging_dir"' RETURN
+    trap 'if [ -n "${staging_dir:-}" ]; then rm -rf "$staging_dir"; fi' RETURN
 
     local package
     for package in "${packages[@]}"; do
         mkdir -p "$staging_dir/$package"
         rsync -a --delete "$source_dir/$package/" "$staging_dir/$package/"
     done
+
+    if ! validate_staged_dotfiles "$source_dir" "$staging_dir" "${packages[@]}"; then
+        rm -rf "$staging_dir"
+        staging_dir=""
+        trap - RETURN
+        return 1
+    fi
 
     if [ -e "$dotfiles_dir" ] || [ -L "$dotfiles_dir" ]; then
         local dotfiles_backup

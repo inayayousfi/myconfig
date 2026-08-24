@@ -305,9 +305,13 @@ The Ubuntu Server installation does not include GNU Stow, development runtimes, 
 
 ## Platform-Specific: CachyOS
 
-CachyOS uses the complete shared Linux profile after the graphical operating-system installer finishes. The profile installs development packages and Axidev OSK, configures the OpenSSH service, sets Zsh as the default shell, deploys shared dotfiles, configures agent tools, and offers GitHub and Tailscale authentication.
+CachyOS uses the complete shared Linux profile after the graphical operating-system installer finishes. The profile installs development packages, Ghostty, and Axidev OSK, configures the OpenSSH service, sets Zsh as the default shell, deploys shared dotfiles, configures agent tools, and offers GitHub and Tailscale authentication.
 
 The installer does not change sudoers, locale, kernel, drivers, desktop settings, or power settings. It installs OpenSSH, generates missing host keys, writes the shared listener policy, and enables the system service. Tailscale installs its system service separately.
+
+### Ghostty
+
+The CachyOS profile installs Ghostty before removing installed copies of Kitty, Alacritty, WezTerm, and Konsole. When installed, it also removes the metadata-only `kde-utilities-meta` package that would otherwise block Konsole removal; the KDE applications grouped by that package remain installed. It leaves unused dependencies installed and does not change the desktop's default-terminal setting. The Ghostty module does not run on Arch WSL or Ubuntu Server.
 
 ### Axidev OSK
 

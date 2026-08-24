@@ -66,6 +66,7 @@ EOF
 
     if [ "$MYCONFIG_PROFILE" = cachyos ]; then
         cat >>"$HOME/environment.md" <<'EOF'
+- **Terminal emulator**: Ghostty, with Kitty, Alacritty, WezTerm, and Konsole removed.
 - **On-screen keyboard**: Axidev OSK with desktop and login-screen startup.
 EOF
     fi

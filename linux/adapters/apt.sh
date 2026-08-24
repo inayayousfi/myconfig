@@ -27,3 +27,23 @@ adapter_install_specs() {
         sudo apt-get install -y "${packages[@]}"
     fi
 }
+
+adapter_remove_specs() {
+    local packages=()
+    local spec source package status
+
+    for spec in "$@"; do
+        source="${spec%%:*}"
+        package="${spec#*:}"
+        [ "$source" = official ] || myconfig_fail "unsupported apt package source: $source"
+
+        status="$(dpkg-query -W -f='${Status}' "$package" 2>/dev/null || true)"
+        if [ "$status" = "install ok installed" ]; then
+            packages+=("$package")
+        fi
+    done
+
+    if ((${#packages[@]})); then
+        sudo apt-get remove -y "${packages[@]}"
+    fi
+}

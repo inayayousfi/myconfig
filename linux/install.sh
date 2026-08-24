@@ -24,10 +24,11 @@ source "$LINUX_DIR/adapters/$MYCONFIG_ADAPTER.sh"
 require_function adapter_supports_source
 require_function adapter_prepare
 require_function adapter_install_specs
+require_function adapter_remove_specs
 
 source "$LINUX_DIR/registry/packages.sh"
 
-for module in base ssh cli runtimes zsh neovim terminal-tools axidev-osk tailscale agents dotfiles authentication; do
+for module in base ssh cli runtimes zsh neovim terminal-tools ghostty axidev-osk tailscale agents dotfiles authentication; do
     source "$LINUX_DIR/modules/$module.sh"
 done
 

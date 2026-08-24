@@ -60,3 +60,25 @@ adapter_install_specs() {
         paru -S --needed --noconfirm --skipreview "${aur[@]}"
     fi
 }
+
+adapter_remove_specs() {
+    local packages=()
+    local spec source package
+
+    for spec in "$@"; do
+        source="${spec%%:*}"
+        package="${spec#*:}"
+        case "$source" in
+            official | aur) ;;
+            *) myconfig_fail "unsupported Arch package source: $source" ;;
+        esac
+
+        if pacman -Q "$package" >/dev/null 2>&1; then
+            packages+=("$package")
+        fi
+    done
+
+    if ((${#packages[@]})); then
+        sudo pacman -R --noconfirm "${packages[@]}"
+    fi
+}

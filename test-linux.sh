@@ -40,6 +40,10 @@ adapter_install_specs() {
     printf '%s\n' "$@"
 }
 
+adapter_remove_specs() {
+    printf '%s\n' "$@"
+}
+
 source "$REPO_ROOT/linux/registry/packages.sh"
 
 [ "$(resolve_package fd)" = official:fd-find ] \
@@ -54,6 +58,12 @@ MYCONFIG_PROFILE=cachyos
     || myconfig_fail "Axidev OSK PySide6 dependency did not resolve"
 [ "$(resolve_package layer_shell_qt)" = official:layer-shell-qt ] \
     || myconfig_fail "Axidev OSK LayerShellQt dependency did not resolve"
+[ "$(resolve_package ghostty)" = official:ghostty ] \
+    || myconfig_fail "Ghostty package did not resolve"
+[ "$(resolve_package kde_utilities_meta)" = official:kde-utilities-meta ] \
+    || myconfig_fail "KDE utilities metadata package did not resolve"
+[ "$(remove_package_ids kitty alacritty wezterm konsole)" = $'official:kitty\nofficial:alacritty\nofficial:wezterm\nofficial:konsole' ] \
+    || myconfig_fail "package removal identifiers did not resolve"
 
 if resolve_package hunk >/dev/null 2>&1; then
     myconfig_fail "unsupported AUR source was accepted"
@@ -62,6 +72,77 @@ fi
 if resolve_package missing_package >/dev/null 2>&1; then
     myconfig_fail "missing package mapping was accepted"
 fi
+
+arch_remove_log="$TEST_HOME/arch-remove.log"
+: >"$arch_remove_log"
+(
+    source "$REPO_ROOT/linux/adapters/arch.sh"
+    pacman() {
+        if [ "$1" = -Q ]; then
+            case "$2" in
+                kitty | konsole) return 0 ;;
+                *) return 1 ;;
+            esac
+        fi
+    }
+    sudo() {
+        printf 'sudo:%s\n' "$*" >>"$arch_remove_log"
+    }
+
+    adapter_remove_specs official:kitty official:alacritty official:wezterm official:konsole
+)
+grep -Fxq 'sudo:pacman -R --noconfirm kitty konsole' "$arch_remove_log" \
+    || myconfig_fail "Arch adapter did not remove only installed named packages"
+
+: >"$arch_remove_log"
+(
+    source "$REPO_ROOT/linux/adapters/arch.sh"
+    pacman() {
+        return 1
+    }
+    sudo() {
+        printf 'sudo:%s\n' "$*" >>"$arch_remove_log"
+    }
+
+    adapter_remove_specs official:alacritty official:wezterm
+)
+[ ! -s "$arch_remove_log" ] \
+    || myconfig_fail "Arch adapter invoked pacman when no requested package was installed"
+
+apt_remove_log="$TEST_HOME/apt-remove.log"
+: >"$apt_remove_log"
+(
+    source "$REPO_ROOT/linux/adapters/apt.sh"
+    dpkg-query() {
+        local package="${!#}"
+        case "$package" in
+            kitty | konsole) printf 'install ok installed' ;;
+            *) return 1 ;;
+        esac
+    }
+    sudo() {
+        printf 'sudo:%s\n' "$*" >>"$apt_remove_log"
+    }
+
+    adapter_remove_specs official:kitty official:alacritty official:wezterm official:konsole
+)
+grep -Fxq 'sudo:apt-get remove -y kitty konsole' "$apt_remove_log" \
+    || myconfig_fail "apt adapter did not remove only installed named packages"
+
+: >"$apt_remove_log"
+(
+    source "$REPO_ROOT/linux/adapters/apt.sh"
+    dpkg-query() {
+        return 1
+    }
+    sudo() {
+        printf 'sudo:%s\n' "$*" >>"$apt_remove_log"
+    }
+
+    adapter_remove_specs official:alacritty official:wezterm
+)
+[ ! -s "$apt_remove_log" ] \
+    || myconfig_fail "apt adapter invoked apt-get when no requested package was installed"
 
 source "$REPO_ROOT/linux/modules/dotfiles.sh"
 
@@ -170,6 +251,20 @@ zsh -n "$REPO_ROOT/dotfiles/zsh/.oh-my-zsh/custom/plugins/inaya/inaya.plugin.zsh
 zsh -n "$REPO_ROOT/dotfiles/zsh/.oh-my-zsh/custom/themes/blacknpink.zsh-theme"
 
 source "$REPO_ROOT/linux/modules/axidev-osk.sh"
+source "$REPO_ROOT/linux/modules/ghostty.sh"
+
+MYCONFIG_PROFILE=cachyos
+ghostty_actions="$({
+    install_package_ids() {
+        printf 'install:%s\n' "$*"
+    }
+    remove_package_ids() {
+        printf 'remove:%s\n' "$*"
+    }
+    module_ghostty
+})"
+[ "$ghostty_actions" = $'[myconfig][cachyos] Installing Ghostty and removing alternative terminal emulators\ninstall:ghostty\nremove:kde_utilities_meta kitty alacritty wezterm konsole' ] \
+    || myconfig_fail "Ghostty module did not install before exact terminal removal"
 
 osk_test_root="$TEST_HOME/axidev-osk"
 osk_test_bin="$osk_test_root/bin"
@@ -277,10 +372,16 @@ ubuntu_profile="$(
 )"
 [[ "$cachyos_profile" == *module_axidev_osk* ]] \
     || myconfig_fail "CachyOS profile does not include Axidev OSK"
+[[ "$cachyos_profile" == *module_ghostty* ]] \
+    || myconfig_fail "CachyOS profile does not include Ghostty"
 [[ "$arch_wsl_profile" != *module_axidev_osk* ]] \
     || myconfig_fail "Arch WSL profile includes Axidev OSK"
+[[ "$arch_wsl_profile" != *module_ghostty* ]] \
+    || myconfig_fail "Arch WSL profile includes Ghostty"
 [[ "$ubuntu_profile" != *module_axidev_osk* ]] \
     || myconfig_fail "Ubuntu Server profile includes Axidev OSK"
+[[ "$ubuntu_profile" != *module_ghostty* ]] \
+    || myconfig_fail "Ubuntu Server profile includes Ghostty"
 
 module_source="$(declare -f module_axidev_osk)"
 [[ "$module_source" == *'/usr/local/sbin/axidev-osk-install'* ]] \
@@ -299,11 +400,16 @@ mkdir -p "$inventory_home"
 HOME="$inventory_home"
 MYCONFIG_PROFILE=cachyos
 write_environment_inventory
+grep -Fq 'Ghostty, with Kitty, Alacritty, WezTerm, and Konsole removed' "$HOME/environment.md" \
+    || myconfig_fail "CachyOS inventory omitted the Ghostty terminal policy"
 grep -Fq 'Axidev OSK with desktop and login-screen startup' "$HOME/environment.md" \
     || myconfig_fail "CachyOS inventory omitted Axidev OSK"
 
 MYCONFIG_PROFILE=arch-wsl
 write_environment_inventory
+if grep -Fq 'Ghostty' "$HOME/environment.md"; then
+    myconfig_fail "Arch WSL inventory included Ghostty"
+fi
 if grep -Fq 'Axidev OSK' "$HOME/environment.md"; then
     myconfig_fail "Arch WSL inventory included Axidev OSK"
 fi

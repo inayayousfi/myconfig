@@ -67,3 +67,14 @@ install_package_ids() {
 
     adapter_install_specs "${specs[@]}"
 }
+
+remove_package_ids() {
+    local specs=()
+    local id
+
+    for id in "$@"; do
+        specs+=("$(resolve_package "$id")")
+    done
+
+    adapter_remove_specs "${specs[@]}"
+}

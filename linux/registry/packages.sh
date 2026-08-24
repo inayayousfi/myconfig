@@ -46,6 +46,12 @@ register_package node_gyp official:node-gyp
 
 register_package zsh official:zsh
 register_package neovim official:neovim
+register_package ghostty official:ghostty
+register_package kitty official:kitty
+register_package alacritty official:alacritty
+register_package wezterm official:wezterm
+register_package konsole official:konsole
+register_package kde_utilities_meta official:kde-utilities-meta
 
 register_package yazi aur:yazi-git
 register_package ffmpeg official:ffmpeg

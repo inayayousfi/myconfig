@@ -1,0 +1,13 @@
+{
+  "KPlugin": {
+    "Name": "Overview",
+    "Description": "Open the KWin Overview",
+    "Icon": "view-grid-symbolic",
+    "Id": "myconfig.overview",
+    "Version": "1.0",
+    "License": "MIT",
+    "EnabledByDefault": true
+  },
+  "X-Plasma-API-Minimum-Version": "6.0",
+  "KPackageStructure": "Plasma/Applet"
+}

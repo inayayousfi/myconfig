@@ -44,6 +44,8 @@ Actions:
   install  Download and verify the latest Desktop ISO, then install CachyOS.
   seal     Boot the installed base once and mark it ready after shutdown.
   run      Boot the disposable test system with the live repository mounted.
+  run-multi-display
+           Boot the disposable test system with two displays and the live repository mounted.
   reset    Delete the disposable test system and preserve the installed base.
 EOF
 }
@@ -153,6 +155,7 @@ run_qemu() {
     local iso="${3:-}"
     local share_repository="${4:-false}"
     local forward_ssh="${5:-false}"
+    local display_count="${6:-1}"
 
     local command=(
         qemu-system-x86_64
@@ -165,7 +168,7 @@ run_qemu() {
         -drive "if=pflash,format=raw,readonly=on,file=$OVMF_CODE"
         -drive "if=pflash,format=raw,file=$variables"
         -drive "if=virtio,format=qcow2,file=$disk,cache=writeback,discard=unmap"
-        -device qxl-vga,xres=1920,yres=1080
+        -device "qxl-vga,xres=1920,yres=1080,max_outputs=$display_count"
         -display spice-app
         -device virtio-serial-pci
         -chardev spicevmc,id=vdagent,name=vdagent
@@ -430,9 +433,10 @@ boot_base_for_seal() {
 }
 
 boot_test_and_install() {
+    local display_count="${1:-1}"
     (
         local qemu_pid
-        run_qemu "$TEST_DISK" "$TEST_VARS" "" true true &
+        run_qemu "$TEST_DISK" "$TEST_VARS" "" true true "$display_count" &
         qemu_pid=$!
         trap 'kill "$qemu_pid" 2>/dev/null || true; wait "$qemu_pid" 2>/dev/null || true' EXIT
 
@@ -528,6 +532,7 @@ seal_action() {
 }
 
 run_action() {
+    local display_count="${1:-1}"
     require_vm_host
     acquire_lock
     [ -f "$BASE_READY" ] && [ -f "$BASE_DISK" ] && [ -f "$BASE_VARS" ] || {
@@ -552,7 +557,7 @@ run_action() {
     }
     require_command ssh || return 1
     vm_log "WARNING: the guest has write access to $REPO_ROOT"
-    boot_test_and_install
+    boot_test_and_install "$display_count"
 }
 
 reset_action() {
@@ -571,6 +576,7 @@ main() {
         install) install_action ;;
         seal) seal_action ;;
         run) run_action ;;
+        run-multi-display) run_action 2 ;;
         reset) reset_action ;;
         -h | --help | help) usage ;;
         *)

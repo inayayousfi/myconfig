@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 run_profile() {
+    module_kde_plasma_validate
     module_base
     module_ssh
     module_cli
@@ -13,6 +14,7 @@ run_profile() {
     module_tailscale
     module_agents_packages
     module_dotfiles
+    module_kde_plasma
     module_agents_configure
     module_authentication
     write_environment_inventory

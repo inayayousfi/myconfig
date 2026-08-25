@@ -62,6 +62,10 @@ MYCONFIG_PROFILE=cachyos
     || myconfig_fail "Ghostty package did not resolve"
 [ "$(resolve_package kde_utilities_meta)" = official:kde-utilities-meta ] \
     || myconfig_fail "KDE utilities metadata package did not resolve"
+[ "$(resolve_package iosevka_font)" = official:ttf-iosevka-nerd ] \
+    || myconfig_fail "KDE Plasma Iosevka font package did not resolve"
+[ "$(resolve_package desktop_file_utils)" = official:desktop-file-utils ] \
+    || myconfig_fail "KDE Plasma desktop-entry validation package did not resolve"
 [ "$(remove_package_ids kitty alacritty wezterm konsole)" = $'official:kitty\nofficial:alacritty\nofficial:wezterm\nofficial:konsole' ] \
     || myconfig_fail "package removal identifiers did not resolve"
 
@@ -252,6 +256,216 @@ zsh -n "$REPO_ROOT/dotfiles/zsh/.oh-my-zsh/custom/themes/blacknpink.zsh-theme"
 
 source "$REPO_ROOT/linux/modules/axidev-osk.sh"
 source "$REPO_ROOT/linux/modules/ghostty.sh"
+source "$REPO_ROOT/linux/modules/kde-plasma.sh"
+
+validate_kde_plasma_version 'plasma-workspace 6.7.0-1'
+validate_kde_plasma_version 'plasma-workspace 6.99.4-2'
+if validate_kde_plasma_version 'plasma-workspace 6.6.5-1' >/dev/null 2>&1; then
+    myconfig_fail "KDE Plasma configuration accepted Plasma older than 6.7"
+fi
+if validate_kde_plasma_version 'plasma-workspace 7.0.0-1' >/dev/null 2>&1; then
+    myconfig_fail "KDE Plasma configuration accepted unverified Plasma 7"
+fi
+if validate_kde_plasma_version 'unknown version' >/dev/null 2>&1; then
+    myconfig_fail "KDE Plasma configuration accepted an unparseable version"
+fi
+grep -Fq 'panel.lengthMode = "fit";' \
+    "$REPO_ROOT/dotfiles/kde-plasma/.local/share/myconfig/kde-plasma/layout.js" \
+    || myconfig_fail "KDE Plasma dock does not fit its content"
+grep -Fq 'widget.writeConfig("fill", false);' \
+    "$REPO_ROOT/dotfiles/kde-plasma/.local/share/myconfig/kde-plasma/layout.js" \
+    || myconfig_fail "KDE Plasma task manager still fills the dock"
+node "$REPO_ROOT/test-kde-plasma-panels.js" \
+    "$REPO_ROOT/dotfiles/kde-plasma/.local/share/kwin/scripts/myconfig-plasma-panels/contents/code/main.js"
+node "$REPO_ROOT/test-kde-plasma-layout.js" \
+    "$REPO_ROOT/dotfiles/kde-plasma/.local/share/myconfig/kde-plasma/layout.js"
+node -e 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"))' \
+    "$REPO_ROOT/dotfiles/kde-plasma/.local/share/kwin/scripts/myconfig-plasma-panels/metadata.json"
+plasma_plasmoid_root="$REPO_ROOT/dotfiles/kde-plasma/.local/share/plasma/plasmoids"
+for widget in overview session power; do
+    node -e 'const metadata = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")); if (metadata.KPlugin.Id !== process.argv[2]) process.exit(1)' \
+        "$plasma_plasmoid_root/myconfig.$widget/metadata.json" "myconfig.$widget"
+    [ -f "$plasma_plasmoid_root/myconfig.$widget/contents/ui/main.qml" ] \
+        || myconfig_fail "MyConfig $widget Plasma widget has no QML entry point"
+done
+node -e '
+const fs = require("node:fs");
+const root = process.argv[1];
+const overview = fs.readFileSync(`${root}/myconfig.overview/contents/ui/main.qml`, "utf8");
+const session = fs.readFileSync(`${root}/myconfig.session/contents/ui/main.qml`, "utf8");
+const power = fs.readFileSync(`${root}/myconfig.power/contents/ui/main.qml`, "utf8");
+if (!overview.includes(`text: qsTr("Overview")`) || !overview.includes("invokeShortcut Overview")) process.exit(1);
+const ordered = (source, values) => values.every((value, index) => source.indexOf(value) >= 0 && (index === 0 || source.indexOf(values[index - 1]) < source.indexOf(value)));
+if (!ordered(session, [`qsTr("Lock")`, `qsTr("Log Out")`, `qsTr("Switch User")`])) process.exit(1);
+if (!session.includes("enabled: session.canSwitchUser")) process.exit(1);
+if (!ordered(power, [`qsTr("Restart")`, `qsTr("Shut Down")`, `qsTr("Sleep")`, `qsTr("Hibernate")`])) process.exit(1);
+if (session.includes("ToolTip") || power.includes("ToolTip")) process.exit(1);
+if (!session.includes("popupType: QQC2.Popup.Window") || !power.includes("popupType: QQC2.Popup.Window")) process.exit(1);
+' "$plasma_plasmoid_root"
+plasma_theme_root="$REPO_ROOT/dotfiles/kde-plasma/.local/share/plasma/desktoptheme/blacknpink"
+node -e 'const metadata = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")); if (metadata.KPlugin.Id !== "blacknpink") process.exit(1)' \
+    "$plasma_theme_root/metadata.json"
+grep -Fxq 'FallbackTheme=default' "$plasma_theme_root/plasmarc" \
+    || myconfig_fail "Black & Pink Plasma theme does not inherit Breeze"
+grep -Fq 'id="thick-hint-right-margin" x="95" y="-56" width="4" height="4"' \
+    "$plasma_theme_root/widgets/panel-background.svg" \
+    || myconfig_fail "Black & Pink Plasma theme does not set a 4-pixel floating-panel trailing margin"
+grep -Fq 'id="thick-hint-left-margin" x="95" y="-20" width="4" height="8"' \
+    "$plasma_theme_root/widgets/panel-background.svg" \
+    || myconfig_fail "Black & Pink Plasma theme changed the Breeze floating-panel leading margin"
+resvg "$plasma_theme_root/widgets/panel-background.svg" \
+    "$TEST_HOME/panel-background.png"
+systemd-analyze verify \
+    "$REPO_ROOT/dotfiles/kde-plasma/.config/systemd/user/myconfig-kde-plasma-layout.service"
+
+MYCONFIG_PROFILE=arch-wsl
+if module_kde_plasma >/dev/null 2>&1; then
+    myconfig_fail "KDE Plasma module accepted a non-CachyOS profile"
+fi
+
+plasma_layout_test_root="$TEST_HOME/kde-plasma-layout"
+plasma_layout_home="$plasma_layout_test_root/home"
+plasma_layout_bin="$plasma_layout_test_root/bin"
+mkdir -p \
+    "$plasma_layout_home/.config" \
+    "$plasma_layout_home/.local/bin" \
+    "$plasma_layout_home/.local/share/myconfig/kde-plasma" \
+    "$plasma_layout_bin"
+cp "$REPO_ROOT/dotfiles/kde-plasma/.local/bin/myconfig-kde-plasma-layout" \
+    "$plasma_layout_home/.local/bin/myconfig-kde-plasma-layout"
+cp "$REPO_ROOT/dotfiles/kde-plasma/.local/share/myconfig/kde-plasma/layout.js" \
+    "$plasma_layout_home/.local/share/myconfig/kde-plasma/layout.js"
+printf 'default panel configuration\n' \
+    >"$plasma_layout_home/.config/plasma-org.kde.plasma.desktop-appletsrc"
+
+cat >"$plasma_layout_bin/qdbus6" <<'EOF'
+#!/usr/bin/env bash
+if [ "$#" -eq 2 ]; then
+    exit "${MYCONFIG_PLASMA_DBUS_STATUS:-0}"
+fi
+printf '%s\n' "${MYCONFIG_PLASMA_EVALUATE_OUTPUT:-MYCONFIG_STATUS=ok:screens=2}"
+EOF
+chmod +x "$plasma_layout_bin/qdbus6"
+
+HOME="$plasma_layout_home" \
+PATH="$plasma_layout_bin:/usr/bin:/bin" \
+    "$plasma_layout_home/.local/bin/myconfig-kde-plasma-layout"
+[ "$(<"$plasma_layout_home/.local/state/myconfig/kde-plasma-layout-version")" = 2 ] \
+    || myconfig_fail "KDE Plasma layout did not record its version"
+shopt -s nullglob
+plasma_backups=("$plasma_layout_home/.config/plasma-org.kde.plasma.desktop-appletsrc.backup."*)
+[ "${#plasma_backups[@]}" -eq 1 ] \
+    || myconfig_fail "KDE Plasma layout did not back up its initial panel configuration once"
+[ "$(<"${plasma_backups[0]}")" = 'default panel configuration' ] \
+    || myconfig_fail "KDE Plasma panel backup changed its contents"
+
+HOME="$plasma_layout_home" \
+PATH="$plasma_layout_bin:/usr/bin:/bin" \
+    "$plasma_layout_home/.local/bin/myconfig-kde-plasma-layout"
+plasma_backups=("$plasma_layout_home/.config/plasma-org.kde.plasma.desktop-appletsrc.backup."*)
+[ "${#plasma_backups[@]}" -eq 1 ] \
+    || myconfig_fail "KDE Plasma layout repeated its first-run backup"
+
+if HOME="$plasma_layout_home" \
+    PATH="$plasma_layout_bin:/usr/bin:/bin" \
+    MYCONFIG_PLASMA_EVALUATE_OUTPUT='MYCONFIG_STATUS=missing:org.kde.plasma.icontasks' \
+    "$plasma_layout_home/.local/bin/myconfig-kde-plasma-layout" >/dev/null 2>&1; then
+    myconfig_fail "KDE Plasma layout accepted a missing required widget"
+fi
+
+layout_status=0
+HOME="$plasma_layout_home" \
+PATH="$plasma_layout_bin:/usr/bin:/bin" \
+MYCONFIG_PLASMA_DBUS_STATUS=1 \
+    "$plasma_layout_home/.local/bin/myconfig-kde-plasma-layout" || layout_status=$?
+[ "$layout_status" -eq 75 ] \
+    || myconfig_fail "KDE Plasma layout did not defer when Plasma was inactive"
+
+mkdir -p \
+    "$plasma_layout_home/.config/autostart" \
+    "$plasma_layout_home/.config/systemd/user" \
+    "$plasma_layout_home/.local/share/color-schemes" \
+    "$plasma_layout_home/.local/share/plasma/desktoptheme/blacknpink/widgets" \
+    "$plasma_layout_home/.local/share/plasma/plasmoids" \
+    "$plasma_layout_home/.local/share/kwin/scripts/myconfig-plasma-panels/contents/code"
+cp "$REPO_ROOT/dotfiles/kde-plasma/.config/autostart/myconfig-kde-plasma-layout.desktop" \
+    "$plasma_layout_home/.config/autostart/myconfig-kde-plasma-layout.desktop"
+cp "$REPO_ROOT/dotfiles/kde-plasma/.local/share/color-schemes/BlackPink.colors" \
+    "$plasma_layout_home/.local/share/color-schemes/BlackPink.colors"
+cp "$plasma_theme_root/metadata.json" \
+    "$plasma_layout_home/.local/share/plasma/desktoptheme/blacknpink/metadata.json"
+cp "$plasma_theme_root/plasmarc" \
+    "$plasma_layout_home/.local/share/plasma/desktoptheme/blacknpink/plasmarc"
+cp "$plasma_theme_root/widgets/panel-background.svg" \
+    "$plasma_layout_home/.local/share/plasma/desktoptheme/blacknpink/widgets/panel-background.svg"
+for widget in overview session power; do
+    cp -a "$plasma_plasmoid_root/myconfig.$widget" \
+        "$plasma_layout_home/.local/share/plasma/plasmoids/myconfig.$widget"
+done
+cp "$REPO_ROOT/dotfiles/kde-plasma/.config/systemd/user/myconfig-kde-plasma-layout.service" \
+    "$plasma_layout_home/.config/systemd/user/myconfig-kde-plasma-layout.service"
+cp "$REPO_ROOT/dotfiles/kde-plasma/.local/share/kwin/scripts/myconfig-plasma-panels/metadata.json" \
+    "$plasma_layout_home/.local/share/kwin/scripts/myconfig-plasma-panels/metadata.json"
+cp "$REPO_ROOT/dotfiles/kde-plasma/.local/share/kwin/scripts/myconfig-plasma-panels/contents/code/main.js" \
+    "$plasma_layout_home/.local/share/kwin/scripts/myconfig-plasma-panels/contents/code/main.js"
+
+plasma_module_log="$plasma_layout_test_root/module.log"
+: >"$plasma_module_log"
+install_package_ids() {
+    printf 'packages:%s\n' "$*" >>"$plasma_module_log"
+}
+plasmashell() {
+    myconfig_fail "headless KDE Plasma validation executed plasmashell"
+}
+pacman() {
+    [ "$*" = '-Q plasma-workspace' ] || return 1
+    printf 'plasma-workspace 6.7.4-3.1\n'
+}
+plasma-apply-colorscheme() {
+    [ "${QT_QPA_PLATFORM:-}" = offscreen ] || return 1
+    printf 'colors:%s\n' "$*" >>"$plasma_module_log"
+}
+plasma-apply-desktoptheme() {
+    [ "${QT_QPA_PLATFORM:-}" = offscreen ] || return 1
+    printf 'theme:%s\n' "$*" >>"$plasma_module_log"
+}
+kwriteconfig6() {
+    printf 'config:%s\n' "$*" >>"$plasma_module_log"
+}
+fc-match() {
+    printf 'IosevkaNerdFont-Regular.ttf: Iosevka Nerd Font\n'
+}
+desktop-file-validate() {
+    /usr/bin/desktop-file-validate "$@"
+}
+systemctl() {
+    printf 'systemctl:%s\n' "$*" >>"$plasma_module_log"
+}
+qdbus6() {
+    printf 'qdbus:%s\n' "$*" >>"$plasma_module_log"
+}
+
+MYCONFIG_PROFILE=cachyos
+HOME="$plasma_layout_home" \
+PATH="$plasma_layout_bin:/usr/bin:/bin" \
+    module_kde_plasma
+grep -Fxq 'packages:iosevka_font desktop_file_utils' "$plasma_module_log" \
+    || myconfig_fail "KDE Plasma module omitted its appearance dependencies"
+grep -Fxq 'colors:BlackPink' "$plasma_module_log" \
+    || myconfig_fail "KDE Plasma module did not apply its color scheme headlessly"
+grep -Fxq 'theme:blacknpink' "$plasma_module_log" \
+    || myconfig_fail "KDE Plasma module did not apply its desktop theme headlessly"
+grep -Fxq 'config:--file kwinrc --group Windows --key ElectricBorderPushbackPixels 0' "$plasma_module_log" \
+    || myconfig_fail "KDE Plasma module did not remove KWin edge pushback"
+grep -Fxq 'config:--file kwinrc --group Plugins --key myconfig-plasma-panelsEnabled true' "$plasma_module_log" \
+    || myconfig_fail "KDE Plasma module did not enable MyConfig Plasma Panels"
+grep -Fxq 'systemctl:--user daemon-reload' "$plasma_module_log" \
+    || myconfig_fail "KDE Plasma module did not reload user services"
+grep -Fxq 'qdbus:org.kde.KWin /KWin org.kde.KWin.reconfigure' "$plasma_module_log" \
+    || myconfig_fail "KDE Plasma module did not reload active KWin configuration"
+
+desktop-file-validate \
+    "$REPO_ROOT/dotfiles/kde-plasma/.config/autostart/myconfig-kde-plasma-layout.desktop"
 
 MYCONFIG_PROFILE=cachyos
 ghostty_actions="$({
@@ -374,14 +588,20 @@ ubuntu_profile="$(
     || myconfig_fail "CachyOS profile does not include Axidev OSK"
 [[ "$cachyos_profile" == *module_ghostty* ]] \
     || myconfig_fail "CachyOS profile does not include Ghostty"
+[[ "$cachyos_profile" == *module_kde_plasma* ]] \
+    || myconfig_fail "CachyOS profile does not include KDE Plasma configuration"
 [[ "$arch_wsl_profile" != *module_axidev_osk* ]] \
     || myconfig_fail "Arch WSL profile includes Axidev OSK"
 [[ "$arch_wsl_profile" != *module_ghostty* ]] \
     || myconfig_fail "Arch WSL profile includes Ghostty"
+[[ "$arch_wsl_profile" != *module_kde_plasma* ]] \
+    || myconfig_fail "Arch WSL profile includes KDE Plasma configuration"
 [[ "$ubuntu_profile" != *module_axidev_osk* ]] \
     || myconfig_fail "Ubuntu Server profile includes Axidev OSK"
 [[ "$ubuntu_profile" != *module_ghostty* ]] \
     || myconfig_fail "Ubuntu Server profile includes Ghostty"
+[[ "$ubuntu_profile" != *module_kde_plasma* ]] \
+    || myconfig_fail "Ubuntu Server profile includes KDE Plasma configuration"
 
 module_source="$(declare -f module_axidev_osk)"
 [[ "$module_source" == *'/usr/local/sbin/axidev-osk-install'* ]] \
@@ -404,6 +624,8 @@ grep -Fq 'Ghostty, with Kitty, Alacritty, WezTerm, and Konsole removed' "$HOME/e
     || myconfig_fail "CachyOS inventory omitted the Ghostty terminal policy"
 grep -Fq 'Axidev OSK with desktop and login-screen startup' "$HOME/environment.md" \
     || myconfig_fail "CachyOS inventory omitted Axidev OSK"
+grep -Fq 'Black & Pink panels and application dock for KDE Plasma 6.7 through 6.x' "$HOME/environment.md" \
+    || myconfig_fail "CachyOS inventory omitted KDE Plasma configuration"
 
 MYCONFIG_PROFILE=arch-wsl
 write_environment_inventory
@@ -412,6 +634,9 @@ if grep -Fq 'Ghostty' "$HOME/environment.md"; then
 fi
 if grep -Fq 'Axidev OSK' "$HOME/environment.md"; then
     myconfig_fail "Arch WSL inventory included Axidev OSK"
+fi
+if grep -Fq 'KDE Plasma' "$HOME/environment.md"; then
+    myconfig_fail "Arch WSL inventory included KDE Plasma configuration"
 fi
 
 paru_test_root="$TEST_HOME/paru-bootstrap"

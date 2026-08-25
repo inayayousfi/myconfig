@@ -183,7 +183,7 @@ grep -Fq '<spice-app>' "$COMMAND_LOG" \
     || vm_fail "QEMU did not use the SPICE display client"
 grep -Fq '<spicevmc,id=vdagent,name=vdagent>' "$COMMAND_LOG" \
     || vm_fail "QEMU did not expose the SPICE guest-agent channel"
-grep -Fq '<qxl-vga,xres=1920,yres=1080>' "$COMMAND_LOG" \
+grep -Fq '<qxl-vga,xres=1920,yres=1080,max_outputs=1>' "$COMMAND_LOG" \
     || vm_fail "QEMU did not request a 1920x1080 guest framebuffer"
 if grep -Fq 'mount_tag=myconfig' "$COMMAND_LOG"; then
     vm_fail "install exposed the host repository"
@@ -248,6 +248,12 @@ grep -Fq 'bash /mnt/myconfig/cachyos/install.sh' "$COMMAND_LOG" \
 main run
 [ "$(grep -Fc "qemu-img:create -f qcow2 -F qcow2 -b $BASE_DISK $TEST_DISK" "$COMMAND_LOG")" -eq 1 ] \
     || vm_fail "repeated run recreated the test overlay"
+
+main run-multi-display
+grep -Fq '<qxl-vga,xres=1920,yres=1080,max_outputs=2>' "$COMMAND_LOG" \
+    || vm_fail "multi-display run did not expose two QXL outputs"
+[ "$(grep -Fc "qemu-img:create -f qcow2 -F qcow2 -b $BASE_DISK $TEST_DISK" "$COMMAND_LOG")" -eq 1 ] \
+    || vm_fail "multi-display run recreated the test overlay"
 
 cached_iso="$CACHE_ROOT/$ISO_NAME"
 main reset

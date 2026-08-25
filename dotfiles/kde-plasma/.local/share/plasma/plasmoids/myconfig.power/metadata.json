@@ -1,0 +1,13 @@
+{
+  "KPlugin": {
+    "Name": "Power",
+    "Description": "Restart, shut down, sleep, or hibernate",
+    "Icon": "system-shutdown",
+    "Id": "myconfig.power",
+    "Version": "1.0",
+    "License": "MIT",
+    "EnabledByDefault": true
+  },
+  "X-Plasma-API-Minimum-Version": "6.0",
+  "KPackageStructure": "Plasma/Applet"
+}

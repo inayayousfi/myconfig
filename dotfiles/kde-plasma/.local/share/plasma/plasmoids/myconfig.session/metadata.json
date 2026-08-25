@@ -1,0 +1,13 @@
+{
+  "KPlugin": {
+    "Name": "Session",
+    "Description": "Lock, log out, or switch user",
+    "Icon": "user-identity",
+    "Id": "myconfig.session",
+    "Version": "1.0",
+    "License": "MIT",
+    "EnabledByDefault": true
+  },
+  "X-Plasma-API-Minimum-Version": "6.0",
+  "KPackageStructure": "Plasma/Applet"
+}

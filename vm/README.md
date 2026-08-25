@@ -50,6 +50,16 @@ The harness forwards local port 2222 to guest SSH and waits for the guest. It th
 
 The CachyOS profile reads the live working tree, including unstaged and untracked files. During Axidev OSK setup, select the installed login manager from the terminal menu. After the profile completes, reboot the test guest and verify that Axidev OSK appears on the login screen, emits input there, starts again in the desktop session, and types into a focused application.
 
+## Test Multiple Displays
+
+Run:
+
+```bash
+./vm/cachyos.sh run-multi-display
+```
+
+This uses the same disposable test disk as `run` but allows two QXL outputs. In the SPICE viewer, enable **View > Displays > Display 2** after login; QXL's second output is only connected when the viewer enables it. MyConfig Plasma Panels then reconciles the new display automatically. Verify that each display gets its own KDE Plasma top panel and application dock, that the full-width 8-pixel top and bottom activation zones reveal the compact panels, that Overview can switch the displays' virtual desktops independently, and that each Icons-only Task Manager shows windows only from its own display and current virtual desktop. Reset first when the check must start from the sealed base.
+
 ## Reset The Test System
 
 Shut down QEMU, then run:

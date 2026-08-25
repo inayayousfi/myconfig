@@ -1,0 +1,7 @@
+[Unit]
+Description=Reconcile responsive MyConfig Plasma panels
+After=plasma-plasmashell.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash %h/.local/bin/myconfig-kde-plasma-layout

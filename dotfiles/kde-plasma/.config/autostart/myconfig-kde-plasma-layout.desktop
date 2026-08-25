@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=MyConfig KDE Plasma Layout
+Comment=Reconcile responsive MyConfig panels for every display
+Exec=/usr/bin/env bash -lc "\\$HOME/.local/bin/myconfig-kde-plasma-layout"
+OnlyShowIn=KDE;
+X-KDE-autostart-phase=2
+X-KDE-StartupNotify=false

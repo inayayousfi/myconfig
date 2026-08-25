@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+layout="$HOME/.local/share/myconfig/kde-plasma/layout.js"
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/myconfig"
+state_file="$state_dir/kde-plasma-layout-version"
+applets="$HOME/.config/plasma-org.kde.plasma.desktop-appletsrc"
+layout_version=2
+
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
+
+command -v qdbus6 >/dev/null 2>&1 || {
+    printf 'qdbus6 is required to configure KDE Plasma\n' >&2
+    exit 1
+}
+[ -f "$layout" ] || {
+    printf 'KDE Plasma layout script not found: %s\n' "$layout" >&2
+    exit 1
+}
+
+if ! qdbus6 org.kde.plasmashell /PlasmaShell >/dev/null 2>&1; then
+    exit 75
+fi
+
+current_version=""
+[ ! -f "$state_file" ] || current_version="$(<"$state_file")"
+first_run=false
+if [ -z "$current_version" ]; then
+    first_run=true
+    if [ -f "$applets" ]; then
+        backup="$applets.backup.$(date +%Y%m%d_%H%M%S)"
+        suffix=1
+        while [ -e "$backup" ]; do
+            backup="$applets.backup.$(date +%Y%m%d_%H%M%S).$suffix"
+            suffix=$((suffix + 1))
+        done
+        cp -a "$applets" "$backup"
+    fi
+fi
+
+script="const myconfigFirstRun = $first_run;
+const myconfigLayoutVersion = \"$layout_version\";
+$(<"$layout")"
+output="$(qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript "$script")"
+
+case "$output" in
+    *MYCONFIG_STATUS=ok:*) ;;
+    *MYCONFIG_STATUS=missing:*)
+        printf 'KDE Plasma layout requires installed widgets: %s\n' "${output##*MYCONFIG_STATUS=missing:}" >&2
+        exit 1
+        ;;
+    *MYCONFIG_STATUS=error:*)
+        printf 'KDE Plasma layout failed: %s\n' "${output##*MYCONFIG_STATUS=error:}" >&2
+        exit 1
+        ;;
+    *)
+        printf 'KDE Plasma did not confirm the layout update: %s\n' "$output" >&2
+        exit 1
+        ;;
+esac
+
+mkdir -p "$state_dir"
+printf '%s\n' "$layout_version" >"$state_file"

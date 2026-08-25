@@ -4,6 +4,7 @@
 # Linux dotfiles should use LF while preserving automatic binary detection
 dotfiles/ai/** text=auto eol=lf
 dotfiles/herdr/** text=auto eol=lf
+dotfiles/hunk/** text=auto eol=lf
 dotfiles/lazygit/** text=auto eol=lf
 dotfiles/nvim/** text=auto eol=lf
 dotfiles/opencode/** text=auto eol=lf

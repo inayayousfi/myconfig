@@ -60,7 +60,7 @@ Modules request logical package identifiers. `linux/registry/packages.sh` maps e
 
 The shared installer validates sudo once before package preparation and refreshes that credential every 60 seconds until the profile exits. Long package builds therefore do not ask for the same password again. The refresh process is stopped on both successful and failed exits.
 
-Linux profiles copy selected packages into `~/dotfiles`, back up the previous tree, back up conflicting home files, and run GNU Stow. CachyOS and Arch WSL select `zsh`, `yazi`, `lazygit`, `ai`, `herdr`, `nvim`, and `opencode`. Ubuntu Server selects only `zsh`.
+Linux profiles copy selected packages into `~/dotfiles`, back up the previous tree, back up conflicting home files, and run GNU Stow. CachyOS and Arch WSL select `zsh`, `yazi`, `lazygit`, `hunk`, `ai`, `herdr`, `nvim`, and `opencode`. Ubuntu Server selects only `zsh`.
 
 The complete profiles configure OpenSSH as a system service that listens on all IPv4 and IPv6 interfaces and allows only the current user. They also install Tailscale as a system service. The installer validates the SSH daemon configuration before enabling and restarting it, but leaves authentication policy and network perimeter security at OpenSSH and system defaults.
 
@@ -476,6 +476,7 @@ Arch WSL syncs and stows these shared dotfile packages from the Windows-accessib
 - `zsh`
 - `yazi`
 - `lazygit`
+- `hunk`
 - `ai`
 - `herdr`
 - `nvim`
@@ -498,6 +499,7 @@ myconfig/
 │   ├── hermes/
 │   ├── herdr/
 │   ├── hyfetch/
+│   ├── hunk/
 │   ├── lazygit/
 │   ├── nvim/
 │   ├── opencode/
@@ -539,6 +541,7 @@ myconfig/
 | `hermes` | Hermes config | `$XDG_CONFIG_HOME/hermes/` |
 | `herdr` | Herdr config | `$XDG_CONFIG_HOME/herdr/` |
 | `hyfetch` | Hyfetch config | `$XDG_CONFIG_HOME/hyfetch.json` |
+| `hunk` | Hunk diff viewer config and Black & Pink theme | `$XDG_CONFIG_HOME/hunk/` |
 | `lazygit` | Lazygit theme/config | `$XDG_CONFIG_HOME/lazygit/` |
 | `nvim` | Neovim config | `$XDG_CONFIG_HOME/nvim/` |
 | `opencode` | OpenCode runtime, TUI, and Black & Pink theme | `$XDG_CONFIG_HOME/opencode/` |

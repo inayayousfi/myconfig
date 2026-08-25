@@ -1,0 +1,15 @@
+menu_bar = false
+mode = "split"
+theme = "custom"
+
+[custom_theme]
+base = "github-dark-default"
+label = "Black & Pink"
+background = "#000000"
+panel = "#0a0a0a"
+panelAlt = "#111111"
+border = "#1a1a1a"
+accent = "#ff4ead"
+accentMuted = "#ff85c8"
+text = "#d0d6e0"
+muted = "#a0aabe"

@@ -715,8 +715,8 @@ ghostty_actions="$({
     }
     module_ghostty
 })"
-[ "$ghostty_actions" = $'[myconfig][cachyos] Installing Ghostty and removing alternative terminal emulators\ninstall:ghostty\nremove:kde_utilities_meta kitty alacritty wezterm konsole' ] \
-    || myconfig_fail "Ghostty module did not install before exact terminal removal"
+[ "$ghostty_actions" = $'[myconfig][cachyos] Installing Ghostty\ninstall:ghostty' ] \
+    || myconfig_fail "Ghostty module did not install Ghostty without removing other packages"
 
 osk_test_root="$TEST_HOME/axidev-osk"
 osk_test_bin="$osk_test_root/bin"

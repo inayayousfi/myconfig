@@ -9,5 +9,8 @@
       ],
       "enabled": true
     }
+  },
+  "experimental": {
+    "disable_paste_summary": true
   }
 }

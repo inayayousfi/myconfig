@@ -1,5 +1,6 @@
 menu_bar = false
 mode = "split"
+wrap_lines = true
 theme = "custom"
 
 [custom_theme]

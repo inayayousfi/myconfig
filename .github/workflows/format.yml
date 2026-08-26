@@ -44,6 +44,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y rsync stow zsh
+          cargo install resvg --locked
           ./test-linux.sh
           ./vm/test-cachyos.sh
 

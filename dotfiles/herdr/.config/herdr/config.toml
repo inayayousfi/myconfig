@@ -28,6 +28,9 @@ peach = "#fca5a5"
 prefix = "ctrl+a"
 goto = "prefix+a"
 toggle_sidebar = "prefix+s"
+new_tab = "prefix+t"
+split_vertical = "prefix+="
+split_horizontal = "prefix+minus"
 
 [ui]
 show_agent_labels_on_pane_borders = true

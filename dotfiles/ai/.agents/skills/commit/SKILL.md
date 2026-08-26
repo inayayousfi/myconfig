@@ -18,9 +18,10 @@ Drafts a commit message for the currently staged changes and commits only after 
    - Full staged diff: `git diff --cached`
 
 3. **Draft the message:**
-   - Concise, descriptive subject line.
+   - The first line must be a concise, descriptive subject line about the change. Never put attribution, disclosure, or other metadata before it.
    - Infer style (tense, capitalization, prefix conventions like `fix:`/`feat:`) from the recent commits above and match it.
    - Include a body only if it adds real information beyond the subject.
+   - If another instruction makes attribution or disclosure unavoidable, put it in the body after the subject and a blank line. The subject must remain the first line so short Git history shows the actual change.
    - No emojis, no filler, no restating the diff line-by-line.
 
 4. **Preview.** Output the commit message as plain text, in the chat, in a fenced code block tagged `text`. No tool call. Just plain text.

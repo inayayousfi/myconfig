@@ -66,6 +66,8 @@ MYCONFIG_PROFILE=cachyos
     || myconfig_fail "KDE Plasma Iosevka font package did not resolve"
 [ "$(resolve_package desktop_file_utils)" = official:desktop-file-utils ] \
     || myconfig_fail "KDE Plasma desktop-entry validation package did not resolve"
+[ "${MYCONFIG_PACKAGE_DEFAULTS[kanata]}" = aur:kanata-bin ] \
+    || myconfig_fail "Kanata package did not resolve from the AUR"
 [ "$(remove_package_ids kitty alacritty wezterm konsole)" = $'official:kitty\nofficial:alacritty\nofficial:wezterm\nofficial:konsole' ] \
     || myconfig_fail "package removal identifiers did not resolve"
 
@@ -257,6 +259,8 @@ zsh -n "$REPO_ROOT/dotfiles/zsh/.oh-my-zsh/custom/themes/blacknpink.zsh-theme"
 source "$REPO_ROOT/linux/modules/axidev-osk.sh"
 source "$REPO_ROOT/linux/modules/ghostty.sh"
 source "$REPO_ROOT/linux/modules/kde-plasma.sh"
+source "$REPO_ROOT/linux/modules/kanata.sh"
+source "$REPO_ROOT/linux/modules/kanata-kde.sh"
 
 validate_kde_plasma_version 'plasma-workspace 6.7.0-1'
 validate_kde_plasma_version 'plasma-workspace 6.99.4-2'
@@ -348,7 +352,7 @@ EOF
 chmod +x "$plasma_layout_bin/qdbus6"
 
 HOME="$plasma_layout_home" \
-PATH="$plasma_layout_bin:/usr/bin:/bin" \
+    PATH="$plasma_layout_bin:/usr/bin:/bin" \
     "$plasma_layout_home/.local/bin/myconfig-kde-plasma-layout"
 [ "$(<"$plasma_layout_home/.local/state/myconfig/kde-plasma-layout-version")" = 2 ] \
     || myconfig_fail "KDE Plasma layout did not record its version"
@@ -360,7 +364,7 @@ plasma_backups=("$plasma_layout_home/.config/plasma-org.kde.plasma.desktop-apple
     || myconfig_fail "KDE Plasma panel backup changed its contents"
 
 HOME="$plasma_layout_home" \
-PATH="$plasma_layout_bin:/usr/bin:/bin" \
+    PATH="$plasma_layout_bin:/usr/bin:/bin" \
     "$plasma_layout_home/.local/bin/myconfig-kde-plasma-layout"
 plasma_backups=("$plasma_layout_home/.config/plasma-org.kde.plasma.desktop-appletsrc.backup."*)
 [ "${#plasma_backups[@]}" -eq 1 ] \
@@ -375,8 +379,8 @@ fi
 
 layout_status=0
 HOME="$plasma_layout_home" \
-PATH="$plasma_layout_bin:/usr/bin:/bin" \
-MYCONFIG_PLASMA_DBUS_STATUS=1 \
+    PATH="$plasma_layout_bin:/usr/bin:/bin" \
+    MYCONFIG_PLASMA_DBUS_STATUS=1 \
     "$plasma_layout_home/.local/bin/myconfig-kde-plasma-layout" || layout_status=$?
 [ "$layout_status" -eq 75 ] \
     || myconfig_fail "KDE Plasma layout did not defer when Plasma was inactive"
@@ -447,7 +451,7 @@ qdbus6() {
 
 MYCONFIG_PROFILE=cachyos
 HOME="$plasma_layout_home" \
-PATH="$plasma_layout_bin:/usr/bin:/bin" \
+    PATH="$plasma_layout_bin:/usr/bin:/bin" \
     module_kde_plasma
 grep -Fxq 'packages:iosevka_font desktop_file_utils' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module omitted its appearance dependencies"
@@ -466,6 +470,138 @@ grep -Fxq 'qdbus:org.kde.KWin /KWin org.kde.KWin.reconfigure' "$plasma_module_lo
 
 desktop-file-validate \
     "$REPO_ROOT/dotfiles/kde-plasma/.config/autostart/myconfig-kde-plasma-layout.desktop"
+
+PYTHONPYCACHEPREFIX="$TEST_HOME/pycache" \
+    python -m unittest "$REPO_ROOT/test-kanata-tray.py"
+PYTHONPYCACHEPREFIX="$TEST_HOME/pycache" \
+    python -m py_compile "$REPO_ROOT/dotfiles/kanata-kde/.local/bin/myconfig-kanata-tray"
+grep -Fq '(deflayer off' "$REPO_ROOT/dotfiles/kanata/.config/kanata/config.kbd" \
+    || myconfig_fail "Kanata Off layer is not the startup layer"
+[ "$(grep -Fc 'tap-hold 0 400' "$REPO_ROOT/dotfiles/kanata/.config/kanata/config.kbd")" -eq 18 ] \
+    || myconfig_fail "Kanata mappings do not all use the approved 400 ms timing"
+grep -Fq 'overview    M-w' "$REPO_ROOT/dotfiles/kanata/.config/kanata/config.kbd" \
+    || myconfig_fail "Kanata F19 behavior does not emit the KDE Overview shortcut"
+
+kanata_unit_test_root="$TEST_HOME/kanata-units"
+mkdir -p "$kanata_unit_test_root"
+sed 's|^ExecStart=.*|ExecStart=/bin/true|' \
+    "$REPO_ROOT/dotfiles/kanata/.config/systemd/user/myconfig-kanata.service" \
+    >"$kanata_unit_test_root/myconfig-kanata.service"
+sed 's|^ExecStart=.*|ExecStart=/bin/true|' \
+    "$REPO_ROOT/dotfiles/kanata-kde/.config/systemd/user/myconfig-kanata-tray.service" \
+    >"$kanata_unit_test_root/myconfig-kanata-tray.service"
+systemd-analyze verify \
+    "$kanata_unit_test_root/myconfig-kanata.service" \
+    "$kanata_unit_test_root/myconfig-kanata-tray.service"
+grep -Fxq 'Requires=myconfig-kanata.service' \
+    "$REPO_ROOT/dotfiles/kanata-kde/.config/systemd/user/myconfig-kanata-tray.service" \
+    || myconfig_fail "Kanata tray does not require the engine"
+grep -Fxq 'ExecStopPost=-/usr/bin/systemctl --user stop myconfig-kanata.service' \
+    "$REPO_ROOT/dotfiles/kanata-kde/.config/systemd/user/myconfig-kanata-tray.service" \
+    || myconfig_fail "stopping the Kanata tray does not stop the engine"
+if grep -Fq 'Wants=myconfig-kanata.service' \
+    "$REPO_ROOT/dotfiles/kanata-kde/.config/systemd/user/myconfig-kanata-tray.service"; then
+    myconfig_fail "Kanata tray retained the unsafe first-install Wants dependency"
+fi
+
+(
+    kanata_test_root="$TEST_HOME/kanata-module"
+    kanata_test_home="$kanata_test_root/home"
+    kanata_test_log="$kanata_test_root/module.log"
+    mkdir -p \
+        "$kanata_test_home/.config/kanata" \
+        "$kanata_test_home/.config/systemd/user" \
+        "$kanata_test_home/.local/bin"
+    cp "$REPO_ROOT/dotfiles/kanata/.config/kanata/config.kbd" \
+        "$kanata_test_home/.config/kanata/config.kbd"
+    cp "$REPO_ROOT/dotfiles/kanata/.config/systemd/user/myconfig-kanata.service" \
+        "$kanata_test_home/.config/systemd/user/myconfig-kanata.service"
+    cp "$REPO_ROOT/dotfiles/kanata-kde/.local/bin/myconfig-kanata-tray" \
+        "$kanata_test_home/.local/bin/myconfig-kanata-tray"
+    cp "$REPO_ROOT/dotfiles/kanata-kde/.config/systemd/user/myconfig-kanata-tray.service" \
+        "$kanata_test_home/.config/systemd/user/myconfig-kanata-tray.service"
+    chmod +x "$kanata_test_home/.local/bin/myconfig-kanata-tray"
+    : >"$kanata_test_log"
+
+    install_package_ids() {
+        printf 'packages:%s\n' "$*" >>"$kanata_test_log"
+    }
+    kanata() {
+        printf 'kanata:%s\n' "$*" >>"$kanata_test_log"
+    }
+    sudo() {
+        printf 'sudo:%s\n' "$*" >>"$kanata_test_log"
+        if [ "${1:-}" = tee ]; then
+            while IFS= read -r line; do
+                printf 'tee-input:%s\n' "$line" >>"$kanata_test_log"
+            done
+        fi
+    }
+    udevadm() {
+        return 0
+    }
+    systemctl() {
+        printf 'systemctl:%s\n' "$*" >>"$kanata_test_log"
+        if [ "$*" = '--user --quiet is-active graphical-session.target' ]; then
+            return 1
+        fi
+    }
+    user_has_active_group() {
+        return 1
+    }
+
+    MYCONFIG_PROFILE=cachyos
+    HOME="$kanata_test_home" module_kanata
+    grep -Fxq 'packages:kanata' "$kanata_test_log" \
+        || myconfig_fail "Kanata module did not install Kanata"
+    grep -Fxq "kanata:--check --cfg $kanata_test_home/.config/kanata/config.kbd" "$kanata_test_log" \
+        || myconfig_fail "Kanata module did not validate its stowed configuration"
+    grep -Fxq 'sudo:usermod -aG input,uinput '"$(id -un)" "$kanata_test_log" \
+        || myconfig_fail "Kanata module did not grant both approved input groups"
+    grep -Fxq 'sudo:modprobe uinput' "$kanata_test_log" \
+        || myconfig_fail "Kanata module did not load uinput"
+    grep -Fxq 'tee-input:KERNEL=="uinput", MODE="0660", GROUP="uinput", OPTIONS+="static_node=uinput"' "$kanata_test_log" \
+        || myconfig_fail "Kanata module did not write the uinput permission rule"
+    grep -Fxq 'tee-input:SUBSYSTEM=="input", KERNEL=="event*", MODE="0660", GROUP="input"' "$kanata_test_log" \
+        || myconfig_fail "Kanata module did not write the keyboard input rule"
+    grep -Fxq 'systemctl:--user enable myconfig-kanata.service' "$kanata_test_log" \
+        || myconfig_fail "Kanata module did not enable its user service"
+    if grep -Fq 'systemctl:--user restart myconfig-kanata.service' "$kanata_test_log"; then
+        myconfig_fail "Kanata module started before new group membership became active"
+    fi
+
+    python_command="$(command -v python)"
+    python() {
+        printf 'python:%s\n' "$*" >>"$kanata_test_log"
+        "$python_command" "$@"
+    }
+    kwriteconfig6() {
+        printf 'kwriteconfig6:%s\n' "$*" >>"$kanata_test_log"
+    }
+    module_kde_plasma_validate() {
+        return 0
+    }
+
+    HOME="$kanata_test_home" module_kanata_kde
+    grep -Fxq 'packages:python pyside6' "$kanata_test_log" \
+        || myconfig_fail "Kanata KDE module did not install its Python dependencies"
+    grep -Fxq 'kwriteconfig6:--file kglobalshortcutsrc --group kwin --key Overview Meta+W,Meta+W,Toggle Overview' "$kanata_test_log" \
+        || myconfig_fail "Kanata KDE module did not configure the Overview shortcut"
+    grep -Fxq 'systemctl:--user enable myconfig-kanata-tray.service' "$kanata_test_log" \
+        || myconfig_fail "Kanata KDE module did not enable its tray service"
+    grep -Fxq 'systemctl:--user disable myconfig-kanata.service' "$kanata_test_log" \
+        || myconfig_fail "Kanata KDE module left the engine independently enabled"
+    grep -Fxq 'systemctl:--user stop myconfig-kanata.service' "$kanata_test_log" \
+        || myconfig_fail "Kanata KDE module left the engine running without its tray"
+
+    MYCONFIG_PROFILE=arch-wsl
+    if HOME="$kanata_test_home" module_kanata_kde >/dev/null 2>&1; then
+        myconfig_fail "Kanata KDE module accepted a non-CachyOS profile"
+    fi
+    if grep -Fqi kanata "$REPO_ROOT/linux/modules/kde-plasma.sh"; then
+        myconfig_fail "KDE Plasma module depends on Kanata"
+    fi
+)
 
 MYCONFIG_PROFILE=cachyos
 ghostty_actions="$({
@@ -590,18 +726,30 @@ ubuntu_profile="$(
     || myconfig_fail "CachyOS profile does not include Ghostty"
 [[ "$cachyos_profile" == *module_kde_plasma* ]] \
     || myconfig_fail "CachyOS profile does not include KDE Plasma configuration"
+[[ "$cachyos_profile" == *module_kanata* ]] \
+    || myconfig_fail "CachyOS profile does not include Kanata"
+[[ "$cachyos_profile" == *module_kanata_kde* ]] \
+    || myconfig_fail "CachyOS profile does not include the Kanata KDE tray"
 [[ "$arch_wsl_profile" != *module_axidev_osk* ]] \
     || myconfig_fail "Arch WSL profile includes Axidev OSK"
 [[ "$arch_wsl_profile" != *module_ghostty* ]] \
     || myconfig_fail "Arch WSL profile includes Ghostty"
 [[ "$arch_wsl_profile" != *module_kde_plasma* ]] \
     || myconfig_fail "Arch WSL profile includes KDE Plasma configuration"
+[[ "$arch_wsl_profile" != *module_kanata* ]] \
+    || myconfig_fail "Arch WSL profile includes Kanata"
+[[ "$arch_wsl_profile" != *module_kanata_kde* ]] \
+    || myconfig_fail "Arch WSL profile includes the Kanata KDE tray"
 [[ "$ubuntu_profile" != *module_axidev_osk* ]] \
     || myconfig_fail "Ubuntu Server profile includes Axidev OSK"
 [[ "$ubuntu_profile" != *module_ghostty* ]] \
     || myconfig_fail "Ubuntu Server profile includes Ghostty"
 [[ "$ubuntu_profile" != *module_kde_plasma* ]] \
     || myconfig_fail "Ubuntu Server profile includes KDE Plasma configuration"
+[[ "$ubuntu_profile" != *module_kanata* ]] \
+    || myconfig_fail "Ubuntu Server profile includes Kanata"
+[[ "$ubuntu_profile" != *module_kanata_kde* ]] \
+    || myconfig_fail "Ubuntu Server profile includes the Kanata KDE tray"
 
 module_source="$(declare -f module_axidev_osk)"
 [[ "$module_source" == *'/usr/local/sbin/axidev-osk-install'* ]] \
@@ -626,6 +774,8 @@ grep -Fq 'Axidev OSK with desktop and login-screen startup' "$HOME/environment.m
     || myconfig_fail "CachyOS inventory omitted Axidev OSK"
 grep -Fq 'Black & Pink panels and application dock for KDE Plasma 6.7 through 6.x' "$HOME/environment.md" \
     || myconfig_fail "CachyOS inventory omitted KDE Plasma configuration"
+grep -Fq 'Kanata keyboard remapping with a KDE tray profile selector' "$HOME/environment.md" \
+    || myconfig_fail "CachyOS inventory omitted Kanata"
 
 MYCONFIG_PROFILE=arch-wsl
 write_environment_inventory
@@ -637,6 +787,9 @@ if grep -Fq 'Axidev OSK' "$HOME/environment.md"; then
 fi
 if grep -Fq 'KDE Plasma' "$HOME/environment.md"; then
     myconfig_fail "Arch WSL inventory included KDE Plasma configuration"
+fi
+if grep -Fq 'Kanata' "$HOME/environment.md"; then
+    myconfig_fail "Arch WSL inventory included Kanata"
 fi
 
 paru_test_root="$TEST_HOME/paru-bootstrap"

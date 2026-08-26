@@ -28,7 +28,7 @@ require_function adapter_remove_specs
 
 source "$LINUX_DIR/registry/packages.sh"
 
-for module in base ssh cli runtimes zsh neovim terminal-tools ghostty axidev-osk tailscale agents dotfiles kde-plasma authentication; do
+for module in base ssh cli runtimes zsh neovim terminal-tools ghostty axidev-osk kanata kanata-kde tailscale agents dotfiles kde-plasma authentication; do
     source "$LINUX_DIR/modules/$module.sh"
 done
 

@@ -361,6 +361,8 @@ main() {
         log_info "GlazeWM and Zebar will start on your next login."
         log_info "WSL Ubuntu setup will run automatically if installed."
         log_info "Please restart your computer for all changes to take effect."
+    elif [ "$platform" == "cachyos" ]; then
+        log_info "For the best experience, restart your computer before using the new configuration."
     else
         log_info "Please restart your terminal or run: ${CYAN}source ~/.zshrc${NC}"
     fi

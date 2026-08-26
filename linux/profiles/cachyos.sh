@@ -14,7 +14,9 @@ run_profile() {
     module_tailscale
     module_agents_packages
     module_dotfiles
+    module_kanata
     module_kde_plasma
+    module_kanata_kde
     module_agents_configure
     module_authentication
     write_environment_inventory

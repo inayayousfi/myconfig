@@ -50,17 +50,17 @@ The Linux bootstrap ensures `curl` and `unzip` exist before downloading the arch
 
 `linux/install.sh` runs one fixed profile selected by a platform entry point. Capability modules are private and cannot be selected from the public bootstrap command.
 
-| Profile         | Package adapter            | Modules                                |
-| --------------- | -------------------------- | -------------------------------------- |
-| `cachyos`       | Arch (`pacman` and `paru`) | Complete profile with Axidev OSK       |
-| `arch-wsl`      | Arch (`pacman` and `paru`) | Complete profile with WSL integrations |
-| `ubuntu-server` | apt                        | Base, Zsh, and Zsh dotfiles            |
+| Profile         | Package adapter            | Modules                                     |
+| --------------- | -------------------------- | ------------------------------------------- |
+| `cachyos`       | Arch (`pacman` and `paru`) | Complete profile with Axidev OSK and Kanata |
+| `arch-wsl`      | Arch (`pacman` and `paru`) | Complete profile with WSL integrations      |
+| `ubuntu-server` | apt                        | Base, Zsh, and Zsh dotfiles                 |
 
 Modules request logical package identifiers. `linux/registry/packages.sh` maps each identifier to an exact package source and name. A target override can replace either value, such as `fd` becoming `fd-find` on apt. Arch User Repository packages use the explicit `aur:` source. Unsupported sources and missing mappings stop the profile.
 
 The shared installer validates sudo once before package preparation and refreshes that credential every 60 seconds until the profile exits. Long package builds therefore do not ask for the same password again. The refresh process is stopped on both successful and failed exits.
 
-Linux profiles copy selected packages into `~/dotfiles`, back up the previous tree, back up conflicting home files, and run GNU Stow. CachyOS and Arch WSL select `zsh`, `yazi`, `lazygit`, `hunk`, `ai`, `herdr`, `nvim`, and `opencode`. Ubuntu Server selects only `zsh`.
+Linux profiles copy selected packages into `~/dotfiles`, back up the previous tree, back up conflicting home files, and run GNU Stow. CachyOS selects `zsh`, `yazi`, `lazygit`, `hunk`, `ai`, `herdr`, `nvim`, `opencode`, `kanata`, `kanata-kde`, and `kde-plasma`. Arch WSL selects the first eight shared packages. Ubuntu Server selects only `zsh`.
 
 The complete profiles configure OpenSSH as a system service that listens on all IPv4 and IPv6 interfaces and allows only the current user. They also install Tailscale as a system service. The installer validates the SSH daemon configuration before enabling and restarting it, but leaves authentication policy and network perimeter security at OpenSSH and system defaults.
 
@@ -305,7 +305,7 @@ The Ubuntu Server installation does not include GNU Stow, development runtimes, 
 
 ## Platform-Specific: CachyOS
 
-CachyOS uses the complete shared Linux profile after the graphical operating-system installer finishes. The profile installs development packages, Ghostty, Axidev OSK, and the KDE Plasma desktop configuration, configures the OpenSSH service, sets Zsh as the default shell, deploys shared dotfiles, configures agent tools, and offers GitHub and Tailscale authentication.
+CachyOS uses the complete shared Linux profile after the graphical operating-system installer finishes. The profile installs development packages, Ghostty, Axidev OSK, Kanata, its independent KDE tray, and the KDE Plasma desktop configuration, configures the OpenSSH service, sets Zsh as the default shell, deploys shared dotfiles, configures agent tools, and offers GitHub and Tailscale authentication.
 
 The installer does not change sudoers, locale, kernel, drivers, or power settings. It installs OpenSSH, generates missing host keys, writes the shared listener policy, and enables the system service. Tailscale installs its system service separately.
 
@@ -322,6 +322,14 @@ The profile installs the Arch host dependencies for Python, PySide6, Qt Wayland,
 After installation, the profile uses the Axidev OSK command line to configure the `uinput` kernel module, udev rule, shared input group, current-user membership, and desktop-session autostart. It then connects the command's login-manager menu directly to the terminal and configures greeter startup for the selected supported manager. The menu supports Plasma Login Manager, greetd, and LightDM. Log out and back in after a new group membership is added; restart the selected login manager or reboot to activate greeter startup.
 
 This module runs only for CachyOS. Arch WSL and Ubuntu Server neither install nor configure Axidev OSK.
+
+### Kanata
+
+The CachyOS profile installs `kanata-bin` from the Arch User Repository and stows one portable configuration with Off, Home Row, Disabled, and Valo layers. Off is the startup layer. Every layer maps `F17` and `F18` to repeated wheel up and wheel down, and maps `F19` to `Meta+W`. All 18 tap-hold mappings use the AutoHotkey configuration's 400-millisecond hold threshold and disable Kanata's tap-repress window.
+
+The generic Kanata module loads `uinput`, persists that module across boots, creates `input` and `uinput` groups when needed, adds the current user to both, and grants those groups access to keyboard input events and `/dev/uinput`. This lets the user service read and emit input without root. It also lets every other process running as that user read raw input and inject events. New group membership becomes active only after logout and login; until then, the installer enables the service without claiming it started successfully.
+
+`myconfig-kanata.service` runs one Kanata process and binds its layer-control protocol to `127.0.0.1:5829`. The separate Kanata KDE module installs a PySide6 tray and `myconfig-kanata-tray.service`. On CachyOS, the tray service becomes the startup entry point: it starts Kanata first, keeps its icon hidden until Kanata reports an active layer, reconnects after a Kanata restart, and stops Kanata whenever the tray unit stops. A tray failure stops Kanata before systemd restarts the pair. The tray shows mutually exclusive Home Row, Disabled, Valo, and Off actions, and Quit stops the pair. The KDE module assigns `Meta+W` to KWin Overview. Neither the generic Kanata module nor its dotfiles depend on KDE, and the existing KDE Plasma module does not depend on Kanata.
 
 ### KDE Plasma
 
@@ -500,6 +508,8 @@ myconfig/
 │   ├── herdr/
 │   ├── hyfetch/
 │   ├── hunk/
+│   ├── kanata/
+│   ├── kanata-kde/
 │   ├── lazygit/
 │   ├── nvim/
 │   ├── opencode/
@@ -542,6 +552,8 @@ myconfig/
 | `herdr` | Herdr config | `$XDG_CONFIG_HOME/herdr/` |
 | `hyfetch` | Hyfetch config | `$XDG_CONFIG_HOME/hyfetch.json` |
 | `hunk` | Hunk diff viewer config and Black & Pink theme | `$XDG_CONFIG_HOME/hunk/` |
+| `kanata` | Portable key mappings and user service | `$XDG_CONFIG_HOME/kanata/` and user systemd units |
+| `kanata-kde` | Independent KDE tray for Kanata layer selection | `~/.local/bin/` and user systemd units |
 | `lazygit` | Lazygit theme/config | `$XDG_CONFIG_HOME/lazygit/` |
 | `nvim` | Neovim config | `$XDG_CONFIG_HOME/nvim/` |
 | `opencode` | OpenCode runtime, TUI, and Black & Pink theme | `$XDG_CONFIG_HOME/opencode/` |
@@ -555,9 +567,9 @@ The `ai` package ships `settings.json` without a `hooks` key on purpose. CachyOS
 
 ### Installation Model
 
-| Target              | Dotfile Strategy                                                                   |
-| ------------------- | ---------------------------------------------------------------------------------- |
-| CachyOS             | Back up `~/dotfiles`, copy seven packages, back up conflicts, then `stow --restow` |
-| Ubuntu Server       | Back up `~/dotfiles`, copy Zsh, back up conflicts, then `stow --restow`            |
-| Windows Workstation | Direct copy of Windows configs                                                     |
-| Arch WSL            | Back up `~/dotfiles`, copy seven packages, back up conflicts, then `stow --restow` |
+| Target              | Dotfile Strategy                                                                    |
+| ------------------- | ----------------------------------------------------------------------------------- |
+| CachyOS             | Back up `~/dotfiles`, copy eleven packages, back up conflicts, then `stow --restow` |
+| Ubuntu Server       | Back up `~/dotfiles`, copy Zsh, back up conflicts, then `stow --restow`             |
+| Windows Workstation | Direct copy of Windows configs                                                      |
+| Arch WSL            | Back up `~/dotfiles`, copy eight packages, back up conflicts, then `stow --restow`  |

@@ -1,18 +1,18 @@
 {
-    "KPlugin": {
-        "Authors": [
-            {
-                "Name": "MyConfig"
-            }
-        ],
-        "Category": "",
-        "Description": "Breeze with compact MyConfig floating-panel spacing",
-        "EnabledByDefault": true,
-        "Id": "blacknpink",
-        "License": "LGPL-2.1-or-later",
-        "Name": "Black & Pink",
-        "Version": "1.0",
-        "Website": ""
-    },
-    "X-Plasma-API": "5.0"
+  "KPlugin": {
+    "Authors": [
+      {
+        "Name": "MyConfig"
+      }
+    ],
+    "Category": "",
+    "Description": "Breeze with compact MyConfig floating-panel spacing",
+    "EnabledByDefault": true,
+    "Id": "blacknpink",
+    "License": "LGPL-2.1-or-later",
+    "Name": "Black & Pink",
+    "Version": "1.0",
+    "Website": ""
+  },
+  "X-Plasma-API": "5.0"
 }

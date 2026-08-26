@@ -1,0 +1,15 @@
+[Unit]
+Description=MyConfig Kanata KDE tray
+After=graphical-session.target myconfig-kanata.service
+Requires=myconfig-kanata.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/myconfig-kanata-tray
+ExecStopPost=-/usr/bin/systemctl --user stop myconfig-kanata.service
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=graphical-session.target

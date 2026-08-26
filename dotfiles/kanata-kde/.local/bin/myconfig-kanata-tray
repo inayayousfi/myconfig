@@ -1,0 +1,214 @@
+#!/usr/bin/env python3
+
+import json
+import queue
+import socket
+import subprocess
+import sys
+import threading
+
+HOST = "127.0.0.1"
+PORT = 5829
+MODES = (
+    ("homerow", "Home Row"),
+    ("disabled", "Disabled"),
+    ("valo", "Valo"),
+    ("off", "Off"),
+)
+
+
+class KanataClient:
+    def __init__(self, host=HOST, port=PORT):
+        self.host = host
+        self.port = port
+        self.events = queue.Queue()
+        self._commands = queue.Queue()
+        self._stopped = threading.Event()
+        self._socket = None
+        self._thread = threading.Thread(target=self._run, daemon=True)
+
+    def start(self):
+        self._thread.start()
+
+    def change_layer(self, layer):
+        self._commands.put({"ChangeLayer": {"new": layer}})
+
+    def stop(self):
+        self._stopped.set()
+        current = self._socket
+        if current is not None:
+            try:
+                current.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+        self._thread.join(timeout=2)
+
+    def _emit(self, kind, value=None):
+        self.events.put((kind, value))
+
+    @staticmethod
+    def _send(connection, message):
+        payload = json.dumps(message, separators=(",", ":")) + "\n"
+        connection.sendall(payload.encode("utf-8"))
+
+    def _run(self):
+        reported_disconnected = False
+        while not self._stopped.is_set():
+            try:
+                connection = socket.create_connection((self.host, self.port), timeout=1)
+            except OSError:
+                if not reported_disconnected:
+                    self._emit("disconnected")
+                    reported_disconnected = True
+                self._stopped.wait(1)
+                continue
+
+            self._socket = connection
+            connection.settimeout(0.1)
+            reported_disconnected = False
+            self._emit("connected")
+            buffer = b""
+
+            try:
+                self._send(connection, {"RequestCurrentLayerName": {}})
+                while not self._stopped.is_set():
+                    try:
+                        while True:
+                            self._send(connection, self._commands.get_nowait())
+                    except queue.Empty:
+                        pass
+
+                    try:
+                        chunk = connection.recv(4096)
+                    except socket.timeout:
+                        continue
+                    if not chunk:
+                        break
+
+                    buffer += chunk
+                    while b"\n" in buffer:
+                        line, buffer = buffer.split(b"\n", 1)
+                        if not line:
+                            continue
+                        try:
+                            self._emit("message", json.loads(line))
+                        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+                            self._emit("error", f"Invalid Kanata response: {error}")
+            except OSError as error:
+                if not self._stopped.is_set():
+                    self._emit("error", f"Kanata connection failed: {error}")
+            finally:
+                connection.close()
+                self._socket = None
+
+            if not self._stopped.is_set():
+                self._emit("disconnected")
+                reported_disconnected = True
+                self._stopped.wait(1)
+
+
+def run_tray():
+    from PySide6.QtCore import QTimer
+    from PySide6.QtGui import QAction, QActionGroup, QIcon
+    from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
+
+    app = QApplication(sys.argv)
+    app.setApplicationName("MyConfig Kanata")
+    app.setQuitOnLastWindowClosed(False)
+
+    tray = QSystemTrayIcon(QIcon.fromTheme("input-keyboard"), app)
+    tray.setToolTip("Kanata: connecting")
+    menu = QMenu()
+    mode_group = QActionGroup(menu)
+    mode_group.setExclusive(True)
+    mode_actions = {}
+    client = KanataClient()
+
+    def set_available(available):
+        for action in mode_actions.values():
+            action.setEnabled(available)
+        if not available:
+            tray.setToolTip("Kanata: unavailable")
+            tray.hide()
+
+    def select_mode(mode):
+        client.change_layer(mode)
+
+    for mode, label in MODES:
+        action = QAction(label, menu)
+        action.setCheckable(True)
+        action.setEnabled(False)
+        action.triggered.connect(lambda _checked=False, selected=mode: select_mode(selected))
+        mode_group.addAction(action)
+        menu.addAction(action)
+        mode_actions[mode] = action
+
+    menu.addSeparator()
+    quit_action = QAction("Quit", menu)
+    menu.addAction(quit_action)
+
+    def update_layer(layer):
+        action = mode_actions.get(layer)
+        if action is None:
+            tray.showMessage("Kanata", f"Unknown active layer: {layer}")
+            return
+        action.setChecked(True)
+        set_available(True)
+        tray.setToolTip(f"Kanata: {action.text()}")
+        tray.show()
+
+    def process_events():
+        while True:
+            try:
+                kind, value = client.events.get_nowait()
+            except queue.Empty:
+                return
+
+            if kind == "connected":
+                tray.setToolTip("Kanata: connected")
+            elif kind == "disconnected":
+                set_available(False)
+            elif kind == "error":
+                tray.showMessage("Kanata", value)
+            elif kind == "message":
+                if "CurrentLayerName" in value:
+                    update_layer(value["CurrentLayerName"].get("name"))
+                elif "LayerChange" in value:
+                    update_layer(value["LayerChange"].get("new"))
+                elif "Error" in value:
+                    tray.showMessage("Kanata", value["Error"].get("msg", "Unknown error"))
+
+    def quit_all():
+        result = subprocess.run(
+            [
+                "systemctl",
+                "--user",
+                "--no-block",
+                "stop",
+                "myconfig-kanata-tray.service",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        if result.returncode != 0:
+            tray.showMessage("Kanata", result.stderr.strip() or "Could not stop Kanata")
+            return
+        quit_action.setEnabled(False)
+
+    quit_action.triggered.connect(quit_all)
+    tray.setContextMenu(menu)
+
+    timer = QTimer(app)
+    timer.timeout.connect(process_events)
+    timer.start(100)
+    client.start()
+
+    exit_code = app.exec()
+    client.stop()
+    return exit_code
+
+
+if __name__ == "__main__":
+    raise SystemExit(run_tray())

@@ -16,7 +16,7 @@ Run this after completing the CachyOS graphical installer:
 curl -fsSL https://raw.githubusercontent.com/inayayousfi/myconfig/main/bootstrap.sh | bash -s -- cachyos
 ```
 
-The CachyOS profile requires KDE Plasma 6.7 through 6.x and configures a responsive Black & Pink top panel and application dock on every display. Eight-pixel inward activation zones reveal the hidden panels across each screen edge, and newly connected displays receive panels automatically. It also installs Axidev OSK and Kanata with an independent KDE tray for selecting keyboard profiles. The on-screen keyboard starts on the login screen and again after desktop login. Log out and back in so the new input-device group memberships apply, then restart the selected login manager or reboot to activate login-screen startup.
+The CachyOS profile requires KDE Plasma 6.7 through 6.x and configures a responsive Black & Pink top panel and application dock on every display. Eight-pixel inward activation zones reveal the hidden panels across each screen edge, and newly connected displays receive panels automatically. It also installs Axidev OSK, Kanata with an independent KDE tray for selecting keyboard profiles, and Handy offline dictation with either-side `Ctrl+Shift` push-to-talk. The on-screen keyboard starts on the login screen and again after desktop login. Log out and back in so the new input-device group memberships apply, then restart the selected login manager or reboot to activate login-screen startup.
 
 The final authentication step offers GitHub and Tailscale login. Declining either prompt prints the command for later.
 

@@ -17,6 +17,7 @@ run_profile() {
     module_kanata
     module_kde_plasma
     module_kanata_kde
+    module_handy
     module_agents_configure
     module_authentication
     write_environment_inventory

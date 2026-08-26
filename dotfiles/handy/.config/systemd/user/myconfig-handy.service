@@ -1,0 +1,15 @@
+[Unit]
+Description=MyConfig Handy push-to-talk dictation
+Documentation=https://github.com/cjpais/Handy
+After=graphical-session.target myconfig-kanata-tray.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStartPre=%h/.local/bin/myconfig-handy-configure
+ExecStart=/usr/bin/handy --start-hidden
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

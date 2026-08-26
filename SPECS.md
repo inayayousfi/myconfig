@@ -305,7 +305,7 @@ The Ubuntu Server installation does not include GNU Stow, development runtimes, 
 
 ## Platform-Specific: CachyOS
 
-CachyOS uses the complete shared Linux profile after the graphical operating-system installer finishes. The profile installs development packages, Ghostty, Axidev OSK, Kanata, its independent KDE tray, and the KDE Plasma desktop configuration, configures the OpenSSH service, sets Zsh as the default shell, deploys shared dotfiles, configures agent tools, and offers GitHub and Tailscale authentication.
+CachyOS uses the complete shared Linux profile after the graphical operating-system installer finishes. The profile installs development packages, Ghostty, Axidev OSK, Kanata, its independent KDE tray, Handy offline dictation, and the KDE Plasma desktop configuration, configures the OpenSSH service, sets Zsh as the default shell, deploys shared dotfiles, configures agent tools, and offers GitHub and Tailscale authentication.
 
 The installer does not change sudoers, locale, kernel, drivers, or power settings. It installs OpenSSH, generates missing host keys, writes the shared listener policy, and enables the system service. Tailscale installs its system service separately.
 
@@ -327,9 +327,17 @@ This module runs only for CachyOS. Arch WSL and Ubuntu Server neither install no
 
 The CachyOS profile installs `kanata-bin` from the Arch User Repository and stows one portable configuration with Off, Home Row, Disabled, and Valo layers. Off is the startup layer. Every layer maps `F17` and `F18` to repeated wheel up and wheel down, and maps `F19` to `Meta+W`. All 18 tap-hold mappings use the AutoHotkey configuration's 400-millisecond hold threshold and disable Kanata's tap-repress window.
 
-The generic Kanata module loads `uinput`, persists that module across boots, creates `input` and `uinput` groups when needed, adds the current user to both, and grants those groups access to keyboard input events and `/dev/uinput`. This lets the user service read and emit input without root. It also lets every other process running as that user read raw input and inject events. New group membership becomes active only after logout and login; until then, the installer enables the service without claiming it started successfully.
+The Kanata module calls the reusable named input-access helper. The helper loads `uinput`, persists that module through `/etc/modules-load.d/myconfig-kanata.conf`, creates `input` and `uinput` groups when needed, adds the current user to both, and writes `/etc/udev/rules.d/99-myconfig-kanata.rules`. This lets the user service read and emit input without root. It also lets every other process running as that user read raw input and inject events. New group membership becomes active only after logout and login; until then, the installer enables the service without claiming it started successfully.
 
 `myconfig-kanata.service` runs one Kanata process and binds its layer-control protocol to `127.0.0.1:5829`. The separate Kanata KDE module installs a PySide6 tray and `myconfig-kanata-tray.service`. On CachyOS, the tray service becomes the startup entry point: it starts Kanata first, keeps its icon hidden until Kanata reports an active layer, reconnects after a Kanata restart, and stops Kanata whenever the tray unit stops. A tray failure stops Kanata before systemd restarts the pair. The tray shows mutually exclusive Home Row, Disabled, Valo, and Off actions, and Quit stops the pair. The KDE module assigns `Meta+W` to KWin Overview. Neither the generic Kanata module nor its dotfiles depend on KDE, and the existing KDE Plasma module does not depend on Kanata.
+
+### Handy
+
+The CachyOS profile installs `handy-bin` from the Arch User Repository and runs Handy as `myconfig-handy.service` during the graphical session. Handy starts hidden and restarts after failures. The service starts after the Kanata KDE tray when both are part of the login transaction.
+
+During module configuration and before every service start, `myconfig-handy-configure` updates `~/.config/com.pais.handy/settings_store.json` atomically. It preserves unrelated Handy settings while enforcing the direct `handy_keys` keyboard backend, push-to-talk mode, and the modifier-only `ctrl+shift` transcription binding. The backend treats left and right modifiers alike, so either Ctrl key held with either Shift key starts recording and releasing the combination stops it.
+
+Handy calls the same reusable input-access helper independently with its own name. This writes `/etc/modules-load.d/myconfig-handy.conf` and `/etc/udev/rules.d/99-myconfig-handy.rules`; Handy does not depend on the Kanata module. When both applications are installed, their equivalent named rules coexist. The file names show ownership, but the Linux permissions remain user-wide rather than process-specific.
 
 ### KDE Plasma
 

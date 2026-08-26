@@ -64,6 +64,7 @@ register_package lazygit official:lazygit
 register_package herdr aur:herdr-bin
 register_package opencode official:opencode
 register_package kanata aur:kanata-bin
+register_package handy aur:handy-bin
 register_package at_spi2_core official:at-spi2-core
 register_package libxcomposite official:libxcomposite
 register_package libxdamage official:libxdamage

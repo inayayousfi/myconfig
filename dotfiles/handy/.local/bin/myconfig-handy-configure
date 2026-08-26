@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+settings_dir="${XDG_CONFIG_HOME:-$HOME/.config}/com.pais.handy"
+settings_file="$settings_dir/settings_store.json"
+mkdir -p "$settings_dir"
+
+temporary="$(mktemp "$settings_dir/.settings_store.json.XXXXXX")"
+trap 'rm -f "$temporary"' EXIT
+
+filter='
+    .settings //= {} |
+    .settings.push_to_talk = true |
+    .settings.keyboard_implementation = "handy_keys" |
+    .settings.bindings //= {} |
+    .settings.bindings.transcribe = (
+        {
+            "id": "transcribe",
+            "name": "Transcribe",
+            "description": "Converts your speech into text.",
+            "default_binding": "ctrl+space",
+            "current_binding": "ctrl+shift"
+        } * (.settings.bindings.transcribe // {}) * {
+            "id": "transcribe",
+            "current_binding": "ctrl+shift"
+        }
+    )
+'
+
+if [ -f "$settings_file" ]; then
+    jq "$filter" "$settings_file" >"$temporary"
+else
+    jq -n "$filter" >"$temporary"
+fi
+
+chmod 600 "$temporary"
+mv "$temporary" "$settings_file"
+trap - EXIT

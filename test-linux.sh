@@ -14,6 +14,7 @@ mkdir -p "$HOME"
 
 source "$REPO_ROOT/linux/lib/common.sh"
 source "$REPO_ROOT/linux/lib/packages.sh"
+source "$REPO_ROOT/linux/lib/input-access.sh"
 
 sudo_keepalive_log="$TEST_HOME/sudo-keepalive.log"
 (
@@ -68,6 +69,8 @@ MYCONFIG_PROFILE=cachyos
     || myconfig_fail "KDE Plasma desktop-entry validation package did not resolve"
 [ "${MYCONFIG_PACKAGE_DEFAULTS[kanata]}" = aur:kanata-bin ] \
     || myconfig_fail "Kanata package did not resolve from the AUR"
+[ "${MYCONFIG_PACKAGE_DEFAULTS[handy]}" = aur:handy-bin ] \
+    || myconfig_fail "Handy package did not resolve from the AUR"
 [ "$(remove_package_ids kitty alacritty wezterm konsole)" = $'official:kitty\nofficial:alacritty\nofficial:wezterm\nofficial:konsole' ] \
     || myconfig_fail "package removal identifiers did not resolve"
 
@@ -261,6 +264,7 @@ source "$REPO_ROOT/linux/modules/ghostty.sh"
 source "$REPO_ROOT/linux/modules/kde-plasma.sh"
 source "$REPO_ROOT/linux/modules/kanata.sh"
 source "$REPO_ROOT/linux/modules/kanata-kde.sh"
+source "$REPO_ROOT/linux/modules/handy.sh"
 
 validate_kde_plasma_version 'plasma-workspace 6.7.0-1'
 validate_kde_plasma_version 'plasma-workspace 6.99.4-2'
@@ -560,6 +564,10 @@ fi
         || myconfig_fail "Kanata module did not grant both approved input groups"
     grep -Fxq 'sudo:modprobe uinput' "$kanata_test_log" \
         || myconfig_fail "Kanata module did not load uinput"
+    grep -Fxq 'sudo:tee /etc/modules-load.d/myconfig-kanata.conf' "$kanata_test_log" \
+        || myconfig_fail "Kanata module did not use its named modules-load file"
+    grep -Fxq 'sudo:tee /etc/udev/rules.d/99-myconfig-kanata.rules' "$kanata_test_log" \
+        || myconfig_fail "Kanata module did not use its named udev file"
     grep -Fxq 'tee-input:KERNEL=="uinput", MODE="0660", GROUP="uinput", OPTIONS+="static_node=uinput"' "$kanata_test_log" \
         || myconfig_fail "Kanata module did not write the uinput permission rule"
     grep -Fxq 'tee-input:SUBSYSTEM=="input", KERNEL=="event*", MODE="0660", GROUP="input"' "$kanata_test_log" \
@@ -600,6 +608,100 @@ fi
     fi
     if grep -Fqi kanata "$REPO_ROOT/linux/modules/kde-plasma.sh"; then
         myconfig_fail "KDE Plasma module depends on Kanata"
+    fi
+)
+
+handy_test_root="$TEST_HOME/handy"
+handy_test_home="$handy_test_root/home"
+handy_test_log="$handy_test_root/module.log"
+mkdir -p \
+    "$handy_test_home/.local/bin" \
+    "$handy_test_home/.config/systemd/user"
+cp "$REPO_ROOT/dotfiles/handy/.local/bin/myconfig-handy-configure" \
+    "$handy_test_home/.local/bin/myconfig-handy-configure"
+cp "$REPO_ROOT/dotfiles/handy/.config/systemd/user/myconfig-handy.service" \
+    "$handy_test_home/.config/systemd/user/myconfig-handy.service"
+chmod +x "$handy_test_home/.local/bin/myconfig-handy-configure"
+
+HOME="$handy_test_home" \
+    XDG_CONFIG_HOME="$handy_test_home/.config" \
+    "$handy_test_home/.local/bin/myconfig-handy-configure"
+handy_settings="$handy_test_home/.config/com.pais.handy/settings_store.json"
+[ "$(jq -r '.settings.keyboard_implementation' "$handy_settings")" = handy_keys ] \
+    || myconfig_fail "Handy settings did not select the direct keyboard backend"
+[ "$(jq -r '.settings.push_to_talk' "$handy_settings")" = true ] \
+    || myconfig_fail "Handy settings did not enable push-to-talk"
+[ "$(jq -r '.settings.bindings.transcribe.current_binding' "$handy_settings")" = ctrl+shift ] \
+    || myconfig_fail "Handy settings did not configure Ctrl+Shift"
+[ "$(stat -c %a "$handy_settings")" = 600 ] \
+    || myconfig_fail "Handy settings are not private"
+
+jq '.settings.selected_model = "keep-model" | .settings.unrelated = {"keep": true}' \
+    "$handy_settings" >"$handy_settings.updated"
+mv "$handy_settings.updated" "$handy_settings"
+HOME="$handy_test_home" \
+    XDG_CONFIG_HOME="$handy_test_home/.config" \
+    "$handy_test_home/.local/bin/myconfig-handy-configure"
+[ "$(jq -r '.settings.selected_model' "$handy_settings")" = keep-model ] \
+    || myconfig_fail "Handy settings updater erased the selected model"
+[ "$(jq -r '.settings.unrelated.keep' "$handy_settings")" = true ] \
+    || myconfig_fail "Handy settings updater erased unrelated settings"
+
+handy_unit_test_root="$TEST_HOME/handy-unit"
+mkdir -p "$handy_unit_test_root"
+sed \
+    -e 's|^ExecStartPre=.*|ExecStartPre=/bin/true|' \
+    -e 's|^ExecStart=.*|ExecStart=/bin/true|' \
+    "$REPO_ROOT/dotfiles/handy/.config/systemd/user/myconfig-handy.service" \
+    >"$handy_unit_test_root/myconfig-handy.service"
+systemd-analyze verify "$handy_unit_test_root/myconfig-handy.service"
+
+(
+    : >"$handy_test_log"
+    install_package_ids() {
+        printf 'packages:%s\n' "$*" >>"$handy_test_log"
+    }
+    handy() {
+        return 0
+    }
+    sudo() {
+        printf 'sudo:%s\n' "$*" >>"$handy_test_log"
+        if [ "${1:-}" = tee ]; then
+            while IFS= read -r line; do
+                printf 'tee-input:%s\n' "$line" >>"$handy_test_log"
+            done
+        fi
+    }
+    udevadm() {
+        return 0
+    }
+    systemctl() {
+        printf 'systemctl:%s\n' "$*" >>"$handy_test_log"
+        return 0
+    }
+    user_has_active_group() {
+        return 1
+    }
+
+    MYCONFIG_PROFILE=cachyos
+    export XDG_CONFIG_HOME="$handy_test_home/.config"
+    HOME="$handy_test_home" module_handy
+    grep -Fxq 'packages:handy' "$handy_test_log" \
+        || myconfig_fail "Handy module did not install Handy"
+    grep -Fxq 'sudo:tee /etc/modules-load.d/myconfig-handy.conf' "$handy_test_log" \
+        || myconfig_fail "Handy module did not use its named modules-load file"
+    grep -Fxq 'sudo:tee /etc/udev/rules.d/99-myconfig-handy.rules' "$handy_test_log" \
+        || myconfig_fail "Handy module did not use its named udev file"
+    grep -Fxq 'sudo:usermod -aG input,uinput '"$(id -un)" "$handy_test_log" \
+        || myconfig_fail "Handy module did not grant both required input groups"
+    grep -Fxq 'systemctl:--user enable myconfig-handy.service' "$handy_test_log" \
+        || myconfig_fail "Handy module did not enable its user service"
+    grep -Fxq 'systemctl:--user stop myconfig-handy.service' "$handy_test_log" \
+        || myconfig_fail "Handy module ran before keyboard group membership became active"
+
+    MYCONFIG_PROFILE=arch-wsl
+    if HOME="$handy_test_home" module_handy >/dev/null 2>&1; then
+        myconfig_fail "Handy module accepted a non-CachyOS profile"
     fi
 )
 
@@ -730,6 +832,8 @@ ubuntu_profile="$(
     || myconfig_fail "CachyOS profile does not include Kanata"
 [[ "$cachyos_profile" == *module_kanata_kde* ]] \
     || myconfig_fail "CachyOS profile does not include the Kanata KDE tray"
+[[ "$cachyos_profile" == *module_handy* ]] \
+    || myconfig_fail "CachyOS profile does not include Handy"
 [[ "$arch_wsl_profile" != *module_axidev_osk* ]] \
     || myconfig_fail "Arch WSL profile includes Axidev OSK"
 [[ "$arch_wsl_profile" != *module_ghostty* ]] \
@@ -740,6 +844,8 @@ ubuntu_profile="$(
     || myconfig_fail "Arch WSL profile includes Kanata"
 [[ "$arch_wsl_profile" != *module_kanata_kde* ]] \
     || myconfig_fail "Arch WSL profile includes the Kanata KDE tray"
+[[ "$arch_wsl_profile" != *module_handy* ]] \
+    || myconfig_fail "Arch WSL profile includes Handy"
 [[ "$ubuntu_profile" != *module_axidev_osk* ]] \
     || myconfig_fail "Ubuntu Server profile includes Axidev OSK"
 [[ "$ubuntu_profile" != *module_ghostty* ]] \
@@ -750,6 +856,8 @@ ubuntu_profile="$(
     || myconfig_fail "Ubuntu Server profile includes Kanata"
 [[ "$ubuntu_profile" != *module_kanata_kde* ]] \
     || myconfig_fail "Ubuntu Server profile includes the Kanata KDE tray"
+[[ "$ubuntu_profile" != *module_handy* ]] \
+    || myconfig_fail "Ubuntu Server profile includes Handy"
 
 module_source="$(declare -f module_axidev_osk)"
 [[ "$module_source" == *'/usr/local/sbin/axidev-osk-install'* ]] \
@@ -776,6 +884,8 @@ grep -Fq 'Black & Pink panels and application dock for KDE Plasma 6.7 through 6.
     || myconfig_fail "CachyOS inventory omitted KDE Plasma configuration"
 grep -Fq 'Kanata keyboard remapping with a KDE tray profile selector' "$HOME/environment.md" \
     || myconfig_fail "CachyOS inventory omitted Kanata"
+grep -Fq 'Handy offline push-to-talk dictation on either-side Ctrl+Shift' "$HOME/environment.md" \
+    || myconfig_fail "CachyOS inventory omitted Handy"
 
 MYCONFIG_PROFILE=arch-wsl
 write_environment_inventory
@@ -790,6 +900,9 @@ if grep -Fq 'KDE Plasma' "$HOME/environment.md"; then
 fi
 if grep -Fq 'Kanata' "$HOME/environment.md"; then
     myconfig_fail "Arch WSL inventory included Kanata"
+fi
+if grep -Fq 'Handy' "$HOME/environment.md"; then
+    myconfig_fail "Arch WSL inventory included Handy"
 fi
 
 paru_test_root="$TEST_HOME/paru-bootstrap"

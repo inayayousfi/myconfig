@@ -69,6 +69,7 @@ EOF
 - **Terminal emulator**: Ghostty, with Kitty, Alacritty, WezTerm, and Konsole removed.
 - **On-screen keyboard**: Axidev OSK with desktop and login-screen startup.
 - **Keyboard remapping**: Kanata keyboard remapping with a KDE tray profile selector.
+- **Dictation**: Handy offline push-to-talk dictation on either-side Ctrl+Shift.
 - **KDE Plasma**: Black & Pink panels and application dock for KDE Plasma 6.7 through 6.x.
 EOF
     fi

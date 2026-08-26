@@ -19,6 +19,7 @@ export MYCONFIG_REPO_ROOT MYCONFIG_PROFILE MYCONFIG_ADAPTER
 
 source "$LINUX_DIR/lib/common.sh"
 source "$LINUX_DIR/lib/packages.sh"
+source "$LINUX_DIR/lib/input-access.sh"
 source "$LINUX_DIR/adapters/$MYCONFIG_ADAPTER.sh"
 
 require_function adapter_supports_source
@@ -28,7 +29,7 @@ require_function adapter_remove_specs
 
 source "$LINUX_DIR/registry/packages.sh"
 
-for module in base ssh cli runtimes zsh neovim terminal-tools ghostty axidev-osk kanata kanata-kde tailscale agents dotfiles kde-plasma authentication; do
+for module in base ssh cli runtimes zsh neovim terminal-tools ghostty axidev-osk kanata kanata-kde handy tailscale agents dotfiles kde-plasma authentication; do
     source "$LINUX_DIR/modules/$module.sh"
 done
 

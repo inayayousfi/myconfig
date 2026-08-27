@@ -96,6 +96,7 @@ const upgrade = runLayout([staleDock], "2");
 assert.equal(staleDock.removed, true, "stale dock was not replaced");
 const replacementTop = upgrade.created.find(panel => panel.readConfig("myconfigRole", "") === "top");
 assert.ok(replacementTop, "replacement top panel was not created");
+assert.equal(replacementTop.height, 34, "replacement top panel has the wrong height");
 assert.deepEqual(
     replacementTop.widgets().map(widget => widget.type),
     [
@@ -111,6 +112,7 @@ assert.deepEqual(
 );
 const replacementDock = upgrade.created.find(panel => panel.readConfig("myconfigRole", "") === "dock");
 assert.ok(replacementDock, "replacement dock was not created");
+assert.equal(replacementDock.height, 47, "replacement dock has the wrong height");
 assert.equal(replacementDock.lengthMode, "fit", "replacement dock does not fit its content");
 const replacementTasks = replacementDock.widgets().find(widget => widget.type === "org.kde.plasma.icontasks");
 assert.deepEqual(

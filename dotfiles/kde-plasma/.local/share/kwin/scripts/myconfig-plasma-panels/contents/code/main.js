@@ -253,6 +253,19 @@ function screensChanged() {
     layoutRetryTimer.start();
 }
 
+function closeOverviewAfterDesktopSwitch() {
+    if (workspace.isEffectActive("overview")) {
+        callDBus(
+            "org.kde.kglobalaccel",
+            "/component/kwin",
+            "org.kde.kglobalaccel.Component",
+            "invokeShortcut",
+            "Overview",
+        );
+    }
+}
+
 workspace.cursorPosChanged.connect(updatePointerState);
 workspace.screensChanged.connect(screensChanged);
 workspace.screenOrderChanged.connect(screensChanged);
+workspace.currentDesktopChanged.connect(closeOverviewAfterDesktopSwitch);

@@ -69,12 +69,11 @@ if (missingWidgetTypes.length > 0) {
     }
 
     function configureTopPanel(panel, screen) {
-        const geometry = screenGeometry(screen);
         panel.screen = screen;
         panel.location = "top";
         panel.alignment = "center";
         panel.lengthMode = "fill";
-        panel.height = Math.round(geometry.height * 0.045);
+        panel.height = 34;
         panel.hiding = "autohide";
         panel.floating = false;
         panel.opacity = "adaptive";
@@ -82,12 +81,11 @@ if (missingWidgetTypes.length > 0) {
     }
 
     function configureDock(panel, screen) {
-        const geometry = screenGeometry(screen);
         panel.screen = screen;
         panel.location = "bottom";
         panel.alignment = "center";
         panel.lengthMode = "fit";
-        panel.height = Math.round(geometry.height * 0.06);
+        panel.height = 47;
         panel.hiding = "autohide";
         panel.floating = true;
         panel.opacity = "adaptive";

@@ -28,6 +28,27 @@ configure_kde_plasma_fonts() {
     kwriteconfig6 --file kdeglobals --group WM --key activeFont "$font"
 }
 
+configure_kde_plasma_desktops() {
+    kwriteconfig6 --file kwinrc --group Windows --key PerOutputVirtualDesktops true
+    kwriteconfig6 --file kwinrc --group Windows --key ElectricBorderPushbackPixels 0
+    kwriteconfig6 --file kwinrc --group EdgeBarrier --key CornerBarrier false
+    kwriteconfig6 --file kwinrc --group EdgeBarrier --key EdgeBarrier 0
+    kwriteconfig6 --file kwinrc --group Effect-overview --key BorderActivate 9
+}
+
+configure_kde_plasma_input() {
+    local pointer_group=(--group Libinput --group Defaults --group Pointer)
+    local touchpad_group=(--group Libinput --group Defaults --group Touchpad)
+
+    kwriteconfig6 --file kcminputrc "${pointer_group[@]}" --key PointerAcceleration 1.000
+    kwriteconfig6 --file kcminputrc "${pointer_group[@]}" --key PointerAccelerationProfile 1
+    kwriteconfig6 --file kcminputrc "${touchpad_group[@]}" --key PointerAcceleration 1.000
+    kwriteconfig6 --file kcminputrc "${touchpad_group[@]}" --key PointerAccelerationProfile 1
+    kwriteconfig6 --file kcminputrc "${touchpad_group[@]}" --key NaturalScroll true
+    kwriteconfig6 --file kcminputrc "${touchpad_group[@]}" --key TapDragLock true
+    kwriteconfig6 --file kcminputrc "${touchpad_group[@]}" --key ClickMethod 2
+}
+
 module_kde_plasma_validate() {
     [ "$MYCONFIG_PROFILE" = cachyos ] || {
         myconfig_fail "KDE Plasma configuration is only supported by the CachyOS profile"
@@ -84,7 +105,8 @@ module_kde_plasma() {
     QT_QPA_PLATFORM=offscreen plasma-apply-colorscheme BlackPink
     QT_QPA_PLATFORM=offscreen plasma-apply-desktoptheme blacknpink
     configure_kde_plasma_fonts
-    kwriteconfig6 --file kwinrc --group Windows --key ElectricBorderPushbackPixels 0
+    configure_kde_plasma_desktops
+    configure_kde_plasma_input
     kwriteconfig6 --file kwinrc --group Plugins --key myconfig-plasma-panelsEnabled true
 
     export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"

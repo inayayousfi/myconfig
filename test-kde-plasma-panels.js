@@ -54,15 +54,21 @@ const right = output("right", 1920, 0, 1024, 768);
 const cursorPosChanged = new Signal();
 const screensChanged = new Signal();
 const screenOrderChanged = new Signal();
+const currentDesktopChanged = new Signal();
+let overviewActive = false;
 const workspace = {
     cursorPos: {x: 500, y: 500},
     screens: [left, right],
     cursorPosChanged,
     screensChanged,
     screenOrderChanged,
+    currentDesktopChanged,
     windows: [],
     windowList() {
         return this.windows;
+    },
+    isEffectActive(effect) {
+        return effect === "overview" && overviewActive;
     },
 };
 
@@ -161,6 +167,21 @@ assert.equal(
     systemdCallsBefore + 2,
     "display change did not retry layout reconciliation",
 );
+
+const effectCallsBefore = calls.filter(call => call.service === "org.kde.kglobalaccel").length;
+currentDesktopChanged.emit();
+assert.equal(
+    calls.filter(call => call.service === "org.kde.kglobalaccel").length,
+    effectCallsBefore,
+    "desktop change toggled an inactive Overview",
+);
+overviewActive = true;
+currentDesktopChanged.emit();
+assert.deepEqual(calls.at(-1), {
+    service: "org.kde.kglobalaccel",
+    method: "invokeShortcut",
+    args: ["Overview"],
+});
 
 plasmaResponds = false;
 workspace.cursorPos = {x: 2000, y: 4};

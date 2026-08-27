@@ -465,6 +465,28 @@ grep -Fxq 'theme:blacknpink' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not apply its desktop theme headlessly"
 grep -Fxq 'config:--file kwinrc --group Windows --key ElectricBorderPushbackPixels 0' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not remove KWin edge pushback"
+grep -Fxq 'config:--file kwinrc --group EdgeBarrier --key CornerBarrier false' "$plasma_module_log" \
+    || myconfig_fail "KDE Plasma module did not disable KWin corner barriers"
+grep -Fxq 'config:--file kwinrc --group EdgeBarrier --key EdgeBarrier 0' "$plasma_module_log" \
+    || myconfig_fail "KDE Plasma module did not disable KWin edge barriers"
+grep -Fxq 'config:--file kwinrc --group Effect-overview --key BorderActivate 9' "$plasma_module_log" \
+    || myconfig_fail "KDE Plasma module did not disable the Overview hot corner"
+grep -Fxq 'config:--file kwinrc --group Windows --key PerOutputVirtualDesktops true' "$plasma_module_log" \
+    || myconfig_fail "KDE Plasma module did not isolate virtual desktops per screen"
+grep -Fxq 'config:--file kcminputrc --group Libinput --group Defaults --group Pointer --key PointerAcceleration 1.000' "$plasma_module_log" \
+    || myconfig_fail "KDE Plasma module did not configure pointer sensitivity"
+grep -Fxq 'config:--file kcminputrc --group Libinput --group Defaults --group Pointer --key PointerAccelerationProfile 1' "$plasma_module_log" \
+    || myconfig_fail "KDE Plasma module did not configure flat pointer acceleration"
+grep -Fxq 'config:--file kcminputrc --group Libinput --group Defaults --group Touchpad --key PointerAcceleration 1.000' "$plasma_module_log" \
+    || myconfig_fail "KDE Plasma module did not configure touchpad sensitivity"
+grep -Fxq 'config:--file kcminputrc --group Libinput --group Defaults --group Touchpad --key PointerAccelerationProfile 1' "$plasma_module_log" \
+    || myconfig_fail "KDE Plasma module did not configure flat touchpad acceleration"
+grep -Fxq 'config:--file kcminputrc --group Libinput --group Defaults --group Touchpad --key NaturalScroll true' "$plasma_module_log" \
+    || myconfig_fail "KDE Plasma module did not enable natural touchpad scrolling"
+grep -Fxq 'config:--file kcminputrc --group Libinput --group Defaults --group Touchpad --key TapDragLock true' "$plasma_module_log" \
+    || myconfig_fail "KDE Plasma module did not enable touchpad drag lock"
+grep -Fxq 'config:--file kcminputrc --group Libinput --group Defaults --group Touchpad --key ClickMethod 2' "$plasma_module_log" \
+    || myconfig_fail "KDE Plasma module did not configure touchpad clickfinger mode"
 grep -Fxq 'config:--file kwinrc --group Plugins --key myconfig-plasma-panelsEnabled true' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not enable MyConfig Plasma Panels"
 grep -Fxq 'systemctl:--user daemon-reload' "$plasma_module_log" \

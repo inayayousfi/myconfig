@@ -497,17 +497,22 @@ sed 's|^ExecStart=.*|ExecStart=/bin/true|' \
 systemd-analyze verify \
     "$kanata_unit_test_root/myconfig-kanata.service" \
     "$kanata_unit_test_root/myconfig-kanata-tray.service"
-grep -Fxq 'Requires=myconfig-kanata.service' \
+grep -Fxq 'Wants=myconfig-kanata.service' \
     "$REPO_ROOT/dotfiles/kanata-kde/.config/systemd/user/myconfig-kanata-tray.service" \
-    || myconfig_fail "Kanata tray does not require the engine"
+    || myconfig_fail "Kanata tray does not start the engine"
+grep -Fxq 'After=myconfig-handy.service' \
+    "$REPO_ROOT/dotfiles/kanata/.config/systemd/user/myconfig-kanata.service" \
+    || myconfig_fail "Kanata engine does not wait for Handy input devices"
+grep -Fxq 'RestartMode=direct' \
+    "$REPO_ROOT/dotfiles/kanata/.config/systemd/user/myconfig-kanata.service" \
+    || myconfig_fail "Kanata failures can still tear down the tray before restart"
+if grep -Fq 'myconfig-kanata' \
+    "$REPO_ROOT/dotfiles/handy/.config/systemd/user/myconfig-handy.service"; then
+    myconfig_fail "Handy retained the reversed Kanata startup ordering"
+fi
 grep -Fxq 'ExecStopPost=-/usr/bin/systemctl --user stop myconfig-kanata.service' \
     "$REPO_ROOT/dotfiles/kanata-kde/.config/systemd/user/myconfig-kanata-tray.service" \
     || myconfig_fail "stopping the Kanata tray does not stop the engine"
-if grep -Fq 'Wants=myconfig-kanata.service' \
-    "$REPO_ROOT/dotfiles/kanata-kde/.config/systemd/user/myconfig-kanata-tray.service"; then
-    myconfig_fail "Kanata tray retained the unsafe first-install Wants dependency"
-fi
-
 (
     kanata_test_root="$TEST_HOME/kanata-module"
     kanata_test_home="$kanata_test_root/home"

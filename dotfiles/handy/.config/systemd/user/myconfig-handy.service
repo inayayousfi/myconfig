@@ -1,7 +1,7 @@
 [Unit]
 Description=MyConfig Handy push-to-talk dictation
 Documentation=https://github.com/cjpais/Handy
-After=graphical-session.target myconfig-kanata-tray.service
+After=graphical-session.target
 PartOf=graphical-session.target
 
 [Service]

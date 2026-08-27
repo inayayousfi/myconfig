@@ -1,7 +1,7 @@
 [Unit]
 Description=MyConfig Kanata KDE tray
 After=graphical-session.target myconfig-kanata.service
-Requires=myconfig-kanata.service
+Wants=myconfig-kanata.service
 PartOf=graphical-session.target
 
 [Service]

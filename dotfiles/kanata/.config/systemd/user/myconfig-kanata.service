@@ -1,11 +1,13 @@
 [Unit]
 Description=MyConfig Kanata keyboard remapper
 Documentation=https://github.com/jtroo/kanata
+After=myconfig-handy.service
 
 [Service]
 Type=simple
 ExecStart=/usr/bin/kanata --cfg %h/.config/kanata/config.kbd --port 127.0.0.1:5829 --no-wait
 Restart=on-failure
+RestartMode=direct
 RestartSec=3
 
 [Install]

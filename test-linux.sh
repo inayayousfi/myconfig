@@ -515,6 +515,7 @@ fi
     mkdir -p \
         "$kanata_test_home/.config/kanata" \
         "$kanata_test_home/.config/systemd/user" \
+        "$kanata_test_home/.config/systemd/user/default.target.wants" \
         "$kanata_test_home/.local/bin"
     cp "$REPO_ROOT/dotfiles/kanata/.config/kanata/config.kbd" \
         "$kanata_test_home/.config/kanata/config.kbd"
@@ -524,6 +525,8 @@ fi
         "$kanata_test_home/.local/bin/myconfig-kanata-tray"
     cp "$REPO_ROOT/dotfiles/kanata-kde/.config/systemd/user/myconfig-kanata-tray.service" \
         "$kanata_test_home/.config/systemd/user/myconfig-kanata-tray.service"
+    ln -s ../myconfig-kanata.service \
+        "$kanata_test_home/.config/systemd/user/default.target.wants/myconfig-kanata.service"
     chmod +x "$kanata_test_home/.local/bin/myconfig-kanata-tray"
     : >"$kanata_test_log"
 
@@ -597,8 +600,10 @@ fi
         || myconfig_fail "Kanata KDE module did not configure the Overview shortcut"
     grep -Fxq 'systemctl:--user enable myconfig-kanata-tray.service' "$kanata_test_log" \
         || myconfig_fail "Kanata KDE module did not enable its tray service"
-    grep -Fxq 'systemctl:--user disable myconfig-kanata.service' "$kanata_test_log" \
+    [ ! -e "$kanata_test_home/.config/systemd/user/default.target.wants/myconfig-kanata.service" ] \
         || myconfig_fail "Kanata KDE module left the engine independently enabled"
+    [ -f "$kanata_test_home/.config/systemd/user/myconfig-kanata.service" ] \
+        || myconfig_fail "Kanata KDE module removed the stowed engine service"
     grep -Fxq 'systemctl:--user stop myconfig-kanata.service' "$kanata_test_log" \
         || myconfig_fail "Kanata KDE module left the engine running without its tray"
 

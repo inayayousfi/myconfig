@@ -16,6 +16,7 @@ module_kanata_kde() {
 
     local tray="$HOME/.local/bin/myconfig-kanata-tray"
     local service="$HOME/.config/systemd/user/myconfig-kanata-tray.service"
+    local engine_enablement="$HOME/.config/systemd/user/default.target.wants/myconfig-kanata.service"
     [ -x "$tray" ] || myconfig_fail "Kanata KDE tray was not stowed as an executable"
     [ -f "$service" ] || myconfig_fail "Kanata KDE tray service was not stowed"
     python -m py_compile "$tray"
@@ -26,9 +27,9 @@ module_kanata_kde() {
         --key Overview \
         'Meta+W,Meta+W,Toggle Overview'
 
-    systemctl --user daemon-reload
-    systemctl --user disable myconfig-kanata.service
+    rm -f "$engine_enablement"
     systemctl --user enable myconfig-kanata-tray.service
+    systemctl --user daemon-reload
     if ! user_has_active_group input || ! user_has_active_group uinput; then
         systemctl --user stop myconfig-kanata.service
         myconfig_log "Log out and back in before the Kanata engine and tray start together"

@@ -636,8 +636,8 @@ handy_settings="$handy_test_home/.config/com.pais.handy/settings_store.json"
     || myconfig_fail "Handy settings did not select the direct keyboard backend"
 [ "$(jq -r '.settings.push_to_talk' "$handy_settings")" = true ] \
     || myconfig_fail "Handy settings did not enable push-to-talk"
-[ "$(jq -r '.settings.bindings.transcribe.current_binding' "$handy_settings")" = ctrl+shift ] \
-    || myconfig_fail "Handy settings did not configure Ctrl+Shift"
+[ "$(jq -r '.settings.bindings.transcribe.current_binding' "$handy_settings")" = ctrl+space ] \
+    || myconfig_fail "Handy settings did not configure Ctrl+Space"
 [ "$(stat -c %a "$handy_settings")" = 600 ] \
     || myconfig_fail "Handy settings are not private"
 
@@ -889,7 +889,7 @@ grep -Fq 'Black & Pink panels and application dock for KDE Plasma 6.7 through 6.
     || myconfig_fail "CachyOS inventory omitted KDE Plasma configuration"
 grep -Fq 'Kanata keyboard remapping with a KDE tray profile selector' "$HOME/environment.md" \
     || myconfig_fail "CachyOS inventory omitted Kanata"
-grep -Fq 'Handy offline push-to-talk dictation on either-side Ctrl+Shift' "$HOME/environment.md" \
+grep -Fq 'Handy offline push-to-talk dictation on Ctrl+Space' "$HOME/environment.md" \
     || myconfig_fail "CachyOS inventory omitted Handy"
 
 MYCONFIG_PROFILE=arch-wsl

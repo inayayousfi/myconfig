@@ -20,10 +20,10 @@ filter='
             "name": "Transcribe",
             "description": "Converts your speech into text.",
             "default_binding": "ctrl+space",
-            "current_binding": "ctrl+shift"
+            "current_binding": "ctrl+space"
         } * (.settings.bindings.transcribe // {}) * {
             "id": "transcribe",
-            "current_binding": "ctrl+shift"
+            "current_binding": "ctrl+space"
         }
     )
 '

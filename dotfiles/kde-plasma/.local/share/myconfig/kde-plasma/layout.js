@@ -56,6 +56,12 @@ if (missingWidgetTypes.length > 0) {
         panel.addWidget("myconfig.power");
     }
 
+    function configureTaskManager(tasks) {
+        tasks.currentConfigGroup = ["General"];
+        tasks.writeConfig("showOnlyCurrentDesktop", false);
+        tasks.writeConfig("fill", false);
+    }
+
     function addDockWidgets(panel, launchers = []) {
         panel.addWidget("org.kde.plasma.kickoff");
 
@@ -63,9 +69,8 @@ if (missingWidgetTypes.length > 0) {
         tasks.currentConfigGroup = ["General"];
         tasks.writeConfig("launchers", launchers);
         tasks.writeConfig("showOnlyCurrentScreen", true);
-        tasks.writeConfig("showOnlyCurrentDesktop", true);
         tasks.writeConfig("showOnlyCurrentActivity", true);
-        tasks.writeConfig("fill", false);
+        configureTaskManager(tasks);
     }
 
     function configureTopPanel(panel, screen) {
@@ -91,8 +96,7 @@ if (missingWidgetTypes.length > 0) {
         panel.opacity = "adaptive";
         panel.widgets().forEach(widget => {
             if (widget.type === "org.kde.plasma.icontasks") {
-                widget.currentConfigGroup = ["General"];
-                widget.writeConfig("fill", false);
+                configureTaskManager(widget);
             }
         });
         markPanel(panel, "dock", screen);
@@ -108,6 +112,13 @@ if (missingWidgetTypes.length > 0) {
     managed.forEach(panel => {
         const role = panelRole(panel);
         const screen = panelScreen(panel);
+        if (role === "dock") {
+            panel.widgets().forEach(widget => {
+                if (widget.type === "org.kde.plasma.icontasks") {
+                    configureTaskManager(widget);
+                }
+            });
+        }
         if (screen < 0 || screen >= screenCount) {
             return;
         }

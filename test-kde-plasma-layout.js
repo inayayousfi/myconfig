@@ -120,6 +120,11 @@ assert.deepEqual(
     ["applications:org.kde.dolphin.desktop"],
     "replacement dock lost its manual launchers",
 );
+assert.equal(
+    replacementTasks.readConfig("showOnlyCurrentDesktop", true),
+    false,
+    "replacement task manager hides windows from other virtual desktops",
+);
 assert.equal(replacementTasks.readConfig("fill", true), false, "replacement task manager fills the dock");
 assert.match(upgrade.output.at(-1), /MYCONFIG_STATUS=ok:screens=1/);
 
@@ -158,12 +163,18 @@ managedDock.writeConfig("myconfigManaged", "true");
 managedDock.writeConfig("myconfigRole", "dock");
 managedDock.writeConfig("myconfigScreen", 0);
 managedDock.writeConfig("myconfigLayoutVersion", "2");
-managedDock.addWidget("org.kde.plasma.icontasks");
+const managedTasks = managedDock.addWidget("org.kde.plasma.icontasks");
+managedTasks.writeConfig("showOnlyCurrentDesktop", true);
 
 runLayout([unrelated, managedTop, managedDock], "2", {firstRun: true});
 assert.equal(unrelated.removed, false, "missing layout state deleted an unrelated panel");
 assert.equal(managedTop.removed, false, "missing layout state replaced an existing managed top panel");
 assert.equal(managedDock.removed, false, "missing layout state replaced an existing managed dock");
+assert.equal(
+    managedTasks.readConfig("showOnlyCurrentDesktop", true),
+    false,
+    "retained task manager hides windows from other virtual desktops",
+);
 
 const outdatedDisconnectedDock = new Panel();
 outdatedDisconnectedDock.screen = -1;
@@ -173,6 +184,7 @@ outdatedDisconnectedDock.writeConfig("myconfigScreen", 1);
 outdatedDisconnectedDock.writeConfig("myconfigLayoutVersion", "1");
 const outdatedDisconnectedTasks = outdatedDisconnectedDock.addWidget("org.kde.plasma.icontasks");
 outdatedDisconnectedTasks.writeConfig("launchers", ["applications:org.kde.kate.desktop"]);
+outdatedDisconnectedTasks.writeConfig("showOnlyCurrentDesktop", true);
 
 runLayout([outdatedDisconnectedDock], "2");
 assert.equal(outdatedDisconnectedDock.removed, false, "outdated dock for a disconnected display was removed");
@@ -180,6 +192,11 @@ assert.deepEqual(
     outdatedDisconnectedTasks.readConfig("launchers", []),
     ["applications:org.kde.kate.desktop"],
     "outdated disconnected dock lost its launchers",
+);
+assert.equal(
+    outdatedDisconnectedTasks.readConfig("showOnlyCurrentDesktop", true),
+    false,
+    "disconnected task manager hides windows from other virtual desktops",
 );
 
 console.log("KDE Plasma layout tests passed.");

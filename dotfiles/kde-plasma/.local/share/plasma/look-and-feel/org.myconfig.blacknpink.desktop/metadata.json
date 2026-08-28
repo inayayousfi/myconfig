@@ -1,0 +1,19 @@
+{
+  "KPackageStructure": "Plasma/LookAndFeel",
+  "KPlugin": {
+    "Authors": [
+      {
+        "Name": "MyConfig"
+      }
+    ],
+    "Category": "",
+    "Description": "Black & Pink MyConfig desktop appearance",
+    "EnabledByDefault": true,
+    "Id": "org.myconfig.blacknpink.desktop",
+    "License": "LGPL-2.1-or-later",
+    "Name": "Black & Pink",
+    "Version": "1.0",
+    "Website": ""
+  },
+  "X-Plasma-APIVersion": "2"
+}

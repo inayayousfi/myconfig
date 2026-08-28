@@ -78,9 +78,8 @@ module_kde_plasma() {
     myconfig_log "Configuring KDE Plasma panels and Black & Pink appearance"
     install_package_ids iosevka_font desktop_file_utils libinput
 
-    require_command plasma-apply-colorscheme
     require_command plasma-apply-cursortheme
-    require_command plasma-apply-desktoptheme
+    require_command plasma-apply-lookandfeel
     require_command kwriteconfig6
     require_command qdbus6
     require_command fc-match
@@ -103,6 +102,10 @@ module_kde_plasma() {
         || myconfig_fail "Black & Pink Plasma theme metadata was not stowed"
     [ -f "$HOME/.local/share/plasma/desktoptheme/blacknpink/widgets/panel-background.svg" ] \
         || myconfig_fail "Black & Pink Plasma panel background was not stowed"
+    [ -f "$HOME/.local/share/plasma/look-and-feel/org.myconfig.blacknpink.desktop/metadata.json" ] \
+        || myconfig_fail "Black & Pink global theme metadata was not stowed"
+    [ -f "$HOME/.local/share/plasma/look-and-feel/org.myconfig.blacknpink.desktop/contents/defaults" ] \
+        || myconfig_fail "Black & Pink global theme defaults were not stowed"
     local widget
     for widget in overview session power; do
         [ -f "$HOME/.local/share/plasma/plasmoids/myconfig.$widget/metadata.json" ] \
@@ -120,8 +123,7 @@ module_kde_plasma() {
     fc-match "Iosevka Nerd Font" | grep -Fq 'Iosevka' \
         || myconfig_fail "Iosevka Nerd Font is not available after installation"
 
-    QT_QPA_PLATFORM=offscreen plasma-apply-colorscheme BlackPink
-    QT_QPA_PLATFORM=offscreen plasma-apply-desktoptheme blacknpink
+    QT_QPA_PLATFORM=offscreen plasma-apply-lookandfeel --apply org.myconfig.blacknpink.desktop
     configure_kde_plasma_fonts
     configure_kde_plasma_desktops
     configure_kde_plasma_input

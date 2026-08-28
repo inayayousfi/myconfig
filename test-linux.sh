@@ -336,6 +336,7 @@ if (session.includes("ToolTip") || power.includes("ToolTip")) process.exit(1);
 if (!session.includes("popupType: QQC2.Popup.Window") || !power.includes("popupType: QQC2.Popup.Window")) process.exit(1);
 ' "$plasma_plasmoid_root"
 plasma_theme_root="$REPO_ROOT/dotfiles/kde-plasma/.local/share/plasma/desktoptheme/blacknpink"
+plasma_global_theme_root="$REPO_ROOT/dotfiles/kde-plasma/.local/share/plasma/look-and-feel/org.myconfig.blacknpink.desktop"
 cursor_theme_root="$REPO_ROOT/linux/assets/cursors/blacknpink-crosshair"
 refind_asset_root="$REPO_ROOT/linux/assets/refind"
 refind_global_config="$refind_asset_root/global.conf"
@@ -379,6 +380,14 @@ node -e 'const metadata = JSON.parse(require("node:fs").readFileSync(process.arg
     "$plasma_theme_root/metadata.json"
 grep -Fxq 'FallbackTheme=default' "$plasma_theme_root/plasmarc" \
     || myconfig_fail "Black & Pink Plasma theme does not inherit Breeze"
+node -e 'const metadata = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")); if (metadata.KPackageStructure !== "Plasma/LookAndFeel" || metadata.KPlugin.Id !== "org.myconfig.blacknpink.desktop") process.exit(1)' \
+    "$plasma_global_theme_root/metadata.json"
+grep -Fxq 'ColorScheme=BlackPink' "$plasma_global_theme_root/contents/defaults" \
+    || myconfig_fail "Black & Pink global theme does not select its color scheme"
+grep -Fxq 'name=blacknpink' "$plasma_global_theme_root/contents/defaults" \
+    || myconfig_fail "Black & Pink global theme does not select its Plasma theme"
+grep -Fxq 'cursorTheme=blacknpink-crosshair' "$plasma_global_theme_root/contents/defaults" \
+    || myconfig_fail "Black & Pink global theme does not select its cursor theme"
 grep -Fq 'id="thick-hint-right-margin" x="95" y="-56" width="4" height="4"' \
     "$plasma_theme_root/widgets/panel-background.svg" \
     || myconfig_fail "Black & Pink Plasma theme does not set a 4-pixel floating-panel trailing margin"
@@ -458,6 +467,7 @@ mkdir -p \
     "$plasma_layout_home/.config/systemd/user" \
     "$plasma_layout_home/.local/share/color-schemes" \
     "$plasma_layout_home/.local/share/plasma/desktoptheme/blacknpink/widgets" \
+    "$plasma_layout_home/.local/share/plasma/look-and-feel" \
     "$plasma_layout_home/.local/share/plasma/plasmoids" \
     "$plasma_layout_home/.local/share/kwin/scripts/myconfig-plasma-panels/contents/code"
 cp "$REPO_ROOT/dotfiles/kde-plasma/.config/autostart/myconfig-kde-plasma-layout.desktop" \
@@ -470,6 +480,8 @@ cp "$plasma_theme_root/plasmarc" \
     "$plasma_layout_home/.local/share/plasma/desktoptheme/blacknpink/plasmarc"
 cp "$plasma_theme_root/widgets/panel-background.svg" \
     "$plasma_layout_home/.local/share/plasma/desktoptheme/blacknpink/widgets/panel-background.svg"
+cp -a "$plasma_global_theme_root" \
+    "$plasma_layout_home/.local/share/plasma/look-and-feel/org.myconfig.blacknpink.desktop"
 for widget in overview session power; do
     cp -a "$plasma_plasmoid_root/myconfig.$widget" \
         "$plasma_layout_home/.local/share/plasma/plasmoids/myconfig.$widget"
@@ -493,17 +505,13 @@ pacman() {
     [ "$*" = '-Q plasma-workspace' ] || return 1
     printf 'plasma-workspace 6.7.4-3.1\n'
 }
-plasma-apply-colorscheme() {
-    [ "${QT_QPA_PLATFORM:-}" = offscreen ] || return 1
-    printf 'colors:%s\n' "$*" >>"$plasma_module_log"
-}
 plasma-apply-cursortheme() {
     [ "${QT_QPA_PLATFORM:-}" = offscreen ] || return 1
     printf 'cursors:%s\n' "$*" >>"$plasma_module_log"
 }
-plasma-apply-desktoptheme() {
+plasma-apply-lookandfeel() {
     [ "${QT_QPA_PLATFORM:-}" = offscreen ] || return 1
-    printf 'theme:%s\n' "$*" >>"$plasma_module_log"
+    printf 'global-theme:%s\n' "$*" >>"$plasma_module_log"
 }
 kwriteconfig6() {
     printf 'config:%s\n' "$*" >>"$plasma_module_log"
@@ -536,12 +544,10 @@ grep -Fxq 'packages:iosevka_font desktop_file_utils libinput' "$plasma_module_lo
 grep -Fxq "sudo:install -Dm644 $pointer_plugin /etc/libinput/plugins/90-myconfig-pointer-sensitivity.lua" \
     "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not install the libinput plugin"
-grep -Fxq 'colors:BlackPink' "$plasma_module_log" \
-    || myconfig_fail "KDE Plasma module did not apply its color scheme headlessly"
+grep -Fxq 'global-theme:--apply org.myconfig.blacknpink.desktop' "$plasma_module_log" \
+    || myconfig_fail "KDE Plasma module did not apply its global theme headlessly"
 grep -Fxq 'cursors:--size 32 blacknpink-crosshair' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not apply its cursor theme headlessly"
-grep -Fxq 'theme:blacknpink' "$plasma_module_log" \
-    || myconfig_fail "KDE Plasma module did not apply its desktop theme headlessly"
 grep -Fxq 'config:--file kwinrc --group Windows --key ElectricBorderPushbackPixels 0' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not remove KWin edge pushback"
 grep -Fxq 'config:--file kwinrc --group EdgeBarrier --key CornerBarrier false' "$plasma_module_log" \

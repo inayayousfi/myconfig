@@ -1,6 +1,6 @@
 libinput:register({1})
 
-local multiplier = 2
+local multiplier = 4
 
 libinput:connect("new-evdev-device", function(device)
     local usages = device:usages()

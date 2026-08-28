@@ -295,9 +295,9 @@ local device = {
 libinput.callback(device)
 local frame = { { usage = evdev.REL_X, value = 1 }, { usage = evdev.REL_Y, value = -1 } }
 assert(handler(device, frame) == frame)
-assert(frame[1].value == 2 and frame[2].value == -2)
+assert(frame[1].value == 4 and frame[2].value == -4)
 '
-grep -Fq 'local multiplier = 2' "$pointer_plugin" \
+grep -Fq 'local multiplier = 4' "$pointer_plugin" \
     || myconfig_fail "libinput pointer-sensitivity multiplier changed"
 grep -Fq '/etc/libinput/plugins/90-myconfig-pointer-sensitivity.lua' \
     "$REPO_ROOT/linux/modules/kde-plasma.sh" \

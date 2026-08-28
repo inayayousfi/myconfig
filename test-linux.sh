@@ -337,25 +337,33 @@ if (!session.includes("popupType: QQC2.Popup.Window") || !power.includes("popupT
 ' "$plasma_plasmoid_root"
 plasma_theme_root="$REPO_ROOT/dotfiles/kde-plasma/.local/share/plasma/desktoptheme/blacknpink"
 cursor_theme_root="$REPO_ROOT/linux/assets/cursors/blacknpink-crosshair"
-refind_theme_root="$REPO_ROOT/linux/assets/refind/blacknpink"
-png_dimensions() {
-    node -e 'const b = require("node:fs").readFileSync(process.argv[1]); process.stdout.write(`${b.readUInt32BE(16)}x${b.readUInt32BE(20)}`)' "$1"
-}
-grep -Fxq 'enable_mouse' "$refind_theme_root/refind.conf" \
-    || myconfig_fail "Black & Pink rEFInd theme does not enable mouse input"
-grep -Fxq 'icons_dir themes/blacknpink/icons' "$refind_theme_root/refind.conf" \
-    || myconfig_fail "Black & Pink rEFInd theme does not use its icon set"
-grep -Fxq 'showtools shutdown,reboot,firmware' "$refind_theme_root/refind.conf" \
-    || myconfig_fail "Black & Pink rEFInd theme includes unexpected utility clutter"
-[ "$(png_dimensions "$refind_theme_root/background.png")" = 1920x1080 ] \
-    || myconfig_fail "Black & Pink rEFInd background has an unexpected size"
-[ "$(png_dimensions "$refind_theme_root/selection-big.png")" = 144x144 ] \
-    || myconfig_fail "Black & Pink rEFInd large selection image has an unexpected size"
-[ "$(png_dimensions "$refind_theme_root/selection-small.png")" = 64x64 ] \
-    || myconfig_fail "Black & Pink rEFInd small selection image has an unexpected size"
-for icon in os_arch os_linux os_win os_win8; do
-    [ "$(png_dimensions "$refind_theme_root/icons/$icon.png")" = 128x128 ] \
-        || myconfig_fail "Black & Pink rEFInd icon $icon has an unexpected size"
+refind_asset_root="$REPO_ROOT/linux/assets/refind"
+refind_global_config="$refind_asset_root/global.conf"
+refind_theme_root="$refind_asset_root/themes/black-pink"
+refind_theme_test_dir="$TEST_HOME/refind-theme"
+if command -v magick >/dev/null 2>&1; then
+    refind_image_tool=magick
+else
+    refind_image_tool=convert
+fi
+grep -Fxq 'enable_mouse true' "$refind_global_config" \
+    || myconfig_fail "rEFInd configuration does not enable mouse input"
+grep -Fxq 'banner themes/black-pink/banner.png' "$refind_theme_root/theme.conf" \
+    || myconfig_fail "Black & Pink rEFInd theme does not use its historical banner"
+grep -Fxq 'hideui hints,label,singleuser,arrows,badges' "$refind_theme_root/theme.conf" \
+    || myconfig_fail "Black & Pink rEFInd theme changed its minimal layout"
+if grep -Eq '^(icons_dir|showtools)[[:space:]]' "$refind_theme_root/theme.conf"; then
+    myconfig_fail "Black & Pink rEFInd theme overrides built-in icons or tools"
+fi
+[ ! -d "$refind_theme_root/icons" ] \
+    || myconfig_fail "Black & Pink rEFInd theme includes custom icons"
+"$refind_theme_root/generate-theme-assets.sh" "$refind_theme_test_dir"
+[ "$("$refind_image_tool" "$refind_theme_test_dir/banner.png" -format '%wx%h|%[pixel:p{0,0}]|%[pixel:p{0,1079}]' info:)" = \
+    '1920x1080|srgb(0,0,0)|srgb(255,78,173)' ] \
+    || myconfig_fail "Black & Pink rEFInd banner changed its historical colors or dimensions"
+for selection in selection_big selection_small; do
+    [ -s "$refind_theme_test_dir/$selection.png" ] \
+        || myconfig_fail "Black & Pink rEFInd theme did not generate $selection"
 done
 grep -Fxq 'Inherits=breeze_cursors' "$cursor_theme_root/index.theme" \
     || myconfig_fail "Black & Pink Crosshair cursor theme does not inherit Breeze"
@@ -953,7 +961,7 @@ ubuntu_profile="$(
 [[ "$arch_wsl_profile" != *module_cursor_theme* ]] \
     || myconfig_fail "Arch WSL profile includes the desktop cursor theme"
 [[ "$arch_wsl_profile" != *module_refind* ]] \
-    || myconfig_fail "Arch WSL profile includes the rEFInd theme"
+    || myconfig_fail "Arch WSL profile includes the rEFInd configuration"
 [[ "$arch_wsl_profile" != *module_kanata* ]] \
     || myconfig_fail "Arch WSL profile includes Kanata"
 [[ "$arch_wsl_profile" != *module_kanata_kde* ]] \
@@ -969,7 +977,7 @@ ubuntu_profile="$(
 [[ "$ubuntu_profile" != *module_cursor_theme* ]] \
     || myconfig_fail "Ubuntu Server profile includes the desktop cursor theme"
 [[ "$ubuntu_profile" != *module_refind* ]] \
-    || myconfig_fail "Ubuntu Server profile includes the rEFInd theme"
+    || myconfig_fail "Ubuntu Server profile includes the rEFInd configuration"
 [[ "$ubuntu_profile" != *module_kanata* ]] \
     || myconfig_fail "Ubuntu Server profile includes Kanata"
 [[ "$ubuntu_profile" != *module_kanata_kde* ]] \

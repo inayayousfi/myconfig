@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-refind_theme_asset() {
-    printf '%s\n' "$MYCONFIG_REPO_ROOT/linux/assets/refind/blacknpink"
+refind_asset_root() {
+    printf '%s\n' "$MYCONFIG_REPO_ROOT/linux/assets/refind"
 }
 
 refind_config_path() {
@@ -20,44 +20,56 @@ refind_config_path() {
 }
 
 module_refind_validate() {
-    local source
-    source="$(refind_theme_asset)"
+    local source theme
+    source="$(refind_asset_root)"
+    theme="$source/themes/black-pink"
 
-    [ -f "$source/refind.conf" ] || myconfig_fail "rEFInd theme configuration was not found"
-    [ -f "$source/background.png" ] || myconfig_fail "rEFInd theme background was not found"
-    [ -f "$source/selection-big.png" ] || myconfig_fail "rEFInd large selection image was not found"
-    [ -f "$source/selection-small.png" ] || myconfig_fail "rEFInd small selection image was not found"
-    [ -f "$source/font.png" ] || myconfig_fail "rEFInd theme font was not found"
+    [ -f "$source/global.conf" ] || myconfig_fail "rEFInd global configuration was not found"
+    [ -f "$theme/theme.conf" ] || myconfig_fail "rEFInd theme configuration was not found"
+    [ -x "$theme/generate-theme-assets.sh" ] \
+        || myconfig_fail "rEFInd theme asset generator was not found"
 }
 
 module_refind() {
     module_refind_validate || return 1
     require_command awk
-    require_command rsync
 
-    local source config refind_dir destination config_tmp backup
-    source="$(refind_theme_asset)"
+    local source theme_source config refind_dir theme_dir config_tmp theme_tmp backup
+    source="$(refind_asset_root)"
+    theme_source="$source/themes/black-pink"
     if ! config="$(refind_config_path)"; then
         myconfig_log "Skipping the rEFInd theme because no installation was found"
         return 0
     fi
     refind_dir="$(dirname "$config")"
-    destination="$refind_dir/themes/blacknpink"
+    theme_dir="$refind_dir/themes/black-pink"
     backup="$config.pre-blacknpink"
     config_tmp="$(mktemp)"
-    trap 'rm -f -- "$config_tmp"' RETURN
+    theme_tmp="$(mktemp -d)"
+    trap 'rm -f -- "$config_tmp"; rm -rf -- "$theme_tmp"' RETURN
 
-    myconfig_log "Installing the Black & Pink rEFInd theme"
-    sudo install -d "$destination/icons"
-    sudo rsync -rt --delete --exclude='*.svg' --exclude='refind.conf' "$source/" "$destination/"
+    myconfig_log "Installing the restored Black & Pink rEFInd theme"
+    "$theme_source/generate-theme-assets.sh" "$theme_tmp"
+    sudo rm -rf -- "$refind_dir/themes/blacknpink"
+    sudo install -d "$theme_dir"
+    sudo install -m 0644 "$theme_source/theme.conf" "$theme_dir/theme.conf"
+    sudo install -m 0644 "$theme_tmp/banner.png" "$theme_dir/banner.png"
+    sudo install -m 0644 "$theme_tmp/selection_big.png" "$theme_dir/selection_big.png"
+    sudo install -m 0644 "$theme_tmp/selection_small.png" "$theme_dir/selection_small.png"
+    sudo install -m 0644 "$source/global.conf" "$refind_dir/managed.conf"
 
     sudo awk '
-        $0 == "# BEGIN MYCONFIG BLACKNPINK" { managed = 1; next }
-        $0 == "# END MYCONFIG BLACKNPINK" { managed = 0; next }
+        $0 == "# BEGIN MYCONFIG BLACKNPINK" || $0 == "# BEGIN MYCONFIG REFIND" { managed = 1; next }
+        $0 == "# END MYCONFIG BLACKNPINK" || $0 == "# END MYCONFIG REFIND" { managed = 0; next }
         !managed { print }
     ' "$config" > "$config_tmp"
     printf '\n' >> "$config_tmp"
-    cat "$source/refind.conf" >> "$config_tmp"
+    printf '%s\n' \
+        '# BEGIN MYCONFIG REFIND' \
+        'include managed.conf' \
+        'include themes/black-pink/theme.conf' \
+        '# END MYCONFIG REFIND' \
+        >> "$config_tmp"
 
     if ! sudo cmp -s "$config_tmp" "$config"; then
         if ! sudo test -e "$backup"; then

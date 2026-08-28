@@ -15,6 +15,7 @@ run_profile() {
     module_agents_packages
     module_dotfiles
     module_cursor_theme
+    module_refind
     module_kanata
     module_kde_plasma
     module_kanata_kde

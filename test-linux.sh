@@ -262,6 +262,7 @@ zsh -n "$REPO_ROOT/dotfiles/zsh/.oh-my-zsh/custom/themes/blacknpink.zsh-theme"
 source "$REPO_ROOT/linux/modules/axidev-osk.sh"
 source "$REPO_ROOT/linux/modules/ghostty.sh"
 source "$REPO_ROOT/linux/modules/cursor-theme.sh"
+source "$REPO_ROOT/linux/modules/refind.sh"
 source "$REPO_ROOT/linux/modules/kde-plasma.sh"
 source "$REPO_ROOT/linux/modules/kanata.sh"
 source "$REPO_ROOT/linux/modules/kanata-kde.sh"
@@ -336,6 +337,26 @@ if (!session.includes("popupType: QQC2.Popup.Window") || !power.includes("popupT
 ' "$plasma_plasmoid_root"
 plasma_theme_root="$REPO_ROOT/dotfiles/kde-plasma/.local/share/plasma/desktoptheme/blacknpink"
 cursor_theme_root="$REPO_ROOT/linux/assets/cursors/blacknpink-crosshair"
+refind_theme_root="$REPO_ROOT/linux/assets/refind/blacknpink"
+png_dimensions() {
+    node -e 'const b = require("node:fs").readFileSync(process.argv[1]); process.stdout.write(`${b.readUInt32BE(16)}x${b.readUInt32BE(20)}`)' "$1"
+}
+grep -Fxq 'enable_mouse' "$refind_theme_root/refind.conf" \
+    || myconfig_fail "Black & Pink rEFInd theme does not enable mouse input"
+grep -Fxq 'icons_dir themes/blacknpink/icons' "$refind_theme_root/refind.conf" \
+    || myconfig_fail "Black & Pink rEFInd theme does not use its icon set"
+grep -Fxq 'showtools shutdown,reboot,firmware' "$refind_theme_root/refind.conf" \
+    || myconfig_fail "Black & Pink rEFInd theme includes unexpected utility clutter"
+[ "$(png_dimensions "$refind_theme_root/background.png")" = 1920x1080 ] \
+    || myconfig_fail "Black & Pink rEFInd background has an unexpected size"
+[ "$(png_dimensions "$refind_theme_root/selection-big.png")" = 144x144 ] \
+    || myconfig_fail "Black & Pink rEFInd large selection image has an unexpected size"
+[ "$(png_dimensions "$refind_theme_root/selection-small.png")" = 64x64 ] \
+    || myconfig_fail "Black & Pink rEFInd small selection image has an unexpected size"
+for icon in os_arch os_linux os_win os_win8; do
+    [ "$(png_dimensions "$refind_theme_root/icons/$icon.png")" = 128x128 ] \
+        || myconfig_fail "Black & Pink rEFInd icon $icon has an unexpected size"
+done
 grep -Fxq 'Inherits=breeze_cursors' "$cursor_theme_root/index.theme" \
     || myconfig_fail "Black & Pink Crosshair cursor theme does not inherit Breeze"
 for cursor in default pointer progress text wait size_hor size_ver; do
@@ -915,6 +936,8 @@ ubuntu_profile="$(
     || myconfig_fail "CachyOS profile does not include KDE Plasma configuration"
 [[ "$cachyos_profile" == *module_cursor_theme* ]] \
     || myconfig_fail "CachyOS profile does not include the cursor theme"
+[[ "$cachyos_profile" == *module_refind* ]] \
+    || myconfig_fail "CachyOS profile does not include the rEFInd theme"
 [[ "$cachyos_profile" == *module_kanata* ]] \
     || myconfig_fail "CachyOS profile does not include Kanata"
 [[ "$cachyos_profile" == *module_kanata_kde* ]] \
@@ -929,6 +952,8 @@ ubuntu_profile="$(
     || myconfig_fail "Arch WSL profile includes KDE Plasma configuration"
 [[ "$arch_wsl_profile" != *module_cursor_theme* ]] \
     || myconfig_fail "Arch WSL profile includes the desktop cursor theme"
+[[ "$arch_wsl_profile" != *module_refind* ]] \
+    || myconfig_fail "Arch WSL profile includes the rEFInd theme"
 [[ "$arch_wsl_profile" != *module_kanata* ]] \
     || myconfig_fail "Arch WSL profile includes Kanata"
 [[ "$arch_wsl_profile" != *module_kanata_kde* ]] \
@@ -943,6 +968,8 @@ ubuntu_profile="$(
     || myconfig_fail "Ubuntu Server profile includes KDE Plasma configuration"
 [[ "$ubuntu_profile" != *module_cursor_theme* ]] \
     || myconfig_fail "Ubuntu Server profile includes the desktop cursor theme"
+[[ "$ubuntu_profile" != *module_refind* ]] \
+    || myconfig_fail "Ubuntu Server profile includes the rEFInd theme"
 [[ "$ubuntu_profile" != *module_kanata* ]] \
     || myconfig_fail "Ubuntu Server profile includes Kanata"
 [[ "$ubuntu_profile" != *module_kanata_kde* ]] \

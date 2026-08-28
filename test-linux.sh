@@ -277,6 +277,29 @@ fi
 if validate_kde_plasma_version 'unknown version' >/dev/null 2>&1; then
     myconfig_fail "KDE Plasma configuration accepted an unparseable version"
 fi
+pointer_plugin="$REPO_ROOT/linux/assets/libinput/90-myconfig-pointer-sensitivity.lua"
+MYCONFIG_POINTER_PLUGIN="$pointer_plugin" lua -e '
+libinput = {
+    register = function() return 1 end,
+    connect = function(self, name, callback) self.callback = callback end,
+}
+evdev = { REL_X = 1, REL_Y = 2 }
+dofile(os.getenv("MYCONFIG_POINTER_PLUGIN"))
+local handler
+local device = {
+    usages = function() return { [evdev.REL_X] = true, [evdev.REL_Y] = true } end,
+    connect = function(self, name, callback) handler = callback end,
+}
+libinput.callback(device)
+local frame = { { usage = evdev.REL_X, value = 1 }, { usage = evdev.REL_Y, value = -1 } }
+assert(handler(device, frame) == frame)
+assert(frame[1].value == 2 and frame[2].value == -2)
+'
+grep -Fq 'local multiplier = 2' "$pointer_plugin" \
+    || myconfig_fail "libinput pointer-sensitivity multiplier changed"
+grep -Fq '/etc/libinput/plugins/90-myconfig-pointer-sensitivity.lua' \
+    "$REPO_ROOT/linux/modules/kde-plasma.sh" \
+    || myconfig_fail "KDE Plasma module does not install the libinput plugin"
 grep -Fq 'panel.lengthMode = "fit";' \
     "$REPO_ROOT/dotfiles/kde-plasma/.local/share/myconfig/kde-plasma/layout.js" \
     || myconfig_fail "KDE Plasma dock does not fit its content"
@@ -452,13 +475,19 @@ systemctl() {
 qdbus6() {
     printf 'qdbus:%s\n' "$*" >>"$plasma_module_log"
 }
+sudo() {
+    printf 'sudo:%s\n' "$*" >>"$plasma_module_log"
+}
 
 MYCONFIG_PROFILE=cachyos
 HOME="$plasma_layout_home" \
     PATH="$plasma_layout_bin:/usr/bin:/bin" \
     module_kde_plasma
-grep -Fxq 'packages:iosevka_font desktop_file_utils' "$plasma_module_log" \
+grep -Fxq 'packages:iosevka_font desktop_file_utils libinput' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module omitted its appearance dependencies"
+grep -Fxq "sudo:install -Dm644 $pointer_plugin /etc/libinput/plugins/90-myconfig-pointer-sensitivity.lua" \
+    "$plasma_module_log" \
+    || myconfig_fail "KDE Plasma module did not install the libinput plugin"
 grep -Fxq 'colors:BlackPink' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not apply its color scheme headlessly"
 grep -Fxq 'theme:blacknpink' "$plasma_module_log" \
@@ -493,6 +522,7 @@ grep -Fxq 'systemctl:--user daemon-reload' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not reload user services"
 grep -Fxq 'qdbus:org.kde.KWin /KWin org.kde.KWin.reconfigure' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not reload active KWin configuration"
+unset -f sudo
 
 desktop-file-validate \
     "$REPO_ROOT/dotfiles/kde-plasma/.config/autostart/myconfig-kde-plasma-layout.desktop"

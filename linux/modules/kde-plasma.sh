@@ -67,7 +67,7 @@ module_kde_plasma() {
     module_kde_plasma_validate || return 1
 
     myconfig_log "Configuring KDE Plasma panels and Black & Pink appearance"
-    install_package_ids iosevka_font desktop_file_utils
+    install_package_ids iosevka_font desktop_file_utils libinput
 
     require_command plasma-apply-colorscheme
     require_command plasma-apply-desktoptheme
@@ -76,6 +76,14 @@ module_kde_plasma() {
     require_command fc-match
     require_command desktop-file-validate
     require_command systemctl
+    require_command sudo
+
+    local pointer_plugin="$MYCONFIG_REPO_ROOT/linux/assets/libinput/90-myconfig-pointer-sensitivity.lua"
+    [ -f "$pointer_plugin" ] \
+        || myconfig_fail "libinput pointer-sensitivity plugin was not found"
+    sudo install -Dm644 \
+        "$pointer_plugin" \
+        /etc/libinput/plugins/90-myconfig-pointer-sensitivity.lua
 
     [ -x "$HOME/.local/bin/myconfig-kde-plasma-layout" ] \
         || myconfig_fail "KDE Plasma layout command was not stowed"

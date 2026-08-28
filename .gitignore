@@ -8,6 +8,7 @@ result-*
 # Editor
 .vscode/
 .idea/
+.playwright-mcp/
 
 # User-specific
 *.swp

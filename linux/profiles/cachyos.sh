@@ -14,6 +14,7 @@ run_profile() {
     module_tailscale
     module_agents_packages
     module_dotfiles
+    module_cursor_theme
     module_kanata
     module_kde_plasma
     module_kanata_kde

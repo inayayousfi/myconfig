@@ -49,6 +49,15 @@ configure_kde_plasma_input() {
     kwriteconfig6 --file kcminputrc "${touchpad_group[@]}" --key ClickMethod 2
 }
 
+configure_kde_plasma_cursor_theme() {
+    local theme="${BLACKNPINK_CURSOR_THEME:-blacknpink-crosshair}"
+    [ -f "$HOME/.local/share/icons/$theme/cursors/default" ] \
+        || myconfig_fail "Black & Pink Crosshair cursor theme was not installed"
+
+    kwriteconfig6 --file kcminputrc --group Mouse --key cursorSize 32
+    QT_QPA_PLATFORM=offscreen plasma-apply-cursortheme --size 32 "$theme"
+}
+
 module_kde_plasma_validate() {
     [ "$MYCONFIG_PROFILE" = cachyos ] || {
         myconfig_fail "KDE Plasma configuration is only supported by the CachyOS profile"
@@ -70,6 +79,7 @@ module_kde_plasma() {
     install_package_ids iosevka_font desktop_file_utils libinput
 
     require_command plasma-apply-colorscheme
+    require_command plasma-apply-cursortheme
     require_command plasma-apply-desktoptheme
     require_command kwriteconfig6
     require_command qdbus6
@@ -115,6 +125,7 @@ module_kde_plasma() {
     configure_kde_plasma_fonts
     configure_kde_plasma_desktops
     configure_kde_plasma_input
+    configure_kde_plasma_cursor_theme
     kwriteconfig6 --file kwinrc --group Plugins --key myconfig-plasma-panelsEnabled true
 
     export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"

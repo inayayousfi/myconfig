@@ -261,6 +261,7 @@ zsh -n "$REPO_ROOT/dotfiles/zsh/.oh-my-zsh/custom/themes/blacknpink.zsh-theme"
 
 source "$REPO_ROOT/linux/modules/axidev-osk.sh"
 source "$REPO_ROOT/linux/modules/ghostty.sh"
+source "$REPO_ROOT/linux/modules/cursor-theme.sh"
 source "$REPO_ROOT/linux/modules/kde-plasma.sh"
 source "$REPO_ROOT/linux/modules/kanata.sh"
 source "$REPO_ROOT/linux/modules/kanata-kde.sh"
@@ -303,7 +304,7 @@ grep -Fq '/etc/libinput/plugins/90-myconfig-pointer-sensitivity.lua' \
 grep -Fq 'panel.lengthMode = "fit";' \
     "$REPO_ROOT/dotfiles/kde-plasma/.local/share/myconfig/kde-plasma/layout.js" \
     || myconfig_fail "KDE Plasma dock does not fit its content"
-grep -Fq 'widget.writeConfig("fill", false);' \
+grep -Fq 'tasks.writeConfig("fill", false);' \
     "$REPO_ROOT/dotfiles/kde-plasma/.local/share/myconfig/kde-plasma/layout.js" \
     || myconfig_fail "KDE Plasma task manager still fills the dock"
 node "$REPO_ROOT/test-kde-plasma-panels.js" \
@@ -334,6 +335,17 @@ if (session.includes("ToolTip") || power.includes("ToolTip")) process.exit(1);
 if (!session.includes("popupType: QQC2.Popup.Window") || !power.includes("popupType: QQC2.Popup.Window")) process.exit(1);
 ' "$plasma_plasmoid_root"
 plasma_theme_root="$REPO_ROOT/dotfiles/kde-plasma/.local/share/plasma/desktoptheme/blacknpink"
+cursor_theme_root="$REPO_ROOT/linux/assets/cursors/blacknpink-crosshair"
+grep -Fxq 'Inherits=breeze_cursors' "$cursor_theme_root/index.theme" \
+    || myconfig_fail "Black & Pink Crosshair cursor theme does not inherit Breeze"
+for cursor in default pointer progress text wait size_hor size_ver; do
+    [ -s "$cursor_theme_root/cursors/$cursor" ] \
+        || myconfig_fail "Black & Pink Crosshair cursor theme is missing $cursor"
+done
+for cursor in pointer grab grabbing move dnd-move dnd-copy text; do
+    [ "$(readlink "$cursor_theme_root/cursors/$cursor")" = crosshair ] \
+        || myconfig_fail "Black & Pink Crosshair cursor theme does not use Precision Select for $cursor"
+done
 node -e 'const metadata = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")); if (metadata.KPlugin.Id !== "blacknpink") process.exit(1)' \
     "$plasma_theme_root/metadata.json"
 grep -Fxq 'FallbackTheme=default' "$plasma_theme_root/plasmarc" \
@@ -456,6 +468,10 @@ plasma-apply-colorscheme() {
     [ "${QT_QPA_PLATFORM:-}" = offscreen ] || return 1
     printf 'colors:%s\n' "$*" >>"$plasma_module_log"
 }
+plasma-apply-cursortheme() {
+    [ "${QT_QPA_PLATFORM:-}" = offscreen ] || return 1
+    printf 'cursors:%s\n' "$*" >>"$plasma_module_log"
+}
 plasma-apply-desktoptheme() {
     [ "${QT_QPA_PLATFORM:-}" = offscreen ] || return 1
     printf 'theme:%s\n' "$*" >>"$plasma_module_log"
@@ -482,6 +498,9 @@ sudo() {
 MYCONFIG_PROFILE=cachyos
 HOME="$plasma_layout_home" \
     PATH="$plasma_layout_bin:/usr/bin:/bin" \
+    module_cursor_theme
+HOME="$plasma_layout_home" \
+    PATH="$plasma_layout_bin:/usr/bin:/bin" \
     module_kde_plasma
 grep -Fxq 'packages:iosevka_font desktop_file_utils libinput' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module omitted its appearance dependencies"
@@ -490,6 +509,8 @@ grep -Fxq "sudo:install -Dm644 $pointer_plugin /etc/libinput/plugins/90-myconfig
     || myconfig_fail "KDE Plasma module did not install the libinput plugin"
 grep -Fxq 'colors:BlackPink' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not apply its color scheme headlessly"
+grep -Fxq 'cursors:--size 32 blacknpink-crosshair' "$plasma_module_log" \
+    || myconfig_fail "KDE Plasma module did not apply its cursor theme headlessly"
 grep -Fxq 'theme:blacknpink' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not apply its desktop theme headlessly"
 grep -Fxq 'config:--file kwinrc --group Windows --key ElectricBorderPushbackPixels 0' "$plasma_module_log" \
@@ -502,6 +523,8 @@ grep -Fxq 'config:--file kwinrc --group Effect-overview --key BorderActivate 9' 
     || myconfig_fail "KDE Plasma module did not disable the Overview hot corner"
 grep -Fxq 'config:--file kwinrc --group Windows --key PerOutputVirtualDesktops true' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not isolate virtual desktops per screen"
+grep -Fxq 'config:--file kcminputrc --group Mouse --key cursorSize 32' "$plasma_module_log" \
+    || myconfig_fail "KDE Plasma module did not configure the cursor size"
 grep -Fxq 'config:--file kcminputrc --group Libinput --group Defaults --group Pointer --key PointerAcceleration 1.000' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not configure pointer sensitivity"
 grep -Fxq 'config:--file kcminputrc --group Libinput --group Defaults --group Pointer --key PointerAccelerationProfile 1' "$plasma_module_log" \
@@ -890,6 +913,8 @@ ubuntu_profile="$(
     || myconfig_fail "CachyOS profile does not include Ghostty"
 [[ "$cachyos_profile" == *module_kde_plasma* ]] \
     || myconfig_fail "CachyOS profile does not include KDE Plasma configuration"
+[[ "$cachyos_profile" == *module_cursor_theme* ]] \
+    || myconfig_fail "CachyOS profile does not include the cursor theme"
 [[ "$cachyos_profile" == *module_kanata* ]] \
     || myconfig_fail "CachyOS profile does not include Kanata"
 [[ "$cachyos_profile" == *module_kanata_kde* ]] \
@@ -902,6 +927,8 @@ ubuntu_profile="$(
     || myconfig_fail "Arch WSL profile includes Ghostty"
 [[ "$arch_wsl_profile" != *module_kde_plasma* ]] \
     || myconfig_fail "Arch WSL profile includes KDE Plasma configuration"
+[[ "$arch_wsl_profile" != *module_cursor_theme* ]] \
+    || myconfig_fail "Arch WSL profile includes the desktop cursor theme"
 [[ "$arch_wsl_profile" != *module_kanata* ]] \
     || myconfig_fail "Arch WSL profile includes Kanata"
 [[ "$arch_wsl_profile" != *module_kanata_kde* ]] \
@@ -914,6 +941,8 @@ ubuntu_profile="$(
     || myconfig_fail "Ubuntu Server profile includes Ghostty"
 [[ "$ubuntu_profile" != *module_kde_plasma* ]] \
     || myconfig_fail "Ubuntu Server profile includes KDE Plasma configuration"
+[[ "$ubuntu_profile" != *module_cursor_theme* ]] \
+    || myconfig_fail "Ubuntu Server profile includes the desktop cursor theme"
 [[ "$ubuntu_profile" != *module_kanata* ]] \
     || myconfig_fail "Ubuntu Server profile includes Kanata"
 [[ "$ubuntu_profile" != *module_kanata_kde* ]] \

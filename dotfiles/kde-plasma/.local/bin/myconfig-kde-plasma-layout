@@ -6,7 +6,7 @@ layout="$HOME/.local/share/myconfig/kde-plasma/layout.js"
 state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/myconfig"
 state_file="$state_dir/kde-plasma-layout-version"
 applets="$HOME/.config/plasma-org.kde.plasma.desktop-appletsrc"
-layout_version=2
+layout_version=4
 
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"

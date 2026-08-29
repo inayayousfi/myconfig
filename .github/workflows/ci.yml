@@ -43,7 +43,7 @@ jobs:
       - name: Test Linux installers
         run: |
           sudo apt-get update
-          sudo apt-get install -y desktop-file-utils imagemagick rsync stow tmux zsh
+          sudo apt-get install -y desktop-file-utils imagemagick lua5.4 rsync stow tmux zsh
           cargo install resvg --locked
           ./test/test-linux.sh
           ./vm/test-cachyos.sh

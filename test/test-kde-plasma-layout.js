@@ -65,7 +65,7 @@ const knownWidgetTypes = [
     "org.kde.plasma.panelspacer",
     "org.kde.plasma.digitalclock",
     "org.kde.plasma.systemtray",
-    "org.kde.plasma.kickoff",
+    "org.kde.plasma.kickerdash",
     "org.kde.plasma.icontasks",
     "myconfig.overview",
     "myconfig.session",
@@ -91,7 +91,7 @@ function runLayout(initialPanels, version, options = {}) {
     return {created: createdPanels.slice(createdPanelCount), output};
 }
 
-const upgrade = runLayout([staleDock], "2");
+const upgrade = runLayout([staleDock], "4");
 
 assert.equal(staleDock.removed, true, "stale dock was not replaced");
 const replacementTop = upgrade.created.find(panel => panel.readConfig("myconfigRole", "") === "top");
@@ -103,7 +103,6 @@ assert.equal(replacementClock.readConfig("autoFontAndSize", false), true, "repla
 assert.deepEqual(
     replacementTop.widgets().map(widget => widget.type),
     [
-        "myconfig.overview",
         "org.kde.plasma.panelspacer",
         "org.kde.plasma.digitalclock",
         "org.kde.plasma.panelspacer",
@@ -117,6 +116,21 @@ const replacementDock = upgrade.created.find(panel => panel.readConfig("myconfig
 assert.ok(replacementDock, "replacement dock was not created");
 assert.equal(replacementDock.height, 47, "replacement dock has the wrong height");
 assert.equal(replacementDock.lengthMode, "fit", "replacement dock does not fit its content");
+assert.deepEqual(
+    replacementDock.widgets().map(widget => widget.type),
+    ["org.kde.plasma.kickerdash", "myconfig.overview", "org.kde.plasma.icontasks"],
+    "replacement dock does not place Overview next to the application dashboard",
+);
+const replacementLauncher = replacementDock.widgets().find(widget => widget.type === "org.kde.plasma.kickerdash");
+assert.ok(replacementLauncher, "replacement dock does not use the full-screen application dashboard");
+assert.equal(replacementLauncher.readConfig("alphaSort", false), true, "application dashboard is not alphabetical");
+assert.equal(replacementLauncher.readConfig("showRecentApps", true), false, "application dashboard shows recent apps");
+assert.equal(replacementLauncher.readConfig("showRecentDocs", true), false, "application dashboard shows recent documents");
+assert.equal(
+    replacementLauncher.readConfig("highlightNewlyInstalledApps", true),
+    false,
+    "application dashboard highlights newly installed apps",
+);
 const replacementTasks = replacementDock.widgets().find(widget => widget.type === "org.kde.plasma.icontasks");
 assert.deepEqual(
     replacementTasks.readConfig("launchers", []),
@@ -136,17 +150,18 @@ disconnectedTop.screen = -1;
 disconnectedTop.writeConfig("myconfigManaged", "true");
 disconnectedTop.writeConfig("myconfigRole", "top");
 disconnectedTop.writeConfig("myconfigScreen", 0);
-disconnectedTop.writeConfig("myconfigLayoutVersion", "2");
+disconnectedTop.writeConfig("myconfigLayoutVersion", "4");
 const disconnectedDock = new Panel();
 disconnectedDock.screen = -1;
 disconnectedDock.writeConfig("myconfigManaged", "true");
 disconnectedDock.writeConfig("myconfigRole", "dock");
 disconnectedDock.writeConfig("myconfigScreen", 0);
-disconnectedDock.writeConfig("myconfigLayoutVersion", "2");
-disconnectedDock.addWidget("org.kde.plasma.kickoff");
+disconnectedDock.writeConfig("myconfigLayoutVersion", "4");
+disconnectedDock.addWidget("org.kde.plasma.kickerdash");
+disconnectedDock.addWidget("myconfig.overview");
 disconnectedDock.addWidget("org.kde.plasma.icontasks");
 
-const reconnect = runLayout([disconnectedTop, disconnectedDock], "2");
+const reconnect = runLayout([disconnectedTop, disconnectedDock], "4");
 assert.equal(disconnectedTop.removed, false, "temporarily unassigned top panel was replaced");
 assert.equal(disconnectedDock.removed, false, "temporarily unassigned dock was replaced");
 assert.equal(disconnectedTop.screen, 0, "top panel did not return to its intended screen");
@@ -159,23 +174,31 @@ managedTop.screen = 0;
 managedTop.writeConfig("myconfigManaged", "true");
 managedTop.writeConfig("myconfigRole", "top");
 managedTop.writeConfig("myconfigScreen", 0);
-managedTop.writeConfig("myconfigLayoutVersion", "2");
+managedTop.writeConfig("myconfigLayoutVersion", "4");
 const managedClock = managedTop.addWidget("org.kde.plasma.digitalclock");
 const managedDock = new Panel();
 managedDock.screen = 0;
 managedDock.writeConfig("myconfigManaged", "true");
 managedDock.writeConfig("myconfigRole", "dock");
 managedDock.writeConfig("myconfigScreen", 0);
-managedDock.writeConfig("myconfigLayoutVersion", "2");
+managedDock.writeConfig("myconfigLayoutVersion", "4");
+const managedLauncher = managedDock.addWidget("org.kde.plasma.kickerdash");
+managedLauncher.writeConfig("alphaSort", false);
+managedLauncher.writeConfig("showRecentApps", true);
+managedLauncher.writeConfig("showRecentDocs", true);
+managedDock.addWidget("myconfig.overview");
 const managedTasks = managedDock.addWidget("org.kde.plasma.icontasks");
 managedTasks.writeConfig("showOnlyCurrentDesktop", true);
 
-runLayout([unrelated, managedTop, managedDock], "2", {firstRun: true});
+runLayout([unrelated, managedTop, managedDock], "4", {firstRun: true});
 assert.equal(unrelated.removed, false, "missing layout state deleted an unrelated panel");
 assert.equal(managedTop.removed, false, "missing layout state replaced an existing managed top panel");
 assert.equal(managedClock.readConfig("dateDisplayFormat", 1), 0, "retained clock does not use its adaptive layout");
 assert.equal(managedClock.readConfig("autoFontAndSize", false), true, "retained clock does not size its font automatically");
 assert.equal(managedDock.removed, false, "missing layout state replaced an existing managed dock");
+assert.equal(managedLauncher.readConfig("alphaSort", false), true, "retained dashboard is not alphabetical");
+assert.equal(managedLauncher.readConfig("showRecentApps", true), false, "retained dashboard shows recent apps");
+assert.equal(managedLauncher.readConfig("showRecentDocs", true), false, "retained dashboard shows recent documents");
 assert.equal(
     managedTasks.readConfig("showOnlyCurrentDesktop", true),
     false,
@@ -192,7 +215,7 @@ const outdatedDisconnectedTasks = outdatedDisconnectedDock.addWidget("org.kde.pl
 outdatedDisconnectedTasks.writeConfig("launchers", ["applications:org.kde.kate.desktop"]);
 outdatedDisconnectedTasks.writeConfig("showOnlyCurrentDesktop", true);
 
-runLayout([outdatedDisconnectedDock], "2");
+runLayout([outdatedDisconnectedDock], "4");
 assert.equal(outdatedDisconnectedDock.removed, false, "outdated dock for a disconnected display was removed");
 assert.deepEqual(
     outdatedDisconnectedTasks.readConfig("launchers", []),

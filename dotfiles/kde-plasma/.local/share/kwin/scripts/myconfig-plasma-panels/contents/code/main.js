@@ -266,8 +266,12 @@ function closeOverviewAfterDesktopSwitch() {
     }
 }
 
+function isPlasmaShellOverlay(window) {
+    return window.resourceClass === "org.kde.plasmashell" && window.skipTaskbar;
+}
+
 function updateFullscreenLayer(window) {
-    if (window.fullScreen) {
+    if (window.fullScreen && !isPlasmaShellOverlay(window)) {
         if (!fullscreenKeepBelow.has(window)) {
             fullscreenKeepBelow.set(window, window.keepBelow);
         }

@@ -448,7 +448,7 @@ const root = process.argv[1];
 const overview = fs.readFileSync(`${root}/myconfig.overview/contents/ui/main.qml`, "utf8");
 const session = fs.readFileSync(`${root}/myconfig.session/contents/ui/main.qml`, "utf8");
 const power = fs.readFileSync(`${root}/myconfig.power/contents/ui/main.qml`, "utf8");
-if (!overview.includes(`text: qsTr("Overview")`) || !overview.includes("font.pointSize: 14") || !overview.includes("invokeShortcut Overview") || !overview.includes("CanFillArea")) process.exit(1);
+if (!overview.includes(`text: qsTr("Overview")`) || !overview.includes("font.pointSize: 14") || !overview.includes("Layout.minimumWidth: implicitWidth") || !overview.includes("Layout.fillHeight: true") || !overview.includes("invokeShortcut Overview") || !overview.includes("CanFillArea")) process.exit(1);
 const ordered = (source, values) => values.every((value, index) => source.indexOf(value) >= 0 && (index === 0 || source.indexOf(values[index - 1]) < source.indexOf(value)));
 if (!ordered(session, [`qsTr("Lock")`, `qsTr("Log Out")`, `qsTr("Switch User")`])) process.exit(1);
 if (!session.includes("enabled: session.canSwitchUser")) process.exit(1);
@@ -558,7 +558,7 @@ chmod +x "$plasma_layout_bin/qdbus6"
 HOME="$plasma_layout_home" \
     PATH="$plasma_layout_bin:/usr/bin:/bin" \
     "$plasma_layout_home/.local/bin/myconfig-kde-plasma-layout"
-[ "$(<"$plasma_layout_home/.local/state/myconfig/kde-plasma-layout-version")" = 2 ] \
+[ "$(<"$plasma_layout_home/.local/state/myconfig/kde-plasma-layout-version")" = 4 ] \
     || myconfig_fail "KDE Plasma layout did not record its version"
 shopt -s nullglob
 plasma_backups=("$plasma_layout_home/.config/plasma-org.kde.plasma.desktop-appletsrc.backup."*)

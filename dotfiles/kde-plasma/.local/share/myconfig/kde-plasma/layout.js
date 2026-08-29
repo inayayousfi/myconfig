@@ -2,7 +2,7 @@ const requiredWidgetTypes = [
     "org.kde.plasma.panelspacer",
     "org.kde.plasma.digitalclock",
     "org.kde.plasma.systemtray",
-    "org.kde.plasma.kickoff",
+    "org.kde.plasma.kickerdash",
     "org.kde.plasma.icontasks",
     "myconfig.overview",
     "myconfig.session",
@@ -50,7 +50,6 @@ if (missingWidgetTypes.length > 0) {
     }
 
     function addTopPanelWidgets(panel) {
-        panel.addWidget("myconfig.overview");
         panel.addWidget("org.kde.plasma.panelspacer");
 
         configureClock(panel.addWidget("org.kde.plasma.digitalclock"));
@@ -67,8 +66,17 @@ if (missingWidgetTypes.length > 0) {
         tasks.writeConfig("fill", false);
     }
 
+    function configureLauncher(launcher) {
+        launcher.currentConfigGroup = ["General"];
+        launcher.writeConfig("alphaSort", true);
+        launcher.writeConfig("highlightNewlyInstalledApps", false);
+        launcher.writeConfig("showRecentApps", false);
+        launcher.writeConfig("showRecentDocs", false);
+    }
+
     function addDockWidgets(panel, launchers = []) {
-        panel.addWidget("org.kde.plasma.kickoff");
+        configureLauncher(panel.addWidget("org.kde.plasma.kickerdash"));
+        panel.addWidget("myconfig.overview");
 
         const tasks = panel.addWidget("org.kde.plasma.icontasks");
         tasks.currentConfigGroup = ["General"];
@@ -105,7 +113,9 @@ if (missingWidgetTypes.length > 0) {
         panel.floating = true;
         panel.opacity = "adaptive";
         panel.widgets().forEach(widget => {
-            if (widget.type === "org.kde.plasma.icontasks") {
+            if (widget.type === "org.kde.plasma.kickerdash") {
+                configureLauncher(widget);
+            } else if (widget.type === "org.kde.plasma.icontasks") {
                 configureTaskManager(widget);
             }
         });

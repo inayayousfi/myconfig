@@ -116,10 +116,12 @@ function activeTimer(interval) {
     return timers.find(timer => timer.interval === interval && timer.active);
 }
 
-function mockWindow({fullScreen = false, keepBelow = false} = {}) {
+function mockWindow({fullScreen = false, keepBelow = false, resourceClass = "", skipTaskbar = false} = {}) {
     return {
         fullScreen,
         keepBelow,
+        resourceClass,
+        skipTaskbar,
         fullScreenChanged: new Signal(),
         closed: new Signal(),
     };
@@ -212,6 +214,15 @@ alreadyBelowWindow.fullScreenChanged.emit();
 alreadyBelowWindow.fullScreen = false;
 alreadyBelowWindow.fullScreenChanged.emit();
 assert.equal(alreadyBelowWindow.keepBelow, true, "existing Keep Below state was not preserved");
+
+const dashboardWindow = mockWindow({
+    fullScreen: true,
+    resourceClass: "org.kde.plasmashell",
+    skipTaskbar: true,
+});
+workspace.windows.push(dashboardWindow);
+windowAdded.emit(dashboardWindow);
+assert.equal(dashboardWindow.keepBelow, false, "full-screen application dashboard was moved below maximized windows");
 
 plasmaResponds = false;
 workspace.cursorPos = {x: 2000, y: 4};

@@ -21,6 +21,7 @@ PlasmoidItem {
         Layout.rightMargin: 0
         Layout.minimumWidth: implicitWidth
         Layout.preferredWidth: implicitWidth
+        Layout.fillHeight: true
         Accessible.name: text
         Accessible.role: Accessible.Button
         onClicked: executable.connectSource("/usr/bin/qdbus6 org.kde.kglobalaccel /component/kwin org.kde.kglobalaccel.Component.invokeShortcut Overview")

@@ -13,8 +13,8 @@ class Signal {
         this.handlers.push(handler);
     }
 
-    emit() {
-        this.handlers.forEach(handler => handler());
+    emit(...args) {
+        this.handlers.forEach(handler => handler(...args));
     }
 }
 
@@ -55,6 +55,7 @@ const cursorPosChanged = new Signal();
 const screensChanged = new Signal();
 const screenOrderChanged = new Signal();
 const currentDesktopChanged = new Signal();
+const windowAdded = new Signal();
 let overviewActive = false;
 const workspace = {
     cursorPos: {x: 500, y: 500},
@@ -63,6 +64,7 @@ const workspace = {
     screensChanged,
     screenOrderChanged,
     currentDesktopChanged,
+    windowAdded,
     windows: [],
     windowList() {
         return this.windows;
@@ -112,6 +114,15 @@ function latestPlasmaScript() {
 
 function activeTimer(interval) {
     return timers.find(timer => timer.interval === interval && timer.active);
+}
+
+function mockWindow({fullScreen = false, keepBelow = false} = {}) {
+    return {
+        fullScreen,
+        keepBelow,
+        fullScreenChanged: new Signal(),
+        closed: new Signal(),
+    };
 }
 
 workspace.cursorPos = {x: 12, y: 4};
@@ -182,6 +193,25 @@ assert.deepEqual(calls.at(-1), {
     method: "invokeShortcut",
     args: ["Overview"],
 });
+
+const fullscreenWindow = mockWindow();
+workspace.windows.push(fullscreenWindow);
+windowAdded.emit(fullscreenWindow);
+fullscreenWindow.fullScreen = true;
+fullscreenWindow.fullScreenChanged.emit();
+assert.equal(fullscreenWindow.keepBelow, true, "fullscreen window did not move below desktop overlays");
+fullscreenWindow.fullScreen = false;
+fullscreenWindow.fullScreenChanged.emit();
+assert.equal(fullscreenWindow.keepBelow, false, "window's prior stacking state was not restored");
+
+const alreadyBelowWindow = mockWindow({keepBelow: true});
+workspace.windows.push(alreadyBelowWindow);
+windowAdded.emit(alreadyBelowWindow);
+alreadyBelowWindow.fullScreen = true;
+alreadyBelowWindow.fullScreenChanged.emit();
+alreadyBelowWindow.fullScreen = false;
+alreadyBelowWindow.fullScreenChanged.emit();
+assert.equal(alreadyBelowWindow.keepBelow, true, "existing Keep Below state was not preserved");
 
 plasmaResponds = false;
 workspace.cursorPos = {x: 2000, y: 4};

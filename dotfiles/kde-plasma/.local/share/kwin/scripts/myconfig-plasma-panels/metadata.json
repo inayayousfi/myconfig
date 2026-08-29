@@ -1,7 +1,7 @@
 {
   "KPlugin": {
     "Name": "MyConfig Plasma Panels",
-    "Description": "Adds forgiving activation zones and display hot-plug reconciliation to MyConfig panels",
+    "Description": "Keeps Plasma interactions available over fullscreen windows and manages MyConfig panels",
     "Icon": "preferences-desktop",
     "Id": "myconfig-plasma-panels",
     "Version": "1.0",

@@ -3,6 +3,7 @@ const hideDelay = 400;
 const visibleMode = "windowsgobelow";
 const hiddenMode = "autohide";
 const states = new Map();
+const fullscreenKeepBelow = new Map();
 
 function newTimer(interval, callback) {
     const timer = new QTimer();
@@ -265,7 +266,30 @@ function closeOverviewAfterDesktopSwitch() {
     }
 }
 
+function updateFullscreenLayer(window) {
+    if (window.fullScreen) {
+        if (!fullscreenKeepBelow.has(window)) {
+            fullscreenKeepBelow.set(window, window.keepBelow);
+        }
+        // Scripts cannot put fullscreen windows in KWin's normal layer. Keep Below is the
+        // exposed override; replace it with normal-layer stacking if KWin adds that option.
+        window.keepBelow = true;
+    } else if (fullscreenKeepBelow.has(window)) {
+        const keepBelow = fullscreenKeepBelow.get(window);
+        fullscreenKeepBelow.delete(window);
+        window.keepBelow = keepBelow;
+    }
+}
+
+function watchWindow(window) {
+    window.fullScreenChanged.connect(() => updateFullscreenLayer(window));
+    window.closed.connect(() => fullscreenKeepBelow.delete(window));
+    updateFullscreenLayer(window);
+}
+
 workspace.cursorPosChanged.connect(updatePointerState);
 workspace.screensChanged.connect(screensChanged);
 workspace.screenOrderChanged.connect(screensChanged);
 workspace.currentDesktopChanged.connect(closeOverviewAfterDesktopSwitch);
+workspace.windowAdded.connect(watchWindow);
+workspace.windowList().forEach(watchWindow);

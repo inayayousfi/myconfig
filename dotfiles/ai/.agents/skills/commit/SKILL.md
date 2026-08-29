@@ -24,7 +24,7 @@ Drafts a commit message for the currently staged changes and commits only after 
    - If another instruction makes attribution or disclosure unavoidable, put it in the body after the subject and a blank line. The subject must remain the first line so short Git history shows the actual change.
    - No emojis, no filler, no restating the diff line-by-line.
 
-4. **Preview.** Output the commit message as plain text, in the chat, in a fenced code block tagged `text`. No tool call. Just plain text.
+4. **Preview.** Output the commit message directly in the ordinary chat response as plain text, in a fenced code block tagged `text`. Do not put the commit message inside a tool call. In the same response, immediately continue to step 5.
 
 5. **Confirm.** Call the question tool: Confirm / Request changes / Cancel. Do not put the commit message in this tool call — it was already shown in step 4. Do not run `git commit` until the user confirms. If they ask for changes, redraft, repeat step 4, then ask again.
 

@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEST_HOME="$(mktemp -d)"
 trap 'rm -rf "$TEST_HOME"' EXIT
 
@@ -429,9 +429,9 @@ grep -Fq 'panel.lengthMode = "fit";' \
 grep -Fq 'tasks.writeConfig("fill", false);' \
     "$REPO_ROOT/dotfiles/kde-plasma/.local/share/myconfig/kde-plasma/layout.js" \
     || myconfig_fail "KDE Plasma task manager still fills the dock"
-node "$REPO_ROOT/test-kde-plasma-panels.js" \
+node "$REPO_ROOT/test/test-kde-plasma-panels.js" \
     "$REPO_ROOT/dotfiles/kde-plasma/.local/share/kwin/scripts/myconfig-plasma-panels/contents/code/main.js"
-node "$REPO_ROOT/test-kde-plasma-layout.js" \
+node "$REPO_ROOT/test/test-kde-plasma-layout.js" \
     "$REPO_ROOT/dotfiles/kde-plasma/.local/share/myconfig/kde-plasma/layout.js"
 node -e 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"))' \
     "$REPO_ROOT/dotfiles/kde-plasma/.local/share/kwin/scripts/myconfig-plasma-panels/metadata.json"
@@ -713,7 +713,7 @@ desktop-file-validate \
     "$REPO_ROOT/dotfiles/kde-plasma/.config/autostart/myconfig-kde-plasma-layout.desktop"
 
 PYTHONPYCACHEPREFIX="$TEST_HOME/pycache" \
-    python -m unittest "$REPO_ROOT/test-kanata-tray.py"
+    python -m unittest "$REPO_ROOT/test/test-kanata-tray.py"
 PYTHONPYCACHEPREFIX="$TEST_HOME/pycache" \
     python -m py_compile "$REPO_ROOT/dotfiles/kanata-kde/.local/bin/myconfig-kanata-tray"
 grep -Fq '(deflayer off' "$REPO_ROOT/dotfiles/kanata/.config/kanata/config.kbd" \

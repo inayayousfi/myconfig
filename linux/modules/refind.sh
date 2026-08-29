@@ -62,14 +62,14 @@ module_refind() {
         $0 == "# BEGIN MYCONFIG BLACKNPINK" || $0 == "# BEGIN MYCONFIG REFIND" { managed = 1; next }
         $0 == "# END MYCONFIG BLACKNPINK" || $0 == "# END MYCONFIG REFIND" { managed = 0; next }
         !managed { print }
-    ' "$config" > "$config_tmp"
-    printf '\n' >> "$config_tmp"
+    ' "$config" >"$config_tmp"
+    printf '\n' >>"$config_tmp"
     printf '%s\n' \
         '# BEGIN MYCONFIG REFIND' \
         'include managed.conf' \
         'include themes/black-pink/theme.conf' \
         '# END MYCONFIG REFIND' \
-        >> "$config_tmp"
+        >>"$config_tmp"
 
     if ! sudo cmp -s "$config_tmp" "$config"; then
         if ! sudo test -e "$backup"; then

@@ -5,7 +5,7 @@
 
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEMP_TEST_DIR="/tmp/bootstrap-test-$$"
 
 echo "🧪 Bootstrap Local Test" >&2
@@ -42,8 +42,8 @@ mkdir -p "$ARCHIVE_DIR"
 
 # Copy repository contents
 log_info "Copying repository files..."
-cp -r "$SCRIPT_DIR"/* "$ARCHIVE_DIR/" 2>/dev/null || true
-cp -r "$SCRIPT_DIR"/.* "$ARCHIVE_DIR/" 2>/dev/null || true
+cp -r "$REPO_ROOT"/* "$ARCHIVE_DIR/" 2>/dev/null || true
+cp -r "$REPO_ROOT"/.* "$ARCHIVE_DIR/" 2>/dev/null || true
 
 # Create zip
 log_info "Creating setup-config.zip..."
@@ -123,7 +123,7 @@ if [ -f "myconfig-main/bootstrap.sh" ]; then
     bash -n "myconfig-main/bootstrap.sh" && log_success "bootstrap.sh: syntax OK"
 fi
 
-bash "myconfig-main/test-linux.sh"
+bash "myconfig-main/test/test-linux.sh"
 log_success "Linux installer behavior: OK"
 bash "myconfig-main/vm/test-cachyos.sh"
 log_success "CachyOS VM lifecycle: OK"

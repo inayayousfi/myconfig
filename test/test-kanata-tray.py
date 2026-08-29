@@ -10,7 +10,7 @@ import threading
 import unittest
 
 TRAY_PATH = (
-    pathlib.Path(__file__).parent
+    pathlib.Path(__file__).parent.parent
     / "dotfiles"
     / "kanata-kde"
     / ".local"

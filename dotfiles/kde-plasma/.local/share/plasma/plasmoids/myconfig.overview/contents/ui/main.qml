@@ -24,7 +24,7 @@ PlasmoidItem {
         Layout.fillHeight: true
         Accessible.name: text
         Accessible.role: Accessible.Button
-        onClicked: executable.connectSource("/usr/bin/qdbus6 org.kde.kglobalaccel /component/kwin org.kde.kglobalaccel.Component.invokeShortcut Overview")
+        onClicked: executable.connectSource("$HOME/.local/bin/myconfig-kde-overview")
     }
 
     Plasma5Support.DataSource {

@@ -423,6 +423,49 @@ grep -Fq 'local multiplier = 4' "$pointer_plugin" \
 grep -Fq '/etc/libinput/plugins/90-myconfig-pointer-sensitivity.lua' \
     "$REPO_ROOT/linux/modules/kde-plasma.sh" \
     || myconfig_fail "KDE Plasma module does not install the libinput plugin"
+overview_command="$REPO_ROOT/dotfiles/kde-plasma/.local/bin/myconfig-kde-overview"
+[ -x "$overview_command" ] \
+    || myconfig_fail "KWin Overview scaling command is not executable"
+grep -Fq 'MYCONFIG_OVERVIEW_SCALE:-2' "$overview_command" \
+    || myconfig_fail "KWin Overview scaling command has the wrong default scale"
+grep -Fq 'trap restore_outputs EXIT' "$overview_command" \
+    || myconfig_fail "KWin Overview scaling command does not restore outputs on exit"
+
+overview_test_root="$TEST_HOME/kde-overview"
+overview_test_bin="$overview_test_root/bin"
+overview_test_state="$overview_test_root/state"
+overview_test_log="$overview_test_root/kscreen.log"
+mkdir -p "$overview_test_bin" "$overview_test_root/runtime"
+printf 'inactive 0\n' >"$overview_test_state"
+cat >"$overview_test_bin/kscreen-doctor" <<'EOF'
+#!/usr/bin/env bash
+if [ "${1:-}" = --json ]; then
+    printf '%s\n' '{"outputs":[{"name":"eDP-1","connected":true,"enabled":true,"scale":1},{"name":"DP-1","connected":true,"enabled":true,"scale":1.25},{"name":"HDMI-1","connected":true,"enabled":false,"scale":1}]}'
+else
+    printf '%s\n' "$*" >>"$MYCONFIG_OVERVIEW_TEST_LOG"
+fi
+EOF
+cat >"$overview_test_bin/qdbus6" <<'EOF'
+#!/usr/bin/env bash
+read -r status checks <"$MYCONFIG_OVERVIEW_TEST_STATE"
+if [[ "$*" == *invokeShortcut* ]]; then
+    printf 'active 0\n' >"$MYCONFIG_OVERVIEW_TEST_STATE"
+elif [ "$status" = active ] && [ "$checks" -lt 2 ]; then
+    printf 'active %s\n' "$((checks + 1))" >"$MYCONFIG_OVERVIEW_TEST_STATE"
+    printf 'overview\n'
+else
+    printf 'inactive 0\n' >"$MYCONFIG_OVERVIEW_TEST_STATE"
+    printf 'blur\n'
+fi
+EOF
+chmod +x "$overview_test_bin/kscreen-doctor" "$overview_test_bin/qdbus6"
+PATH="$overview_test_bin:/usr/bin:/bin" \
+XDG_RUNTIME_DIR="$overview_test_root/runtime" \
+MYCONFIG_OVERVIEW_TEST_STATE="$overview_test_state" \
+MYCONFIG_OVERVIEW_TEST_LOG="$overview_test_log" \
+    "$overview_command"
+[ "$(<"$overview_test_log")" = $'output.eDP-1.scale.2 output.DP-1.scale.2\noutput.eDP-1.scale.1 output.DP-1.scale.1.25' ] \
+    || myconfig_fail "KWin Overview scaling command did not scale and restore every output"
 grep -Fq 'panel.lengthMode = "fit";' \
     "$REPO_ROOT/dotfiles/kde-plasma/.local/share/myconfig/kde-plasma/layout.js" \
     || myconfig_fail "KDE Plasma dock does not fit its content"
@@ -448,7 +491,7 @@ const root = process.argv[1];
 const overview = fs.readFileSync(`${root}/myconfig.overview/contents/ui/main.qml`, "utf8");
 const session = fs.readFileSync(`${root}/myconfig.session/contents/ui/main.qml`, "utf8");
 const power = fs.readFileSync(`${root}/myconfig.power/contents/ui/main.qml`, "utf8");
-if (!overview.includes(`text: qsTr("Overview")`) || !overview.includes("font.pointSize: 14") || !overview.includes("Layout.minimumWidth: implicitWidth") || !overview.includes("Layout.fillHeight: true") || !overview.includes("invokeShortcut Overview") || !overview.includes("CanFillArea")) process.exit(1);
+if (!overview.includes(`text: qsTr("Overview")`) || !overview.includes("font.pointSize: 14") || !overview.includes("Layout.minimumWidth: implicitWidth") || !overview.includes("Layout.fillHeight: true") || !overview.includes("myconfig-kde-overview") || !overview.includes("CanFillArea")) process.exit(1);
 const ordered = (source, values) => values.every((value, index) => source.indexOf(value) >= 0 && (index === 0 || source.indexOf(values[index - 1]) < source.indexOf(value)));
 if (!ordered(session, [`qsTr("Lock")`, `qsTr("Log Out")`, `qsTr("Switch User")`])) process.exit(1);
 if (!session.includes("enabled: session.canSwitchUser")) process.exit(1);
@@ -541,6 +584,8 @@ mkdir -p \
     "$plasma_layout_bin"
 cp "$REPO_ROOT/dotfiles/kde-plasma/.local/bin/myconfig-kde-plasma-layout" \
     "$plasma_layout_home/.local/bin/myconfig-kde-plasma-layout"
+cp "$overview_command" \
+    "$plasma_layout_home/.local/bin/myconfig-kde-overview"
 cp "$REPO_ROOT/dotfiles/kde-plasma/.local/share/myconfig/kde-plasma/layout.js" \
     "$plasma_layout_home/.local/share/myconfig/kde-plasma/layout.js"
 printf 'default panel configuration\n' \

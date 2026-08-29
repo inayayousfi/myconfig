@@ -84,6 +84,9 @@ module_kde_plasma() {
     require_command qdbus6
     require_command fc-match
     require_command desktop-file-validate
+    require_command kscreen-doctor
+    require_command jq
+    require_command flock
     require_command systemctl
     require_command sudo
 
@@ -117,6 +120,8 @@ module_kde_plasma() {
         || myconfig_fail "MyConfig Plasma Panels KWin metadata was not stowed"
     [ -f "$HOME/.local/share/kwin/scripts/myconfig-plasma-panels/contents/code/main.js" ] \
         || myconfig_fail "MyConfig Plasma Panels KWin script was not stowed"
+    [ -x "$HOME/.local/bin/myconfig-kde-overview" ] \
+        || myconfig_fail "KWin Overview scaling command was not stowed"
     [ -f "$HOME/.config/systemd/user/myconfig-kde-plasma-layout.service" ] \
         || myconfig_fail "KDE Plasma layout user service was not stowed"
     desktop-file-validate "$HOME/.config/autostart/myconfig-kde-plasma-layout.desktop"

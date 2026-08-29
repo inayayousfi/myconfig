@@ -128,8 +128,8 @@ function cco {
     Invoke-WslZshCommand "cco $args"
 }
 
-function hr {
-    Invoke-WslZshCommand "herdr $args"
+function tx {
+    Invoke-WslZshCommand "tx $args"
 }
 
 Set-Alias which gcm

@@ -3,13 +3,13 @@
 
 # Linux dotfiles should use LF while preserving automatic binary detection
 dotfiles/ai/** text=auto eol=lf
-dotfiles/herdr/** text=auto eol=lf
 dotfiles/hunk/** text=auto eol=lf
 dotfiles/kanata/** text=auto eol=lf
 dotfiles/kanata-kde/** text=auto eol=lf
 dotfiles/lazygit/** text=auto eol=lf
 dotfiles/nvim/** text=auto eol=lf
 dotfiles/opencode/** text=auto eol=lf
+dotfiles/tmux/** text=auto eol=lf
 dotfiles/yazi/** text=auto eol=lf
 dotfiles/zsh/** text=auto eol=lf
 

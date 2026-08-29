@@ -8,6 +8,7 @@ run_profile() {
     module_zsh
     module_neovim
     module_terminal_tools
+    module_tmux
     module_tailscale
     module_agents_packages
     module_dotfiles

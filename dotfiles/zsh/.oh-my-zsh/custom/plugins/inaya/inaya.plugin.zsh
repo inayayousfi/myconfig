@@ -133,8 +133,8 @@ if has hunk; then
     alias hd='hunk diff'
 fi
 
-if has herdr; then
-    alias hr='herdr'
+if has tmux; then
+    alias tx='tmux attach-session 2>/dev/null || tmux new-session'
 fi
 
 if has systemctl; then
@@ -265,14 +265,6 @@ elif $IS_LINUX; then
         else
             echo "bun not found, skipping Bun updates."
             echo ""
-        fi
-
-        if command -v herdr &>/dev/null; then
-            if herdr status 2>/dev/null | grep -q "status: running"; then
-                echo "Stopping Herdr server so it restarts on the updated binary..."
-                herdr server stop
-                echo ""
-            fi
         fi
 
         if command -v claude &>/dev/null; then
@@ -407,4 +399,8 @@ if has hyfetch; then
     hyfetch
 elif has fastfetch; then
     fastfetch
+fi
+
+if has tmux && [[ -o interactive && -z "$TMUX" && -z "$ZSH_EXECUTION_STRING" ]]; then
+    tx
 fi

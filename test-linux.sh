@@ -259,6 +259,127 @@ zsh -n "$REPO_ROOT/dotfiles/zsh/.zshrc"
 zsh -n "$REPO_ROOT/dotfiles/zsh/.oh-my-zsh/custom/plugins/inaya/inaya.plugin.zsh"
 zsh -n "$REPO_ROOT/dotfiles/zsh/.oh-my-zsh/custom/themes/blacknpink.zsh-theme"
 
+(
+    HOME="$TEST_HOME/tmux-module-home"
+    MYCONFIG_PROFILE=cachyos
+    mkdir -p "$HOME/.tmux/plugins/tmux-atelier"
+    printf 'stale\n' >"$HOME/.tmux/plugins/tmux-atelier/stale"
+
+    package_log="$TEST_HOME/tmux-packages.log"
+    removal_log="$TEST_HOME/tmux-removals.log"
+    clone_log="$TEST_HOME/tmux-clone.log"
+    install_package_ids() {
+        printf '%s\n' "$@" >>"$package_log"
+    }
+    remove_package_ids() {
+        printf '%s\n' "$@" >>"$removal_log"
+    }
+    git() {
+        printf '%s\n' "$*" >"$clone_log"
+        local destination="${!#}"
+        mkdir -p "$destination/bin"
+        printf '#!/usr/bin/env bash\n' >"$destination/tmux-atelier.tmux"
+        printf '#!/usr/bin/env bash\n' >"$destination/bin/tmux-atelier"
+        chmod +x "$destination/bin/tmux-atelier"
+    }
+
+    source "$REPO_ROOT/linux/modules/tmux.sh"
+    module_tmux
+
+    [ ! -e "$TMUX_ATELIER_DIR/stale" ] \
+        || myconfig_fail "tmux module preserved stale managed files"
+    grep -Fxq tmux "$package_log" \
+        || myconfig_fail "tmux module did not install tmux"
+    grep -Fxq wl_clipboard "$package_log" \
+        || myconfig_fail "CachyOS tmux module did not install wl-clipboard"
+    grep -Fxq herdr "$removal_log" \
+        || myconfig_fail "tmux module did not retire the legacy Herdr package"
+    grep -Fq 'clone --depth 1 --branch main https://github.com/inayayousfi/tmux-atelier.git' "$clone_log" \
+        || myconfig_fail "tmux module did not clone the managed repository"
+
+    : >"$package_log"
+    MYCONFIG_PROFILE=arch-wsl
+    module_tmux
+    [ "$(cat "$package_log")" = tmux ] \
+        || myconfig_fail "Arch WSL tmux module installed unexpected packages"
+
+    printf 'working\n' >"$TMUX_ATELIER_DIR/working"
+    git() {
+        return 1
+    }
+    if module_tmux >/dev/null 2>&1; then
+        myconfig_fail "tmux module accepted a failed replacement clone"
+    fi
+    [ "$(cat "$TMUX_ATELIER_DIR/working")" = working ] \
+        || myconfig_fail "failed tmux-atelier refresh removed the working checkout"
+)
+
+clipboard="$REPO_ROOT/dotfiles/tmux/.local/bin/myconfig-tmux-clipboard"
+clipboard_bin="$TEST_HOME/clipboard-bin"
+clipboard_log="$TEST_HOME/clipboard.log"
+mkdir -p "$clipboard_bin"
+cat >"$clipboard_bin/wl-copy" <<'EOF'
+#!/usr/bin/env bash
+cat >"$CLIPBOARD_LOG"
+EOF
+cat >"$clipboard_bin/wl-paste" <<'EOF'
+#!/usr/bin/env bash
+printf 'wayland clipboard'
+EOF
+cat >"$clipboard_bin/clip.exe" <<'EOF'
+#!/usr/bin/env bash
+cat >"$CLIPBOARD_LOG"
+EOF
+cat >"$clipboard_bin/powershell.exe" <<'EOF'
+#!/usr/bin/env bash
+printf 'windows clipboard'
+EOF
+chmod +x "$clipboard_bin"/*
+
+export CLIPBOARD_LOG="$clipboard_log"
+printf 'wayland copy' | WAYLAND_DISPLAY=wayland-0 PATH="$clipboard_bin:$PATH" "$clipboard" copy
+[ "$(cat "$clipboard_log")" = 'wayland copy' ] \
+    || myconfig_fail "Wayland clipboard copy did not receive tmux selection"
+[ "$(WAYLAND_DISPLAY=wayland-0 PATH="$clipboard_bin:$PATH" "$clipboard" paste)" = 'wayland clipboard' ] \
+    || myconfig_fail "Wayland clipboard paste did not return host content"
+
+printf 'windows copy' | WSL_DISTRO_NAME=Arch PATH="$clipboard_bin:$PATH" "$clipboard" copy
+[ "$(cat "$clipboard_log")" = 'windows copy' ] \
+    || myconfig_fail "WSL clipboard copy did not receive tmux selection"
+[ "$(WSL_DISTRO_NAME=Arch PATH="$clipboard_bin:$PATH" "$clipboard" paste)" = 'windows clipboard' ] \
+    || myconfig_fail "WSL clipboard paste did not return host content"
+
+(
+    tmux_home="$TEST_HOME/tmux-config-home"
+    tmux_socket="myconfig-test-$$"
+    mkdir -p "$tmux_home/.tmux/plugins/tmux-atelier"
+    cat >"$tmux_home/.tmux/plugins/tmux-atelier/tmux-atelier.tmux" <<'EOF'
+#!/usr/bin/env bash
+tab_style="$(tmux show-options -gqv @atelier_tab_style)"
+active_style="$(tmux show-options -gqv @atelier_tab_active_style)"
+tmux set-option -g 'status-format[0]' \
+    "#[align=left]#{W:#[range=window|#{window_index} $tab_style] #I #W #[norange default]│,#[range=window|#{window_index} $active_style] #I #W #[norange default]│}"
+EOF
+    chmod +x "$tmux_home/.tmux/plugins/tmux-atelier/tmux-atelier.tmux"
+    trap 'tmux -L "$tmux_socket" kill-server >/dev/null 2>&1 || true' EXIT
+
+    HOME="$tmux_home" tmux -L "$tmux_socket" \
+        -f "$REPO_ROOT/dotfiles/tmux/.config/tmux/tmux.conf" \
+        new-session -d -s validation
+    [ "$(tmux -L "$tmux_socket" show-options -gv @atelier_workspace_active_style)" = \
+        'fg=#000000#,bg=#ff4ead#,bold' ] \
+        || myconfig_fail "tmux config did not apply the active Black & Pink style"
+    expanded_tabs="$(tmux -L "$tmux_socket" display-message -p '#{E:status-format[0]}')"
+    [[ "$expanded_tabs" == *'#[range=window|0 fg=#000000,bg=#ff4ead,bold]'* ]] \
+        || myconfig_fail "tmux config produced a malformed expanded tab format"
+    tmux -L "$tmux_socket" list-keys -T copy-mode-vi \
+        | grep -Fq 'myconfig-tmux-clipboard copy' \
+        || myconfig_fail "tmux config did not bind host clipboard copy"
+    tmux -L "$tmux_socket" list-keys -T prefix \
+        | grep -Fq 'myconfig-tmux-clipboard' \
+        || myconfig_fail "tmux config did not bind host clipboard paste"
+)
+
 source "$REPO_ROOT/linux/modules/axidev-osk.sh"
 source "$REPO_ROOT/linux/modules/ghostty.sh"
 source "$REPO_ROOT/linux/modules/cursor-theme.sh"

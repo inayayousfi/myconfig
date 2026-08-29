@@ -3,7 +3,7 @@
 module_agents_packages() {
     myconfig_log "Installing agent tools and browser dependencies"
     install_package_ids \
-        herdr opencode at_spi2_core libxcomposite libxdamage libxrandr libxkbcommon
+        opencode at_spi2_core libxcomposite libxdamage libxrandr libxkbcommon
 
     if [ "$MYCONFIG_PROFILE" = arch-wsl ]; then
         install_package_ids wsl_ssh_agent
@@ -59,8 +59,9 @@ This file describes the capabilities installed for the $platform.
 - **Editor**: Neovim with the shared configuration.
 - **Runtimes**: Rust, Go, Bun, Node.js, Python, Java, LLVM, Make, and CMake.
 - **Repository tools**: Git, GitHub CLI, Lazygit, Hunk, and GNU Stow.
+- **Terminal workspaces**: Tmux with tmux-atelier, the Black & Pink theme, and host clipboard integration.
 - **Terminal tools**: Yazi, ripgrep, fd, fzf, zoxide, eza, bat, jq, and btop.
-- **Agent tools**: OpenCode, Herdr, and Playwright MCP.
+- **Agent tools**: OpenCode and Playwright MCP.
 - **Remote access**: OpenSSH server and Tailscale service with optional login during setup.
 EOF
 
@@ -87,6 +88,4 @@ module_agents_configure() {
 
     opencode debug config >/dev/null
     link_agent_config
-
-    herdr integration install claude
 }

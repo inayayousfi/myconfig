@@ -61,6 +61,9 @@ register_package resvg official:resvg
 register_package imagemagick official:imagemagick
 register_package lazygit official:lazygit
 
+register_package tmux official:tmux
+register_package wl_clipboard official:wl-clipboard
+# Legacy mapping used to remove installations managed before tmux replaced Herdr.
 register_package herdr aur:herdr-bin
 register_package opencode official:opencode
 register_package kanata aur:kanata-bin

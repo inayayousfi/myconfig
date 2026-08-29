@@ -60,7 +60,7 @@ Modules request logical package identifiers. `linux/registry/packages.sh` maps e
 
 The shared installer validates sudo once before package preparation and refreshes that credential every 60 seconds until the profile exits. Long package builds therefore do not ask for the same password again. The refresh process is stopped on both successful and failed exits.
 
-Linux profiles copy selected packages into `~/dotfiles`, back up the previous tree, back up conflicting home files, and run GNU Stow. CachyOS selects `zsh`, `yazi`, `lazygit`, `hunk`, `ai`, `herdr`, `nvim`, `opencode`, `ghostty`, `kanata`, `kanata-kde`, and `kde-plasma`. Arch WSL selects the first eight shared packages. Ubuntu Server selects only `zsh`.
+Linux profiles copy selected packages into `~/dotfiles`, back up the previous tree, back up conflicting home files, and run GNU Stow. CachyOS selects `zsh`, `yazi`, `lazygit`, `hunk`, `ai`, `tmux`, `nvim`, `opencode`, `ghostty`, `kanata`, `kanata-kde`, `handy`, and `kde-plasma`. Arch WSL selects the first eight shared packages. Ubuntu Server selects only `zsh`.
 
 The complete profiles configure OpenSSH as a system service that listens on all IPv4 and IPv6 interfaces and allows only the current user. They also install Tailscale as a system service. The installer validates the SSH daemon configuration before enabling and restarting it, but leaves authentication policy and network perimeter security at OpenSSH and system defaults.
 
@@ -102,7 +102,7 @@ Location: `dotfiles/zsh/.oh-my-zsh/custom/plugins/inaya/inaya.plugin.zsh`
 
 Key environment defaults include XDG paths, `nvim` as editor, `xterm-256color`, UTF-8 locale, and vi-mode cursor support.
 
-Key aliases and functions include `nvim` shortcuts, modern CLI replacements for `ls`, `find`, and `grep`, `lg` for Lazygit, `ff` for Fastfetch, `y` for Yazi directory handoff, `pf` for fuzzy file opening, `mkd`, `reload-zsh`, `update`, and `cleanup`.
+Key aliases and functions include `nvim` shortcuts, modern CLI replacements for `ls`, `find`, and `grep`, `lg` for Lazygit, `ff` for Fastfetch, `tx` for attaching to or creating a tmux session, `y` for Yazi directory handoff, `pf` for fuzzy file opening, `mkd`, `reload-zsh`, `update`, and `cleanup`. Interactive terminal shells automatically run `tx` after Fastfetch, except inside tmux or when Zsh is executing a command string.
 
 ### PowerShell
 
@@ -168,6 +168,14 @@ Windows Terminal is the native Windows terminal emulator.
 | Config source | `windows-workstation/dotfiles/WindowsTerminal/settings.json`                               |
 | Config target | `%LOCALAPPDATA%\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json` |
 | Profiles      | PowerShell and Developer PowerShell for VS 2022                                            |
+
+### Tmux
+
+The CachyOS and Arch WSL profiles install tmux and create a fresh shallow `main` checkout of `tmux-atelier` under `~/.tmux/plugins/tmux-atelier` on every run. The replacement is cloned and validated before the previous checkout is removed, so a download failure preserves the working plugin. The shared config loads that managed checkout after all theme options and key bindings; it does not depend on a development repository under `~/Projets`.
+
+The two-line workspace interface, pane borders, messages, prompts, menus, popups, and copy mode use the shared Black & Pink palette. Active tabs and workspaces have a pink background with black text.
+
+Tmux uses vi copy mode. `Prefix+[` enters copy mode, `v` begins a selection, and `y` copies it to the host clipboard. Completing a mouse selection does the same. `Prefix+]` reads and pastes the host clipboard. CachyOS uses `wl-copy` and `wl-paste`; Arch WSL uses `clip.exe` and PowerShell.
 
 ### Neovim
 
@@ -237,7 +245,7 @@ These packages form the complete CachyOS and Arch WSL profiles. Ubuntu Server in
 - Neovim
 - Yazi
 - Lazygit
-- Herdr
+- Tmux
 
 ### CLI Tools
 
@@ -481,9 +489,9 @@ Disabling the timeouts stops WSL shutting the instance down, but nothing starts 
 
 ### Arch Package Set
 
-The Arch WSL setup installs packages through `pacman` and `paru`, including `base-devel`, `rustup`, `openssh`, `zsh`, `rsync`, `stow`, `wsl2-ssh-agent`, `ripgrep`, `go`, `yazi-git`, `ffmpeg`, `7zip`, `jq`, `poppler`, `fd`, `fzf`, `bat`, `zoxide`, `resvg`, `imagemagick`, `eza`, `llvm`, `bun`, `python`, `fastfetch`, `lazygit`, `jdk-openjdk`, `maven`, `make`, `cmake`, `btop`, `tokei`, `hunk-bin`, `herdr-bin`, `neovim`, `nodejs`, `npm`, `node-gyp`, `opencode`, and `github-cli`.
+The Arch WSL setup installs packages through `pacman` and `paru`, including `base-devel`, `rustup`, `openssh`, `zsh`, `rsync`, `stow`, `wsl2-ssh-agent`, `ripgrep`, `go`, `yazi-git`, `ffmpeg`, `7zip`, `jq`, `poppler`, `fd`, `fzf`, `bat`, `zoxide`, `resvg`, `imagemagick`, `eza`, `llvm`, `bun`, `python`, `fastfetch`, `lazygit`, `jdk-openjdk`, `maven`, `make`, `cmake`, `btop`, `tokei`, `hunk-bin`, `tmux`, `neovim`, `nodejs`, `npm`, `node-gyp`, `opencode`, and `github-cli`. Its tmux clipboard backend uses the Windows host commands and therefore does not install `wl-clipboard`.
 
-The shared profile installs the latest Playwright MCP package through Bun, then downloads only its matching Chromium Headless Shell. The `opencode` Stow package owns the shared `opencode.jsonc`, `tui.json`, and `themes/blacknpink.json`: it launches Playwright through `{env:HOME}`, applies the Black & Pink theme, and binds half-page message scrolling to `Ctrl+U` and `Ctrl+D`. Machine-specific MCP servers can live in untracked `~/.config/opencode/config.json`, which OpenCode merges with the tracked runtime file. Existing conflicting configs are backed up but not migrated automatically. The installer validates the merged runtime configuration after Stow. Invalid configuration, browser failures, SSH service failures, and Herdr integration failures stop the profile. Missing GitHub or Tailscale authentication offers an interactive login, or prints the deferred command without failing.
+The shared profile installs the latest Playwright MCP package through Bun, then downloads only its matching Chromium Headless Shell. The `opencode` Stow package owns the shared `opencode.jsonc`, `tui.json`, and `themes/blacknpink.json`: it launches Playwright through `{env:HOME}`, applies the Black & Pink theme, and binds half-page message scrolling to `Ctrl+U` and `Ctrl+D`. Machine-specific MCP servers can live in untracked `~/.config/opencode/config.json`, which OpenCode merges with the tracked runtime file. Existing conflicting configs are backed up but not migrated automatically. The installer validates the merged runtime configuration after Stow. Invalid configuration, browser failures, and SSH service failures stop the profile. Missing GitHub or Tailscale authentication offers an interactive login, or prints the deferred command without failing.
 
 The shared `update()` function updates global Bun packages, then updates Chromium Headless Shell when the Playwright command exists in Bun's global package workspace. Browser update failures produce a warning and do not stop later updates. The same browser step runs after Homebrew updates on macOS.
 
@@ -498,7 +506,7 @@ Arch WSL syncs and stows these shared dotfile packages from the Windows-accessib
 - `lazygit`
 - `hunk`
 - `ai`
-- `herdr`
+- `tmux`
 - `nvim`
 - `opencode`
 
@@ -517,7 +525,6 @@ myconfig/
 ├── dotfiles/
 │   ├── ai/
 │   ├── hermes/
-│   ├── herdr/
 │   ├── hyfetch/
 │   ├── hunk/
 │   ├── kanata/
@@ -526,6 +533,7 @@ myconfig/
 │   ├── nvim/
 │   ├── opencode/
 │   ├── qbt-search/
+│   ├── tmux/
 │   ├── wallpaper/
 │   ├── yazi/
 │   ├── zed/
@@ -561,7 +569,6 @@ myconfig/
 | --- | --- | --- |
 | `ai` | Claude Code global instructions, skills, and settings | `~/.claude/` |
 | `hermes` | Hermes config | `$XDG_CONFIG_HOME/hermes/` |
-| `herdr` | Herdr config | `$XDG_CONFIG_HOME/herdr/` |
 | `hyfetch` | Hyfetch config | `$XDG_CONFIG_HOME/hyfetch.json` |
 | `hunk` | Hunk diff viewer config and Black & Pink theme | `$XDG_CONFIG_HOME/hunk/` |
 | `kanata` | Portable key mappings and user service | `$XDG_CONFIG_HOME/kanata/` and user systemd units |
@@ -570,12 +577,13 @@ myconfig/
 | `nvim` | Neovim config | `$XDG_CONFIG_HOME/nvim/` |
 | `opencode` | OpenCode runtime, TUI, and Black & Pink theme | `$XDG_CONFIG_HOME/opencode/` |
 | `qbt-search` | qBittorrent search plugins | Application-specific search plugin directory |
+| `tmux` | Black & Pink tmux, tmux-atelier, and host clipboard integration | `$XDG_CONFIG_HOME/tmux/` and `~/.local/bin/` |
 | `wallpaper` | Wallpaper assets | Wallpaper directory |
 | `yazi` | Yazi config and flavor | `$XDG_CONFIG_HOME/yazi/` |
 | `zed` | Zed settings, keymap, and theme (unused, kept for reference) | Not installed by any script |
 | `zsh` | `.zshrc`, Oh My Zsh theme, and custom plugin | Home directory and Oh My Zsh custom paths |
 
-The `ai` package ships `settings.json` without a `hooks` key on purpose. CachyOS and Arch WSL run `herdr integration install claude` after stowing, and that command merges its own `SessionStart` hook into the file with a home-relative path. Windows Workstation copies only `CLAUDE.md` and `skills/` from this package.
+The `ai` package ships `settings.json` without a `hooks` key on purpose. Windows Workstation copies only `CLAUDE.md` and `skills/` from this package.
 
 ### Installation Model
 

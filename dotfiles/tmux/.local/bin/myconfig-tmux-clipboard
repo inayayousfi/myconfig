@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+action="${1:-}"
+
+case "$action" in
+    copy)
+        if [ -n "${WSL_DISTRO_NAME:-}" ] && command -v clip.exe >/dev/null 2>&1; then
+            exec clip.exe
+        fi
+
+        if [ -n "${WAYLAND_DISPLAY:-}" ] && command -v wl-copy >/dev/null 2>&1; then
+            exec wl-copy
+        fi
+        ;;
+    paste)
+        if [ -n "${WSL_DISTRO_NAME:-}" ] && command -v powershell.exe >/dev/null 2>&1; then
+            # PowerShell expands these variables; Bash must pass them literally.
+            # shellcheck disable=SC2016
+            exec powershell.exe -NoProfile -NonInteractive -Command \
+                '[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); $value = Get-Clipboard -Raw; if ($null -ne $value) { [Console]::Out.Write($value) }'
+        fi
+
+        if [ -n "${WAYLAND_DISPLAY:-}" ] && command -v wl-paste >/dev/null 2>&1; then
+            exec wl-paste --no-newline
+        fi
+        ;;
+    *)
+        printf 'Usage: %s copy|paste\n' "${0##*/}" >&2
+        exit 2
+        ;;
+esac
+
+printf 'No supported host clipboard is available for %s.\n' "$action" >&2
+exit 1

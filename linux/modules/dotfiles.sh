@@ -2,8 +2,8 @@
 
 dotfile_packages_for_profile() {
     case "$MYCONFIG_PROFILE" in
-        cachyos) printf '%s\n' zsh yazi lazygit hunk ai herdr nvim opencode ghostty kanata kanata-kde handy kde-plasma ;;
-        arch-wsl) printf '%s\n' zsh yazi lazygit hunk ai herdr nvim opencode ;;
+        cachyos) printf '%s\n' zsh yazi lazygit hunk ai tmux nvim opencode ghostty kanata kanata-kde handy kde-plasma ;;
+        arch-wsl) printf '%s\n' zsh yazi lazygit hunk ai tmux nvim opencode ;;
         ubuntu-server) printf '%s\n' zsh ;;
         *) myconfig_fail "dotfile packages are undefined for $MYCONFIG_PROFILE" ;;
     esac

@@ -448,7 +448,7 @@ const root = process.argv[1];
 const overview = fs.readFileSync(`${root}/myconfig.overview/contents/ui/main.qml`, "utf8");
 const session = fs.readFileSync(`${root}/myconfig.session/contents/ui/main.qml`, "utf8");
 const power = fs.readFileSync(`${root}/myconfig.power/contents/ui/main.qml`, "utf8");
-if (!overview.includes(`text: qsTr("Overview")`) || !overview.includes("invokeShortcut Overview")) process.exit(1);
+if (!overview.includes(`text: qsTr("Overview")`) || !overview.includes("font.pointSize: 14") || !overview.includes("invokeShortcut Overview") || !overview.includes("CanFillArea")) process.exit(1);
 const ordered = (source, values) => values.every((value, index) => source.indexOf(value) >= 0 && (index === 0 || source.indexOf(values[index - 1]) < source.indexOf(value)));
 if (!ordered(session, [`qsTr("Lock")`, `qsTr("Log Out")`, `qsTr("Switch User")`])) process.exit(1);
 if (!session.includes("enabled: session.canSwitchUser")) process.exit(1);
@@ -515,6 +515,12 @@ grep -Fq 'id="thick-hint-right-margin" x="95" y="-56" width="4" height="4"' \
 grep -Fq 'id="thick-hint-left-margin" x="95" y="-20" width="4" height="8"' \
     "$plasma_theme_root/widgets/panel-background.svg" \
     || myconfig_fail "Black & Pink Plasma theme changed the Breeze floating-panel leading margin"
+grep -Fq 'id="hint-top-margin" x="20" y="10" width="4" height="4"' \
+    "$plasma_theme_root/widgets/panel-background.svg" \
+    || myconfig_fail "Black & Pink Plasma theme changed the top panel's vertical content margin"
+grep -Fq 'id="hint-left-margin" x="0" y="30" width=".00000001" height="4"' \
+    "$plasma_theme_root/widgets/panel-background.svg" \
+    || myconfig_fail "Black & Pink Plasma theme does not extend the Overview control to the screen left"
 resvg "$plasma_theme_root/widgets/panel-background.svg" \
     "$TEST_HOME/panel-background.png"
 systemd-analyze verify \

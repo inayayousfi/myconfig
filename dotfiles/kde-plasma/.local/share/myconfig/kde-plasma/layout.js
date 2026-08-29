@@ -39,16 +39,21 @@ if (missingWidgetTypes.length > 0) {
         return Number(panel.readConfig("myconfigScreen", panel.screen));
     }
 
+    function configureClock(clock) {
+        clock.currentConfigGroup = ["Appearance"];
+        clock.writeConfig("showDate", true);
+        clock.writeConfig("dateFormat", "shortDate");
+        clock.writeConfig("dateDisplayFormat", 0);
+        clock.writeConfig("autoFontAndSize", true);
+        clock.writeConfig("timeFormat", "default");
+        clock.writeConfig("use24hFormat", 1);
+    }
+
     function addTopPanelWidgets(panel) {
         panel.addWidget("myconfig.overview");
         panel.addWidget("org.kde.plasma.panelspacer");
 
-        const clock = panel.addWidget("org.kde.plasma.digitalclock");
-        clock.currentConfigGroup = ["Appearance"];
-        clock.writeConfig("showDate", true);
-        clock.writeConfig("dateFormat", "shortDate");
-        clock.writeConfig("timeFormat", "default");
-        clock.writeConfig("use24hFormat", 1);
+        configureClock(panel.addWidget("org.kde.plasma.digitalclock"));
 
         panel.addWidget("org.kde.plasma.panelspacer");
         panel.addWidget("org.kde.plasma.systemtray");
@@ -82,6 +87,11 @@ if (missingWidgetTypes.length > 0) {
         panel.hiding = "autohide";
         panel.floating = false;
         panel.opacity = "adaptive";
+        panel.widgets().forEach(widget => {
+            if (widget.type === "org.kde.plasma.digitalclock") {
+                configureClock(widget);
+            }
+        });
         markPanel(panel, "top", screen);
     }
 

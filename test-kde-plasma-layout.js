@@ -97,6 +97,9 @@ assert.equal(staleDock.removed, true, "stale dock was not replaced");
 const replacementTop = upgrade.created.find(panel => panel.readConfig("myconfigRole", "") === "top");
 assert.ok(replacementTop, "replacement top panel was not created");
 assert.equal(replacementTop.height, 34, "replacement top panel has the wrong height");
+const replacementClock = replacementTop.widgets().find(widget => widget.type === "org.kde.plasma.digitalclock");
+assert.equal(replacementClock.readConfig("dateDisplayFormat", 1), 0, "replacement clock does not use its adaptive layout");
+assert.equal(replacementClock.readConfig("autoFontAndSize", false), true, "replacement clock does not size its font automatically");
 assert.deepEqual(
     replacementTop.widgets().map(widget => widget.type),
     [
@@ -157,6 +160,7 @@ managedTop.writeConfig("myconfigManaged", "true");
 managedTop.writeConfig("myconfigRole", "top");
 managedTop.writeConfig("myconfigScreen", 0);
 managedTop.writeConfig("myconfigLayoutVersion", "2");
+const managedClock = managedTop.addWidget("org.kde.plasma.digitalclock");
 const managedDock = new Panel();
 managedDock.screen = 0;
 managedDock.writeConfig("myconfigManaged", "true");
@@ -169,6 +173,8 @@ managedTasks.writeConfig("showOnlyCurrentDesktop", true);
 runLayout([unrelated, managedTop, managedDock], "2", {firstRun: true});
 assert.equal(unrelated.removed, false, "missing layout state deleted an unrelated panel");
 assert.equal(managedTop.removed, false, "missing layout state replaced an existing managed top panel");
+assert.equal(managedClock.readConfig("dateDisplayFormat", 1), 0, "retained clock does not use its adaptive layout");
+assert.equal(managedClock.readConfig("autoFontAndSize", false), true, "retained clock does not size its font automatically");
 assert.equal(managedDock.removed, false, "missing layout state replaced an existing managed dock");
 assert.equal(
     managedTasks.readConfig("showOnlyCurrentDesktop", true),

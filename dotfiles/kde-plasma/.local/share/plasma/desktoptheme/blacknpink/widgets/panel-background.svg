@@ -41,7 +41,7 @@
   <path id="bottomright" d="M38 54v-6h6c0 4-2 6-6 6z" class="ColorScheme-Background" fill="currentColor" opacity=".85"/>
   <rect id="hint-top-margin" x="20" y="10" width="4" height="4" fill="#f0f"/>
   <rect id="hint-bottom-margin" x="20" y="50" width="4" height="4" fill="#f0f"/>
-  <rect id="hint-left-margin" x="0" y="30" width="4" height="4" fill="#f0f"/>
+  <rect id="hint-left-margin" x="0" y="30" width=".00000001" height="4" fill="#f0f"/>
   <rect id="hint-right-margin" x="40" y="30" width="4" height="4" fill="#f0f"/>
   <rect id="hint-top-inset" x="20" y="10" width="4" height=".00000001" fill="#0f0"/>
   <rect id="hint-bottom-inset" x="20" y="54" width="4" height=".00000001" fill="#0f0"/>

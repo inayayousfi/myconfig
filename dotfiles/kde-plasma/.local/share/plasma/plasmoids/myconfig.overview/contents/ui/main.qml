@@ -10,9 +10,11 @@ PlasmoidItem {
 
     preferredRepresentation: fullRepresentation
     Plasmoid.backgroundHints: PlasmaCore.Types.NoBackground
+    Plasmoid.constraintHints: PlasmaCore.Types.CanFillArea
 
     fullRepresentation: QQC2.ToolButton {
         text: qsTr("Overview")
+        font.pointSize: 14
         padding: 0
         spacing: 0
         Layout.leftMargin: 0

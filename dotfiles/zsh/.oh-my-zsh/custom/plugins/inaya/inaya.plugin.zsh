@@ -131,6 +131,23 @@ fi
 
 if has hunk; then
     alias hd='hunk diff'
+    alias hdc='hunk show'
+
+    hdb() {
+        local base fork
+        base=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null)
+        if [ -z "$base" ]; then
+            base=$(git branch --format='%(refname:short)' --list main master dev | head -n 1)
+        fi
+        if [ -z "$base" ]; then
+            echo "hdb: could not determine the default branch" >&2
+            return 1
+        fi
+
+        fork=$(git merge-base --fork-point "$base" HEAD 2>/dev/null) || \
+            fork=$(git merge-base "$base" HEAD) || return 1
+        hunk diff "$fork" "$@"
+    }
 fi
 
 if has tmux; then

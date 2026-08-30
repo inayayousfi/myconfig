@@ -18,6 +18,7 @@ register_package base_devel official:base-devel
 register_package rustup official:rustup
 register_package openssh official:openssh
 register_package polkit official:polkit
+register_package cachy_update official:cachy-update
 
 register_package ripgrep official:ripgrep
 register_package fd official:fd ubuntu-server=official:fd-find

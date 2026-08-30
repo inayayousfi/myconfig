@@ -8,6 +8,10 @@ module_base() {
         return
     fi
 
+    if [ "$MYCONFIG_PROFILE" = cachyos ]; then
+        remove_package_ids cachy_update
+    fi
+
     install_package_ids \
         ca_certificates sudo git curl wget rsync stow tar unzip zip xz file \
         man_db man_pages base_devel rustup polkit

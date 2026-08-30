@@ -61,6 +61,8 @@ MYCONFIG_PROFILE=cachyos
     || myconfig_fail "Axidev OSK LayerShellQt dependency did not resolve"
 [ "$(resolve_package ghostty)" = official:ghostty ] \
     || myconfig_fail "Ghostty package did not resolve"
+[ "$(resolve_package cachy_update)" = official:cachy-update ] \
+    || myconfig_fail "Cachy Update package did not resolve"
 [ "$(resolve_package kde_utilities_meta)" = official:kde-utilities-meta ] \
     || myconfig_fail "KDE utilities metadata package did not resolve"
 [ "$(resolve_package iosevka_font)" = official:ttf-iosevka-nerd ] \
@@ -73,6 +75,19 @@ MYCONFIG_PROFILE=cachyos
     || myconfig_fail "Handy package did not resolve from the AUR"
 [ "$(remove_package_ids kitty alacritty wezterm konsole)" = $'official:kitty\nofficial:alacritty\nofficial:wezterm\nofficial:konsole' ] \
     || myconfig_fail "package removal identifiers did not resolve"
+
+source "$REPO_ROOT/linux/modules/base.sh"
+base_actions="$({
+    install_package_ids() {
+        printf 'install:%s\n' "$*"
+    }
+    remove_package_ids() {
+        printf 'remove:%s\n' "$*"
+    }
+    module_base
+})"
+[[ "$base_actions" == *$'remove:cachy_update\n'* ]] \
+    || myconfig_fail "CachyOS base module did not remove Cachy Update"
 
 if resolve_package hunk >/dev/null 2>&1; then
     myconfig_fail "unsupported AUR source was accepted"

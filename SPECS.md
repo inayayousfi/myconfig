@@ -171,7 +171,7 @@ Windows Terminal is the native Windows terminal emulator.
 
 ### Tmux
 
-The CachyOS and Arch WSL profiles install tmux and create a fresh shallow `main` checkout of `tmux-atelier` under `~/.tmux/plugins/tmux-atelier` on every run. The replacement is cloned and validated before the previous checkout is removed, so a download failure preserves the working plugin. The shared config loads that managed checkout after all theme options and key bindings; it does not depend on a development repository under `~/Projets`.
+The CachyOS and Arch WSL profiles install tmux and use the official `tmux-atelier` release installer to place the latest platform binary and adapter under `~/.config/tmux/tmux-atelier`. The installer verifies the release checksum and replaces an older installation atomically, so a failed download preserves the working plugin. The shared config loads that managed release after all theme options and key bindings; it does not depend on a development repository under `~/Projets`.
 
 The two-line workspace interface, pane borders, messages, prompts, menus, popups, and copy mode use the shared Black & Pink palette. Active tabs and workspaces have a pink background with black text.
 

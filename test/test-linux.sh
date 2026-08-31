@@ -277,25 +277,31 @@ zsh -n "$REPO_ROOT/dotfiles/zsh/.oh-my-zsh/custom/themes/blacknpink.zsh-theme"
 (
     HOME="$TEST_HOME/tmux-module-home"
     MYCONFIG_PROFILE=cachyos
-    mkdir -p "$HOME/.tmux/plugins/tmux-atelier"
-    printf 'stale\n' >"$HOME/.tmux/plugins/tmux-atelier/stale"
+    mkdir -p "$HOME/.config/tmux/tmux-atelier"
+    printf 'stale\n' >"$HOME/.config/tmux/tmux-atelier/stale"
 
     package_log="$TEST_HOME/tmux-packages.log"
     removal_log="$TEST_HOME/tmux-removals.log"
-    clone_log="$TEST_HOME/tmux-clone.log"
+    installer_log="$TEST_HOME/tmux-installer.log"
     install_package_ids() {
         printf '%s\n' "$@" >>"$package_log"
     }
     remove_package_ids() {
         printf '%s\n' "$@" >>"$removal_log"
     }
-    git() {
-        printf '%s\n' "$*" >"$clone_log"
-        local destination="${!#}"
-        mkdir -p "$destination/bin"
-        printf '#!/usr/bin/env bash\n' >"$destination/tmux-atelier.tmux"
-        printf '#!/usr/bin/env bash\n' >"$destination/bin/tmux-atelier"
-        chmod +x "$destination/bin/tmux-atelier"
+    export installer_log
+    curl() {
+        printf '%s\n' "$*" >"$installer_log"
+        printf '%s\n' \
+            '#!/usr/bin/env bash' \
+            'set -eu' \
+            'test "$1" = --install-dir' \
+            'destination=$2' \
+            'rm -rf "$destination"' \
+            'mkdir -p "$destination/bin"' \
+            'printf "#!/usr/bin/env bash\\n" >"$destination/tmux-atelier.tmux"' \
+            'printf "#!/usr/bin/env bash\\n" >"$destination/bin/tmux-atelier"' \
+            'chmod +x "$destination/bin/tmux-atelier"'
     }
 
     source "$REPO_ROOT/linux/modules/tmux.sh"
@@ -309,8 +315,8 @@ zsh -n "$REPO_ROOT/dotfiles/zsh/.oh-my-zsh/custom/themes/blacknpink.zsh-theme"
         || myconfig_fail "CachyOS tmux module did not install wl-clipboard"
     grep -Fxq herdr "$removal_log" \
         || myconfig_fail "tmux module did not retire the legacy Herdr package"
-    grep -Fq 'clone --depth 1 --branch main https://github.com/inayayousfi/tmux-atelier.git' "$clone_log" \
-        || myconfig_fail "tmux module did not clone the managed repository"
+    grep -Fq 'https://raw.githubusercontent.com/inayayousfi/tmux-atelier/main/install.sh' "$installer_log" \
+        || myconfig_fail "tmux module did not fetch the official installer"
 
     : >"$package_log"
     MYCONFIG_PROFILE=arch-wsl
@@ -319,14 +325,14 @@ zsh -n "$REPO_ROOT/dotfiles/zsh/.oh-my-zsh/custom/themes/blacknpink.zsh-theme"
         || myconfig_fail "Arch WSL tmux module installed unexpected packages"
 
     printf 'working\n' >"$TMUX_ATELIER_DIR/working"
-    git() {
+    curl() {
         return 1
     }
     if module_tmux >/dev/null 2>&1; then
-        myconfig_fail "tmux module accepted a failed replacement clone"
+        myconfig_fail "tmux module accepted a failed release installation"
     fi
     [ "$(cat "$TMUX_ATELIER_DIR/working")" = working ] \
-        || myconfig_fail "failed tmux-atelier refresh removed the working checkout"
+        || myconfig_fail "failed tmux-atelier refresh removed the working installation"
 )
 
 clipboard="$REPO_ROOT/dotfiles/tmux/.local/bin/myconfig-tmux-clipboard"
@@ -367,15 +373,15 @@ printf 'windows copy' | WSL_DISTRO_NAME=Arch PATH="$clipboard_bin:$PATH" "$clipb
 (
     tmux_home="$TEST_HOME/tmux-config-home"
     tmux_socket="myconfig-test-$$"
-    mkdir -p "$tmux_home/.tmux/plugins/tmux-atelier"
-    cat >"$tmux_home/.tmux/plugins/tmux-atelier/tmux-atelier.tmux" <<'EOF'
+    mkdir -p "$tmux_home/.config/tmux/tmux-atelier"
+    cat >"$tmux_home/.config/tmux/tmux-atelier/tmux-atelier.tmux" <<'EOF'
 #!/usr/bin/env bash
 tab_style="$(tmux show-options -gqv @atelier_tab_style)"
 active_style="$(tmux show-options -gqv @atelier_tab_active_style)"
 tmux set-option -g 'status-format[0]' \
     "#[align=left]#{W:#[range=window|#{window_index} $tab_style] #I #W #[norange default]│,#[range=window|#{window_index} $active_style] #I #W #[norange default]│}"
 EOF
-    chmod +x "$tmux_home/.tmux/plugins/tmux-atelier/tmux-atelier.tmux"
+    chmod +x "$tmux_home/.config/tmux/tmux-atelier/tmux-atelier.tmux"
     trap 'tmux -L "$tmux_socket" kill-server >/dev/null 2>&1 || true' EXIT
 
     HOME="$tmux_home" tmux -L "$tmux_socket" \

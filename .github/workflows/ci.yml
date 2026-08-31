@@ -11,21 +11,34 @@ permissions:
 
 jobs:
   format:
-    runs-on: ubuntu-latest
+    name: Formatting
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+
+      - name: Install formatters
+        run: |
+          retry() {
+            for attempt in 1 2 3; do
+              "$@" && return
+              (( attempt < 3 )) || return 1
+              sleep $((attempt * 10))
+            done
+          }
+
+          retry npm install --global prettier@3.9.6
+          retry env GOTOOLCHAIN=go1.26.7 go install mvdan.cc/sh/v3/cmd/shfmt@v3.14.0
+          retry cargo install stylua --version 2.5.2 --locked
+          retry cargo install taplo-cli --version 0.10.0 --locked
 
       - name: Check Markdown and structured data
         run: |
           mapfile -d '' files < <(git ls-files -z '*.md' '*.json' '*.yaml' '*.yml')
-          npx --yes prettier@latest --check "${files[@]}"
-
-      - name: Install shfmt
-        run: go install mvdan.cc/sh/v3/cmd/shfmt@latest
+          prettier --check "${files[@]}"
 
       - name: Check Bash formatting
         run: |
@@ -40,19 +53,6 @@ jobs:
             dotfiles/zsh/.oh-my-zsh/custom/plugins/inaya/inaya.plugin.zsh \
             dotfiles/zsh/.oh-my-zsh/custom/themes/blacknpink.zsh-theme
 
-      - name: Test Linux installers
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y desktop-file-utils imagemagick lua5.4 rsync stow tmux zsh
-          cargo install resvg --locked
-          ./test/test-linux.sh
-          ./vm/test-cachyos.sh
-
-      - name: Install Rust formatters
-        run: |
-          cargo install stylua --locked
-          cargo install taplo-cli --locked
-
       - name: Check Lua formatting
         run: stylua --check dotfiles/nvim/.config/nvim/init.lua
 
@@ -63,7 +63,17 @@ jobs:
 
       - name: Install PSScriptAnalyzer
         shell: pwsh
-        run: Install-Module -Name PSScriptAnalyzer -Scope CurrentUser -Force
+        run: |
+          $ErrorActionPreference = "Stop"
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+              try {
+                  Install-Module -Name PSScriptAnalyzer -RequiredVersion 1.24.0 -Scope CurrentUser -Force
+                  break
+              } catch {
+                  if ($attempt -eq 3) { throw }
+                  Start-Sleep -Seconds (10 * $attempt)
+              }
+          }
 
       - name: Check PowerShell formatting and syntax
         shell: pwsh
@@ -97,3 +107,33 @@ jobs:
           if ($failed) {
               exit 1
           }
+
+  test:
+    name: Tests
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Install test dependencies
+        run: |
+          retry() {
+            for attempt in 1 2 3; do
+              "$@" && return
+              (( attempt < 3 )) || return 1
+              sleep $((attempt * 10))
+            done
+          }
+
+          retry sudo apt-get update
+          retry sudo apt-get install -y desktop-file-utils imagemagick lua5.4 rsync stow tmux zsh
+          retry cargo install resvg --version 0.48.1 --locked
+
+      - name: Test Linux installers
+        run: ./test/test-linux.sh
+
+      - name: Test CachyOS VM installer
+        run: ./vm/test-cachyos.sh

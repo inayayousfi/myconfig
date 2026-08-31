@@ -144,8 +144,8 @@ if has hunk; then
             return 1
         fi
 
-        fork=$(git merge-base --fork-point "$base" HEAD 2>/dev/null) || \
-            fork=$(git merge-base "$base" HEAD) || return 1
+        fork=$(git merge-base --fork-point "$base" HEAD 2>/dev/null) \
+            || fork=$(git merge-base "$base" HEAD) || return 1
         hunk diff "$fork" "$@"
     }
 fi

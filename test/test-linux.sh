@@ -734,7 +734,7 @@ desktop-file-validate \
     "$REPO_ROOT/dotfiles/kde-plasma/.config/autostart/myconfig-kde-plasma-layout.desktop"
 
 PYTHONPYCACHEPREFIX="$TEST_HOME/pycache" \
-    python -m unittest "$REPO_ROOT/test/test-kanata-tray.py"
+    python "$REPO_ROOT/test/test-kanata-tray.py"
 PYTHONPYCACHEPREFIX="$TEST_HOME/pycache" \
     python -m py_compile "$REPO_ROOT/dotfiles/kanata-kde/.local/bin/myconfig-kanata-tray"
 grep -Fq '(deflayer off' "$REPO_ROOT/dotfiles/kanata/.config/kanata/config.kbd" \

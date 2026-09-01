@@ -313,7 +313,7 @@ The Ubuntu Server installation does not include GNU Stow, development runtimes, 
 
 ## Platform-Specific: CachyOS
 
-CachyOS uses the complete shared Linux profile after the graphical operating-system installer finishes. The profile removes the Cachy Update notifier, installs development packages, Ghostty, Axidev OSK, Kanata, its independent KDE tray, Handy offline dictation, and the KDE Plasma desktop configuration, configures the OpenSSH service, sets Zsh as the default shell, deploys shared dotfiles, configures agent tools, and offers GitHub and Tailscale authentication.
+CachyOS uses the complete shared Linux profile after the graphical operating-system installer finishes. The profile removes the Cachy Update notifier, installs development packages, Ghostty, Axidev OSK, Kanata, its independent KDE tray, Handy offline dictation, ydotool desktop automation, and the KDE Plasma desktop configuration, configures the OpenSSH service, sets Zsh as the default shell, deploys shared dotfiles, configures agent tools, and offers GitHub and Tailscale authentication.
 
 The installer does not change sudoers, locale, kernel, drivers, or power settings. It installs OpenSSH, generates missing host keys, writes the shared listener policy, and enables the system service. Tailscale installs its system service separately.
 

@@ -15,19 +15,48 @@ When no natural tool fits, use this skill. Mouse and keyboard work everywhere, i
 
 Ask through the question tool before the first desktop capture or input. Loading this skill does not require confirmation. A valid global bypass that explicitly names desktop control satisfies this gate.
 
-**Capture is not acting.** Use whatever method the platform reference specifies for taking a screenshot. Operating systems defend against synthetic capture keys, so insisting on a key press there produces silent failures and buys nothing.
+**Capture is not acting.** Use the selected platform script to take a screenshot. Operating systems defend against synthetic capture keys, so insisting on a key press there produces silent failures and buys nothing.
 
-## Platform dispatch
+## Platform scripts
 
-After confirmation, read the reference for the target desktop **before issuing any command**. Do not compose commands from memory. The details that matter are ordering constraints and silent-failure modes, and they are not guessable.
+Resolve `scripts/...` relative to this skill's root, never relative to the
+working directory. Agent Skills clients may expose the skill root differently;
+use the location supplied when this skill was loaded.
 
-| Target desktop | Reference                                |
-| -------------- | ---------------------------------------- |
-| Windows        | `references/windows.md`                  |
-| macOS          | Not yet written. Stop and tell the user. |
-| Linux          | Not yet written. Stop and tell the user. |
+Choose the script by the environment issuing commands:
 
-Dispatch on **the desktop being driven**, not on where the agent is running. A Windows desktop driven from WSL and one driven by a natively-running agent use the same reference; only the invocation wrapper differs, and that file covers both.
+| Command environment | Script                |
+| ------------------- | --------------------- |
+| Native Windows      | `scripts/windows.ps1` |
+| WSL driving Windows | `scripts/wsl.sh`      |
+| Native Linux        | `scripts/linux.sh`    |
+
+macOS is not implemented. Stop and tell the user.
+
+Run `capabilities` once before the first capture or action. The scripts detect
+their available backends and share this command interface:
+
+```text
+capabilities
+capture [OUTPUT.png]
+crop INPUT OUTPUT X Y WIDTH HEIGHT
+move X Y
+click X Y [left|right|middle]
+drag X1 Y1 X2 Y2 [left|right|middle]
+scroll NOTCHES
+type TEXT
+key CHORD
+```
+
+Coordinates are pixels measured from the captured image's top-left corner. The
+platform script translates them to native desktop coordinates, including a
+Windows virtual desktop whose origin is negative. Positive scroll notches move
+up; negative notches move down. Chords use names such as `ENTER`, `CTRL+L`,
+`ALT+TAB`, and `META`.
+
+If `capabilities` marks an operation unavailable, stop rather than trying a
+different command from memory. The scripts are the platform abstraction; add
+new backends there instead of adding platform commands to this file.
 
 ## The loop
 
@@ -43,22 +72,14 @@ Never chain a second action onto an unverified first. A missed click is invisibl
 
 **Some actions produce no visible change.** Typing a second `1` into `1 × 1` leaves the display reading exactly the same. Verification cannot confirm those. Do not treat an unchanged screen as a miss and retry, or you will enter the input twice. Instead carry the uncertainty forward. Verify at the next step that does produce a distinguishable result, and treat that as confirmation of both.
 
-## Coordinates
+## Images and coordinates
 
-Captures are full-desktop, so image pixels map directly to absolute screen coordinates. There is no window-origin arithmetic to get wrong.
+`capture` writes a PNG and prints its absolute path. Ingest that path with the
+current harness's image-reading facility. Script stdout is not vision input.
 
-Two scale factors must both be handled or every click misses:
-
-**Display scaling.** The capturing process must be made DPI-aware so it works in physical pixels. The platform reference gives the call and, importantly, _when_ it must happen — the ordering is a real constraint, not a style preference.
-
-**Read downscaling.** Image-reading tools clamp large images and report the factor, e.g. `original 2560x1600, displayed at 2000x1250, multiply by 1.28`. Multiply every estimate taken off the displayed image by that reported factor.
-
-```
-screen_x = displayed_x × reported_factor
-screen_y = displayed_y × reported_factor
-```
-
-Parse the factor from the read result every time. Never hardcode it — it depends on the capture's dimensions, and a capture smaller than the clamp arrives unscaled with a factor of 1.
+Actions consume coordinates from the full captured image. If the image-reading
+facility downscales it, apply its reported factor to visual estimates before
+passing coordinates to the script. Never hardcode a scale factor.
 
 ## Targeting
 
@@ -66,7 +87,7 @@ An estimate taken off a downscaled screenshot is accurate to roughly ±15px. Bud
 
 **Target comfortably larger than ~40px** — single estimate, click, verify. A full-width link or a normal button is in no danger from ±15px.
 
-**Target smaller than ~40px, or a previous attempt missed** — crop the capture already taken to a tight region around the target, read the crop at native resolution, estimate from that, then add the crop's origin back to get screen coordinates. Cropping removes the downscaling, so the estimate tightens sharply.
+**Target smaller than ~40px, or a previous attempt missed** — use `crop` on the capture already taken, read the crop at native resolution, estimate from that, then add the crop's origin back to get screen coordinates. Cropping removes the downscaling, so the estimate tightens sharply.
 
 Crop the image already captured. Do not take a fresh capture just to zoom in.
 
@@ -76,7 +97,7 @@ The same trick applies to verification: when checking whether a known region cha
 
 Everything goes through mouse and keyboard — including launching and focusing applications. No process-launch calls, no window-manager APIs.
 
-**Launching.** Press the OS launcher key, type the application name, then **capture and confirm the highlighted result is the intended one before pressing Enter.** This confirmation is not optional. The top hit depends on search history and indexing state, which makes launching the least reliable step in any chain — and it is the first step, so everything downstream inherits the error.
+**Launching.** Use `key META`, capture and verify the launcher, use `type`, then **capture and confirm the highlighted result is the intended one before `key ENTER`.** This confirmation is not optional. The top hit depends on search history and indexing state.
 
 **Focusing.** Alt+Tab, or click the taskbar entry. Verify by capture that the intended window is actually frontmost before acting on it.
 
@@ -103,6 +124,6 @@ Stop and report rather than continue when:
 - The same target is missed twice.
 - An unexpected window or notification appears.
 - A modal or dialog blocks the intended path.
-- Verification shows no change at all — check the platform reference for causes that produce a _silent_ no-op before assuming the aim was wrong.
+- Verification shows no change at all — run `capabilities` again and report the backend before assuming the aim was wrong.
 
 Two failed attempts at the same step means the approach is wrong, not that it deserves a third try.

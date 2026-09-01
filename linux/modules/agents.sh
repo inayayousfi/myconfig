@@ -2,8 +2,15 @@
 
 module_agents_packages() {
     myconfig_log "Installing agent tools and browser dependencies"
-    install_package_ids \
+    local packages=(
         opencode at_spi2_core libxcomposite libxdamage libxrandr libxkbcommon
+    )
+
+    if [ "$MYCONFIG_PROFILE" = cachyos ]; then
+        packages+=(ydotool)
+    fi
+
+    install_package_ids "${packages[@]}"
 
     if [ "$MYCONFIG_PROFILE" = arch-wsl ]; then
         install_package_ids wsl_ssh_agent
@@ -72,6 +79,7 @@ EOF
 - **Keyboard remapping**: Kanata keyboard remapping with a KDE tray profile selector.
 - **Dictation**: Handy offline push-to-talk dictation on Ctrl+Space.
 - **KDE Plasma**: Black & Pink panels and application dock for KDE Plasma 6.7 through 6.x.
+- **Desktop automation**: ydotool with a persistent user service for virtual keyboard and pointer input.
 EOF
     fi
 
@@ -88,4 +96,31 @@ module_agents_configure() {
 
     opencode debug config >/dev/null
     link_agent_config
+
+    if [ "$MYCONFIG_PROFILE" = cachyos ]; then
+        require_command ydotool
+        require_command systemctl
+        require_function configure_named_input_access
+        require_function user_has_active_group
+
+        configure_named_input_access ydotool
+        systemctl --user daemon-reload
+        systemctl --user enable ydotool.service
+
+        if user_has_active_group input && user_has_active_group uinput; then
+            systemctl --user restart ydotool.service
+            systemctl --user --quiet is-active ydotool.service \
+                || myconfig_fail "ydotool user service did not become active"
+
+            local socket="${YDOTOOL_SOCKET:-${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/.ydotool_socket}"
+            local attempt
+            for attempt in {1..20}; do
+                [ -S "$socket" ] && break
+                sleep 0.1
+            done
+            [ -S "$socket" ] || myconfig_fail "ydotool user service did not create its socket"
+        else
+            myconfig_log "Log out and back in before ydotool can access uinput; its service is enabled for the next login"
+        fi
+    fi
 }

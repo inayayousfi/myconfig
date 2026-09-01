@@ -69,6 +69,8 @@ MYCONFIG_PROFILE=cachyos
     || myconfig_fail "KDE Plasma Iosevka font package did not resolve"
 [ "$(resolve_package desktop_file_utils)" = official:desktop-file-utils ] \
     || myconfig_fail "KDE Plasma desktop-entry validation package did not resolve"
+[ "$(resolve_package ydotool)" = official:ydotool ] \
+    || myconfig_fail "ydotool package did not resolve"
 [ "${MYCONFIG_PACKAGE_DEFAULTS[kanata]}" = aur:kanata-bin ] \
     || myconfig_fail "Kanata package did not resolve from the AUR"
 [ "${MYCONFIG_PACKAGE_DEFAULTS[handy]}" = aur:handy-bin ] \
@@ -1151,6 +1153,12 @@ if module_axidev_osk >/dev/null 2>&1; then
 fi
 
 source "$REPO_ROOT/linux/modules/agents.sh"
+agents_packages_source="$(declare -f module_agents_packages)"
+[[ "$agents_packages_source" == *'packages+=(ydotool)'* ]] \
+    || myconfig_fail "CachyOS agent module does not request ydotool"
+agents_configure_source="$(declare -f module_agents_configure)"
+[[ "$agents_configure_source" == *'systemctl --user enable ydotool.service'* ]] \
+    || myconfig_fail "CachyOS agent module does not enable ydotoold"
 inventory_home="$TEST_HOME/inventory-home"
 mkdir -p "$inventory_home"
 HOME="$inventory_home"
@@ -1166,6 +1174,8 @@ grep -Fq 'Kanata keyboard remapping with a KDE tray profile selector' "$HOME/env
     || myconfig_fail "CachyOS inventory omitted Kanata"
 grep -Fq 'Handy offline push-to-talk dictation on Ctrl+Space' "$HOME/environment.md" \
     || myconfig_fail "CachyOS inventory omitted Handy"
+grep -Fq 'ydotool with a persistent user service' "$HOME/environment.md" \
+    || myconfig_fail "CachyOS inventory omitted ydotool"
 
 MYCONFIG_PROFILE=arch-wsl
 write_environment_inventory
@@ -1183,6 +1193,9 @@ if grep -Fq 'Kanata' "$HOME/environment.md"; then
 fi
 if grep -Fq 'Handy' "$HOME/environment.md"; then
     myconfig_fail "Arch WSL inventory included Handy"
+fi
+if grep -Fq 'ydotool' "$HOME/environment.md"; then
+    myconfig_fail "Arch WSL inventory included ydotool"
 fi
 
 paru_test_root="$TEST_HOME/paru-bootstrap"

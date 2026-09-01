@@ -1159,6 +1159,17 @@ agents_packages_source="$(declare -f module_agents_packages)"
 agents_configure_source="$(declare -f module_agents_configure)"
 [[ "$agents_configure_source" == *'systemctl --user enable ydotool.service'* ]] \
     || myconfig_fail "CachyOS agent module does not enable ydotoold"
+agents_home="$TEST_HOME/agents-home"
+mkdir -p "$agents_home/.agents/skills/demo" "$agents_home/.claude/skills" "$agents_home/.config/opencode"
+ln -s "../../.agents/skills/stale" "$agents_home/.claude/skills/stale"
+HOME="$agents_home"
+link_agent_config
+[[ "$(readlink "$HOME/.config/opencode/AGENTS.md")" == "$HOME/.agents/AGENTS.md" ]] \
+    || myconfig_fail "OpenCode AGENTS bridge does not use the live absolute target"
+[[ -L "$HOME/.claude/skills/demo" ]] \
+    || myconfig_fail "Claude skill bridge was not created"
+[[ ! -L "$HOME/.claude/skills/stale" ]] \
+    || myconfig_fail "stale shared Claude skill bridge was not removed"
 inventory_home="$TEST_HOME/inventory-home"
 mkdir -p "$inventory_home"
 HOME="$inventory_home"

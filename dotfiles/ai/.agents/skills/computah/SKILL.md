@@ -13,7 +13,7 @@ When no natural tool fits, use this skill. Mouse and keyboard work everywhere, i
 
 ## Confirmation
 
-Ask through the question tool before the first desktop capture or input. Loading this skill does not require confirmation. A valid global bypass that explicitly names desktop control satisfies this gate.
+Ask through the question tool before the first desktop capture or input. Loading this skill does not require confirmation. The global escape hatch satisfies this gate when it covers the current task.
 
 **Capture is not acting.** Use the selected platform script to take a screenshot. Operating systems defend against synthetic capture keys, so insisting on a key press there produces silent failures and buys nothing.
 
@@ -68,7 +68,7 @@ Every action is: **capture → locate → act → verify.**
 4. Capture again and confirm the expected change actually happened.
 5. If it did not, stop and diagnose. Do not repeat the same action blindly.
 
-Never chain a second action onto an unverified first. A missed click is invisible. Every step after it compounds the error. That is how automation sequences go badly wrong rather than merely failing.
+Except for the no-visible-change case below, never chain a second action onto an unverified first. A missed click is invisible. Every step after it compounds the error. That is how automation sequences go badly wrong rather than merely failing.
 
 **Some actions produce no visible change.** Typing a second `1` into `1 × 1` leaves the display reading exactly the same. Verification cannot confirm those. Do not treat an unchanged screen as a miss and retry, or you will enter the input twice. Instead carry the uncertainty forward. Verify at the next step that does produce a distinguishable result, and treat that as confirmation of both.
 
@@ -124,6 +124,6 @@ Stop and report rather than continue when:
 - The same target is missed twice.
 - An unexpected window or notification appears.
 - A modal or dialog blocks the intended path.
-- Verification shows no change at all — run `capabilities` again and report the backend before assuming the aim was wrong.
+- Verification shows no change when the action should have produced a visible difference — run `capabilities` again and report the backend before assuming the aim was wrong.
 
 Two failed attempts at the same step means the approach is wrong, not that it deserves a third try.

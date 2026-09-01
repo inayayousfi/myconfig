@@ -7,7 +7,7 @@ description: ALWAYS use this skill whenever You write or edit text whose primary
 
 Everything here leaves the room. Another person reads it, judges it, and remembers it.
 
-The user authors. You type. That is true here too, and it has to show.
+The user directs the work and makes the decisions. You write and carry them out. That is true here too, and it has to show.
 
 ## What this covers
 
@@ -34,12 +34,12 @@ Not a message to the user in this session. That is just talking.
 1. Read the context.
 2. Know the recipient's rules.
 3. Draft.
-4. Authorship line on top.
+4. Collaboration block on top unless the user removed it.
 5. Strip what the harness added.
 6. Show it in plain text.
-7. Ask. Then send.
+7. Approve wording. Then send when authorized.
 
-Never reorder these. The confirmation gates the send, and nothing else does.
+Never reorder these. After recipient rules and placement are settled, approved wording and active send authorization are the final gates on sending.
 
 ## 1. Read the context
 
@@ -53,7 +53,7 @@ Every recipient has expectations about form. A project has a template. A support
 
 If a plan already recorded those rules, follow what it says. Do not go looking again.
 
-If no plan recorded them, ask the user who this text goes to, before drafting. Never guess it. Text that ignores the expected form gets ignored back.
+If no plan recorded them, inspect the available destination, thread, template, and recipient evidence. Ask the user only when that inspection does not establish who the text goes to or which form it requires. Never guess it. Text that ignores the expected form gets ignored back.
 
 ## 3. Draft
 
@@ -69,13 +69,13 @@ This is prose for a stranger. It is not the register the user asks for in chat.
 
 Write it as a person writes to another person.
 
-You MUST pass every outgoing text through the tone skill (`organic`), always, with no exception. Nothing leaves without that pass. It comes last on the wording, just before the authorship line goes on.
+You MUST pass every outgoing text through the tone skill (`organic`), always, with no exception. Nothing leaves without that pass. It comes last on the wording, just before the collaboration block goes on.
 
-### The reader knows nothing
+### Use only delivered context
 
-Whoever opens this has your text and nothing else. No thread, no history, no idea what you meant.
+Whoever opens this has the text and any context the destination delivers with it. They do not have the private agent session.
 
-Write for that person. Name the whole thing the first time it appears. Never point back at an exchange they did not see.
+Write for that person. A reply may rely on the thread they can see. Name anything that neither the text nor its delivered context establishes. Never point back at an exchange they cannot see.
 
 Then keep it short, and here is the rule that decides between the two: every sentence carries a new fact. A sentence that only restates the one before it goes.
 
@@ -85,34 +85,32 @@ Match what you are answering. A short question gets a short answer. A decision t
 
 Never pad to look thorough. Whoever reads this reads many of them.
 
-## 4. The authorship line
+## 4. The collaboration block
 
-One two-line attribution block goes on top of every outgoing text. No exceptions, no "this one is short".
+One two-line attribution block goes on top of every outgoing text unless an active session premise explicitly removes it. The user does not need to request it.
 
 Write it in the same language as the outgoing text. When the text mixes languages, use its dominant language. Translate the meaning naturally instead of preserving the English words or sentence structure.
 
 ```
-Written by <handle>, typed by <model> running in <harness>.
-Every call here is <handle>'s, and no agent acted on its own.
+<handle> directed the work and made every decision.
+<model>, running in <harness>, carried <handle>'s decisions out.
 ```
 
-This example defines the meaning, not fixed wording. Fill in the real model and the real harness. They are useful facts for the reader, so name them.
+This example defines the meaning, not fixed wording. Fill in the real handle, model, and harness. They are useful facts for the reader, so name them.
 
-This block is the only authorship credit or model, harness, and agent disclosure in the outgoing text. A recipient, template, or delivery tool asking for another such credit is already satisfied by this block. Never repeat it, move it, or add a paraphrase later in the text.
+This block is the default collaboration attribution. It does not automatically satisfy an exact disclosure required by the recipient, template, or delivery tool. Include target-required wording in its required form and location. Do not add another generic collaboration credit or paraphrase elsewhere.
 
 This rule does not remove necessary technical discussion. Text about how a model, harness, or agent works stays when that subject is the content rather than a credit or disclosure.
 
 The handle is the user's own name on the platform this text is going to.
 
-The handle appears twice, once per line. That is deliberate, and it is not a legal formality. A cold reader who meets "mine" on the second line has nothing to attach it to, and may well attach it to the model. Repeating the handle costs one word and removes the question.
+The handle appears twice, once per line. That is deliberate, and it is not a legal formality. Repeating the handle makes clear whose decisions the model carried out.
 
 No first-person pronoun stays in these two lines without its referent right there.
 
 Never stretch it past two lines. Never explain why the user does not type. That is private, and it is not the reader's business.
 
-Never move it to the bottom. Bottom is where the reader stops looking.
-
-A recipient's template does not outrank it. If the template claims the first section, the two lines still go above it. Then their template follows, untouched and complete.
+Keep it at the top unless the destination has a functional first-position requirement. A commit subject stays first, with this block at the start of the body. Keep exact target-required content in its required location. If those placement rules are incompatible, return the conflict to the global decision tree.
 
 ### Finding the handle
 
@@ -136,14 +134,12 @@ Output the full text in the chat, in a fenced code block tagged `text`.
 
 No tool call for this step. Plain text, so the user reads exactly what leaves.
 
-## 7. Ask, then send
+## 7. Approve wording, then send when authorized
 
-Call the question tool: Send / Request changes / Cancel.
+If the user requested a draft only, stop after showing it. Do not introduce sending as another choice.
 
-Do not put the message body in that tool call. It was already shown in step 6.
-
-Never send before the answer comes back. Not for a one-line comment. Not for a typo fix on something already sent.
+The exact wording must be approved unless an active session premise delegates that choice. When the wording remains unresolved, ask through the globally preferred question mechanism: Approve wording / Request changes / Cancel. Do not put the message body in that question. It was already shown in step 6.
 
 If the user asks for changes, redraft, show it again, then ask again.
 
-Once confirmed, send it with the right command for the target.
+Once the wording is approved or delegated, honor any active session premise that authorizes sending. Send directly when that authorization already exists. Otherwise ask through the globally preferred question mechanism: Send / Cancel. Once authorized, send with the right command for the target.

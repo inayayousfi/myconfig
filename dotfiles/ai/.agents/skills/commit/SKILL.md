@@ -5,11 +5,11 @@ description: ALWAYS use this skill when the user asks to create a Git commit or 
 
 # Commit
 
-Drafts a commit message for the currently staged changes and commits only after the user confirms it.
+Establishes the intended change set, drafts its commit message, and commits only after the user confirms the message.
 
 ## Steps
 
-1. **Check there's something to commit.** Run `git diff --cached --stat`. If it's empty, check `git status --short` for unstaged/untracked changes. If there are none at all, tell the user there's nothing to commit and stop. Otherwise, ask via the question tool whether to stage everything (`git add -A`) — do not stage anything without their confirmation. If they decline, stop.
+1. **Establish what "this" means.** Inspect `git diff --cached --stat` and `git status --short`. If there are no changes, tell the user there's nothing to commit and stop. Honor any staging scope the user already named. When the current session just produced a task's changes, "commit this" refers to those changes: stage them directly, using `git add -A` when they are the only worktree changes or exact paths or patches when unrelated work also exists. In a fresh session with no task-produced change set, inspect the coherent staging scopes and ask the user to choose. If existing staged work or overlapping edits cannot be safely separated from the intended changes, emit a global deviation instead of committing unrelated work.
 
 2. **Gather context:**
    - Current branch: `git branch --show-current`
@@ -32,4 +32,4 @@ Drafts a commit message for the currently staged changes and commits only after 
 
 7. **Read back the finished commit.** Run `git log -1 --pretty=format:"%B"`, then apply the global "No automatic promotion" rule. Amend only when that rule requires cleanup, keep the approved message otherwise identical, and report any cleanup.
 
-8. **Propose pushing — always the question tool, no exceptions.** After the finished-commit cleanup settles, ask whether to push the commit now via the question tool — never a plain-text question, never skipped, never inferred from context. This is an absolute rule, same as the message confirmation in step 5: it applies every single time this step is reached, regardless of how routine or low-stakes the commit seems. If they decline, stop. If they confirm, push with `git push` if the branch already tracks an upstream, or `git push -u origin <branch>` if it doesn't. Never push without this explicit confirmation, even if a push was confirmed earlier in the conversation — ask fresh every time.
+8. **Push only with authorization.** After the finished-commit cleanup settles, honor an active session premise that explicitly authorizes pushing this commit and push without asking again. Otherwise, ask whether to push now through the globally preferred question mechanism. If they decline, stop. If they confirm, push with `git push` if the branch already tracks an upstream, or `git push -u origin <branch>` if it doesn't.

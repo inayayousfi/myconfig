@@ -36,7 +36,18 @@ link_agent_config() {
 
     mkdir -p "$HOME/.claude/skills" "$HOME/.config/opencode"
 
-    local skill_dir skill
+    local linked_skill linked_target skill_dir skill
+    for linked_skill in "$HOME/.claude/skills"/*; do
+        [ -L "$linked_skill" ] || continue
+        linked_target="$(readlink "$linked_skill")"
+        case "$linked_target" in
+            ../../.agents/skills/*)
+                skill="$(basename "$linked_skill")"
+                [ -d "$skills_dir/$skill" ] || rm "$linked_skill"
+                ;;
+        esac
+    done
+
     for skill_dir in "$skills_dir"/*; do
         [ -d "$skill_dir" ] || continue
         skill="$(basename "$skill_dir")"
@@ -44,7 +55,7 @@ link_agent_config() {
         ln -sfn "../../.agents/skills/$skill" "$HOME/.claude/skills/$skill"
     done
 
-    ln -sfn "../../.agents/AGENTS.md" "$HOME/.config/opencode/AGENTS.md"
+    ln -sfn "$HOME/.agents/AGENTS.md" "$HOME/.config/opencode/AGENTS.md"
 }
 
 write_environment_inventory() {

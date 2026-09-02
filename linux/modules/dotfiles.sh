@@ -111,6 +111,7 @@ validate_staged_dotfiles() {
         }
 
         while IFS= read -r -d '' file; do
+            [[ "$file" = *.ps1 ]] && continue
             if LC_ALL=C grep -Iq $'\r' "$file"; then
                 myconfig_fail "dotfile contains CRLF or CR line endings: ${file#"$staging_dir/"}"
                 return 1

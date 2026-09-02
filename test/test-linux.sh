@@ -252,6 +252,13 @@ fi
 [ "$(cat "$validation_home/dotfiles/keep")" = keep ] \
     || myconfig_fail "failed staged validation replaced the live dotfiles tree"
 
+powershell_source="$TEST_HOME/crlf-powershell-source"
+powershell_staging="$TEST_HOME/crlf-powershell-staging"
+mkdir -p "$powershell_source/ai" "$powershell_staging/ai"
+printf 'Write-Host "ok"\r\n' >"$powershell_source/ai/windows.ps1"
+cp "$powershell_source/ai/windows.ps1" "$powershell_staging/ai/windows.ps1"
+validate_staged_dotfiles "$powershell_source" "$powershell_staging" ai
+
 profile_home="$TEST_HOME/profile-home"
 HOME="$profile_home"
 MYCONFIG_PROFILE=arch-wsl

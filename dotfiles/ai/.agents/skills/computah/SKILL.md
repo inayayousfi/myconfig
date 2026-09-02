@@ -19,9 +19,7 @@ Ask through the question tool before the first desktop capture or input. Loading
 
 ## Platform scripts
 
-Resolve `scripts/...` relative to this skill's root, never relative to the
-working directory. Agent Skills clients may expose the skill root differently;
-use the location supplied when this skill was loaded.
+Resolve `scripts/...` relative to this skill's root, never relative to the working directory. Agent Skills clients may expose the skill root differently; use the location supplied when this skill was loaded.
 
 Choose the script by the environment issuing commands:
 
@@ -33,8 +31,7 @@ Choose the script by the environment issuing commands:
 
 macOS is not implemented. Stop and tell the user.
 
-Run `capabilities` once before the first capture or action. The scripts detect
-their available backends and share this command interface:
+Run `capabilities` once before the first capture or action. The scripts detect their available backends and share this command interface:
 
 ```text
 capabilities
@@ -48,15 +45,9 @@ type TEXT
 key CHORD
 ```
 
-Coordinates are pixels measured from the captured image's top-left corner. The
-platform script translates them to native desktop coordinates, including a
-Windows virtual desktop whose origin is negative. Positive scroll notches move
-up; negative notches move down. Chords use names such as `ENTER`, `CTRL+L`,
-`ALT+TAB`, and `META`.
+Coordinates are pixels measured from the captured image's top-left corner. The platform script translates them to native desktop coordinates, including a Windows virtual desktop whose origin is negative. Positive scroll notches move up; negative notches move down. Chords use names such as `ENTER`, `CTRL+L`, `ALT+TAB`, and `META`.
 
-If `capabilities` marks an operation unavailable, stop rather than trying a
-different command from memory. The scripts are the platform abstraction; add
-new backends there instead of adding platform commands to this file.
+If `capabilities` marks an operation unavailable, stop rather than trying a different command from memory. The scripts are the platform abstraction; add new backends there instead of adding platform commands to this file.
 
 ## The loop
 
@@ -74,12 +65,9 @@ Except for the no-visible-change case below, never chain a second action onto an
 
 ## Images and coordinates
 
-`capture` writes a PNG and prints its absolute path. Ingest that path with the
-current harness's image-reading facility. Script stdout is not vision input.
+`capture` writes a PNG and prints its absolute path. Ingest that path with the current harness's image-reading facility. Script stdout is not vision input.
 
-Actions consume coordinates from the full captured image. If the image-reading
-facility downscales it, apply its reported factor to visual estimates before
-passing coordinates to the script. Never hardcode a scale factor.
+Actions consume coordinates from the full captured image. If the image-reading facility downscales it, apply its reported factor to visual estimates before passing coordinates to the script. Never hardcode a scale factor.
 
 ## Targeting
 

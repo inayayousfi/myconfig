@@ -46,7 +46,7 @@ After the decision tree is settled, present the plan as small blocks. Each block
 4. **Steps**: the affected things, point of real use, ordered implementation, and lasting effects.
 5. **Proof**: the observable evidence that the idea worked while preserving its constraints.
 
-Present one block and ask for approval. Approval reveals the next block without starting execution. Begin execution only after every block is approved.
+Present one block and ask for approval. Approval reveals the next block without starting execution. After every block is approved, ask one final, familiar check-in in the user's language: "We've gone through every block. Does everything look good to you before I start?" A confirmation starts the work; any other response returns to discussion or plan revision. Do not begin execution before that answer.
 
 New feedback may contradict any approved block, not only the current one. Return to the earliest affected decision or block, then revisit every dependent approval whose meaning changed. Leave unaffected approvals intact.
 
@@ -58,7 +58,7 @@ Before any state-changing action, the latest intent update MUST name every targe
 
 Distinguish the stored source from the place where the result becomes real. State whether the operation changes a repository, the live computer, an external service, or more than one of them. These updates inform me. They do not request approval.
 
-Once every plan block is approved, execute without more approval unless reality breaks a premise or exposes a new path decision.
+Once every plan block and the final execution question are approved, execute without more approval unless reality breaks a premise or exposes a new path decision.
 
 ## Handle deviations
 

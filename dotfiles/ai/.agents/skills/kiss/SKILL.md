@@ -1,6 +1,6 @@
 ---
 name: kiss
-description: ALWAYS use this skill for any code review request, including questions about complexity, over-engineering, consistency, edge cases, or dead code. Never use another review skill for those requests.
+description: ALWAYS use this skill for any code review request, including questions about complexity, over-engineering, consistency, edge cases, or dead code. If You implemented the review target in the current context, never review it inline: delegate the exact target to a fresh Sub-Agent and tell it to use this skill. A reviewer that did not implement the target follows this skill directly. Never use another review skill for these requests.
 ---
 
 # KISS review

@@ -17,6 +17,10 @@ class Widget {
     writeConfig(key, value) {
         this.config.set(key, value);
     }
+
+    remove() {
+        this.removed = true;
+    }
 }
 
 const createdPanels = [];
@@ -176,6 +180,7 @@ managedTop.writeConfig("myconfigRole", "top");
 managedTop.writeConfig("myconfigScreen", 0);
 managedTop.writeConfig("myconfigLayoutVersion", "4");
 const managedClock = managedTop.addWidget("org.kde.plasma.digitalclock");
+const extraDiskWidget = managedTop.addWidget("org.kde.plasma.systemmonitor.diskactivity");
 const managedDock = new Panel();
 managedDock.screen = 0;
 managedDock.writeConfig("myconfigManaged", "true");
@@ -193,6 +198,7 @@ managedTasks.writeConfig("showOnlyCurrentDesktop", true);
 runLayout([unrelated, managedTop, managedDock], "4", {firstRun: true});
 assert.equal(unrelated.removed, false, "missing layout state deleted an unrelated panel");
 assert.equal(managedTop.removed, false, "missing layout state replaced an existing managed top panel");
+assert.equal(extraDiskWidget.removed, true, "extra disk widget was retained");
 assert.equal(managedClock.readConfig("dateDisplayFormat", 1), 0, "retained clock does not use its adaptive layout");
 assert.equal(managedClock.readConfig("autoFontAndSize", false), true, "retained clock does not size its font automatically");
 assert.equal(managedDock.removed, false, "missing layout state replaced an existing managed dock");

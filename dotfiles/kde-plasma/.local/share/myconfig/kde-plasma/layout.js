@@ -86,6 +86,23 @@ if (missingWidgetTypes.length > 0) {
         configureTaskManager(tasks);
     }
 
+    function replacePanelWidgets(panel, role) {
+        let launchers = [];
+        if (role === "dock") {
+            const tasks = panel.widgets().find(widget => widget.type === "org.kde.plasma.icontasks");
+            if (tasks) {
+                tasks.currentConfigGroup = ["General"];
+                launchers = tasks.readConfig("launchers", []);
+            }
+        }
+        panel.widgets().slice().forEach(widget => widget.remove());
+        if (role === "top") {
+            addTopPanelWidgets(panel);
+        } else {
+            addDockWidgets(panel, launchers);
+        }
+    }
+
     function configureTopPanel(panel, screen) {
         panel.screen = screen;
         panel.location = "top";
@@ -166,6 +183,8 @@ if (missingWidgetTypes.length > 0) {
                 top = new Panel();
                 created.push(top);
                 addTopPanelWidgets(top);
+            } else {
+                replacePanelWidgets(top, "top");
             }
             configureTopPanel(top, screen);
 
@@ -175,6 +194,8 @@ if (missingWidgetTypes.length > 0) {
                 dock = new Panel();
                 created.push(dock);
                 addDockWidgets(dock, staleDockLaunchers.get(screen) || []);
+            } else {
+                replacePanelWidgets(dock, "dock");
             }
             configureDock(dock, screen);
         }

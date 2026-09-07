@@ -224,6 +224,14 @@ workspace.windows.push(dashboardWindow);
 windowAdded.emit(dashboardWindow);
 assert.equal(dashboardWindow.keepBelow, false, "full-screen application dashboard was moved below maximized windows");
 
+const spectacleWindow = mockWindow({
+    fullScreen: true,
+    resourceClass: "org.kde.spectacle",
+});
+workspace.windows.push(spectacleWindow);
+windowAdded.emit(spectacleWindow);
+assert.equal(spectacleWindow.keepBelow, false, "full-screen Spectacle window was moved below other windows");
+
 plasmaResponds = false;
 workspace.cursorPos = {x: 2000, y: 4};
 cursorPosChanged.emit();

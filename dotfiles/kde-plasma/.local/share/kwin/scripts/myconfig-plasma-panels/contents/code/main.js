@@ -266,12 +266,13 @@ function closeOverviewAfterDesktopSwitch() {
     }
 }
 
-function isPlasmaShellOverlay(window) {
-    return window.resourceClass === "org.kde.plasmashell" && window.skipTaskbar;
+function isFullscreenException(window) {
+    return window.resourceClass === "org.kde.spectacle"
+        || (window.resourceClass === "org.kde.plasmashell" && window.skipTaskbar);
 }
 
 function updateFullscreenLayer(window) {
-    if (window.fullScreen && !isPlasmaShellOverlay(window)) {
+    if (window.fullScreen && !isFullscreenException(window)) {
         if (!fullscreenKeepBelow.has(window)) {
             fullscreenKeepBelow.set(window, window.keepBelow);
         }

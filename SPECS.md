@@ -313,13 +313,13 @@ The Ubuntu Server installation does not include GNU Stow, development runtimes, 
 
 ## Platform-Specific: CachyOS
 
-CachyOS uses the complete shared Linux profile after the graphical operating-system installer finishes. The profile removes the Cachy Update notifier, installs development packages, Ghostty, Axidev OSK, Kanata, its independent KDE tray, Handy offline dictation, ydotool desktop automation, and the KDE Plasma desktop configuration, configures the OpenSSH service, sets Zsh as the default shell, deploys shared dotfiles, configures agent tools, and offers GitHub and Tailscale authentication.
+CachyOS uses the complete shared Linux profile after the graphical operating-system installer finishes. The profile installs the CachyOS Kernel Manager and the stable `linux-cachyos` kernel, removes the Cachy Update notifier, CachyOS Hello, the CachyOS default Zsh configuration, Vim, Konsole, and Alacritty, installs development packages, Ghostty, Axidev OSK, Kanata, its independent KDE tray, Handy offline dictation, ydotool desktop automation, and the KDE Plasma desktop configuration, configures the OpenSSH service, sets Zsh as the default shell, deploys shared dotfiles, configures agent tools, and offers GitHub and Tailscale authentication.
 
-The installer does not change sudoers, locale, kernel, drivers, or power settings. It installs OpenSSH, generates missing host keys, writes the shared listener policy, and enables the system service. Tailscale installs its system service separately.
+The installer does not change sudoers, locale, drivers, or power settings. It selects the stable CachyOS kernel package through the Arch package repository; it does not install an LTS kernel. It installs OpenSSH, generates missing host keys, writes the shared listener policy, and enables the system service. Tailscale installs its system service separately.
 
 ### Ghostty
 
-The CachyOS profile installs Ghostty before removing installed copies of Kitty, Alacritty, WezTerm, and Konsole. When installed, it also removes the metadata-only `kde-utilities-meta` package that would otherwise block Konsole removal; the KDE applications grouped by that package remain installed. It leaves unused dependencies installed and does not change the desktop's default-terminal setting. The Ghostty module does not run on Arch WSL or Ubuntu Server.
+The CachyOS profile installs Ghostty before removing installed copies of Kitty, Alacritty, WezTerm, and Konsole. It sets Ghostty as KDE's default terminal through `kdeglobals`, including the single-instance launch option. The CachyOS module also removes `cachyos-hello`, `cachyos-zsh-config`, `vim`, and the CachyOS Fish stack (`fish`, `cachyos-fish-config`, `fish-autopair`, `fish-pure-prompt`, and `fisher`), while keeping Neovim and Zsh. When installed, it also removes the metadata-only `kde-utilities-meta` package that would otherwise block Konsole removal; the KDE applications grouped by that package remain installed. It leaves unused dependencies installed. The Ghostty module does not run on Arch WSL or Ubuntu Server.
 
 ### Axidev OSK
 

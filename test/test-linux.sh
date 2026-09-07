@@ -63,6 +63,18 @@ MYCONFIG_PROFILE=cachyos
     || myconfig_fail "Ghostty package did not resolve"
 [ "$(resolve_package cachy_update)" = official:cachy-update ] \
     || myconfig_fail "Cachy Update package did not resolve"
+[ "$(resolve_package cachyos_hello)" = official:cachyos-hello ] \
+    || myconfig_fail "CachyOS Hello package did not resolve"
+[ "$(resolve_package cachyos_kernel_manager)" = official:cachyos-kernel-manager ] \
+    || myconfig_fail "CachyOS Kernel Manager package did not resolve"
+[ "$(resolve_package linux_cachyos)" = official:linux-cachyos ] \
+    || myconfig_fail "CachyOS stable kernel package did not resolve"
+[ "$(resolve_package cachyos_zsh_config)" = official:cachyos-zsh-config ] \
+    || myconfig_fail "CachyOS Zsh configuration package did not resolve"
+[ "$(resolve_package fish)" = official:fish ] \
+    || myconfig_fail "Fish package did not resolve"
+[ "$(resolve_package cachyos_fish_config)" = official:cachyos-fish-config ] \
+    || myconfig_fail "CachyOS Fish configuration package did not resolve"
 [ "$(resolve_package kde_utilities_meta)" = official:kde-utilities-meta ] \
     || myconfig_fail "KDE utilities metadata package did not resolve"
 [ "$(resolve_package iosevka_font)" = official:ttf-iosevka-nerd ] \
@@ -77,6 +89,19 @@ MYCONFIG_PROFILE=cachyos
     || myconfig_fail "Handy package did not resolve from the AUR"
 [ "$(remove_package_ids kitty alacritty wezterm konsole)" = $'official:kitty\nofficial:alacritty\nofficial:wezterm\nofficial:konsole' ] \
     || myconfig_fail "package removal identifiers did not resolve"
+
+source "$REPO_ROOT/linux/modules/cachyos.sh"
+cachyos_actions="$({
+    install_package_ids() {
+        printf 'install:%s\n' "$*"
+    }
+    remove_package_ids() {
+        printf 'remove:%s\n' "$*"
+    }
+    module_cachyos
+})"
+[ "$cachyos_actions" = $'[myconfig][cachyos] Configuring CachyOS stable kernel tools\ninstall:cachyos_kernel_manager linux_cachyos\nremove:konsole alacritty cachyos_hello cachyos_zsh_config vim fish cachyos_fish_config fish_autopair fish_pure_prompt fisher' ] \
+    || myconfig_fail "CachyOS module did not configure the stable kernel tools and removals"
 
 source "$REPO_ROOT/linux/modules/base.sh"
 base_actions="$({
@@ -993,7 +1018,7 @@ ghostty_actions="$({
     module_ghostty
 })"
 [ "$ghostty_actions" = $'[myconfig][cachyos] Installing Ghostty\ninstall:ghostty' ] \
-    || myconfig_fail "Ghostty module did not install Ghostty without removing other packages"
+    || myconfig_fail "Ghostty module did not install Ghostty"
 
 osk_test_root="$TEST_HOME/axidev-osk"
 osk_test_bin="$osk_test_root/bin"

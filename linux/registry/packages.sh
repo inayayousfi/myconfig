@@ -19,6 +19,10 @@ register_package rustup official:rustup
 register_package openssh official:openssh
 register_package polkit official:polkit
 register_package cachy_update official:cachy-update
+register_package cachyos_hello official:cachyos-hello
+register_package cachyos_kernel_manager official:cachyos-kernel-manager
+register_package linux_cachyos official:linux-cachyos
+register_package cachyos_zsh_config official:cachyos-zsh-config
 
 register_package ripgrep official:ripgrep
 register_package fd official:fd ubuntu-server=official:fd-find
@@ -46,6 +50,11 @@ register_package npm official:npm
 register_package node_gyp official:node-gyp
 
 register_package zsh official:zsh
+register_package fish official:fish
+register_package cachyos_fish_config official:cachyos-fish-config
+register_package fish_autopair official:fish-autopair
+register_package fish_pure_prompt official:fish-pure-prompt
+register_package fisher official:fisher
 register_package neovim official:neovim
 register_package ghostty official:ghostty
 register_package kitty official:kitty

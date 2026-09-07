@@ -3,6 +3,7 @@
 run_profile() {
     module_kde_plasma_validate
     module_base
+    module_cachyos
     module_ssh
     module_cli
     module_runtimes

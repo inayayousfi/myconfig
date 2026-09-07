@@ -21,7 +21,9 @@ capture_backend() {
 }
 
 keyboard_backend() {
-    if [[ $session == wayland ]] && has wtype; then
+    if [[ $session == wayland ]] && has ydotool; then
+        printf '%s' ydotool
+    elif [[ $session == wayland ]] && has wtype; then
         printf '%s' wtype
     elif [[ $session == x11 ]] && has xdotool; then
         printf '%s' xdotool
@@ -161,6 +163,51 @@ wtype_key() {
     wtype "${press[@]}" -k "$key" "${release[@]}"
 }
 
+ydotool_key() {
+    local chord=${1^^} part key keycode
+    local -a parts press release
+    IFS=+ read -r -a parts <<<"$chord"
+    key=${parts[-1]}
+    unset 'parts[-1]'
+    for part in "${parts[@]}"; do
+        case $part in
+            CTRL | CONTROL) keycode=29 ;;
+            ALT) keycode=56 ;;
+            SHIFT) keycode=42 ;;
+            META | WIN | SUPER) keycode=125 ;;
+            *)
+                printf 'computah: unknown modifier: %s\n' "$part" >&2
+                exit 2
+                ;;
+        esac
+        press+=("$keycode:1")
+        release=("$keycode:0" "${release[@]}")
+    done
+    case $key in
+        ENTER | RETURN) keycode=28 ;;
+        ESC | ESCAPE) keycode=1 ;;
+        BACKSPACE) keycode=14 ;;
+        META | WIN | SUPER) keycode=125 ;;
+        CTRL | CONTROL) keycode=29 ;;
+        ALT) keycode=56 ;;
+        SHIFT) keycode=42 ;;
+        SPACE) keycode=57 ;;
+        LEFT) keycode=105 ;;
+        RIGHT) keycode=106 ;;
+        UP) keycode=103 ;;
+        DOWN) keycode=108 ;;
+        HOME) keycode=102 ;;
+        END) keycode=107 ;;
+        TAB) keycode=15 ;;
+        DELETE) keycode=111 ;;
+        *)
+            printf 'computah: unsupported ydotool key: %s\n' "$key" >&2
+            exit 2
+            ;;
+    esac
+    ydotool key "${press[@]}" "$keycode:1" "$keycode:0" "${release[@]}"
+}
+
 require_keyboard() {
     local backend
     backend=$(keyboard_backend)
@@ -198,7 +245,13 @@ case $command in
             exit 2
         }
         backend=$(require_keyboard)
-        if [[ $backend == wtype ]]; then wtype "$1"; else xdotool type --clearmodifiers --delay 0 -- "$1"; fi
+        if [[ $backend == ydotool ]]; then
+            ydotool type --key-delay 0 --key-hold 0 -- "$1"
+        elif [[ $backend == wtype ]]; then
+            wtype "$1"
+        else
+            xdotool type --clearmodifiers --delay 0 -- "$1"
+        fi
         ;;
     key)
         [[ $# -eq 1 ]] || {
@@ -206,7 +259,13 @@ case $command in
             exit 2
         }
         backend=$(require_keyboard)
-        if [[ $backend == wtype ]]; then wtype_key "$1"; else xdotool key --clearmodifiers "$1"; fi
+        if [[ $backend == ydotool ]]; then
+            ydotool_key "$1"
+        elif [[ $backend == wtype ]]; then
+            wtype_key "$1"
+        else
+            xdotool key --clearmodifiers "$1"
+        fi
         ;;
     move)
         [[ $# -eq 2 ]] || {

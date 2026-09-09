@@ -2,6 +2,9 @@ const activationDepth = 8;
 const hideDelay = 400;
 const visibleMode = "windowsgobelow";
 const hiddenMode = "autohide";
+const islandClosingCaption = "MyConfig Island Closing";
+const islandCompactCaption = "MyConfig Island Compact";
+const islandOpenCaption = "MyConfig Island";
 const states = new Map();
 const fullscreenKeepBelow = new Map();
 
@@ -55,7 +58,17 @@ const myconfigPanels = panels().filter(panel => {
         && myconfigY >= geometry.y
         && myconfigY < geometry.y + geometry.height;
 });
-myconfigPanels.forEach(panel => panel.hiding = myconfigMode);
+myconfigPanels.forEach(panel => {
+    if (myconfigRole === "top") {
+        panel.widgets().filter(widget => widget.type === "myconfig.island").forEach(widget => {
+            widget.currentConfigGroup = ["General"];
+            widget.writeConfig("edgeVisible", myconfigMode !== "autohide");
+        });
+        panel.hiding = "autohide";
+    } else {
+        panel.hiding = myconfigMode;
+    }
+});
 print("MYCONFIG_PANEL_MODE=" + myconfigMode + ":" + myconfigPanels.length);
 `;
 }
@@ -123,8 +136,16 @@ function getState(output, role) {
     return states.get(stateKey(output, role)) || createState(output, role);
 }
 
-function popupOpen(state) {
-    return workspace.windowList().some(window => window.appletPopup
+function popupOpen(state, windows = workspace.windowList()) {
+    return windows.some(window => (window.appletPopup || window.caption === islandOpenCaption)
+        && window.caption !== islandClosingCaption
+        && !window.hidden
+        && window.output
+        && window.output.name === state.outputName);
+}
+
+function islandClosing(state, windows = workspace.windowList()) {
+    return windows.some(window => window.caption === islandClosingCaption
         && !window.hidden
         && window.output
         && window.output.name === state.outputName);
@@ -143,7 +164,7 @@ function pointerInActivationZone(state) {
         : point.y >= geometry.y + geometry.height - activationDepth;
 }
 
-function pointerInPanel(state) {
+function pointerInPanel(state, windows = workspace.windowList()) {
     const output = outputByName(state.outputName);
     if (!output || !pointInOutput(workspace.cursorPos, output)) {
         return false;
@@ -152,7 +173,13 @@ function pointerInPanel(state) {
     const point = workspace.cursorPos;
     const geometry = output.geometry;
     const outputMiddle = geometry.y + geometry.height / 2;
-    return workspace.windowList().some(window => {
+    return windows.some(window => {
+        if (window.caption === islandOpenCaption || window.caption === islandCompactCaption
+            || window.caption === islandClosingCaption) {
+            return state.role === "top" && !window.hidden && window.output
+                && window.output.name === state.outputName && pointInRect(point, window.frameGeometry);
+        }
+        if (state.role === "top") return false;
         if (!window.dock || window.hidden || !window.output
             || window.output.name !== state.outputName
             || !pointInRect(point, window.frameGeometry)) {
@@ -164,22 +191,25 @@ function pointerInPanel(state) {
 }
 
 function hideWhenReady(state) {
+    const windows = workspace.windowList();
     if (!state.desiredVisible) {
         return;
     }
-    if (pointerInActivationZone(state) || pointerInPanel(state)) {
+    if (pointerInActivationZone(state) || pointerInPanel(state, windows)) {
         state.popupWasOpen = false;
         return;
     }
-    if (popupOpen(state)) {
+    if (popupOpen(state, windows)) {
         state.popupWasOpen = true;
         state.hideTimer.start();
         return;
     }
     if (state.popupWasOpen) {
         state.popupWasOpen = false;
-        state.hideTimer.start();
-        return;
+        if (!islandClosing(state, windows)) {
+            state.hideTimer.start();
+            return;
+        }
     }
 
     state.desiredVisible = false;
@@ -200,6 +230,7 @@ function reveal(output, role) {
 
 function updatePointerState() {
     const point = workspace.cursorPos;
+    const windows = workspace.windowList();
     const output = workspace.screens.find(candidate => pointInOutput(point, candidate));
     if (output) {
         const geometry = output.geometry;
@@ -215,10 +246,10 @@ function updatePointerState() {
         if (!state.desiredVisible) {
             return;
         }
-        if (pointerInActivationZone(state) || pointerInPanel(state)) {
+        if (pointerInActivationZone(state) || pointerInPanel(state, windows)) {
             state.popupWasOpen = false;
             state.hideTimer.stop();
-        } else if (popupOpen(state)) {
+        } else if (popupOpen(state, windows)) {
             state.popupWasOpen = true;
             if (!state.hideTimer.active) {
                 state.hideTimer.start();
@@ -286,10 +317,29 @@ function updateFullscreenLayer(window) {
     }
 }
 
+function positionIsland(window) {
+    if (!window.output || (window.caption !== islandOpenCaption
+        && window.caption !== islandCompactCaption && window.caption !== islandClosingCaption)) return;
+    const screen = window.output.geometry;
+    const frame = window.frameGeometry;
+    const x = screen.x + Math.round((screen.width - frame.width) / 2);
+    const y = screen.y;
+    if (frame.x === x && frame.y === y) return;
+    // Wayland clients cannot position a regular window; KWin owns the anchor.
+    window.frameGeometry = {x, y, width: frame.width, height: frame.height};
+}
+
 function watchWindow(window) {
     window.fullScreenChanged.connect(() => updateFullscreenLayer(window));
     window.closed.connect(() => fullscreenKeepBelow.delete(window));
+    window.frameGeometryChanged.connect(() => positionIsland(window));
+    window.outputChanged.connect(() => positionIsland(window));
+    window.captionChanged.connect(() => {
+        positionIsland(window);
+        if (window.caption === islandOpenCaption) workspace.activeWindow = window;
+    });
     updateFullscreenLayer(window);
+    positionIsland(window);
 }
 
 workspace.cursorPosChanged.connect(updatePointerState);

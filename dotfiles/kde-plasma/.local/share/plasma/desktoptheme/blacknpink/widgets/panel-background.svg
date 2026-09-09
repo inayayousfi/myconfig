@@ -5,40 +5,40 @@
       .ColorScheme-Background { color: #eff0f1; stop-color: #eff0f1; }
     </style>
     <linearGradient id="shadow-top-gradient" x1="16" y1="10" x2="16" y2="0" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#000" stop-opacity=".2"/>
-      <stop offset=".333333" stop-color="#000" stop-opacity=".1"/>
-      <stop offset=".5" stop-color="#000" stop-opacity=".05"/>
-      <stop offset=".583333" stop-color="#000" stop-opacity=".025"/>
-      <stop offset="1" stop-color="#000" stop-opacity="0"/>
+      <stop offset="0" stop-color="#a0aabe" stop-opacity=".25"/>
+      <stop offset=".333333" stop-color="#a0aabe" stop-opacity=".125"/>
+      <stop offset=".5" stop-color="#a0aabe" stop-opacity=".0625"/>
+      <stop offset=".583333" stop-color="#a0aabe" stop-opacity=".03125"/>
+      <stop offset="1" stop-color="#a0aabe" stop-opacity="0"/>
     </linearGradient>
     <linearGradient id="shadow-bottom-gradient" x1="16" y1="6" x2="16" y2="16" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#000" stop-opacity=".2"/><stop offset=".333333" stop-color="#000" stop-opacity=".1"/><stop offset=".5" stop-color="#000" stop-opacity=".05"/><stop offset=".583333" stop-color="#000" stop-opacity=".025"/><stop offset="1" stop-color="#000" stop-opacity="0"/>
+      <stop offset="0" stop-color="#a0aabe" stop-opacity=".25"/><stop offset=".333333" stop-color="#a0aabe" stop-opacity=".125"/><stop offset=".5" stop-color="#a0aabe" stop-opacity=".0625"/><stop offset=".583333" stop-color="#a0aabe" stop-opacity=".03125"/><stop offset="1" stop-color="#a0aabe" stop-opacity="0"/>
     </linearGradient>
     <linearGradient id="shadow-left-gradient" x1="12" y1="16" x2="2" y2="16" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#000" stop-opacity=".2"/><stop offset=".333333" stop-color="#000" stop-opacity=".1"/><stop offset=".5" stop-color="#000" stop-opacity=".05"/><stop offset=".583333" stop-color="#000" stop-opacity=".025"/><stop offset="1" stop-color="#000" stop-opacity="0"/>
+      <stop offset="0" stop-color="#a0aabe" stop-opacity=".25"/><stop offset=".333333" stop-color="#a0aabe" stop-opacity=".125"/><stop offset=".5" stop-color="#a0aabe" stop-opacity=".0625"/><stop offset=".583333" stop-color="#a0aabe" stop-opacity=".03125"/><stop offset="1" stop-color="#a0aabe" stop-opacity="0"/>
     </linearGradient>
     <linearGradient id="shadow-right-gradient" x1="4" y1="16" x2="14" y2="16" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#000" stop-opacity=".2"/><stop offset=".333333" stop-color="#000" stop-opacity=".1"/><stop offset=".5" stop-color="#000" stop-opacity=".05"/><stop offset=".583333" stop-color="#000" stop-opacity=".025"/><stop offset="1" stop-color="#000" stop-opacity="0"/>
+      <stop offset="0" stop-color="#a0aabe" stop-opacity=".25"/><stop offset=".333333" stop-color="#a0aabe" stop-opacity=".125"/><stop offset=".5" stop-color="#a0aabe" stop-opacity=".0625"/><stop offset=".583333" stop-color="#a0aabe" stop-opacity=".03125"/><stop offset="1" stop-color="#a0aabe" stop-opacity="0"/>
     </linearGradient>
     <radialGradient id="shadow-corner" cx="0" cy="0" r="16" gradientUnits="userSpaceOnUse">
-      <stop offset=".375" stop-color="#000" stop-opacity=".2"/>
-      <stop offset=".59" stop-color="#000" stop-opacity=".1"/>
-      <stop offset=".72" stop-color="#000" stop-opacity=".05"/>
-      <stop offset=".82" stop-color="#000" stop-opacity=".025"/>
-      <stop offset="1" stop-color="#000" stop-opacity="0"/>
+      <stop offset=".375" stop-color="#a0aabe" stop-opacity=".25"/>
+      <stop offset=".59" stop-color="#a0aabe" stop-opacity=".125"/>
+      <stop offset=".72" stop-color="#a0aabe" stop-opacity=".0625"/>
+      <stop offset=".82" stop-color="#a0aabe" stop-opacity=".03125"/>
+      <stop offset="1" stop-color="#a0aabe" stop-opacity="0"/>
     </radialGradient>
   </defs>
 
   <rect id="hint-tile-center" width="5" height="5" fill="#f60"/>
-  <g id="top" transform="translate(6 10)"><rect width="32" height="6" class="ColorScheme-Background" fill="currentColor" opacity=".85"/><path d="M0 0h32v1H0z" class="ColorScheme-Background" fill="currentColor" opacity=".5"/></g>
-  <g id="bottom" transform="translate(6 48)"><rect width="32" height="6" class="ColorScheme-Background" fill="currentColor" opacity=".85"/><path d="M0 5h32v1H0z" class="ColorScheme-Background" fill="currentColor" opacity=".85"/></g>
-  <g id="left" transform="translate(0 16)"><rect width="6" height="32" class="ColorScheme-Background" fill="currentColor" opacity=".85"/><path d="M0 0h1v32H0z" class="ColorScheme-Background" fill="currentColor" opacity=".85"/></g>
-  <g id="right" transform="translate(38 16)"><rect width="6" height="32" class="ColorScheme-Background" fill="currentColor" opacity=".85"/><path d="M5 0h1v32H5z" class="ColorScheme-Background" fill="currentColor" opacity=".85"/></g>
-  <rect id="center" x="6" y="16" width="32" height="32" class="ColorScheme-Background" fill="currentColor" opacity=".85"/>
-  <path id="topleft" d="M0 16h6v-6c-4 0-6 2-6 6z" class="ColorScheme-Background" fill="currentColor" opacity=".85"/>
-  <path id="topright" d="M38 10v6h6c0-4-2-6-6-6z" class="ColorScheme-Background" fill="currentColor" opacity=".85"/>
-  <path id="bottomleft" d="M6 54v-6H0c0 4 2 6 6 6z" class="ColorScheme-Background" fill="currentColor" opacity=".85"/>
-  <path id="bottomright" d="M38 54v-6h6c0 4-2 6-6 6z" class="ColorScheme-Background" fill="currentColor" opacity=".85"/>
+  <rect id="top" x="16" y="10" width="12" height="16" fill="#000"/>
+  <rect id="bottom" x="16" y="38" width="12" height="16" fill="#000"/>
+  <rect id="left" x="0" y="26" width="16" height="12" fill="#000"/>
+  <rect id="right" x="28" y="26" width="16" height="12" fill="#000"/>
+  <rect id="center" x="16" y="26" width="12" height="12" fill="#000"/>
+  <path id="topleft" d="M16 10v16H0c0-8.837 7.163-16 16-16z" fill="#000"/>
+  <path id="topright" d="M28 10c8.837 0 16 7.163 16 16H28z" fill="#000"/>
+  <path id="bottomleft" d="M0 38h16v16C7.163 54 0 46.837 0 38z" fill="#000"/>
+  <path id="bottomright" d="M28 38h16c0 8.837-7.163 16-16 16z" fill="#000"/>
   <rect id="hint-top-margin" x="20" y="10" width="4" height="4" fill="#f0f"/>
   <rect id="hint-bottom-margin" x="20" y="50" width="4" height="4" fill="#f0f"/>
   <rect id="hint-left-margin" x="0" y="30" width=".00000001" height="4" fill="#f0f"/>
@@ -48,15 +48,15 @@
   <rect id="hint-left-inset" x="0" y="30" width=".00000001" height="4" fill="#0f0"/>
   <rect id="hint-right-inset" x="44" y="30" width=".00000001" height="4" fill="#0f0"/>
 
-  <rect id="mask-top" x="119" y="10" width="32" height="6"/>
-  <rect id="mask-center" x="119" y="16" width="32" height="32"/>
-  <rect id="mask-bottom" x="119" y="48" width="32" height="6"/>
-  <rect id="mask-left" x="113" y="16" width="6" height="32"/>
-  <rect id="mask-right" x="151" y="16" width="6" height="32"/>
-  <path id="mask-topleft" d="M113 16h6v-6c-4 0-6 2-6 6z"/>
-  <path id="mask-topright" d="M151 10v6h6c0-4-2-6-6-6z"/>
-  <path id="mask-bottomleft" d="M119 54v-6h-6c0 4 2 6 6 6z"/>
-  <path id="mask-bottomright" d="M151 54v-6h6c0 4-2 6-6 6z"/>
+  <rect id="mask-top" x="129" y="10" width="12" height="16"/>
+  <rect id="mask-center" x="129" y="26" width="12" height="12"/>
+  <rect id="mask-bottom" x="129" y="38" width="12" height="16"/>
+  <rect id="mask-left" x="113" y="26" width="16" height="12"/>
+  <rect id="mask-right" x="141" y="26" width="16" height="12"/>
+  <path id="mask-topleft" d="M129 10v16h-16c0-8.837 7.163-16 16-16z"/>
+  <path id="mask-topright" d="M141 10c8.837 0 16 7.163 16 16h-16z"/>
+  <path id="mask-bottomleft" d="M113 38h16v16c-8.837 0-16-7.163-16-16z"/>
+  <path id="mask-bottomright" d="M141 38h16c0 8.837-7.163 16-16 16z"/>
 
   <rect id="shadow-center" x="63" y="16" width="32" height="32" opacity=".001"/>
   <g id="shadow-top" transform="translate(63)"><rect width="32" height="10" fill="url(#shadow-top-gradient)"/><rect y="10" width="32" height="6" opacity=".001"/></g>

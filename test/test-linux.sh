@@ -491,7 +491,7 @@ node "$REPO_ROOT/test/test-kde-plasma-layout.js" \
 node -e 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"))' \
     "$REPO_ROOT/dotfiles/kde-plasma/.local/share/kwin/scripts/myconfig-plasma-panels/metadata.json"
 plasma_plasmoid_root="$REPO_ROOT/dotfiles/kde-plasma/.local/share/plasma/plasmoids"
-for widget in overview session power; do
+for widget in overview session power island; do
     node -e 'const metadata = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")); if (metadata.KPlugin.Id !== process.argv[2]) process.exit(1)' \
         "$plasma_plasmoid_root/myconfig.$widget/metadata.json" "myconfig.$widget"
     [ -f "$plasma_plasmoid_root/myconfig.$widget/contents/ui/main.qml" ] \
@@ -503,6 +503,7 @@ const root = process.argv[1];
 const overview = fs.readFileSync(`${root}/myconfig.overview/contents/ui/main.qml`, "utf8");
 const session = fs.readFileSync(`${root}/myconfig.session/contents/ui/main.qml`, "utf8");
 const power = fs.readFileSync(`${root}/myconfig.power/contents/ui/main.qml`, "utf8");
+const island = fs.readFileSync(`${root}/myconfig.island/contents/ui/main.qml`, "utf8");
 if (!overview.includes(`text: qsTr("Overview")`) || !overview.includes("font.pointSize: 14") || !overview.includes("Layout.minimumWidth: implicitWidth") || !overview.includes("Layout.fillHeight: true") || !overview.includes("invokeShortcut Overview") || !overview.includes("CanFillArea")) process.exit(1);
 const ordered = (source, values) => values.every((value, index) => source.indexOf(value) >= 0 && (index === 0 || source.indexOf(values[index - 1]) < source.indexOf(value)));
 if (!ordered(session, [`qsTr("Lock")`, `qsTr("Log Out")`, `qsTr("Switch User")`])) process.exit(1);
@@ -510,6 +511,13 @@ if (!session.includes("enabled: session.canSwitchUser")) process.exit(1);
 if (!ordered(power, [`qsTr("Restart")`, `qsTr("Shut Down")`, `qsTr("Sleep")`, `qsTr("Hibernate")`])) process.exit(1);
 if (session.includes("ToolTip") || power.includes("ToolTip")) process.exit(1);
 if (!session.includes("popupType: QQC2.Popup.Window") || !power.includes("popupType: QQC2.Popup.Window")) process.exit(1);
+if (island.includes("/tmp/") || island.includes("ISLAND_") || island.includes("configuration.readyWidgets") || island.includes("configuration.trayGroups")) process.exit(1);
+for (const widget of ["systemmonitor.cpu", "systemmonitor.memory", "systemmonitor.net", "calendar", "notifications", "systemtray"]) {
+    if (!island.includes(`"org.kde.plasma.${widget}"`)) process.exit(1);
+}
+for (const capability of ["canLock", "canSwitchUser", "canLogout", "canSuspend", "canHibernate", "canReboot", "canShutdown"]) {
+    if (!island.includes(`enabled: session.${capability}`)) process.exit(1);
+}
 ' "$plasma_plasmoid_root"
 plasma_theme_root="$REPO_ROOT/dotfiles/kde-plasma/.local/share/plasma/desktoptheme/blacknpink"
 plasma_global_theme_root="$REPO_ROOT/dotfiles/kde-plasma/.local/share/plasma/look-and-feel/org.myconfig.blacknpink.desktop"
@@ -613,7 +621,7 @@ chmod +x "$plasma_layout_bin/qdbus6"
 HOME="$plasma_layout_home" \
     PATH="$plasma_layout_bin:/usr/bin:/bin" \
     "$plasma_layout_home/.local/bin/myconfig-kde-plasma-layout"
-[ "$(<"$plasma_layout_home/.local/state/myconfig/kde-plasma-layout-version")" = 4 ] \
+[ "$(<"$plasma_layout_home/.local/state/myconfig/kde-plasma-layout-version")" = 5 ] \
     || myconfig_fail "KDE Plasma layout did not record its version"
 shopt -s nullglob
 plasma_backups=("$plasma_layout_home/.config/plasma-org.kde.plasma.desktop-appletsrc.backup."*)
@@ -664,7 +672,7 @@ cp "$plasma_theme_root/widgets/panel-background.svg" \
     "$plasma_layout_home/.local/share/plasma/desktoptheme/blacknpink/widgets/panel-background.svg"
 cp -a "$plasma_global_theme_root" \
     "$plasma_layout_home/.local/share/plasma/look-and-feel/org.myconfig.blacknpink.desktop"
-for widget in overview session power; do
+for widget in overview session power island; do
     cp -a "$plasma_plasmoid_root/myconfig.$widget" \
         "$plasma_layout_home/.local/share/plasma/plasmoids/myconfig.$widget"
 done

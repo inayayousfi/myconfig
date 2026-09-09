@@ -39,7 +39,7 @@ class Panel {
     }
 
     widgets() {
-        return this.panelWidgets;
+        return this.panelWidgets.filter(widget => !widget.removed);
     }
 
     readConfig(key, fallback) {
@@ -66,14 +66,16 @@ staleTasks.writeConfig("launchers", ["applications:org.kde.dolphin.desktop"]);
 
 const layout = fs.readFileSync(process.argv[2], "utf8");
 const knownWidgetTypes = [
-    "org.kde.plasma.panelspacer",
-    "org.kde.plasma.digitalclock",
+    "myconfig.island",
+    "org.kde.plasma.systemmonitor.cpu",
+    "org.kde.plasma.systemmonitor.memory",
+    "org.kde.plasma.systemmonitor.net",
+    "org.kde.plasma.calendar",
+    "org.kde.plasma.notifications",
     "org.kde.plasma.systemtray",
     "org.kde.plasma.kickerdash",
     "org.kde.plasma.icontasks",
     "myconfig.overview",
-    "myconfig.session",
-    "myconfig.power",
 ];
 
 function runLayout(initialPanels, version, options = {}) {
@@ -100,20 +102,11 @@ const upgrade = runLayout([staleDock], "4");
 assert.equal(staleDock.removed, true, "stale dock was not replaced");
 const replacementTop = upgrade.created.find(panel => panel.readConfig("myconfigRole", "") === "top");
 assert.ok(replacementTop, "replacement top panel was not created");
-assert.equal(replacementTop.height, 34, "replacement top panel has the wrong height");
-const replacementClock = replacementTop.widgets().find(widget => widget.type === "org.kde.plasma.digitalclock");
-assert.equal(replacementClock.readConfig("dateDisplayFormat", 1), 0, "replacement clock does not use its adaptive layout");
-assert.equal(replacementClock.readConfig("autoFontAndSize", false), true, "replacement clock does not size its font automatically");
+assert.equal(replacementTop.height, 44, "replacement top panel has the wrong height");
+assert.equal(replacementTop.lengthMode, "fit", "top panel does not fit the island");
 assert.deepEqual(
     replacementTop.widgets().map(widget => widget.type),
-    [
-        "org.kde.plasma.panelspacer",
-        "org.kde.plasma.digitalclock",
-        "org.kde.plasma.panelspacer",
-        "org.kde.plasma.systemtray",
-        "myconfig.session",
-        "myconfig.power",
-    ],
+    ["myconfig.island"],
     "replacement top panel has the wrong controls",
 );
 const replacementDock = upgrade.created.find(panel => panel.readConfig("myconfigRole", "") === "dock");
@@ -199,17 +192,37 @@ runLayout([unrelated, managedTop, managedDock], "4", {firstRun: true});
 assert.equal(unrelated.removed, false, "missing layout state deleted an unrelated panel");
 assert.equal(managedTop.removed, false, "missing layout state replaced an existing managed top panel");
 assert.equal(extraDiskWidget.removed, true, "extra disk widget was retained");
-assert.equal(managedClock.readConfig("dateDisplayFormat", 1), 0, "retained clock does not use its adaptive layout");
-assert.equal(managedClock.readConfig("autoFontAndSize", false), true, "retained clock does not size its font automatically");
+assert.equal(managedClock.removed, true, "legacy clock was not replaced");
+assert.deepEqual(managedTop.widgets().map(widget => widget.type), ["myconfig.island"], "legacy top panel was not migrated in place");
 assert.equal(managedDock.removed, false, "missing layout state replaced an existing managed dock");
-assert.equal(managedLauncher.readConfig("alphaSort", false), true, "retained dashboard is not alphabetical");
-assert.equal(managedLauncher.readConfig("showRecentApps", true), false, "retained dashboard shows recent apps");
-assert.equal(managedLauncher.readConfig("showRecentDocs", true), false, "retained dashboard shows recent documents");
+const updatedLauncher = managedDock.widgets().find(widget => widget.type === "org.kde.plasma.kickerdash");
+assert.equal(updatedLauncher.readConfig("alphaSort", false), true, "retained dashboard is not alphabetical");
+assert.equal(updatedLauncher.readConfig("showRecentApps", true), false, "retained dashboard shows recent apps");
+assert.equal(updatedLauncher.readConfig("showRecentDocs", true), false, "retained dashboard shows recent documents");
 assert.equal(
     managedTasks.readConfig("showOnlyCurrentDesktop", true),
     false,
     "retained task manager hides windows from other virtual desktops",
 );
+
+const retainedIsland = managedTop.widgets()[0];
+retainedIsland.writeConfig("savedWidgetState", "keep");
+runLayout([unrelated, managedTop, managedDock], "4");
+assert.equal(managedTop.widgets()[0], retainedIsland, "reconciliation recreated the island");
+assert.equal(retainedIsland.readConfig("savedWidgetState", ""), "keep", "reconciliation lost island widget state");
+assert.equal(managedTop.widgets().length, 1, "reconciliation duplicated the island");
+
+const secondDisplay = runLayout([managedTop, managedDock], "4", {screenCount: 2});
+const secondTop = secondDisplay.created.find(panel => panel.screen === 1 && panel.readConfig("myconfigRole", "") === "top");
+assert.deepEqual(secondTop.widgets().map(widget => widget.type), ["myconfig.island"], "new display did not receive an island");
+assert.equal(managedTop.widgets()[0], retainedIsland, "adding a display recreated the first island");
+
+const missingCalendar = knownWidgetTypes.indexOf("org.kde.plasma.calendar");
+knownWidgetTypes.splice(missingCalendar, 1);
+const missingWidget = runLayout([managedTop, managedDock], "4");
+assert.equal(missingWidget.created.length, 0, "missing island dependency changed the panels");
+assert.match(missingWidget.output[0], /MYCONFIG_STATUS=missing:org.kde.plasma.calendar/);
+knownWidgetTypes.splice(missingCalendar, 0, "org.kde.plasma.calendar");
 
 const outdatedDisconnectedDock = new Panel();
 outdatedDisconnectedDock.screen = -1;

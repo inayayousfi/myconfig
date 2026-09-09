@@ -1,12 +1,14 @@
 const requiredWidgetTypes = [
-    "org.kde.plasma.panelspacer",
-    "org.kde.plasma.digitalclock",
+    "myconfig.island",
+    "org.kde.plasma.systemmonitor.cpu",
+    "org.kde.plasma.systemmonitor.memory",
+    "org.kde.plasma.systemmonitor.net",
+    "org.kde.plasma.calendar",
+    "org.kde.plasma.notifications",
     "org.kde.plasma.systemtray",
     "org.kde.plasma.kickerdash",
     "org.kde.plasma.icontasks",
     "myconfig.overview",
-    "myconfig.session",
-    "myconfig.power",
 ];
 
 const missingWidgetTypes = requiredWidgetTypes.filter(type => !knownWidgetTypes.includes(type));
@@ -39,25 +41,8 @@ if (missingWidgetTypes.length > 0) {
         return Number(panel.readConfig("myconfigScreen", panel.screen));
     }
 
-    function configureClock(clock) {
-        clock.currentConfigGroup = ["Appearance"];
-        clock.writeConfig("showDate", true);
-        clock.writeConfig("dateFormat", "shortDate");
-        clock.writeConfig("dateDisplayFormat", 0);
-        clock.writeConfig("autoFontAndSize", true);
-        clock.writeConfig("timeFormat", "default");
-        clock.writeConfig("use24hFormat", 1);
-    }
-
     function addTopPanelWidgets(panel) {
-        panel.addWidget("org.kde.plasma.panelspacer");
-
-        configureClock(panel.addWidget("org.kde.plasma.digitalclock"));
-
-        panel.addWidget("org.kde.plasma.panelspacer");
-        panel.addWidget("org.kde.plasma.systemtray");
-        panel.addWidget("myconfig.session");
-        panel.addWidget("myconfig.power");
+        panel.addWidget("myconfig.island");
     }
 
     function configureTaskManager(tasks) {
@@ -87,6 +72,10 @@ if (missingWidgetTypes.length > 0) {
     }
 
     function replacePanelWidgets(panel, role) {
+        const widgets = panel.widgets();
+        if (role === "top" && widgets.length === 1 && widgets[0].type === "myconfig.island") {
+            return;
+        }
         let launchers = [];
         if (role === "dock") {
             const tasks = panel.widgets().find(widget => widget.type === "org.kde.plasma.icontasks");
@@ -107,16 +96,11 @@ if (missingWidgetTypes.length > 0) {
         panel.screen = screen;
         panel.location = "top";
         panel.alignment = "center";
-        panel.lengthMode = "fill";
-        panel.height = 34;
+        panel.lengthMode = "fit";
+        panel.height = 68;
         panel.hiding = "autohide";
         panel.floating = false;
         panel.opacity = "adaptive";
-        panel.widgets().forEach(widget => {
-            if (widget.type === "org.kde.plasma.digitalclock") {
-                configureClock(widget);
-            }
-        });
         markPanel(panel, "top", screen);
     }
 

@@ -1,0 +1,13 @@
+{
+  "KPackageStructure": "Plasma/Applet",
+  "KPlugin": {
+    "Id": "myconfig.island",
+    "Name": "MyConfig Island",
+    "Description": "Clock and paged Plasma controls",
+    "Icon": "clock",
+    "Category": "System Information",
+    "Version": "1.0"
+  },
+  "X-Plasma-API-Minimum-Version": "6.0",
+  "X-Plasma-ContainmentType": "CustomEmbedded"
+}

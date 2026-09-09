@@ -107,7 +107,7 @@ module_kde_plasma() {
     [ -f "$HOME/.local/share/plasma/look-and-feel/org.myconfig.blacknpink.desktop/contents/defaults" ] \
         || myconfig_fail "Black & Pink global theme defaults were not stowed"
     local widget
-    for widget in overview session power; do
+    for widget in overview session power island; do
         [ -f "$HOME/.local/share/plasma/plasmoids/myconfig.$widget/metadata.json" ] \
             || myconfig_fail "MyConfig $widget Plasma metadata was not stowed"
         [ -f "$HOME/.local/share/plasma/plasmoids/myconfig.$widget/contents/ui/main.qml" ] \

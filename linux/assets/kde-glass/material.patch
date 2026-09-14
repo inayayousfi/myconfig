@@ -1,0 +1,41 @@
+diff --git a/src/blur.h b/src/blur.h
+--- a/src/blur.h
++++ b/src/blur.h
+@@ -158,1 +158,6 @@
+ private:
++    float m_materialIOR = 1.50f;
++    float m_materialRoughness = 0.45f;
++    float m_materialThickness = 80.0f;
++    float m_materialInteriorShadow = 0.30f;
++    float m_materialCurvature = 1.25f;
+diff --git a/src/blur.cpp b/src/blur.cpp
+--- a/src/blur.cpp
++++ b/src/blur.cpp
+@@ -337,1 +337,7 @@
+     m_settings.read();
++    const KConfigGroup material(effects->config(), QStringLiteral("Effect-blurplus"));
++    m_materialIOR = std::clamp(material.readEntry("FrostedIOR", 1.50f), 1.0f, 2.5f);
++    m_materialRoughness = std::clamp(material.readEntry("FrostedRoughness", 0.45f), 0.0f, 1.0f);
++    m_materialThickness = std::clamp(material.readEntry("FrostedThickness", 80.0f), 1.0f, 100.0f);
++    m_materialInteriorShadow = std::clamp(material.readEntry("FrostedInteriorShadow", 0.30f), 0.0f, 1.0f);
++    m_materialCurvature = std::clamp(material.readEntry("FrostedCurvature", 1.25f), 0.0f, 3.0f);
+@@ -1462,1 +1468,6 @@
+     m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.colorMatrixLocation, colorMatrix);
++    m_roundedOnscreenPass.shader->setUniform("materialIOR", m_materialIOR);
++    m_roundedOnscreenPass.shader->setUniform("materialRoughness", m_materialRoughness);
++    m_roundedOnscreenPass.shader->setUniform("materialThickness", m_materialThickness);
++    m_roundedOnscreenPass.shader->setUniform("materialInteriorShadow", m_materialInteriorShadow);
++    m_roundedOnscreenPass.shader->setUniform("materialCurvature", m_materialCurvature);
+diff --git a/src/shaders/glass.glsl b/src/shaders/glass.glsl
+--- a/src/shaders/glass.glsl
++++ b/src/shaders/glass.glsl
+@@ -16,1 +16,6 @@
+ uniform int physicallyBasedRefraction;
++uniform float materialIOR;
++uniform float materialRoughness;
++uniform float materialThickness;
++uniform float materialInteriorShadow;
++uniform float materialCurvature;
+@@ -156,1 +161,1 @@
+-        vec4 r = clamp(cornerRadius * 2.0, min(64.0, minHalfSize), min(128.0, minHalfSize));
++        vec4 r = cornerRadius;

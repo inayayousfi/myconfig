@@ -1,0 +1,23 @@
+cmake_minimum_required(VERSION 3.22)
+project(myconfig_glass LANGUAGES C CXX)
+
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_VISIBILITY_PRESET hidden)
+set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
+find_package(ECM REQUIRED NO_MODULE)
+list(APPEND CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
+find_package(Qt6 REQUIRED COMPONENTS Quick Qml)
+include(KDEInstallDirs6)
+find_package(KF6WindowSystem REQUIRED)
+
+add_library(myconfigglass MODULE blurregion.cpp)
+target_link_libraries(myconfigglass PRIVATE Qt6::Quick Qt6::Qml KF6::WindowSystem)
+install(TARGETS myconfigglass DESTINATION ${KDE_INSTALL_QMLDIR}/MyConfig/Glass)
+configure_file(qmldir "${CMAKE_CURRENT_BINARY_DIR}/qmldir" COPYONLY)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/qmldir" DESTINATION ${KDE_INSTALL_QMLDIR}/MyConfig/Glass)
+
+if(GLASS_SOURCE)
+    add_subdirectory("${GLASS_SOURCE}" glass)
+    set_target_properties(glass PROPERTIES OUTPUT_NAME "${MYCONFIG_GLASS_ID}")
+endif()

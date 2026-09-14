@@ -1,6 +1,6 @@
 [Unit]
 Description=Reconcile responsive MyConfig Plasma panels
-After=plasma-plasmashell.service
+After=plasma-kwin_wayland.service plasma-plasmashell.service
 
 [Service]
 Type=oneshot

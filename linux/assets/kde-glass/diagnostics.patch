@@ -1,0 +1,48 @@
+diff --git a/src/blur.h b/src/blur.h
+--- a/src/blur.h
++++ b/src/blur.h
+@@ -111,1 +111,2 @@
+     bool isActive() const override;
++    QString debug(const QString &parameter) const override;
+@@ -158,1 +159,5 @@
+ private:
++    quint64 m_attempts = 0;
++    quint64 m_noRegion = 0;
++    quint64 m_rejected = 0;
++    quint64 m_drawCalls = 0;
+diff --git a/src/blur.cpp b/src/blur.cpp
+--- a/src/blur.cpp
++++ b/src/blur.cpp
+@@ -272,1 +272,1 @@
+-#ifdef GLASS_WIN_67
++#ifdef GLASS_KWIN_67
+@@ -1074,3 +1074,5 @@
++    ++m_attempts;
+     auto it = m_windows.find(w);
+     if (it == m_windows.end()) {
++        ++m_noRegion;
+         return;
+@@ -1081,2 +1083,3 @@
+     if (!shouldBlur(w, mask, data)) {
++        ++m_rejected;
+         return;
+@@ -1530,1 +1533,2 @@
+         vbo->draw(GL_TRIANGLES, vertexOffset, currentVertexCount);
++        ++m_drawCalls;
+@@ -1604,1 +1608,16 @@
++QString BlurEffect::debug(const QString &) const
++{
++    QString result = QStringLiteral("valid=%1 shaders=%2 attempts=%3 noRegion=%4 rejected=%5 draws=%6 tracked=%7 whitelist=%8 classes=%9\n")
++        .arg(m_valid).arg(static_cast<bool>(m_roundedOnscreenPass.shader))
++        .arg(m_attempts).arg(m_noRegion).arg(m_rejected).arg(m_drawCalls).arg(m_windows.size())
++        .arg(m_whitelist).arg(m_windowClasses.join(QLatin1Char(',')));
++    for (auto w : effects->stackingOrder()) {
++        if (!w->isDock() && !w->caption().startsWith(QStringLiteral("MyConfig Island"))) continue;
++        const auto region = w->surface() ? w->surface()->blurRegion().boundingRect() : RectF();
++        result += QStringLiteral("%1 visible=%2 requested=%3x%4 tracked=%5\n")
++            .arg(w->caption()).arg(w->isVisible()).arg(region.width()).arg(region.height()).arg(m_windows.contains(w));
++    }
++    return result;
++}
++
+ bool BlurEffect::isActive() const

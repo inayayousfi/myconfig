@@ -112,7 +112,7 @@ if (missingWidgetTypes.length > 0) {
         panel.height = 47;
         panel.hiding = "autohide";
         panel.floating = true;
-        panel.opacity = "adaptive";
+        panel.opacity = "translucent";
         panel.widgets().forEach(widget => {
             if (widget.type === "org.kde.plasma.kickerdash") {
                 configureLauncher(widget);

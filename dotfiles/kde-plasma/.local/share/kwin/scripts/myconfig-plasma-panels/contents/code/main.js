@@ -317,9 +317,17 @@ function updateFullscreenLayer(window) {
     }
 }
 
+function isIslandWindow(window) {
+    return window.caption === islandOpenCaption || window.caption === islandCompactCaption
+        || window.caption === islandClosingCaption;
+}
+
 function positionIsland(window) {
-    if (!window.output || (window.caption !== islandOpenCaption
-        && window.caption !== islandCompactCaption && window.caption !== islandClosingCaption)) return;
+    if (!isIslandWindow(window)) return;
+    window.skipTaskbar = true;
+    window.skipPager = true;
+    window.skipSwitcher = true;
+    if (!window.output) return;
     const screen = window.output.geometry;
     const frame = window.frameGeometry;
     const x = screen.x + Math.round((screen.width - frame.width) / 2);

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+source "$(dirname "${BASH_SOURCE[0]}")/kde-plasma-glass.sh"
+
 validate_kde_plasma_version() {
     local output="$1"
 
@@ -87,6 +89,8 @@ module_kde_plasma() {
     require_command systemctl
     require_command sudo
 
+    install_kde_plasma_glass || return 1
+
     local pointer_plugin="$MYCONFIG_REPO_ROOT/linux/assets/libinput/90-myconfig-pointer-sensitivity.lua"
     [ -f "$pointer_plugin" ] \
         || myconfig_fail "libinput pointer-sensitivity plugin was not found"
@@ -96,12 +100,17 @@ module_kde_plasma() {
 
     [ -x "$HOME/.local/bin/myconfig-kde-plasma-layout" ] \
         || myconfig_fail "KDE Plasma layout command was not stowed"
+    [ -f "$HOME/.local/bin/myconfig-kde-plasma-glass-repair" ] \
+        || myconfig_fail "KDE Plasma Glass repair command was not stowed"
     [ -f "$HOME/.local/share/color-schemes/BlackPink.colors" ] \
         || myconfig_fail "Black & Pink KDE color scheme was not stowed"
     [ -f "$HOME/.local/share/plasma/desktoptheme/blacknpink/metadata.json" ] \
         || myconfig_fail "Black & Pink Plasma theme metadata was not stowed"
-    [ -f "$HOME/.local/share/plasma/desktoptheme/blacknpink/widgets/panel-background.svg" ] \
-        || myconfig_fail "Black & Pink Plasma panel background was not stowed"
+    local background
+    for background in widgets/panel-background.svg dialogs/background.svg solid/dialogs/background.svg; do
+        [ -f "$HOME/.local/share/plasma/desktoptheme/blacknpink/$background" ] \
+            || { myconfig_fail "Black & Pink Plasma background was not stowed: $background"; return 1; }
+    done
     [ -f "$HOME/.local/share/plasma/look-and-feel/org.myconfig.blacknpink.desktop/metadata.json" ] \
         || myconfig_fail "Black & Pink global theme metadata was not stowed"
     [ -f "$HOME/.local/share/plasma/look-and-feel/org.myconfig.blacknpink.desktop/contents/defaults" ] \
@@ -119,6 +128,8 @@ module_kde_plasma() {
         || myconfig_fail "MyConfig Plasma Panels KWin script was not stowed"
     [ -f "$HOME/.config/systemd/user/myconfig-kde-plasma-layout.service" ] \
         || myconfig_fail "KDE Plasma layout user service was not stowed"
+    [ -f "$HOME/.config/systemd/user/myconfig-kde-plasma-glass.service" ] \
+        || myconfig_fail "KDE Plasma Glass repair service was not stowed"
     desktop-file-validate "$HOME/.config/autostart/myconfig-kde-plasma-layout.desktop"
     fc-match "Iosevka Nerd Font" | grep -Fq 'Iosevka' \
         || myconfig_fail "Iosevka Nerd Font is not available after installation"
@@ -133,14 +144,19 @@ module_kde_plasma() {
     export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
     export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
     systemctl --user daemon-reload
+    systemctl --user enable myconfig-kde-plasma-glass.service
     if qdbus6 org.kde.KWin /KWin >/dev/null 2>&1; then
+        activate_kde_plasma_glass || return 1
         qdbus6 org.kde.KWin /KWin org.kde.KWin.reconfigure
     fi
 
     local layout_status=0
     "$HOME/.local/bin/myconfig-kde-plasma-layout" || layout_status=$?
     case "$layout_status" in
-        0) myconfig_log "Applied the KDE Plasma layout to the active session" ;;
+        0)
+            systemctl --user try-restart plasma-plasmashell.service || return 1
+            myconfig_log "Applied and reloaded the KDE Plasma layout and Glass effect"
+            ;;
         75) myconfig_log "KDE Plasma is not active; the layout will apply at the next KDE Plasma login" ;;
         *) myconfig_fail "KDE Plasma layout failed with status $layout_status" ;;
     esac

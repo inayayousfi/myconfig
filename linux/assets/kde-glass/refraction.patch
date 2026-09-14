@@ -1,0 +1,92 @@
+diff --git a/src/blur.h b/src/blur.h
+--- a/src/blur.h
++++ b/src/blur.h
+@@ -170,1 +170,2 @@
+         int texUnitLocation;
++        int sceneTextureLocation;
+diff --git a/src/blur.cpp b/src/blur.cpp
+--- a/src/blur.cpp
++++ b/src/blur.cpp
+@@ -137,1 +137,2 @@
+         m_roundedOnscreenPass.texUnitLocation = m_roundedOnscreenPass.shader->uniformLocation("texUnit");
++        m_roundedOnscreenPass.sceneTextureLocation = m_roundedOnscreenPass.shader->uniformLocation("sceneTexture");
+@@ -1471,1 +1472,2 @@
+-    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.blurSizeLocation, QVector2D(nativeBox.width(), nativeBox.height()));
++    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.sceneTextureLocation, 1);
++    m_roundedOnscreenPass.shader->setUniform(m_roundedOnscreenPass.blurSizeLocation, QVector2D(scaledBackgroundRect.width(), scaledBackgroundRect.height()));
+@@ -1524,3 +1526,5 @@
++        glActiveTexture(GL_TEXTURE1);
++        renderInfo.framebuffers[0]->colorAttachment()->bind();
+         glActiveTexture(GL_TEXTURE0);
+         blurredTexture->bind();
+         vbo->draw(GL_TRIANGLES, vertexOffset, currentVertexCount);
+diff --git a/src/shaders/onscreen_rounded.glsl b/src/shaders/onscreen_rounded.glsl
+--- a/src/shaders/onscreen_rounded.glsl
++++ b/src/shaders/onscreen_rounded.glsl
+@@ -3,1 +3,2 @@
+ uniform sampler2D texUnit;
++uniform sampler2D sceneTexture;
+diff --git a/src/shaders/snells-glass.glsl b/src/shaders/snells-glass.glsl
+--- a/src/shaders/snells-glass.glsl
++++ b/src/shaders/snells-glass.glsl
+@@ -51,1 +51,1 @@
+-    vec4 color = processSample(texUnit, uv, glassNormal, ior, refractionRGBFringing, refractionMagnitude, uvScale, lensShift);
++    vec4 color = processSample(sceneTexture, uv, glassNormal, ior, refractionRGBFringing, refractionMagnitude, uvScale, lensShift);
+diff --git a/src/shaders/glass.glsl b/src/shaders/glass.glsl
+--- a/src/shaders/glass.glsl
++++ b/src/shaders/glass.glsl
+@@ -82,4 +82,4 @@
+-        texture(texUnit, coordR).r,
+-        texture(texUnit, coordG).g,
+-        texture(texUnit, coordB).b,
+-        texture(texUnit, coordG).a
++        texture(sceneTexture, coordR).r,
++        texture(sceneTexture, coordG).g,
++        texture(sceneTexture, coordB).b,
++        texture(sceneTexture, coordG).a
+diff --git a/src/blur.qrc b/src/myconfigglass.qrc
+rename from src/blur.qrc
+rename to src/myconfigglass.qrc
+--- a/src/blur.qrc
++++ b/src/myconfigglass.qrc
+@@ -2,1 +2,1 @@
+-<qresource prefix="/effects/glass/">
++<qresource prefix="/effects/myconfig_glass/">
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -42,1 +42,1 @@
+-    blur.qrc
++    myconfigglass.qrc
+diff --git a/src/blur.cpp b/src/blur.cpp
+--- a/src/blur.cpp
++++ b/src/blur.cpp
+@@ -67,1 +67,1 @@
+-    Q_INIT_RESOURCE(blur);
++    Q_INIT_RESOURCE(myconfigglass);
+@@ -122,2 +122,2 @@
+-                                                                                     QStringLiteral(":/effects/glass/generated/onscreen_rounded.vert"),
+-                                                                                     QStringLiteral(":/effects/glass/generated/onscreen_rounded.frag"));
++                                                                                     QStringLiteral(":/effects/myconfig_glass/generated/onscreen_rounded.vert"),
++                                                                                     QStringLiteral(":/effects/myconfig_glass/generated/onscreen_rounded.frag"));
+@@ -158,2 +158,2 @@
+-                                                                                QStringLiteral(":/effects/glass/generated/vertex.vert"),
+-                                                                                QStringLiteral(":/effects/glass/generated/downsample.frag"));
++                                                                                QStringLiteral(":/effects/myconfig_glass/generated/vertex.vert"),
++                                                                                QStringLiteral(":/effects/myconfig_glass/generated/downsample.frag"));
+@@ -170,2 +170,2 @@
+-                                                                              QStringLiteral(":/effects/glass/generated/vertex.vert"),
+-                                                                              QStringLiteral(":/effects/glass/generated/upsample.frag"));
++                                                                              QStringLiteral(":/effects/myconfig_glass/generated/vertex.vert"),
++                                                                              QStringLiteral(":/effects/myconfig_glass/generated/upsample.frag"));
+@@ -183,2 +183,2 @@
+-                                                                           QStringLiteral(":/effects/glass/generated/vertex.vert"),
+-                                                                           QStringLiteral(":/effects/glass/generated/noise.frag"));
++                                                                           QStringLiteral(":/effects/myconfig_glass/generated/vertex.vert"),
++                                                                           QStringLiteral(":/effects/myconfig_glass/generated/noise.frag"));
+diff --git a/src/kcm/blur_config.cpp b/src/kcm/blur_config.cpp
+--- a/src/kcm/blur_config.cpp
++++ b/src/kcm/blur_config.cpp
+@@ -108,1 +108,1 @@
+-        interface.reconfigureEffect(QStringLiteral("glass"));
++        interface.reconfigureEffect(QStringLiteral("myconfig_glass"));

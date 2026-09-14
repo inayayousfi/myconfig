@@ -116,13 +116,29 @@ function activeTimer(interval) {
     return timers.find(timer => timer.interval === interval && timer.active);
 }
 
-function mockWindow({fullScreen = false, keepBelow = false, resourceClass = "", skipTaskbar = false} = {}) {
+function mockWindow({
+    caption = "",
+    fullScreen = false,
+    keepBelow = false,
+    output = null,
+    resourceClass = "",
+    skipPager = false,
+    skipSwitcher = false,
+    skipTaskbar = false,
+} = {}) {
     return {
+        caption,
         fullScreen,
         keepBelow,
+        output,
         resourceClass,
+        skipPager,
+        skipSwitcher,
         skipTaskbar,
+        captionChanged: new Signal(),
         fullScreenChanged: new Signal(),
+        frameGeometryChanged: new Signal(),
+        outputChanged: new Signal(),
         closed: new Signal(),
     };
 }
@@ -231,6 +247,13 @@ const spectacleWindow = mockWindow({
 workspace.windows.push(spectacleWindow);
 windowAdded.emit(spectacleWindow);
 assert.equal(spectacleWindow.keepBelow, false, "full-screen Spectacle window was moved below other windows");
+
+const islandWindow = mockWindow({caption: "MyConfig Island"});
+workspace.windows.push(islandWindow);
+windowAdded.emit(islandWindow);
+assert.equal(islandWindow.skipTaskbar, true, "island remained visible in the task manager");
+assert.equal(islandWindow.skipPager, true, "island remained visible in desktop navigation");
+assert.equal(islandWindow.skipSwitcher, true, "island remained visible in window switching effects");
 
 plasmaResponds = false;
 workspace.cursorPos = {x: 2000, y: 4};

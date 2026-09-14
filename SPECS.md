@@ -15,6 +15,7 @@ This document describes the current setup scripts, package groups, dotfiles, and
 - [Terminal And Editors](#terminal-and-editors)
 - [File Manager](#file-manager)
 - [Development Languages And Runtimes](#development-languages-and-runtimes)
+- [Docker](#docker)
 - [Shared Non-Windows Package Baseline](#shared-non-windows-package-baseline)
 - [Platform-Specific: Ubuntu Server](#platform-specific-ubuntu-server)
 - [Platform-Specific: CachyOS](#platform-specific-cachyos)
@@ -281,6 +282,14 @@ These packages form the complete CachyOS and Arch WSL profiles. Ubuntu Server in
 - resvg
 - ImageMagick
 
+### Docker
+
+The CachyOS profile installs the open source Docker Engine and its command-line tools from the official Arch repositories. The `docker` package provides the engine, daemon, containerd, and runc; `docker-buildx` provides BuildKit builds; and `docker-compose` provides Compose. Docker Desktop is not installed.
+
+The module enables and starts `docker.service`. It deliberately does not add the current user to the `docker` group because membership grants root-equivalent access to the host. Before installing anything, it checks both the current process groups and the account's configured supplementary groups and refuses to continue if either contains `docker`. Docker therefore remains usable through `sudo` unless the user chooses a separate, explicit access policy.
+
+This module runs only for CachyOS. Arch WSL and Ubuntu Server do not install a Docker daemon.
+
 ---
 
 ## Platform-Specific: Ubuntu Server
@@ -351,7 +360,13 @@ Handy calls the same reusable input-access helper independently with its own nam
 
 The CachyOS profile requires KDE Plasma 6.7 through the latest 6.x release. Earlier versions lack the required per-screen virtual-desktop behavior, and KDE Plasma 7 is rejected until its panel scripting interface is deliberately validated. The version boundary is isolated in the KDE Plasma module so support can be extended without changing the layout.
 
-The profile installs Iosevka Nerd Font and applies the Black & Pink KDE color scheme to KDE Plasma and KDE applications through Breeze. It uses the root stylesheet's black surfaces, light text, pink accent, muted inactive text, semantic colors, and Iosevka typography. A narrow `blacknpink` Plasma theme inherits Breeze and overrides only its panel background: the floating dock keeps Breeze's shape and left margin while its trailing content margin is reduced from 8 to 4 logical pixels. The dock keeps KDE Plasma's adaptive opacity. The island draws its own black surface and suppresses the top panel's native background while it is loaded. The profile does not use the experimental Union styling engine.
+The profile installs Iosevka Nerd Font and applies the Black & Pink color scheme through Breeze. Its Plasma theme supplies transparent backgrounds for the clock island, dock, popup panels and temporary volume/brightness indicators. Application windows keep the normal color scheme, while text and icons remain opaque.
+
+The shared frosted-glass material uses an index of refraction of 1.50, roughness of 0.50, simulated thickness of 60 and an inward bevel width of up to 48 pixels, limited by the surface size. Soft black shadows sit four pixels below the surfaces. The island masks its shadow out of the transparent interior. The dock stays translucent rather than switching to adaptive opacity.
+
+The KDE Plasma module builds and installs `myconfig-kde-glass` from the pinned upstream source and the patches in `linux/assets/kde-glass`. The package declares its build and runtime dependencies. The material settings are stored in `dotfiles/kde-plasma/.local/share/myconfig/kde-plasma/glass.conf`. The standard CachyOS installer includes this setup without additional manual installation steps.
+
+The module reuses the installed package when its version and recorded KWin version match, and rebuilds it otherwise. Each build has a distinct effect filename and resource namespace because KWin can retain unloaded libraries. Old blur providers are unloaded before the replacement loads. If Glass cannot initialize, the module attempts to restore KDE's standard blur and reports the failure. A user service repeats the version check at every Plasma login and runs the dedicated Glass repair script after a KWin upgrade, so the full profile does not need to run again. Running Plasma is reloaded without restarting KWin or the desktop session; offline installation takes effect at the next login.
 
 An existing rEFInd installation receives the Black & Pink theme originally used by the removed Fedora profile. Its full-screen banner is pitch black with a four-pixel pink bar along the bottom, and its default selections use translucent pink outlines. The theme keeps rEFInd's built-in OS and utility icons, hides labels, hints, arrows, and device badges, and deliberately leaves `showtools` to the stock configuration to prevent duplicate firmware, reboot, and shutdown buttons. The installer generates the three theme images from the historical script, enables mouse support, keeps a one-time `refind.conf.pre-blacknpink` backup, and owns two include lines in a marked configuration block so reruns preserve unrelated boot entries and settings.
 
@@ -363,7 +378,7 @@ The clock keeps its position during the opening and closing animation, while the
 
 The centered bottom dock keeps its Application Dashboard, Overview control and Icons-only Task Manager. It starts with no pinned applications, supports the normal **Pin to Task Manager** action, and shows windows from its own display across all virtual desktops. The separate legacy Session and Power widgets remain installed for saved panels that still reference them.
 
-Both panels use automatic hiding. MyConfig Plasma Panels, a KWin script, gives the top and bottom edges an 8-logical-pixel inward activation zone across each display. A matching panel appears as an overlay and returns to native automatic hiding 400 milliseconds after the pointer leaves both the panel and its activation zone; an open panel popup postpones hiding. The script temporarily places truly fullscreen windows in KWin's below layer, allowing panels, picture-in-picture windows, and other desktop interactions to remain available, then restores each window's prior stacking state when it leaves fullscreen. The top panel is 44 logical pixels high and fits the clock capsule. The floating dock is 47 logical pixels high, uses KDE Plasma's 8-pixel floating margin, and follows the width of its launcher and visible tasks.
+Both panels use automatic hiding. MyConfig Plasma Panels, a KWin script, gives the top and bottom edges an 8-logical-pixel inward activation zone across each display. A matching panel appears as an overlay and returns to native automatic hiding 400 milliseconds after the pointer leaves both the panel and its activation zone; an open panel popup postpones hiding. The script temporarily places truly fullscreen windows in KWin's below layer, allowing panels, picture-in-picture windows, and other desktop interactions to remain available, then restores each window's prior stacking state when it leaves fullscreen. The top panel is 68 logical pixels high and fits the clock capsule. The floating dock is 47 logical pixels high, uses KDE Plasma's 8-pixel floating margin, and follows the width of its launcher and visible tasks.
 
 The first layout application backs up `~/.config/plasma-org.kde.plasma.desktop-appletsrc`, builds its replacement panels, and removes the initial panels only after replacement construction succeeds. Later logins configure panel geometry, create missing managed panels, and replace panels from an older layout version while carrying manual task-manager pins into replacement docks. An existing top panel with the old clock and tray controls receives the island in place. Once the island is present, reconciliation keeps that instance and its child widget settings rather than recreating them. Dock controls are rebuilt with their manual task-manager pins retained. MyConfig Plasma Panels also starts the reconciler immediately when KWin reports a display change, with one delayed retry for Plasma's output update. Unrelated panels and managed panels for temporarily disconnected displays remain intact. If KDE Plasma is not running during installation, the profile installs the configuration and defers panel creation until the next KDE Plasma login.
 

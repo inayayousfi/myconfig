@@ -443,6 +443,20 @@ source "$REPO_ROOT/linux/modules/kde-plasma.sh"
 source "$REPO_ROOT/linux/modules/kanata.sh"
 source "$REPO_ROOT/linux/modules/kanata-kde.sh"
 source "$REPO_ROOT/linux/modules/handy.sh"
+source "$REPO_ROOT/linux/modules/docker.sh"
+
+(
+    id() {
+        case "$*" in
+            '-un') printf 'test-user\n' ;;
+            '-Gn') printf 'users\n' ;;
+            '-nG test-user') printf 'users docker\n' ;;
+            *) return 1 ;;
+        esac
+    }
+    user_is_in_group docker \
+        || myconfig_fail "Docker group check missed configured membership"
+)
 
 validate_kde_plasma_version 'plasma-workspace 6.7.0-1'
 validate_kde_plasma_version 'plasma-workspace 6.99.4-2'
@@ -486,6 +500,7 @@ grep -Fq 'tasks.writeConfig("fill", false);' \
     || myconfig_fail "KDE Plasma task manager still fills the dock"
 node "$REPO_ROOT/test/test-kde-plasma-panels.js" \
     "$REPO_ROOT/dotfiles/kde-plasma/.local/share/kwin/scripts/myconfig-plasma-panels/contents/code/main.js"
+bash "$REPO_ROOT/test/test-kde-glass.sh"
 node "$REPO_ROOT/test/test-kde-plasma-layout.js" \
     "$REPO_ROOT/dotfiles/kde-plasma/.local/share/myconfig/kde-plasma/layout.js"
 node -e 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"))' \
@@ -512,6 +527,7 @@ if (!ordered(power, [`qsTr("Restart")`, `qsTr("Shut Down")`, `qsTr("Sleep")`, `q
 if (session.includes("ToolTip") || power.includes("ToolTip")) process.exit(1);
 if (!session.includes("popupType: QQC2.Popup.Window") || !power.includes("popupType: QQC2.Popup.Window")) process.exit(1);
 if (island.includes("/tmp/") || island.includes("ISLAND_") || island.includes("configuration.readyWidgets") || island.includes("configuration.trayGroups")) process.exit(1);
+if (!island.includes("function closeAfterDeactivation()") || !island.includes("function onVisibleChanged() { if (!target.visible) island.closeAfterDeactivation(); }")) process.exit(1);
 for (const widget of ["systemmonitor.cpu", "systemmonitor.memory", "systemmonitor.net", "calendar", "notifications", "systemtray"]) {
     if (!island.includes(`"org.kde.plasma.${widget}"`)) process.exit(1);
 }
@@ -587,7 +603,8 @@ grep -Fq 'id="hint-left-margin" x="0" y="30" width=".00000001" height="4"' \
 resvg "$plasma_theme_root/widgets/panel-background.svg" \
     "$TEST_HOME/panel-background.png"
 systemd-analyze verify \
-    "$REPO_ROOT/dotfiles/kde-plasma/.config/systemd/user/myconfig-kde-plasma-layout.service"
+    "$REPO_ROOT/dotfiles/kde-plasma/.config/systemd/user/myconfig-kde-plasma-layout.service" \
+    "$REPO_ROOT/dotfiles/kde-plasma/.config/systemd/user/myconfig-kde-plasma-glass.service"
 
 MYCONFIG_PROFILE=arch-wsl
 if module_kde_plasma >/dev/null 2>&1; then
@@ -597,9 +614,9 @@ fi
 plasma_layout_test_root="$TEST_HOME/kde-plasma-layout"
 plasma_layout_home="$plasma_layout_test_root/home"
 plasma_layout_bin="$plasma_layout_test_root/bin"
-mkdir -p \
-    "$plasma_layout_home/.config" \
-    "$plasma_layout_home/.local/bin" \
+    mkdir -p \
+        "$plasma_layout_home/.config" \
+        "$plasma_layout_home/.local/bin" \
     "$plasma_layout_home/.local/share/myconfig/kde-plasma" \
     "$plasma_layout_bin"
 cp "$REPO_ROOT/dotfiles/kde-plasma/.local/bin/myconfig-kde-plasma-layout" \
@@ -664,12 +681,7 @@ cp "$REPO_ROOT/dotfiles/kde-plasma/.config/autostart/myconfig-kde-plasma-layout.
     "$plasma_layout_home/.config/autostart/myconfig-kde-plasma-layout.desktop"
 cp "$REPO_ROOT/dotfiles/kde-plasma/.local/share/color-schemes/BlackPink.colors" \
     "$plasma_layout_home/.local/share/color-schemes/BlackPink.colors"
-cp "$plasma_theme_root/metadata.json" \
-    "$plasma_layout_home/.local/share/plasma/desktoptheme/blacknpink/metadata.json"
-cp "$plasma_theme_root/plasmarc" \
-    "$plasma_layout_home/.local/share/plasma/desktoptheme/blacknpink/plasmarc"
-cp "$plasma_theme_root/widgets/panel-background.svg" \
-    "$plasma_layout_home/.local/share/plasma/desktoptheme/blacknpink/widgets/panel-background.svg"
+cp -a "$plasma_theme_root/." "$plasma_layout_home/.local/share/plasma/desktoptheme/blacknpink/"
 cp -a "$plasma_global_theme_root" \
     "$plasma_layout_home/.local/share/plasma/look-and-feel/org.myconfig.blacknpink.desktop"
 for widget in overview session power island; do
@@ -678,6 +690,10 @@ for widget in overview session power island; do
 done
 cp "$REPO_ROOT/dotfiles/kde-plasma/.config/systemd/user/myconfig-kde-plasma-layout.service" \
     "$plasma_layout_home/.config/systemd/user/myconfig-kde-plasma-layout.service"
+cp "$REPO_ROOT/dotfiles/kde-plasma/.config/systemd/user/myconfig-kde-plasma-glass.service" \
+    "$plasma_layout_home/.config/systemd/user/myconfig-kde-plasma-glass.service"
+cp "$REPO_ROOT/dotfiles/kde-plasma/.local/bin/myconfig-kde-plasma-glass-repair" \
+    "$plasma_layout_home/.local/bin/myconfig-kde-plasma-glass-repair"
 cp "$REPO_ROOT/dotfiles/kde-plasma/.local/share/kwin/scripts/myconfig-plasma-panels/metadata.json" \
     "$plasma_layout_home/.local/share/kwin/scripts/myconfig-plasma-panels/metadata.json"
 cp "$REPO_ROOT/dotfiles/kde-plasma/.local/share/kwin/scripts/myconfig-plasma-panels/contents/code/main.js" \
@@ -726,9 +742,15 @@ MYCONFIG_PROFILE=cachyos
 HOME="$plasma_layout_home" \
     PATH="$plasma_layout_bin:/usr/bin:/bin" \
     module_cursor_theme
-HOME="$plasma_layout_home" \
-    PATH="$plasma_layout_bin:/usr/bin:/bin" \
-    module_kde_plasma
+(
+    install_kde_plasma_glass() { printf '%s\n' 'glass:install' >>"$plasma_module_log"; }
+    activate_kde_plasma_glass() { printf '%s\n' 'glass:activate' >>"$plasma_module_log"; }
+    HOME="$plasma_layout_home" PATH="$plasma_layout_bin:/usr/bin:/bin" module_kde_plasma
+)
+grep -Fxq 'glass:install' "$plasma_module_log" || myconfig_fail "Plasma module omitted Glass installation"
+grep -Fxq 'glass:activate' "$plasma_module_log" || myconfig_fail "Plasma module omitted Glass activation"
+grep -Fxq 'systemctl:--user try-restart plasma-plasmashell.service' "$plasma_module_log" \
+    || myconfig_fail "Plasma module did not reload the installed widgets"
 grep -Fxq 'packages:iosevka_font desktop_file_utils libinput' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module omitted its appearance dependencies"
 grep -Fxq "sudo:install -Dm644 $pointer_plugin /etc/libinput/plugins/90-myconfig-pointer-sensitivity.lua" \
@@ -1014,6 +1036,51 @@ systemd-analyze verify "$handy_unit_test_root/myconfig-handy.service"
         myconfig_fail "Handy module accepted a non-CachyOS profile"
     fi
 )
+
+MYCONFIG_PROFILE=cachyos
+docker_test_log="$TEST_HOME/docker-module.log"
+: >"$docker_test_log"
+(
+    install_package_ids() {
+        printf 'packages:%s\n' "$*" >>"$docker_test_log"
+    }
+    sudo() {
+        printf 'sudo:%s\n' "$*" >>"$docker_test_log"
+    }
+    systemctl() {
+        printf 'systemctl:%s\n' "$*" >>"$docker_test_log"
+        [ "$*" = 'is-active docker.service' ] && printf 'active\n'
+    }
+    user_is_in_group() {
+        return 1
+    }
+
+    module_docker
+)
+grep -Fxq 'packages:docker docker_buildx docker_compose' "$docker_test_log" \
+    || myconfig_fail "Docker module did not install the open source Docker packages"
+grep -Fxq 'sudo:systemctl enable --now docker.service' "$docker_test_log" \
+    || myconfig_fail "Docker module did not enable and start docker.service"
+grep -Fxq 'systemctl:is-active docker.service' "$docker_test_log" \
+    || myconfig_fail "Docker module did not verify docker.service"
+
+: >"$docker_test_log"
+(
+    install_package_ids() {
+        myconfig_fail "Docker module installed packages for a docker-group member"
+    }
+    user_is_in_group() {
+        return 0
+    }
+    module_docker
+) >/dev/null 2>&1 && myconfig_fail "Docker module accepted a docker-group member"
+[ ! -s "$docker_test_log" ] \
+    || myconfig_fail "Docker module changed system state after its docker-group refusal"
+
+MYCONFIG_PROFILE=arch-wsl
+if module_docker >/dev/null 2>&1; then
+    myconfig_fail "Docker module accepted a non-CachyOS profile"
+fi
 
 MYCONFIG_PROFILE=cachyos
 ghostty_actions="$({

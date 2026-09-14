@@ -4,6 +4,8 @@ import QtQuick
 import QtQuick.Window
 import QtQuick.Layouts
 import QtQuick.Controls as Controls
+import Qt5Compat.GraphicalEffects as GraphicalEffects
+import MyConfig.Glass 1.0
 import org.kde.kirigami as Kirigami
 import org.kde.kitemmodels as KItemModels
 import org.kde.plasma.core as PlasmaCore
@@ -114,6 +116,13 @@ ContainmentItem {
         }
     }
 
+    function closeAfterDeactivation() {
+        Qt.callLater(() => {
+            if (island.opened && !popup.active && !island.settingsPopup?.visible && !island.applicationsPopup?.visible)
+                island.closeIsland();
+        });
+    }
+
     Connections {
         target: island.settingsTray ? island.settingsTray.systemTrayState : null
         function onExpandedChanged() {
@@ -135,6 +144,14 @@ ContainmentItem {
     Binding { target: island.applicationsPopup; property: "popupDirection"; value: Qt.LeftEdge; when: island.applicationsPopup !== null }
     Binding { target: island.applicationsPopup; property: "margin"; value: 12; when: island.applicationsPopup !== null }
     Binding { target: island.applicationsPopup; property: "hideOnWindowDeactivate"; value: true; when: island.applicationsPopup !== null }
+    Connections {
+        target: island.settingsPopup
+        function onVisibleChanged() { if (!target.visible) island.closeAfterDeactivation(); }
+    }
+    Connections {
+        target: island.applicationsPopup
+        function onVisibleChanged() { if (!target.visible) island.closeAfterDeactivation(); }
+    }
 
     Timer {
         interval: 1000
@@ -324,14 +341,19 @@ ContainmentItem {
             }
         }
         onActiveChanged: {
-            if (!active && island.opened) Qt.callLater(() => {
-                if (!popup.active && !island.settingsPopup?.visible && !island.applicationsPopup?.visible)
-                    island.closeIsland();
-            });
+            if (!active) island.closeAfterDeactivation();
         }
         onClosing: close => {
             close.accepted = false;
             island.closeIsland();
+        }
+
+        BlurRegion {
+            window: popup
+            enabled: canvas.opacity > 0.02
+            rect: Qt.rect(canvas.width / 2 + (surface.x - canvas.width / 2) * canvas.scale,
+                canvas.y + surface.y * canvas.scale, surface.width * canvas.scale, surface.height * canvas.scale)
+            radius: surface.radius * canvas.scale
         }
 
         Item {
@@ -352,14 +374,41 @@ ContainmentItem {
                 onWheel: wheel => island.pageWheel(wheel)
             }
 
-            Kirigami.ShadowedRectangle {
-                anchors.fill: surface
-                radius: surface.radius
-                color: Qt.rgba(0, 0, 0, 0.85)
-                shadow.xOffset: 0
-                shadow.yOffset: 0
-                shadow.size: 16
-                shadow.color: Qt.rgba(160 / 255, 170 / 255, 190 / 255, 0.25)
+            Item {
+                id: shadowSource
+                anchors.fill: parent
+                visible: false
+                Kirigami.ShadowedRectangle {
+                    x: surface.x
+                    y: surface.y
+                    width: surface.width
+                    height: surface.height
+                    radius: surface.radius
+                    color: "black"
+                    shadow.xOffset: 0
+                    shadow.yOffset: 4
+                    shadow.size: 10
+                    shadow.color: Qt.rgba(0, 0, 0, 0.5)
+                }
+            }
+            Item {
+                id: shadowCutout
+                anchors.fill: parent
+                visible: false
+                Rectangle {
+                    x: surface.x
+                    y: surface.y
+                    width: surface.width
+                    height: surface.height
+                    radius: surface.radius
+                    color: "white"
+                }
+            }
+            GraphicalEffects.OpacityMask {
+                anchors.fill: parent
+                source: shadowSource
+                maskSource: shadowCutout
+                invert: true
             }
 
             Controls.Button {
@@ -384,8 +433,8 @@ ContainmentItem {
                 height: island.actualPillHeight + (island.openHeight - island.actualPillHeight) * (Math.max(0, Math.min(1, island.reveal)) + island.stretch)
                 radius: island.actualPillHeight / 2 + (30 - island.actualPillHeight / 2) * Math.max(0, Math.min(1, island.reveal)) + island.stretch * 100
                 color: "transparent"
-                border.color: "#222222"
-                border.width: Math.max(0, Math.min(1, island.reveal))
+                border.color: "#28ffffff"
+                border.width: 1
                 clip: true
 
                 TapHandler {
@@ -632,7 +681,9 @@ ContainmentItem {
                 widget.fullRepresentationItem.Layout.minimumHeight) + contentMargin * 2
             : 0
         radius: 18
-        color: "#0a0a0a"
+        color: "transparent"
+        border.width: 1
+        border.color: "#28ffffff"
     }
 
     component ActionButton: Controls.Button {
@@ -668,9 +719,9 @@ ContainmentItem {
         }
         background: Rectangle {
             radius: 13
-            color: action.down ? "#a0205f" : action.hovered ? "#222222" : "#111111"
+            color: action.down ? "#24ffffff" : action.hovered ? "#14ffffff" : "transparent"
             border.width: action.activeFocus ? 1 : 0
-            border.color: "#ff4ead"
+            border.color: "#40ffffff"
         }
     }
 

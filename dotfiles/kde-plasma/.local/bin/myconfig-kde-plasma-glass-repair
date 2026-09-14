@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+for root in "$HOME/.setup-config" "$HOME/Projets/myconfig"; do
+    repair="$root/linux/kde-plasma-glass-repair.sh"
+    if [ -f "$repair" ]; then
+        exec /usr/bin/bash "$repair"
+    fi
+done
+
+printf 'MyConfig KDE Plasma Glass repair script was not found\n' >&2
+exit 1

@@ -102,7 +102,7 @@ const upgrade = runLayout([staleDock], "4");
 assert.equal(staleDock.removed, true, "stale dock was not replaced");
 const replacementTop = upgrade.created.find(panel => panel.readConfig("myconfigRole", "") === "top");
 assert.ok(replacementTop, "replacement top panel was not created");
-assert.equal(replacementTop.height, 44, "replacement top panel has the wrong height");
+assert.equal(replacementTop.height, 68, "replacement top panel has the wrong height");
 assert.equal(replacementTop.lengthMode, "fit", "top panel does not fit the island");
 assert.deepEqual(
     replacementTop.widgets().map(widget => widget.type),

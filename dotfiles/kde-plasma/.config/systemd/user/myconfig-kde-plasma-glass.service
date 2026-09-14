@@ -1,0 +1,11 @@
+[Unit]
+Description=Repair MyConfig KDE Plasma Glass for the running KWin version
+After=plasma-kwin_wayland.service plasma-plasmashell.service
+
+[Service]
+Type=oneshot
+Environment=MYCONFIG_GLASS_ELEVATE=pkexec
+ExecStart=/usr/bin/bash %h/.local/bin/myconfig-kde-plasma-glass-repair
+
+[Install]
+WantedBy=graphical-session.target

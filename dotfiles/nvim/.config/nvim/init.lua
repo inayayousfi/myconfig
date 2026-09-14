@@ -1,3 +1,4 @@
+-- Vim defaults
 vim.g.loaded_netrw = 1
 vim.g.loaded_netrwPlugin = 1
 vim.g.mapleader = " "
@@ -17,20 +18,16 @@ vim.opt.signcolumn = "yes"
 vim.opt.shell = "zsh"
 vim.opt.shellcmdflag = "-ic"
 
-vim.keymap.set("n", "<leader>uv", "<cmd>ASToggle<CR>", { desc = "Toggle autosave" })
+-- OpenCode settings loaded before the plugin manager
+vim.g.opencode_opts = {
+  events = {
+    permissions = {
+      enabled = false,
+    },
+  },
+}
 
-vim.keymap.set("n", "<leader><leader>", function()
-  require("fff").find_files()
-end, { desc = "Find files" })
-
-vim.keymap.set({ "n", "x", "o" }, "f", function()
-  require("flash").jump()
-end, { desc = "Flash" })
-
-vim.keymap.set("n", "<leader>l", function()
-  require("nvim-tree.api").tree.toggle()
-end, { desc = "Toggle file tree" })
-
+-- Plugin manager
 local function gh(repo, branch)
   return {
     src = "https://github.com/" .. repo,
@@ -85,8 +82,53 @@ vim.pack.add({
   gh("Saghen/blink.cmp", "v1"),
   gh("nvim-treesitter/nvim-treesitter", "main"),
   gh("stevearc/conform.nvim", "master"),
+  {
+    src = "https://github.com/nickjvandyke/opencode.nvim",
+    version = vim.version.range("*"),
+  },
 }, { confirm = false })
 
+-- OpenCode server settings
+require("opencode.config").opts.server.start = function()
+  vim.cmd("leftabove vnew")
+  vim.cmd("vertical resize " .. math.max(1, math.floor(vim.o.columns * 0.3)))
+  vim.fn.jobstart({ "opencode", "--auto", "--port" }, { term = true })
+  vim.cmd("wincmd p")
+end
+
+-- Keymaps
+vim.keymap.set("n", "<leader>uv", "<cmd>ASToggle<CR>", { desc = "Toggle autosave" })
+
+vim.keymap.set("n", "<leader><leader>", function()
+  require("fff").find_files()
+end, { desc = "Find files" })
+
+vim.keymap.set({ "n", "x", "o" }, "f", function()
+  require("flash").jump()
+end, { desc = "Flash" })
+
+vim.keymap.set("n", "<leader>l", function()
+  require("nvim-tree.api").tree.toggle()
+end, { desc = "Toggle file tree" })
+
+vim.keymap.set("n", "<leader>j", "<cmd>wincmd l<CR>", { desc = "Move to right window" })
+vim.keymap.set("n", "<leader>k", "<cmd>wincmd h<CR>", { desc = "Move to left window" })
+vim.keymap.set("n", "<leader>x", "<cmd>bdelete!<CR>", { desc = "Close buffer" })
+vim.keymap.set("t", "<Esc>", [[<C-\><C-n>]], { desc = "Enter normal mode" })
+
+vim.keymap.set({ "n", "x" }, "<leader>a", function()
+  require("opencode").ask("@this: ")
+end, { desc = "Ask OpenCode" })
+
+vim.keymap.set("n", "<S-C-u>", function()
+  require("opencode").command("session.half.page.up")
+end, { desc = "Scroll OpenCode up" })
+
+vim.keymap.set("n", "<S-C-d>", function()
+  require("opencode").command("session.half.page.down")
+end, { desc = "Scroll OpenCode down" })
+
+-- Plugin setup
 require("autoreload").setup({})
 
 vim.cmd.colorscheme("blacknpink")
@@ -179,6 +221,7 @@ require("lazydev").setup({
   },
 })
 
+-- LSP setup
 vim.lsp.config("*", {
   capabilities = require("blink.cmp").get_lsp_capabilities(),
 })
@@ -189,7 +232,7 @@ vim.api.nvim_create_autocmd("LspAttach", {
     local opts = { buffer = ev.buf }
     vim.keymap.set("n", "gd", vim.lsp.buf.definition, opts)
     vim.keymap.set("n", "gD", vim.lsp.buf.declaration, opts)
-    vim.keymap.set("n", "K", vim.lsp.buf.hover, opts)
+    vim.keymap.set("n", "gk", vim.lsp.buf.hover, opts)
   end,
 })
 

@@ -3,7 +3,7 @@
 module_agents_packages() {
     myconfig_log "Installing agent tools and browser dependencies"
     local packages=(
-        opencode at_spi2_core libxcomposite libxdamage libxrandr libxkbcommon
+        opencode lsof at_spi2_core libxcomposite libxdamage libxrandr libxkbcommon
     )
 
     if [ "$MYCONFIG_PROFILE" = cachyos ]; then

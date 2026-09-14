@@ -4,6 +4,7 @@ register_package ca_certificates official:ca-certificates
 register_package sudo official:sudo
 register_package git official:git
 register_package curl official:curl
+register_package lsof official:lsof
 register_package wget official:wget
 register_package rsync official:rsync
 register_package stow official:stow

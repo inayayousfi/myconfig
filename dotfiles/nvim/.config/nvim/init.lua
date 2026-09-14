@@ -15,6 +15,7 @@ vim.opt.ttimeoutlen = 10
 vim.opt.timeout = false
 vim.opt.hidden = false
 vim.opt.signcolumn = "yes"
+vim.opt.mouse = "a"
 vim.opt.shell = "zsh"
 vim.opt.shellcmdflag = "-ic"
 
@@ -82,10 +83,8 @@ vim.pack.add({
   gh("Saghen/blink.cmp", "v1"),
   gh("nvim-treesitter/nvim-treesitter", "main"),
   gh("stevearc/conform.nvim", "master"),
-  {
-    src = "https://github.com/nickjvandyke/opencode.nvim",
-    version = vim.version.range("*"),
-  },
+  gh("lewis6991/gitsigns.nvim", "main"),
+  gh("nickjvandyke/opencode.nvim", vim.version.range("*")),
 }, { confirm = false })
 
 -- OpenCode server settings
@@ -100,8 +99,8 @@ end
 vim.keymap.set("n", "<leader>uv", "<cmd>ASToggle<CR>", { desc = "Toggle autosave" })
 
 vim.keymap.set("n", "<leader><leader>", function()
-  require("fff").find_files()
-end, { desc = "Find files" })
+  require("fff").live_grep()
+end, { desc = "Search content or files" })
 
 vim.keymap.set({ "n", "x", "o" }, "f", function()
   require("flash").jump()
@@ -114,6 +113,10 @@ end, { desc = "Toggle file tree" })
 vim.keymap.set("n", "<leader>j", "<cmd>wincmd l<CR>", { desc = "Move to right window" })
 vim.keymap.set("n", "<leader>k", "<cmd>wincmd h<CR>", { desc = "Move to left window" })
 vim.keymap.set("n", "<leader>x", "<cmd>bdelete!<CR>", { desc = "Close buffer" })
+vim.keymap.set({ "n", "v", "i" }, "<RightMouse>", "<Nop>")
+vim.keymap.set({ "n", "v", "i" }, "<RightDrag>", "<Nop>")
+vim.keymap.set({ "n", "v", "i" }, "<RightRelease>", "<Nop>")
+vim.keymap.set({ "n", "v", "i" }, "<LeftDrag>", "<Nop>")
 vim.keymap.set("t", "<Esc>", [[<C-\><C-n>]], { desc = "Enter normal mode" })
 
 vim.keymap.set({ "n", "x" }, "<leader>a", function()
@@ -129,6 +132,15 @@ vim.keymap.set("n", "<S-C-d>", function()
 end, { desc = "Scroll OpenCode down" })
 
 -- Plugin setup
+require("gitsigns").setup({
+  signcolumn = true,
+  current_line_blame = true,
+  current_line_blame_opts = {
+    delay = 50,
+    virt_text_pos = "eol",
+  },
+})
+
 require("autoreload").setup({})
 
 vim.cmd.colorscheme("blacknpink")

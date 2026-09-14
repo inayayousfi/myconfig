@@ -93,3 +93,7 @@ register_package iosevka_font official:ttf-iosevka-nerd
 register_package desktop_file_utils official:desktop-file-utils
 register_package wsl_ssh_agent aur:wsl2-ssh-agent
 register_package tailscale official:tailscale
+
+register_package docker official:docker
+register_package docker_buildx official:docker-buildx
+register_package docker_compose official:docker-compose

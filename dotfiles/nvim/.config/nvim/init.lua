@@ -18,12 +18,15 @@ vim.opt.shell = "zsh"
 vim.opt.shellcmdflag = "-ic"
 
 vim.keymap.set("n", "<leader>uv", "<cmd>ASToggle<CR>", { desc = "Toggle autosave" })
+
 vim.keymap.set("n", "<leader><leader>", function()
   require("fff").find_files()
 end, { desc = "Find files" })
+
 vim.keymap.set({ "n", "x", "o" }, "f", function()
   require("flash").jump()
 end, { desc = "Flash" })
+
 vim.keymap.set("n", "<leader>l", function()
   require("nvim-tree.api").tree.toggle()
 end, { desc = "Toggle file tree" })
@@ -36,6 +39,7 @@ local function gh(repo, branch)
 end
 
 vim.api.nvim_create_augroup("NativePackHooks", { clear = true })
+
 vim.api.nvim_create_autocmd("PackChanged", {
   group = "NativePackHooks",
   callback = function(ev)
@@ -66,7 +70,7 @@ end, {})
 
 vim.pack.add({
   gh("blacknpink/blacknpink.nvim", "main"),
-  gh("github/copilot.vim", "release"),
+  gh("ccntrq/autoreload.nvim", "master"),
   gh("Pocco81/auto-save.nvim", "main"),
   gh("rachartier/tiny-inline-diagnostic.nvim", "main"),
   gh("folke/flash.nvim", "main"),
@@ -83,13 +87,22 @@ vim.pack.add({
   gh("stevearc/conform.nvim", "master"),
 }, { confirm = false })
 
+require("autoreload").setup({})
+
 vim.cmd.colorscheme("blacknpink")
 
 require("auto-save").setup({
+  enabled = true,
   debounce_delay = 500,
   execution_message = {
     message = function()
-      return ""
+      return "Auto-saved at " .. vim.fn.strftime("%H:%M:%S")
+    end,
+  },
+  write_all_buffers = true,
+  callbacks = {
+    before_saving = function()
+      require("conform").format({ lsp_format = "fallback" })
     end,
   },
 })
@@ -102,7 +115,7 @@ require("flash").setup({})
 require("nvim-tree").setup({
   on_attach = function(bufnr)
     local api = require("nvim-tree.api")
-    api.config.mappings.default_on_attach(bufnr)
+    api.map.on_attach.default(bufnr)
 
     vim.keymap.set("n", "<LeftRelease>", function()
       local node = api.tree.get_node_under_cursor()
@@ -122,7 +135,7 @@ require("nvim-tree").setup({
   },
   update_focused_file = {
     enable = true,
-    update_root = true,
+    update_root = { enable = true },
   },
 })
 

@@ -19,15 +19,6 @@ vim.opt.mouse = "a"
 vim.opt.shell = "zsh"
 vim.opt.shellcmdflag = "-ic"
 
--- OpenCode settings loaded before the plugin manager
-vim.g.opencode_opts = {
-  events = {
-    permissions = {
-      enabled = false,
-    },
-  },
-}
-
 -- Plugin manager
 local function gh(repo, branch)
   return {
@@ -84,15 +75,80 @@ vim.pack.add({
   gh("nvim-treesitter/nvim-treesitter", "main"),
   gh("stevearc/conform.nvim", "master"),
   gh("lewis6991/gitsigns.nvim", "main"),
-  gh("nickjvandyke/opencode.nvim", vim.version.range("*")),
 }, { confirm = false })
 
--- OpenCode server settings
-require("opencode.config").opts.server.start = function()
-  vim.cmd("leftabove vnew")
-  vim.cmd("vertical resize " .. math.max(1, math.floor(vim.o.columns * 0.3)))
-  vim.fn.jobstart({ "opencode", "--auto", "--port" }, { term = true })
-  vim.cmd("wincmd p")
+-- OpenCode integration
+local opencode = {
+  job_id = nil,
+  buffer = nil,
+}
+
+local function opencode_context(buf, cursor, cwd)
+  local path = vim.api.nvim_buf_get_name(buf)
+  if path == "" then
+    return nil
+  end
+
+  local relative_path = vim.fs.relpath(cwd, path) or path
+  return relative_path .. string.format(":L%d:C%d", cursor[1], cursor[2] + 1)
+end
+
+local function opencode_send(text)
+  vim.api.nvim_chan_send(opencode.job_id, "\27[200~" .. text .. "\27[201~")
+end
+
+local function opencode_open_context()
+  local buf = vim.api.nvim_get_current_buf()
+  local cursor = vim.api.nvim_win_get_cursor(0)
+  local cwd = vim.fn.getcwd()
+  local context = opencode_context(buf, cursor, cwd)
+  if not context then
+    return
+  end
+
+  if not opencode.job_id or not opencode.buffer or not vim.api.nvim_buf_is_valid(opencode.buffer) then
+    vim.cmd("leftabove vnew")
+    vim.cmd("vertical resize " .. math.max(1, math.floor(vim.o.columns * 0.3)))
+    vim.wo.winfixwidth = true
+    local job_id
+    job_id = vim.fn.jobstart({ "opencode", cwd, "--auto" }, {
+      term = true,
+      on_exit = function()
+        vim.schedule(function()
+          if opencode.job_id == job_id then
+            opencode.job_id = nil
+            opencode.buffer = nil
+          end
+        end)
+      end,
+    })
+    opencode.job_id = job_id
+    opencode.buffer = vim.api.nvim_get_current_buf()
+    vim.api.nvim_create_autocmd("BufWipeout", {
+      buffer = opencode.buffer,
+      once = true,
+      callback = function()
+        if opencode.job_id == job_id then
+          vim.fn.jobstop(job_id)
+          opencode.job_id = nil
+          opencode.buffer = nil
+        end
+      end,
+    })
+    vim.keymap.set("n", "<LeftRelease>", "<Cmd>startinsert<CR>", { buffer = opencode.buffer, silent = true })
+    vim.defer_fn(function()
+      if opencode.job_id == job_id then
+        opencode_send(context .. ": ")
+      end
+    end, 2000)
+  else
+    local window = vim.fn.bufwinid(opencode.buffer)
+    if window ~= -1 then
+      vim.api.nvim_set_current_win(window)
+    end
+    opencode_send(context .. ": ")
+  end
+  vim.cmd("startinsert")
 end
 
 -- Keymaps
@@ -117,19 +173,11 @@ vim.keymap.set({ "n", "v", "i" }, "<RightMouse>", "<Nop>")
 vim.keymap.set({ "n", "v", "i" }, "<RightDrag>", "<Nop>")
 vim.keymap.set({ "n", "v", "i" }, "<RightRelease>", "<Nop>")
 vim.keymap.set({ "n", "v", "i" }, "<LeftDrag>", "<Nop>")
-vim.keymap.set("t", "<Esc>", [[<C-\><C-n>]], { desc = "Enter normal mode" })
+vim.keymap.set("t", "<C-Esc>", [[<C-\><C-n>]], { desc = "Enter normal mode" })
 
 vim.keymap.set({ "n", "x" }, "<leader>a", function()
-  require("opencode").ask("@this: ")
-end, { desc = "Ask OpenCode" })
-
-vim.keymap.set("n", "<S-C-u>", function()
-  require("opencode").command("session.half.page.up")
-end, { desc = "Scroll OpenCode up" })
-
-vim.keymap.set("n", "<S-C-d>", function()
-  require("opencode").command("session.half.page.down")
-end, { desc = "Scroll OpenCode down" })
+  opencode_open_context()
+end, { desc = "Open OpenCode context" })
 
 -- Plugin setup
 require("gitsigns").setup({

@@ -614,9 +614,9 @@ fi
 plasma_layout_test_root="$TEST_HOME/kde-plasma-layout"
 plasma_layout_home="$plasma_layout_test_root/home"
 plasma_layout_bin="$plasma_layout_test_root/bin"
-    mkdir -p \
-        "$plasma_layout_home/.config" \
-        "$plasma_layout_home/.local/bin" \
+mkdir -p \
+    "$plasma_layout_home/.config" \
+    "$plasma_layout_home/.local/bin" \
     "$plasma_layout_home/.local/share/myconfig/kde-plasma" \
     "$plasma_layout_bin"
 cp "$REPO_ROOT/dotfiles/kde-plasma/.local/bin/myconfig-kde-plasma-layout" \

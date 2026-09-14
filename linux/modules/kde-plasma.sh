@@ -109,7 +109,10 @@ module_kde_plasma() {
     local background
     for background in widgets/panel-background.svg dialogs/background.svg solid/dialogs/background.svg; do
         [ -f "$HOME/.local/share/plasma/desktoptheme/blacknpink/$background" ] \
-            || { myconfig_fail "Black & Pink Plasma background was not stowed: $background"; return 1; }
+            || {
+                myconfig_fail "Black & Pink Plasma background was not stowed: $background"
+                return 1
+            }
     done
     [ -f "$HOME/.local/share/plasma/look-and-feel/org.myconfig.blacknpink.desktop/metadata.json" ] \
         || myconfig_fail "Black & Pink global theme metadata was not stowed"

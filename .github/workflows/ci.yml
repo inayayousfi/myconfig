@@ -54,7 +54,7 @@ jobs:
             dotfiles/zsh/.oh-my-zsh/custom/themes/blacknpink.zsh-theme
 
       - name: Check Lua formatting
-        run: stylua --check dotfiles/nvim/.config/nvim/init.lua
+        run: stylua --check dotfiles/old/nvim/.config/nvim/init.lua
 
       - name: Check TOML formatting
         run: |
@@ -129,11 +129,14 @@ jobs:
           }
 
           retry sudo apt-get update
-          retry sudo apt-get install -y desktop-file-utils imagemagick lua5.4 rsync stow tmux zsh
+          retry sudo apt-get install -y desktop-file-utils emacs-nox imagemagick lua5.4 rsync stow tmux zsh
           retry cargo install resvg --version 0.48.1 --locked
 
       - name: Test Linux installers
         run: ./test/test-linux.sh
+
+      - name: Test Emacs workbench state
+        run: emacs -Q --batch --load test/test-emacs-workbench.el
 
       - name: Test CachyOS VM installer
         run: ./vm/test-cachyos.sh

@@ -111,34 +111,17 @@ if ($UseInteractiveProfile) {
 # Aliases (always loaded)
 # =========================
 
-$env:EDITOR = "nvim"
-$env:VISUAL = "nvim"
-
 function Invoke-WslZshCommand {
     param([string]$Command)
 
     wsl -u $env:USERNAME zsh -ic $Command
 }
 
-function lg {
-    Invoke-WslZshCommand "lazygit $args"
-}
-
 function cco {
     Invoke-WslZshCommand "cco $args"
 }
 
-function tx {
-    Invoke-WslZshCommand "tx $args"
-}
-
 Set-Alias which gcm
-
-if (Get-Command nvim -ErrorAction SilentlyContinue) {
-    Set-Alias vim nvim
-    Set-Alias vi nvim
-    Set-Alias v nvim
-}
 
 # =========================
 # Core functions

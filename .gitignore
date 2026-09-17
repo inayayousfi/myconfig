@@ -9,7 +9,7 @@ result-*
 .vscode/
 .idea/
 .playwright-mcp/
-dotfiles/nvim/.config/nvim/nvim-pack-lock.json
+dotfiles/old/nvim/.config/nvim/nvim-pack-lock.json
 
 # User-specific
 *.swp

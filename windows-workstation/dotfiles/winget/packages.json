@@ -24,6 +24,12 @@
         },
         {
           "PackageIdentifier": "Microsoft.PowerToys"
+        },
+        {
+          "PackageIdentifier": "GNU.Emacs"
+        },
+        {
+          "PackageIdentifier": "GnuWin32.UnZip"
         }
       ],
       "SourceDetails": {

@@ -8,14 +8,12 @@ run_profile() {
     module_cli
     module_runtimes
     module_zsh
-    module_neovim
     module_terminal_tools
-    module_tmux
-    module_ghostty
     module_axidev_osk
     module_tailscale
     module_agents_packages
     module_dotfiles
+    module_emacs
     module_cursor_theme
     module_refind
     module_kanata

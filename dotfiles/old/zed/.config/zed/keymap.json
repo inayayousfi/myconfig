@@ -1,0 +1,150 @@
+// Zed keymap
+//
+// For information on binding keys, see the Zed
+// documentation: https://zed.dev/docs/key-bindings
+//
+// To see the default key bindings run `zed: open default keymap`
+// from the command palette.
+[
+  {
+    "context": "Workspace",
+    "bindings": {
+      // "shift shift": "file_finder::Toggle"
+    }
+  },
+  {
+    "context": "Editor && vim_mode == insert",
+    "bindings": {
+      // "j k": "vim::NormalBefore"
+    }
+  },
+  {
+    "bindings": {
+      "ctrl-shift-o": "workspace::CloseAllDocks"
+    }
+  },
+  {
+    "bindings": {
+      "ctrl-shift-l": "project_panel::Toggle"
+    }
+  },
+  {
+    "bindings": {
+      "ctrl-shift-t": "terminal_panel::Toggle"
+    }
+  },
+  {
+    "context": "VimControl && !menu",
+    "bindings": {
+      "space space": "pane::DeploySearch"
+    }
+  },
+  {
+    "context": "VimControl && !menu",
+    "unbind": {
+      "g /": "pane::DeploySearch"
+    }
+  },
+  {
+    "context": "!Editor && !Terminal",
+    "bindings": {
+      "space space": "pane::DeploySearch"
+    }
+  },
+  {
+    "context": "!Editor && !Terminal",
+    "unbind": {
+      "g /": "pane::DeploySearch"
+    }
+  },
+  {
+    "bindings": {
+      "ctrl-shift-x": "pane::CloseActiveItem"
+    }
+  },
+  {
+    "context": "Terminal",
+    "unbind": {
+      "ctrl-shift-w": "pane::CloseActiveItem"
+    }
+  },
+  {
+    "bindings": {
+      "ctrl-shift-k": "workspace::FocusCenterPane"
+    }
+  },
+  {
+    "context": "Workspace",
+    "unbind": {
+      "ctrl-shift-h": [
+        "pane::DeploySearch",
+        {
+          "replace_enabled": true
+        }
+      ]
+    }
+  },
+  {
+    "context": "ProjectSearchBar",
+    "unbind": {
+      "ctrl-shift-h": "search::ToggleReplace"
+    }
+  },
+  {
+    "context": "ProjectSearchView",
+    "unbind": {
+      "ctrl-shift-h": "search::ToggleReplace"
+    }
+  },
+  {
+    "context": "Pane",
+    "unbind": {
+      "ctrl-alt-shift-h": "search::ToggleReplace"
+    }
+  },
+  {
+    "context": "Workspace",
+    "unbind": {
+      "ctrl-?": "agent::ToggleFocus"
+    }
+  },
+  {
+    "bindings": {
+      "ctrl-shift-h": "agent::Toggle"
+    }
+  },
+  {
+    "bindings": {
+      "ctrl-shift-f": "workspace::ToggleZoom"
+    }
+  },
+  {
+    "unbind": {
+      "shift-escape": "workspace::ToggleZoom"
+    }
+  },
+  {
+    "context": "Terminal",
+    "unbind": {
+      "ctrl-shift-f": "buffer_search::Deploy"
+    }
+  },
+  {
+    "context": "Workspace",
+    "unbind": {
+      "ctrl-shift-f": "pane::DeploySearch"
+    }
+  },
+  {
+    "context": "Pane",
+    "unbind": {
+      "ctrl-shift-f": "project_search::ToggleFocus"
+    }
+  },
+  {
+    "context": "ProjectSearchBar",
+    "unbind": {
+      "ctrl-shift-f": "search::FocusSearch"
+    }
+  }
+]

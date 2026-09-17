@@ -61,6 +61,10 @@ MYCONFIG_PROFILE=cachyos
     || myconfig_fail "Axidev OSK LayerShellQt dependency did not resolve"
 [ "$(resolve_package ghostty)" = official:ghostty ] \
     || myconfig_fail "Ghostty package did not resolve"
+[ "$(resolve_package emacs)" = official:emacs ] \
+    || myconfig_fail "Emacs package did not resolve"
+[ "$(resolve_package sshfs)" = official:sshfs ] \
+    || myconfig_fail "SSHFS package did not resolve"
 [ "$(resolve_package cachy_update)" = official:cachy-update ] \
     || myconfig_fail "Cachy Update package did not resolve"
 [ "$(resolve_package cachyos_hello)" = official:cachyos-hello ] \
@@ -288,9 +292,19 @@ profile_home="$TEST_HOME/profile-home"
 HOME="$profile_home"
 MYCONFIG_PROFILE=arch-wsl
 MYCONFIG_DOTFILES_SOURCE="$REPO_ROOT/dotfiles"
-mkdir -p "$HOME"
+mkdir -p "$HOME/.config" "$HOME/dotfiles/nvim/.config/nvim"
+printf 'retired\n' >"$HOME/dotfiles/nvim/.config/nvim/init.lua"
+stow --dir "$HOME/dotfiles" --target "$HOME" nvim
+[ -L "$HOME/.config/nvim" ] \
+    || myconfig_fail "retired Neovim fixture was not stowed"
 
 module_dotfiles
+[ ! -e "$HOME/.config/nvim" ] && [ ! -L "$HOME/.config/nvim" ] \
+    || myconfig_fail "Arch WSL migration preserved a retired Neovim dotfile link"
+shopt -s nullglob
+retired_backups=("$HOME"/dotfiles.backup.*/nvim/.config/nvim/init.lua)
+[ "${#retired_backups[@]}" -eq 1 ] \
+    || myconfig_fail "Arch WSL migration did not back up its retired Neovim package"
 module_dotfiles
 
 mapfile -t profile_packages < <(dotfile_packages_for_profile)
@@ -307,6 +321,69 @@ profile_conflict_backups=("$HOME"/.dotfiles-conflicts.backup.*)
 zsh -n "$REPO_ROOT/dotfiles/zsh/.zshrc"
 zsh -n "$REPO_ROOT/dotfiles/zsh/.oh-my-zsh/custom/plugins/inaya/inaya.plugin.zsh"
 zsh -n "$REPO_ROOT/dotfiles/zsh/.oh-my-zsh/custom/themes/blacknpink.zsh-theme"
+
+(
+    HOME="$TEST_HOME/emacs-module-home"
+    MYCONFIG_PROFILE=cachyos
+    package_log="$TEST_HOME/emacs-packages.log"
+    systemctl_log="$TEST_HOME/emacs-systemctl.log"
+    desktop_log="$TEST_HOME/emacs-desktop.log"
+    kde_cache_log="$TEST_HOME/emacs-kde-cache.log"
+
+    mkdir -p \
+        "$HOME/.config/emacs/lisp" \
+        "$HOME/.config/systemd/user/emacs.service.d" \
+        "$HOME/.emacs.d" \
+        "$HOME/.local/bin" \
+        "$HOME/.local/share/applications"
+    touch \
+        "$HOME/.config/emacs/early-init.el" \
+        "$HOME/.config/emacs/init.el" \
+        "$HOME/.emacs.d/legacy" \
+        "$HOME/.config/systemd/user/emacs.service.d/myconfig.conf" \
+        "$HOME/.local/bin/myconfig-emacs-client" \
+        "$HOME/.local/share/applications/emacs.desktop"
+
+    install_package_ids() {
+        printf '%s\n' "$@" >>"$package_log"
+    }
+    systemctl() {
+        printf '%s\n' "$*" >>"$systemctl_log"
+    }
+    update-desktop-database() {
+        printf '%s\n' "$*" >>"$desktop_log"
+    }
+    kbuildsycoca6() {
+        printf '%s\n' "$*" >>"$kde_cache_log"
+    }
+
+    source "$REPO_ROOT/linux/modules/emacs.sh"
+    module_emacs
+
+    [ "$(cat "$package_log")" = $'emacs\nsshfs\niosevka_font' ] \
+        || myconfig_fail "Emacs module installed unexpected packages"
+    [ -f "$HOME/.emacs.d.backup."*/legacy ] \
+        || myconfig_fail "Emacs module did not preserve the legacy Emacs directory"
+    [ ! -e "$HOME/.config/systemd/user/emacs.service.d/myconfig.conf" ] \
+        || myconfig_fail "Emacs module preserved the daemon override"
+    [ ! -e "$HOME/.local/bin/myconfig-emacs-client" ] \
+        || myconfig_fail "Emacs module preserved the client wrapper"
+    [ ! -e "$HOME/.local/share/applications/emacs.desktop" ] \
+        || myconfig_fail "Emacs module preserved the custom desktop entry"
+    grep -Fxq -- '--user disable --now emacs.service' "$systemctl_log" \
+        || myconfig_fail "Emacs module did not disable the daemon service"
+    grep -Fxq -- '--user daemon-reload' "$systemctl_log" \
+        || myconfig_fail "Emacs module did not reload the user service manager"
+    [ "$(cat "$desktop_log")" = "$HOME/.local/share/applications" ] \
+        || myconfig_fail "Emacs module did not refresh the desktop database"
+    [ "$(cat "$kde_cache_log")" = --noincremental ] \
+        || myconfig_fail "Emacs module did not refresh KDE's service cache"
+
+    MYCONFIG_PROFILE=arch-wsl
+    if module_emacs >/dev/null 2>&1; then
+        myconfig_fail "Emacs module accepted a non-CachyOS profile"
+    fi
+)
 
 (
     HOME="$TEST_HOME/tmux-module-home"
@@ -369,7 +446,7 @@ zsh -n "$REPO_ROOT/dotfiles/zsh/.oh-my-zsh/custom/themes/blacknpink.zsh-theme"
         || myconfig_fail "failed tmux-atelier refresh removed the working installation"
 )
 
-clipboard="$REPO_ROOT/dotfiles/tmux/.local/bin/myconfig-tmux-clipboard"
+clipboard="$REPO_ROOT/dotfiles/old/tmux/.local/bin/myconfig-tmux-clipboard"
 clipboard_bin="$TEST_HOME/clipboard-bin"
 clipboard_log="$TEST_HOME/clipboard.log"
 mkdir -p "$clipboard_bin"
@@ -419,7 +496,7 @@ EOF
     trap 'tmux -L "$tmux_socket" kill-server >/dev/null 2>&1 || true' EXIT
 
     HOME="$tmux_home" tmux -L "$tmux_socket" \
-        -f "$REPO_ROOT/dotfiles/tmux/.config/tmux/tmux.conf" \
+        -f "$REPO_ROOT/dotfiles/old/tmux/.config/tmux/tmux.conf" \
         new-session -d -s validation
     [ "$(tmux -L "$tmux_socket" show-options -gv @atelier_workspace_active_style)" = \
         'fg=#000000#,bg=#ff4ead#,bold' ] \
@@ -1201,8 +1278,14 @@ ubuntu_profile="$(
 )"
 [[ "$cachyos_profile" == *module_axidev_osk* ]] \
     || myconfig_fail "CachyOS profile does not include Axidev OSK"
-[[ "$cachyos_profile" == *module_ghostty* ]] \
-    || myconfig_fail "CachyOS profile does not include Ghostty"
+[[ "$cachyos_profile" == *module_emacs* ]] \
+    || myconfig_fail "CachyOS profile does not include Emacs"
+[[ "$cachyos_profile" != *module_neovim* ]] \
+    || myconfig_fail "CachyOS profile still includes Neovim"
+[[ "$cachyos_profile" != *module_tmux* ]] \
+    || myconfig_fail "CachyOS profile still includes tmux"
+[[ "$cachyos_profile" != *module_ghostty* ]] \
+    || myconfig_fail "CachyOS profile still includes Ghostty"
 [[ "$cachyos_profile" == *module_kde_plasma* ]] \
     || myconfig_fail "CachyOS profile does not include KDE Plasma configuration"
 [[ "$cachyos_profile" == *module_cursor_theme* ]] \
@@ -1219,6 +1302,12 @@ ubuntu_profile="$(
     || myconfig_fail "Arch WSL profile includes Axidev OSK"
 [[ "$arch_wsl_profile" != *module_ghostty* ]] \
     || myconfig_fail "Arch WSL profile includes Ghostty"
+[[ "$arch_wsl_profile" != *module_tmux* ]] \
+    || myconfig_fail "Arch WSL profile still includes tmux"
+[[ "$arch_wsl_profile" != *module_emacs* ]] \
+    || myconfig_fail "Arch WSL profile includes Emacs"
+[[ "$arch_wsl_profile" == *module_neovim* ]] \
+    || myconfig_fail "Arch WSL profile lost its fallback Neovim binary"
 [[ "$arch_wsl_profile" != *module_kde_plasma* ]] \
     || myconfig_fail "Arch WSL profile includes KDE Plasma configuration"
 [[ "$arch_wsl_profile" != *module_cursor_theme* ]] \
@@ -1282,8 +1371,8 @@ mkdir -p "$inventory_home"
 HOME="$inventory_home"
 MYCONFIG_PROFILE=cachyos
 write_environment_inventory
-grep -Fq 'Ghostty, with Kitty, Alacritty, WezTerm, and Konsole removed' "$HOME/environment.md" \
-    || myconfig_fail "CachyOS inventory omitted the Ghostty terminal policy"
+grep -Fq 'Graphical Emacs with restorable workspace layouts' "$HOME/environment.md" \
+    || myconfig_fail "CachyOS inventory omitted the Emacs workbench"
 grep -Fq 'Axidev OSK with desktop and login-screen startup' "$HOME/environment.md" \
     || myconfig_fail "CachyOS inventory omitted Axidev OSK"
 grep -Fq 'Black & Pink panels and application dock for KDE Plasma 6.7 through 6.x' "$HOME/environment.md" \
@@ -1297,9 +1386,8 @@ grep -Fq 'ydotool with a persistent user service' "$HOME/environment.md" \
 
 MYCONFIG_PROFILE=arch-wsl
 write_environment_inventory
-if grep -Fq 'Ghostty' "$HOME/environment.md"; then
-    myconfig_fail "Arch WSL inventory included Ghostty"
-fi
+grep -Fq 'Unconfigured Neovim is retained as the shell editor' "$HOME/environment.md" \
+    || myconfig_fail "Arch WSL inventory omitted its fallback editor policy"
 if grep -Fq 'Axidev OSK' "$HOME/environment.md"; then
     myconfig_fail "Arch WSL inventory included Axidev OSK"
 fi

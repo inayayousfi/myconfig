@@ -37,7 +37,10 @@ export LC_ALL=en_US.UTF-8
 
 export VI_MODE_SET_CURSOR=true
 
-if has nvim; then
+if $IS_LINUX && [ -z "$WSL_DISTRO_NAME" ] && has emacs; then
+    export EDITOR="emacs"
+    export VISUAL="emacs"
+elif has nvim; then
     export EDITOR="nvim"
     export VISUAL="nvim"
 elif has vim; then
@@ -77,31 +80,19 @@ alias please='sudo'
 unalias gd 2>/dev/null || true
 
 # Tool aliases
-if has nvim; then
+if [ "$EDITOR" = emacs ]; then
+    alias vim='emacs'
+    alias vi='emacs'
+    alias v='emacs'
+elif has nvim; then
     alias vim='nvim'
     alias vi='nvim'
     alias v='nvim'
 fi
 
-if has eza; then
-    alias ls='eza --icons --group-directories-first --git --color=always'
-fi
-
-if has fd; then
-    alias find='fd'
-fi
-
-if has rg; then
-    alias rg='rg --color=always --smart-case --hidden --glob "!.git/*" --glob "!.svn/*" --glob "!.hg/*" --glob "!node_modules/*"'
-fi
-
 if has bun; then
     alias npm='bun'
     alias npx='bunx'
-fi
-
-if has lazygit; then
-    alias lg='lazygit'
 fi
 
 if has fastfetch; then
@@ -125,35 +116,6 @@ if has claude; then
     alias ccor='claude remote-control --permission-mode bypassPermissions'
 fi
 
-if has zoxide; then
-    alias zeze='zoxide edit'
-fi
-
-if has hunk; then
-    alias hd='hunk diff'
-    alias hdc='hunk show'
-
-    hdb() {
-        local base fork
-        base=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null)
-        if [ -z "$base" ]; then
-            base=$(git branch --format='%(refname:short)' --list main master dev | head -n 1)
-        fi
-        if [ -z "$base" ]; then
-            echo "hdb: could not determine the default branch" >&2
-            return 1
-        fi
-
-        fork=$(git merge-base --fork-point "$base" HEAD 2>/dev/null) \
-            || fork=$(git merge-base "$base" HEAD) || return 1
-        hunk diff "$fork" "$@"
-    }
-fi
-
-if has tmux; then
-    alias tx='tmux attach-session 2>/dev/null || tmux new-session'
-fi
-
 if has systemctl; then
     alias sus='systemctl suspend'
 fi
@@ -165,13 +127,6 @@ fi
 mkd() { mkdir -p -- "$1" && cd -P -- "$1"; }
 
 reload-zsh() { source "$HOME/.zshrc" && echo "zsh reloaded"; }
-
-# Fuzzy file picker - opens selection in the configured editor
-pf() {
-    local file
-    file=$(fzf --preview='bat {} --color=always --style=numbers' --bind shift-up:preview-page-up,shift-down:preview-page-down)
-    [ -n "$file" ] && $EDITOR "$file"
-}
 
 # Yazi file manager wrapper - changes directory on exit
 y() {
@@ -299,14 +254,6 @@ elif $IS_LINUX; then
 fi
 
 # ============================================================================
-# Zoxide initialization
-# ============================================================================
-
-if has zoxide; then
-    eval "$(zoxide init zsh)"
-fi
-
-# ============================================================================
 # Interactive cleanup utility
 # ============================================================================
 
@@ -416,8 +363,4 @@ if has hyfetch; then
     hyfetch
 elif has fastfetch; then
     fastfetch
-fi
-
-if has tmux && [[ -o interactive && -z "$TMUX" && -z "$ZSH_EXECUTION_STRING" ]]; then
-    tx
 fi

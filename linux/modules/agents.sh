@@ -74,10 +74,8 @@ This file describes the capabilities installed for the $platform.
 ## Development environment
 
 - **Shell**: Zsh with Oh My Zsh and the shared Black & Pink configuration.
-- **Editor**: Neovim with the shared configuration.
 - **Runtimes**: Rust, Go, Bun, Node.js, Python, Java, LLVM, Make, and CMake.
-- **Repository tools**: Git, GitHub CLI, Lazygit, Hunk, and GNU Stow.
-- **Terminal workspaces**: Tmux with tmux-atelier, the Black & Pink theme, and host clipboard integration.
+- **Repository tools**: Git, GitHub CLI, and GNU Stow.
 - **Terminal tools**: Yazi, ripgrep, fd, fzf, zoxide, eza, bat, jq, and btop.
 - **Agent tools**: OpenCode and Playwright MCP.
 - **Remote access**: OpenSSH server and Tailscale service with optional login during setup.
@@ -85,12 +83,16 @@ EOF
 
     if [ "$MYCONFIG_PROFILE" = cachyos ]; then
         cat >>"$HOME/environment.md" <<'EOF'
-- **Terminal emulator**: Ghostty, with Kitty, Alacritty, WezTerm, and Konsole removed.
+- **Editor and terminal Atelier**: Graphical Emacs with restorable workspace layouts, native buffers, splits, libghostty-powered Ghostel terminals, Git review, and workspace-owned AIPanel coding agents. Closing its final frame ends the process; reopening starts fresh recorded jobs.
 - **On-screen keyboard**: Axidev OSK with desktop and login-screen startup.
 - **Keyboard remapping**: Kanata keyboard remapping with a KDE tray profile selector.
 - **Dictation**: Handy offline push-to-talk dictation on Ctrl+Space.
 - **KDE Plasma**: Black & Pink panels and application dock for KDE Plasma 6.7 through 6.x.
 - **Desktop automation**: ydotool with a persistent user service for virtual keyboard and pointer input.
+EOF
+    elif [ "$MYCONFIG_PROFILE" = arch-wsl ]; then
+        cat >>"$HOME/environment.md" <<'EOF'
+- **Editor**: Unconfigured Neovim is retained as the shell editor; shared Neovim, tmux, Lazygit, and Hunk dotfiles are retired.
 EOF
     fi
 

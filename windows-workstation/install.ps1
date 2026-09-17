@@ -292,39 +292,6 @@ function Install-OhMyPoshConfig {
 }
 
 # ============================================================================
-# Neovim (WSL) Editor Wrapper
-# ============================================================================
-
-function Install-NvimEditorWrapper {
-    $binDir = Join-Path $env:LOCALAPPDATA "Programs\bin"
-    $sourceDir = Join-Path $WindowsDotfilesDir "bin"
-
-    if (-not (Test-Path $sourceDir)) {
-        Write-Log "nvim wrapper source not found: $sourceDir" -Level 'ERROR'
-        return
-    }
-
-    if (-not (Test-Path $binDir)) {
-        New-Item -ItemType Directory -Path $binDir -Force | Out-Null
-    }
-
-    foreach ($file in @("nvim.cmd", "nvim.ps1")) {
-        Copy-DotfileSafe -Source (Join-Path $sourceDir $file) -Destination (Join-Path $binDir $file)
-    }
-
-    $currentPath = [Environment]::GetEnvironmentVariable("Path", "User")
-    if ($currentPath -like "*$binDir*") {
-        Write-Log "$binDir already in user PATH" -Level 'OK'
-    } else {
-        Write-Log "Adding $binDir to user PATH..."
-        [Environment]::SetEnvironmentVariable("Path", "$currentPath;$binDir", "User")
-        Write-Log "$binDir added to PATH" -Level 'OK'
-    }
-
-    Write-Log "nvim (WSL) editor wrapper installed" -Level 'OK'
-}
-
-# ============================================================================
 # Windows Terminal Configuration
 # ============================================================================
 
@@ -346,6 +313,37 @@ function Install-WindowsTerminalConfig {
 
     Copy-DotfileSafe -Source $source -Destination $destination
     Write-Log "Windows Terminal configuration installed" -Level 'OK'
+}
+
+# ============================================================================
+# Emacs Configuration
+# ============================================================================
+
+function Install-EmacsConfig {
+    $source = Join-Path $SharedDotfilesDir "emacs\.config\emacs"
+    $destination = Join-Path $env:USERPROFILE ".config\emacs"
+    $loader = Join-Path $env:USERPROFILE ".emacs"
+
+    if (-not (Test-Path $source)) {
+        Write-Log "Emacs configuration source not found: $source" -Level 'ERROR'
+        return
+    }
+
+    Copy-DotfileSafe -Source $source -Destination $destination -Recurse
+
+    if (-not (Test-Path $loader)) {
+        $initPath = (Join-Path $destination "init.el").Replace('\', '/')
+        $earlyInitPath = (Join-Path $destination "early-init.el").Replace('\', '/')
+        Set-Content -LiteralPath $loader -Value @(
+            "(load-file `\"$earlyInitPath`\")"
+            "(load-file `\"$initPath`\")"
+        ) -Encoding utf8NoBOM
+        Write-Log "Installed Emacs startup loader at $loader" -Level 'OK'
+    } else {
+        Write-Log "Existing Emacs startup file preserved: $loader" -Level 'WARNING'
+    }
+
+    Write-Log "Emacs configuration installed to $destination" -Level 'OK'
 }
 
 # ============================================================================
@@ -565,8 +563,8 @@ function Main {
     # Copy the core configuration files and directories.
     Install-PowerShellProfile
     Install-OhMyPoshConfig
-    Install-NvimEditorWrapper
     Install-WindowsTerminalConfig
+    Install-EmacsConfig
     Install-AHKScripts
     Install-AIConfig
 

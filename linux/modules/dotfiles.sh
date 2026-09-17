@@ -2,10 +2,17 @@
 
 dotfile_packages_for_profile() {
     case "$MYCONFIG_PROFILE" in
-        cachyos) printf '%s\n' zsh yazi lazygit hunk ai tmux nvim opencode ghostty kanata kanata-kde handy kde-plasma ;;
-        arch-wsl) printf '%s\n' zsh yazi lazygit hunk ai tmux nvim opencode ;;
+        cachyos) printf '%s\n' zsh yazi ai opencode kanata kanata-kde handy kde-plasma emacs ;;
+        arch-wsl) printf '%s\n' zsh yazi ai opencode ;;
         ubuntu-server) printf '%s\n' zsh ;;
         *) myconfig_fail "dotfile packages are undefined for $MYCONFIG_PROFILE" ;;
+    esac
+}
+
+retired_dotfile_packages_for_profile() {
+    case "$MYCONFIG_PROFILE" in
+        cachyos) printf '%s\n' ghostty hunk lazygit nvim tmux zed ;;
+        arch-wsl) printf '%s\n' hunk lazygit nvim tmux ;;
     esac
 }
 
@@ -129,7 +136,9 @@ module_dotfiles() {
     local dotfiles_dir="$HOME/dotfiles"
     local staging_dir
     local packages=()
+    local retired_packages=()
     mapfile -t packages < <(dotfile_packages_for_profile)
+    mapfile -t retired_packages < <(retired_dotfile_packages_for_profile)
 
     [ -d "$source_dir" ] || myconfig_fail "dotfiles source not found: $source_dir"
     validate_dotfile_packages "$source_dir" "${packages[@]}"
@@ -151,6 +160,11 @@ module_dotfiles() {
     fi
 
     if [ -e "$dotfiles_dir" ] || [ -L "$dotfiles_dir" ]; then
+        for package in "${retired_packages[@]}"; do
+            [ -d "$dotfiles_dir/$package" ] || continue
+            stow --dir "$dotfiles_dir" --target "$HOME" --delete "$package"
+        done
+
         local dotfiles_backup
         dotfiles_backup="$(unique_backup_path "$dotfiles_dir")"
         myconfig_log "Backing up existing dotfiles to $dotfiles_backup"

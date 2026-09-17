@@ -1,0 +1,43 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/jesseduffield/lazygit/master/schema/config.json
+# Managed by myconfig
+
+gui:
+  nerdFontsVersion: "3"
+  border: rounded
+  showRandomTip: false
+  showFileIcons: true
+  authorColors:
+    "*": "#a0aabe"
+  branchColorPatterns:
+    "^main$": "#60a5fa"
+    "^master$": "#60a5fa"
+    "^release/": "#facc15"
+    "^hotfix/": "#f87171"
+    "^(feature|feat|chore|docs|refactor|test)/": "#ff85c8"
+  theme:
+    activeBorderColor:
+      - "#ff4ead"
+      - bold
+    inactiveBorderColor:
+      - "#1a1a1a"
+    searchingActiveBorderColor:
+      - "#60a5fa"
+      - bold
+    optionsTextColor:
+      - "#a0aabe"
+    selectedLineBgColor:
+      - "#c02679"
+    inactiveViewSelectedLineBgColor:
+      - "#222222"
+    cherryPickedCommitFgColor:
+      - "#000000"
+    cherryPickedCommitBgColor:
+      - "#4ade80"
+    markedBaseCommitFgColor:
+      - "#000000"
+    markedBaseCommitBgColor:
+      - "#facc15"
+    unstagedChangesColor:
+      - "#f87171"
+    defaultFgColor:
+      - "#d0d6e0"

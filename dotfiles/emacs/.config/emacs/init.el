@@ -18,6 +18,9 @@
 (setq user-emacs-directory myconfig-data-directory
       custom-file (expand-file-name "custom.el" myconfig-runtime-state-directory)
       package-user-dir (expand-file-name "elpa" myconfig-data-directory)
+      ;; Do not use Emacs' recovery autosaves: they create #...# files and
+      ;; autosave-list entries.  myconfig-editing.el saves the visited file
+      ;; itself after a short idle period, so disk always follows the buffer.
       make-backup-files nil
       backup-inhibited t
       auto-save-default nil

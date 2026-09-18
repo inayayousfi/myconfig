@@ -321,8 +321,20 @@ function Install-WindowsTerminalConfig {
 
 function Install-EmacsConfig {
     $source = Join-Path $SharedDotfilesDir "emacs\.config\emacs"
-    $destination = Join-Path $env:USERPROFILE ".config\emacs"
-    $loader = Join-Path $env:USERPROFILE ".emacs"
+    $emacsCommand = Get-Command emacs.exe -ErrorAction SilentlyContinue
+    if (-not $emacsCommand) {
+        Write-Log "Emacs executable was not found after package installation" -Level 'ERROR'
+        return
+    }
+
+    $emacsHome = (& $emacsCommand.Source --batch -Q --eval '(princ (expand-file-name "~/"))' | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($emacsHome)) {
+        Write-Log "Could not resolve Emacs home directory with Emacs itself" -Level 'ERROR'
+        return
+    }
+
+    $destination = Join-Path $emacsHome ".config\emacs"
+    $loader = Join-Path $emacsHome ".emacs"
 
     if (-not (Test-Path $source)) {
         Write-Log "Emacs configuration source not found: $source" -Level 'ERROR'

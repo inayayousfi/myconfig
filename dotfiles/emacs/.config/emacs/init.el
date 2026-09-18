@@ -4,6 +4,8 @@
   (file-name-directory (or load-file-name buffer-file-name)))
 (add-to-list 'load-path (expand-file-name "lisp" myconfig-config-directory))
 (require 'myconfig-platform)
+(require 'ls-lisp)
+(setq ls-lisp-dirs-first t)
 (defconst myconfig-data-directory
   (myconfig-platform-path 'data "myconfig-emacs"))
 (defconst myconfig-runtime-state-directory

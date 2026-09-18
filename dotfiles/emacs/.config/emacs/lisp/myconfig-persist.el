@@ -372,8 +372,18 @@
         (setf (plist-get workspace :state) nil
                (plist-get workspace :buffers) nil
                (plist-get workspace :owned-buffers) nil)))
-    (setf (plist-get workspace :agent-buffer) nil))
-  (myconfig-persist-open-saved-state))
+    (setf (plist-get workspace :agent-buffer) nil)
+    (setf (plist-get workspace :buffers)
+          (cl-remove-if (lambda (descriptor)
+                          (string-prefix-p "*scratch*"
+                                           (plist-get descriptor :name)))
+                        (plist-get workspace :buffers))
+          (plist-get workspace :owned-buffers)
+          (cl-remove-if (lambda (descriptor)
+                          (string-prefix-p "*scratch*"
+                                           (plist-get descriptor :name)))
+                        (plist-get workspace :owned-buffers)))
+   (myconfig-persist-open-saved-state)))
 
 (defun myconfig-persist-now ()
   (interactive)

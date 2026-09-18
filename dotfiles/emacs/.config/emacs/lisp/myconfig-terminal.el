@@ -7,7 +7,7 @@
 (require 'ghostel)
 (require 'evil-ghostel)
 
-(defcustom myconfig-terminal-escape-key (kbd "M-c")
+(defcustom myconfig-terminal-escape-key (kbd "M-x")
   "Key sequence that returns a Ghostel terminal to Evil normal state."
   :type 'key-sequence
   :group 'myconfig)

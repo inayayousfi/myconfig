@@ -335,8 +335,8 @@ function Install-EmacsConfig {
         $initPath = (Join-Path $destination "init.el").Replace('\', '/')
         $earlyInitPath = (Join-Path $destination "early-init.el").Replace('\', '/')
         Set-Content -LiteralPath $loader -Value @(
-            "(load-file `\"$earlyInitPath`\")"
-            "(load-file `\"$initPath`\")"
+            "(load-file `"$earlyInitPath`")"
+            "(load-file `"$initPath`")"
         ) -Encoding utf8NoBOM
         Write-Log "Installed Emacs startup loader at $loader" -Level 'OK'
     } else {

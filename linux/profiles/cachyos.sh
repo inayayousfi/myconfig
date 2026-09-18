@@ -13,6 +13,7 @@ run_profile() {
     module_tailscale
     module_agents_packages
     module_dotfiles
+    module_android_phone
     module_emacs
     module_cursor_theme
     module_refind

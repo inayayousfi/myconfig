@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+
+# Launch scrcpy over Android Wireless Debugging, discovering the phone with mDNS.
+set -u
+
+# Load the login environment so tools installed outside the interactive shell's
+# PATH (for example Android SDK Platform Tools) can be discovered.
+if [[ -f /etc/profile ]]; then
+    set +u
+    source /etc/profile
+    set -u
+fi
+
+if [[ -t 1 ]]; then
+    BOLD=$'\e[1m'; RED=$'\e[31m'; GREEN=$'\e[32m'; YELLOW=$'\e[33m'; BLUE=$'\e[34m'; RESET=$'\e[0m'
+else
+    BOLD=""; RED=""; GREEN=""; YELLOW=""; BLUE=""; RESET=""
+fi
+
+info() { printf '%s→%s %s\n' "$BLUE" "$RESET" "$*"; }
+ok() { printf '%s✓%s %s\n' "$GREEN" "$RESET" "$*"; }
+warn() { printf '%s!%s %s\n' "$YELLOW" "$RESET" "$*" >&2; }
+fail() { printf '%s✗%s %s\n' "$RED" "$RESET" "$*" >&2; }
+die() { fail "$1"; shift; printf '  %s\n' "$@" >&2; exit 1; }
+section() { printf '\n%s%s%s\n' "$BOLD" "$1" "$RESET"; }
+
+section "Checking tools"
+command -v adb >/dev/null 2>&1 || die "adb is not installed or is not in PATH." "Install Google's Android SDK Platform Tools."
+ADB="$(command -v adb)"
+ok "adb found: $ADB"
+command -v scrcpy >/dev/null 2>&1 || die "scrcpy is not installed or is not in PATH." "Install scrcpy, then run phone again."
+SCRCPY="$(command -v scrcpy)"
+ok "scrcpy found: $SCRCPY"
+adb version 2>&1 | sed 's/^/  /'
+
+if [[ "$ADB" == "/usr/bin/adb" ]] && command -v pacman >/dev/null 2>&1 && pacman -Qo "$ADB" 2>/dev/null | grep -q 'android-tools '; then
+    warn "This adb comes from Arch's android-tools package; Google's platform-tools are preferable for Wireless Debugging."
+fi
+
+section "Checking ADB server"
+ADB_START="$(adb start-server 2>&1)"; ADB_START_STATUS=$?
+(( ADB_START_STATUS == 0 )) || die "Could not start the ADB server." "$ADB_START"
+ok "ADB server is running"
+
+section "Checking mDNS support"
+SERVER_STATUS="$(adb server-status 2>&1)"; SERVER_STATUS_CODE=$?
+(( SERVER_STATUS_CODE == 0 )) || die "adb server-status failed." "$SERVER_STATUS"
+if grep -qiE 'mdns_enabled:[[:space:]]*true' <<<"$SERVER_STATUS"; then
+    ok "ADB mDNS is enabled"
+elif grep -qiE 'mdns_enabled:[[:space:]]*false' <<<"$SERVER_STATUS"; then
+    die "ADB is running, but mDNS is disabled." "Wireless Debugging auto-discovery cannot work while mDNS is disabled."
+else
+    warn "Could not determine mDNS state from adb server-status."
+fi
+MDNS_BACKEND="$(sed -nE 's/^[[:space:]]*mdns_backend:[[:space:]]*(.*)$/\1/p' <<<"$SERVER_STATUS" | head -n1)"
+[[ -n "$MDNS_BACKEND" ]] && ok "mDNS backend: $MDNS_BACKEND"
+MDNS_TEST="$(timeout 2 adb mdns services 2>&1)"; MDNS_TEST_CODE=$?
+grep -qiE 'mdns is not supported|unknown host service.*mdns' <<<"$MDNS_TEST" && die "This adb cannot use mDNS." "Wireless Debugging needs an adb build with mDNS support."
+if (( MDNS_TEST_CODE != 0 && MDNS_TEST_CODE != 124 )); then
+    warn "adb mdns services returned an unexpected error:"
+    printf '%s\n' "$MDNS_TEST" | sed 's/^/  /' >&2
+fi
+ok "ADB exposes its mDNS discovery interface"
+
+section "Checking network"
+mapfile -t LAN_INTERFACES < <(ip -4 -o addr show scope global up 2>/dev/null | awk '{print $2}' | grep -Ev '^(tailscale|docker|br-|virbr|veth|tun|tap)' | sort -u)
+((${#LAN_INTERFACES[@]} > 0)) || die "No active IPv4 LAN interface was found." "Check your Wi-Fi or Ethernet connection."
+ok "Active LAN interface(s): ${LAN_INTERFACES[*]}"
+
+section "Looking for Android"
+info "Waiting for _adb-tls-connect._tcp..."
+MDNS_OUTPUT=""
+for _ in {1..10}; do
+    MDNS_OUTPUT="$(adb mdns services 2>/dev/null || true)"
+    grep -q '_adb-tls-connect\._tcp' <<<"$MDNS_OUTPUT" && break
+    sleep 0.5
+done
+if ! grep -q '_adb-tls-connect\._tcp' <<<"$MDNS_OUTPUT"; then
+    fail "No Android Wireless Debugging service was discovered."
+    printf '\nPossible causes:\n  • Wireless Debugging is disabled on the phone.\n  • The phone and PC cannot exchange mDNS multicast traffic.\n  • Wi-Fi client/AP isolation is enabled.\n' >&2
+    exit 1
+fi
+ok "Android Wireless Debugging service discovered"
+printf '%s\n' "$MDNS_OUTPUT" | grep '_adb-tls-connect\._tcp' | sed 's/^/  /'
+
+section "Checking ADB connection"
+ADB_DEVICE=""
+for _ in {1..10}; do
+    ADB_DEVICE="$(adb devices | awk 'NR > 1 && $2 == "device" { print $1; exit }')"
+    [[ -n "$ADB_DEVICE" ]] && break
+    sleep 0.5
+done
+if [[ -z "$ADB_DEVICE" ]]; then
+    fail "The phone is visible over mDNS, but ADB did not connect to it."
+    printf '\nPair first with:\n  adb pair <address>:<pairing-port>\n' >&2
+    exit 1
+fi
+ok "ADB connected: $ADB_DEVICE"
+adb -s "$ADB_DEVICE" get-state 2>/dev/null | grep -qx 'device' || die "ADB lists the phone, but the transport is not responding correctly." "Try: adb kill-server" "Then run phone again."
+ok "ADB transport is responsive"
+
+section "Launching scrcpy"
+info "Device: $ADB_DEVICE"
+printf '\n'
+exec "$SCRCPY" -s "$ADB_DEVICE" "$@"

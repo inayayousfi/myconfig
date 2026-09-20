@@ -4,7 +4,6 @@ import QtQuick
 import QtQuick.Window
 import QtQuick.Layouts
 import QtQuick.Controls as Controls
-import Qt5Compat.GraphicalEffects as GraphicalEffects
 import MyConfig.Glass 1.0
 import org.kde.kirigami as Kirigami
 import org.kde.kitemmodels as KItemModels
@@ -43,6 +42,9 @@ ContainmentItem {
     property real appearance: 0
     property bool appearancePending: false
     property bool windowFrameReady: false
+    // QScreen objects can be replaced while a monitor is being unplugged. Keep a
+    // refreshed reference instead of retaining the old screen through that gap.
+    property var islandScreen: null
     onRequestedVisibleChanged: {
         if (requestedVisible) {
             if (windowFrameReady) appearance = 1;
@@ -92,6 +94,32 @@ ContainmentItem {
     property var applicationsTray: null
     readonly property var settingsPopup: settingsTray ? settingsTray.hiddenLayout.Window.window : null
     readonly property var applicationsPopup: applicationsTray ? applicationsTray.hiddenLayout.Window.window : null
+
+    function refreshIslandScreen() {
+        const name = island.fullRepresentationItem?.Screen?.name;
+        island.islandScreen = name
+            ? Qt.application.screens.find(candidate => candidate.name === name) || null
+            : null;
+    }
+
+    Timer {
+        id: screenRefreshTimer
+        interval: 250
+        repeat: true
+        running: true
+        onTriggered: island.refreshIslandScreen()
+    }
+
+    Connections {
+        target: Qt.application
+        function onScreenAdded() { screenRefreshTimer.restart(); }
+        function onScreenRemoved() { island.islandScreen = null; screenRefreshTimer.restart(); }
+    }
+
+    Connections {
+        target: island.fullRepresentationItem ? island.fullRepresentationItem.Screen : null
+        function onNameChanged() { screenRefreshTimer.restart(); }
+    }
 
     TextMetrics { id: clockMetrics; font: island.clockFont; text: island.clockText }
     Item { id: networkHost; visible: false }
@@ -313,6 +341,7 @@ ContainmentItem {
     fullRepresentation: Item {
         implicitWidth: island.pillWidth + 32
         implicitHeight: island.pillHeight
+        Component.onCompleted: island.refreshIslandScreen()
     }
 
     Window {
@@ -322,7 +351,7 @@ ContainmentItem {
         flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.NoDropShadowWindowHint
         transientParent: null
         color: "transparent"
-        screen: Qt.application.screens.find(candidate => candidate.name === island.fullRepresentationItem?.Screen.name) || null
+        screen: island.islandScreen
         x: screen ? screen.virtualX + Math.round((screen.width - width) / 2) : 0
         y: screen ? screen.virtualY : 0
         width: Math.ceil(surface.width) + 32
@@ -353,7 +382,9 @@ ContainmentItem {
             enabled: canvas.opacity > 0.02
             rect: Qt.rect(canvas.width / 2 + (surface.x - canvas.width / 2) * canvas.scale,
                 canvas.y + surface.y * canvas.scale, surface.width * canvas.scale, surface.height * canvas.scale)
-            radius: surface.radius * canvas.scale
+            // Submit the complete rectangular lens. The shader's analytical
+            // alpha—not a second QML/KWin corner mask—owns the silhouette.
+            radius: 0
         }
 
         Item {
@@ -374,43 +405,6 @@ ContainmentItem {
                 onWheel: wheel => island.pageWheel(wheel)
             }
 
-            Item {
-                id: shadowSource
-                anchors.fill: parent
-                visible: false
-                Kirigami.ShadowedRectangle {
-                    x: surface.x
-                    y: surface.y
-                    width: surface.width
-                    height: surface.height
-                    radius: surface.radius
-                    color: "black"
-                    shadow.xOffset: 0
-                    shadow.yOffset: 4
-                    shadow.size: 10
-                    shadow.color: Qt.rgba(0, 0, 0, 0.5)
-                }
-            }
-            Item {
-                id: shadowCutout
-                anchors.fill: parent
-                visible: false
-                Rectangle {
-                    x: surface.x
-                    y: surface.y
-                    width: surface.width
-                    height: surface.height
-                    radius: surface.radius
-                    color: "white"
-                }
-            }
-            GraphicalEffects.OpacityMask {
-                anchors.fill: parent
-                source: shadowSource
-                maskSource: shadowCutout
-                invert: true
-            }
-
             Controls.Button {
                 id: clockButton
                 z: 2
@@ -425,16 +419,12 @@ ContainmentItem {
                 onClicked: island.opened ? island.closeIsland() : island.openIsland()
             }
 
-            Rectangle {
+            Item {
                 id: surface
                 x: island.clockPosition.x - width / 2
                 y: island.clockPosition.y
                 width: island.pillWidth + (island.openWidth - island.pillWidth) * Math.max(0, Math.min(1, island.reveal)) - island.openWidth * 0.6 * island.stretch
                 height: island.actualPillHeight + (island.openHeight - island.actualPillHeight) * (Math.max(0, Math.min(1, island.reveal)) + island.stretch)
-                radius: island.actualPillHeight / 2 + (30 - island.actualPillHeight / 2) * Math.max(0, Math.min(1, island.reveal)) + island.stretch * 100
-                color: "transparent"
-                border.color: "#28ffffff"
-                border.width: 1
                 clip: true
 
                 TapHandler {
@@ -672,7 +662,7 @@ ContainmentItem {
         Layout.topMargin: 8
     }
 
-    component WidgetCard: Rectangle {
+    component WidgetCard: Item {
         property int contentMargin: 8
         property var widget: null
         implicitHeight: widget?.fullRepresentationItem
@@ -680,10 +670,6 @@ ContainmentItem {
                 widget.fullRepresentationItem.Layout.preferredHeight,
                 widget.fullRepresentationItem.Layout.minimumHeight) + contentMargin * 2
             : 0
-        radius: 18
-        color: "transparent"
-        border.width: 1
-        border.color: "#28ffffff"
     }
 
     component ActionButton: Controls.Button {
@@ -720,8 +706,6 @@ ContainmentItem {
         background: Rectangle {
             radius: 13
             color: action.down ? "#24ffffff" : action.hovered ? "#14ffffff" : "transparent"
-            border.width: action.activeFocus ? 1 : 0
-            border.color: "#40ffffff"
         }
     }
 

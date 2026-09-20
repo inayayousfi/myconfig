@@ -32,15 +32,15 @@ diff --git a/src/blur.cpp b/src/blur.cpp
 @@ -1604,1 +1608,16 @@
 +QString BlurEffect::debug(const QString &) const
 +{
-+    QString result = QStringLiteral("valid=%1 shaders=%2 attempts=%3 noRegion=%4 rejected=%5 draws=%6 tracked=%7 whitelist=%8 classes=%9\n")
++    QString result = QStringLiteral("valid=%1 shaders=%2 attempts=%3 noRegion=%4 rejected=%5 draws=%6 tracked=%7 whitelist=%8 classes=%9 physical=%10 strength=%11 excludeWindows=%12 excludeDocks=%13 excludeMenus=%14 excludeTooltips=%15 excludeOSD=%16\n")
 +        .arg(m_valid).arg(static_cast<bool>(m_roundedOnscreenPass.shader))
 +        .arg(m_attempts).arg(m_noRegion).arg(m_rejected).arg(m_drawCalls).arg(m_windows.size())
-+        .arg(m_whitelist).arg(m_windowClasses.join(QLatin1Char(',')));
++        .arg(m_whitelist).arg(m_windowClasses.join(QLatin1Char(','))).arg(m_settings.refraction.physicallyBased).arg(m_settings.refraction.refractionStrength).arg(m_settings.refraction.excludeWindows).arg(m_settings.refraction.excludeDocks).arg(m_settings.refraction.excludeMenus).arg(m_settings.refraction.excludeTooltips).arg(m_settings.refraction.excludeOSD);
 +    for (auto w : effects->stackingOrder()) {
 +        if (!w->isDock() && !w->caption().startsWith(QStringLiteral("MyConfig Island"))) continue;
 +        const auto region = w->surface() ? w->surface()->blurRegion().boundingRect() : RectF();
-+        result += QStringLiteral("%1 visible=%2 requested=%3x%4 tracked=%5\n")
-+            .arg(w->caption()).arg(w->isVisible()).arg(region.width()).arg(region.height()).arg(m_windows.contains(w));
++        result += QStringLiteral("%1 visible=%2 requested=%3x%4 tracked=%5 dock=%6 tooltip=%7 menu=%8 dropdown=%9 popupMenu=%10 popupWindow=%11\n")
++            .arg(w->caption()).arg(w->isVisible()).arg(region.width()).arg(region.height()).arg(m_windows.contains(w)).arg(w->isDock()).arg(w->isTooltip()).arg(w->isMenu()).arg(w->isDropdownMenu()).arg(w->isPopupMenu()).arg(w->isPopupWindow());
 +    }
 +    return result;
 +}

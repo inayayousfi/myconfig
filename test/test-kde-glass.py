@@ -3,7 +3,6 @@
 
 import os
 from pathlib import Path
-import time
 import xml.etree.ElementTree as ET
 
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
@@ -50,31 +49,9 @@ island = QQmlComponent(engine, QUrl.fromLocalFile(str(plasma / "plasma/plasmoids
 assert not island.isError(), [error.toString() for error in island.errors()]
 
 source = (plasma / "plasma/plasmoids/myconfig.island/contents/ui/main.qml").read_text()
-shadow_start = source.index("            Item {\n                id: shadowSource")
-shadow_end = source.index("            Controls.Button {", shadow_start)
-shadow_component = QQmlComponent(engine)
-shadow_component.setData(("""
-import QtQuick
-import org.kde.kirigami as Kirigami
-import Qt5Compat.GraphicalEffects as GraphicalEffects
-Window {
-    width: 200; height: 120; color: "transparent"
-    Rectangle { id: surface; x: 16; y: 16; width: 168; height: 88; radius: 18; color: "transparent" }
-""" + source[shadow_start:shadow_end] + "}").encode(), QUrl())
-assert not shadow_component.isError(), [error.toString() for error in shadow_component.errors()]
-shadow_window = shadow_component.create()
-assert isinstance(shadow_window, QQuickWindow)
-shadow_window.show()
-deadline = time.monotonic() + 0.3
-while time.monotonic() < deadline:
-    app.processEvents()
-    time.sleep(0.01)
-shadow_image = shadow_window.grabWindow()
-assert not shadow_image.isNull(), "Offscreen shadow render failed"
-assert shadow_image.pixelColor(100, 60).alpha() == 0, "Shadow tinted the glass interior"
-assert max(shadow_image.pixelColor(100, y).alpha() for y in range(105, 119)) > 5, "Exterior shadow was not drawn"
-shadow_window.close()
-app.processEvents()
+assert "id: shadowSource" not in source, "Island still draws an external rounded shadow"
+assert "border." not in source, "Island still contains a mismatched QML border"
+assert "radius: 0" in source, "Island does not submit a rectangular shader-owned blur region"
 
 theme = plasma / "plasma/desktoptheme/blacknpink"
 for name in ("widgets/panel-background.svg", "dialogs/background.svg", "solid/dialogs/background.svg"):
@@ -82,7 +59,10 @@ for name in ("widgets/panel-background.svg", "dialogs/background.svg", "solid/di
     elements = {element.get("id"): element for element in svg.iter()}
     for part in ("top", "bottom", "left", "right", "center", "topleft", "topright", "bottomleft", "bottomright"):
         assert part in elements and f"mask-{part}" in elements
-    assert elements["shadow-hint-top-margin"].get("height") == "6"
-    assert elements["shadow-hint-bottom-margin"].get("height") == "14"
+    assert not any(element.get("id", "").startswith("shadow-") for element in elements.values()), \
+        f"{name} still contains an external SVG shadow"
+    if name == "widgets/panel-background.svg":
+        assert not any("stroke" in element.attrib for element in elements.values()), \
+            "floating panel still draws an exterior SVG outline"
 assert (theme / "solid/dialogs/background.svg").resolve() == (theme / "dialogs/background.svg").resolve()
 print("Glass module, island QML imports, and panel/dialog SVG checks passed.")

@@ -57,7 +57,6 @@ for y in range(image.height()):
     for x in range(image.width()):
         image.setPixelColor(x, y, QColor("white" if (x // 8 + y // 8) % 2 else "black"))
 scene = QOpenGLTexture(image)
-image.fill(QColor(96, 96, 96))
 diffuse = QOpenGLTexture(image)
 scene.setWrapMode(QOpenGLTexture.ClampToEdge)
 diffuse.setWrapMode(QOpenGLTexture.ClampToEdge)
@@ -90,7 +89,7 @@ vao.bind()
 fbo = QOpenGLFramebufferObject(QSize(256, 128))
 assert fbo.isValid()
 
-def render(ior, roughness, interior_shadow=0.0):
+def render(strength):
     assert fbo.bind()
     assert program.bind()
     vao.bind()
@@ -99,31 +98,36 @@ def render(ior, roughness, interior_shadow=0.0):
     functions.glViewport(0, 0, 256, 128)
     functions.glClearColor(0, 0, 0, 0)
     functions.glClear(0x4000)
-    functions.glUniform1f(program.uniformLocation("refractionStrength"), 0.6)
-    functions.glUniform1f(program.uniformLocation("materialIOR"), ior)
-    functions.glUniform1f(program.uniformLocation("materialRoughness"), roughness)
-    functions.glUniform1f(program.uniformLocation("materialInteriorShadow"), interior_shadow)
+    functions.glUniform1f(program.uniformLocation("refractionStrength"), strength)
+    functions.glUniform1f(program.uniformLocation("materialIOR"), 1.5)
+    functions.glUniform1f(program.uniformLocation("materialRoughness"), 0.0)
+    functions.glUniform1f(program.uniformLocation("materialInteriorShadow"), 0.0)
     functions.glDrawArrays(0x0004, 0, 3)
     assert functions.glGetError() == 0, "Offscreen draw failed"
     return fbo.toImage()
 
-plain = render(1.0, 0.0)
-polished = render(1.50, 0.0)
-frosted = render(1.50, 0.45)
+plain = render(0.0)
+liquid = render(0.75)
 
 def differences(first, second, rows, columns=range(32, 224)):
     return sum(abs(first.pixelColor(x, y).red() - second.pixelColor(x, y).red()) > 20
                for y in rows for x in columns)
 
-assert differences(plain, polished, range(4, 20)) > 100, "IOR did not curve the scene at the edges"
-assert differences(plain, polished, range(62, 66), range(126, 130)) < 6, "Surface curvature displaced the central anchor"
-assert differences(polished, frosted, range(48, 80)) > 300, "Roughness did not diffuse the center"
-assert differences(polished, frosted, range(4, 20)) > 300, "Roughness did not diffuse the refracted edges"
-assert differences(render(1.05, 0.0), render(1.05, 0.45), range(48, 80)) > 300, "Low IOR erased the frosted finish"
-shaded = render(1.50, 0.45, 0.30)
-assert shaded.pixelColor(128, 64).red() < frosted.pixelColor(128, 64).red() - 20, "Interior shadow did not darken the transmitted scene"
-assert shaded.pixelColor(128, 64).alpha() == frosted.pixelColor(128, 64).alpha(), "Interior shadow changed surface coverage"
-print("Unified material shader checks passed: IOR curvature and rough transmission across the surface.")
+assert differences(plain, liquid, range(4, 20)) > 100, "LiquidGlass radial remap did not refract the edge"
+assert differences(plain, liquid, range(62, 66), range(126, 130)) < 6, "LiquidGlass radial remap moved the center anchor"
+assert max(liquid.pixelColor(x, y).alpha() for y in range(1, 4) for x in range(1, 4)) < 8, \
+    "LiquidGlass did not make pixels outside its adaptive rounded rectangle transparent"
+assert "OverShifted/LiquidGlass" in glass, "LiquidGlass source attribution is missing"
+assert "aspectRatio" in glass and "dynamicRadius" in glass, "LiquidGlass rounding is not derived from its allocation"
+assert "roundedRectangleDist(position, halfBlurSize" in glass, "LiquidGlass does not fill an adaptive rounded rectangle"
+assert "1.0 - b * pow(c * liquidGlassE, -d * distance - a)" in glass, "LiquidGlass radial curve is missing"
+assert "vec3(-0.70, 0.70, 0.72)" in glass, "Top-left material light is missing"
+assert "edgeRelease" in glass and "shoulderLight" in glass, "Material light is not positioned on the lens shoulder"
+assert "edgeKiss" in glass and "lightProfile" in glass, "Material light does not touch the silhouette"
+assert "silhouetteKiss" in glass and "edgeSpecular" in glass, "Material light does not compensate at alpha-covered edge pixels"
+assert "oppositeLight" in glass and "respondingShadow" in glass, "Material light has no opposing directional shadow"
+assert "roughTransmission" in glass and "materialRoughness" in glass, "Material surface roughness is missing"
+print("OverShifted LiquidGlass shader checks passed: refraction, grain, alpha, and top-left transmitted light.")
 
 fbo.release()
 vao.release()

@@ -1,42 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg width="157" height="64" viewBox="0 0 157 64" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="shadow-top-gradient" x1="16" y1="10" x2="16" y2="0" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#000" stop-opacity=".50"/>
-      <stop offset=".333333" stop-color="#000" stop-opacity=".22"/>
-      <stop offset=".5" stop-color="#000" stop-opacity=".09"/>
-      <stop offset=".583333" stop-color="#000" stop-opacity=".03"/>
-      <stop offset="1" stop-color="#000" stop-opacity="0"/>
-    </linearGradient>
-    <linearGradient id="shadow-bottom-gradient" x1="16" y1="6" x2="16" y2="16" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#000" stop-opacity=".50"/>
-      <stop offset=".333333" stop-color="#000" stop-opacity=".22"/>
-      <stop offset=".5" stop-color="#000" stop-opacity=".09"/>
-      <stop offset=".583333" stop-color="#000" stop-opacity=".03"/>
-      <stop offset="1" stop-color="#000" stop-opacity="0"/>
-    </linearGradient>
-    <linearGradient id="shadow-left-gradient" x1="12" y1="16" x2="2" y2="16" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#000" stop-opacity=".50"/>
-      <stop offset=".333333" stop-color="#000" stop-opacity=".22"/>
-      <stop offset=".5" stop-color="#000" stop-opacity=".09"/>
-      <stop offset=".583333" stop-color="#000" stop-opacity=".03"/>
-      <stop offset="1" stop-color="#000" stop-opacity="0"/>
-    </linearGradient>
-    <linearGradient id="shadow-right-gradient" x1="4" y1="16" x2="14" y2="16" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#000" stop-opacity=".50"/>
-      <stop offset=".333333" stop-color="#000" stop-opacity=".22"/>
-      <stop offset=".5" stop-color="#000" stop-opacity=".09"/>
-      <stop offset=".583333" stop-color="#000" stop-opacity=".03"/>
-      <stop offset="1" stop-color="#000" stop-opacity="0"/>
-    </linearGradient>
-    <radialGradient id="shadow-corner" cx="0" cy="0" r="16" gradientUnits="userSpaceOnUse">
-      <stop offset=".375" stop-color="#000" stop-opacity=".50"/>
-      <stop offset=".59" stop-color="#000" stop-opacity=".22"/>
-      <stop offset=".72" stop-color="#000" stop-opacity=".09"/>
-      <stop offset=".82" stop-color="#000" stop-opacity=".03"/>
-      <stop offset="1" stop-color="#000" stop-opacity="0"/>
-    </radialGradient>
-  </defs>
   <rect id="hint-tile-center" width="5" height="5" fill="#f60"/>
   <g id="top"><rect x="16" y="10" width="12" height="16" fill="#fff" opacity=".001"/><path d="M16 10.5h12" stroke="#fff" stroke-opacity=".16"/></g>
   <g id="bottom"><rect x="16" y="38" width="12" height="16" fill="#fff" opacity=".001"/><path d="M16 53.5h12" stroke="#fff" stroke-opacity=".08"/></g>
@@ -60,17 +23,4 @@
   <path id="mask-topright" d="M141 10c8.837 0 16 7.163 16 16h-16z"/>
   <path id="mask-bottomleft" d="M113 38h16v16c-8.837 0-16-7.163-16-16z"/>
   <path id="mask-bottomright" d="M141 38h16c0 8.837-7.163 16-16 16z"/>
-  <rect id="shadow-center" x="63" y="16" width="32" height="32" opacity=".001"/>
-  <g id="shadow-top" transform="translate(63)"><rect width="32" height="10" fill="url(#shadow-top-gradient)"/><rect y="10" width="32" height="6" opacity=".001"/></g>
-  <g id="shadow-bottom" transform="translate(63 48)"><rect width="32" height="6" opacity=".001"/><rect y="6" width="32" height="10" fill="url(#shadow-bottom-gradient)"/></g>
-  <g id="shadow-left" transform="translate(47 16)"><rect width="10" height="32" fill="url(#shadow-left-gradient)"/><rect x="10" width="6" height="32" opacity=".001"/></g>
-  <g id="shadow-right" transform="translate(95 16)"><rect width="6" height="32" opacity=".001"/><rect x="6" width="10" height="32" fill="url(#shadow-right-gradient)"/></g>
-  <g id="shadow-topleft" transform="rotate(180 31.5 8)"><path d="M6 0c0 4-2 6-6 6v10h3c7.18 0 13-5.82 13-13V0z" fill="url(#shadow-corner)"/><path d="M0 0h6v6c-4 0-6-2-6-6z" opacity=".001"/></g>
-  <g id="shadow-topright" transform="matrix(1 0 0 -1 95 16)"><path d="M6 0c0 4-2 6-6 6v10h3c7.18 0 13-5.82 13-13V0z" fill="url(#shadow-corner)"/><path d="M0 0h6v6c-4 0-6-2-6-6z" opacity=".001"/></g>
-  <g id="shadow-bottomleft" transform="matrix(-1 0 0 1 63 48)"><path d="M6 0c0 4-2 6-6 6v10h3c7.18 0 13-5.82 13-13V0z" fill="url(#shadow-corner)"/><path d="M0 0h6v6c-4 0-6-2-6-6z" opacity=".001"/></g>
-  <g id="shadow-bottomright" transform="translate(95 48)"><path d="M6 0c0 4-2 6-6 6v10h3c7.18 0 13-5.82 13-13V0z" fill="url(#shadow-corner)"/><path d="M0 0h6v6c-4 0-6-2-6-6z" opacity=".001"/></g>
-  <rect id="shadow-hint-top-margin" x="76" width="2" height="6" fill="#f0f"/>
-  <rect id="shadow-hint-bottom-margin" x="76" y="54" width="2" height="14" fill="#f0f"/>
-  <rect id="shadow-hint-left-margin" x="47" y="29" width="10" height="2" fill="#f0f"/>
-  <rect id="shadow-hint-right-margin" x="101" y="33" width="10" height="2" fill="#f0f"/>
 </svg>

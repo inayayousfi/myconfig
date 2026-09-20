@@ -1,25 +1,26 @@
 pkgname=myconfig-kde-glass
 pkgver=1.6.3
-pkgrel=16
+pkgrel=35
 pkgdesc='Glass refraction effect and rounded Plasma blur regions for MyConfig'
 arch=('x86_64')
 options=('!debug')
 url='https://github.com/4v3ngR/kwin-effects-glass'
-license=('GPL-2.0-or-later')
+license=('GPL-2.0-or-later' 'MIT')
 depends=('kwin' 'kcmutils' 'ki18n' 'kguiaddons' 'kwindowsystem' 'qt6-declarative' 'qt6-5compat')
 makedepends=('git' 'cmake' 'ninja' 'extra-cmake-modules' 'qt6-tools' 'vulkan-headers')
 conflicts=('kwin-effects-glass' 'kwin-effects-glass-git')
 source=('glass::git+https://github.com/4v3ngR/kwin-effects-glass.git#commit=00ecbba461428bbf517c32078192c65bf535452b'
         'CMakeLists.txt' 'blurregion.cpp' 'qmldir' 'refraction.patch' 'diagnostics.patch'
-        'material.patch' 'frosted-glass.glsl')
+        'material.patch' 'frosted-glass.glsl' 'LICENSE-OverShifted-LiquidGlass')
 sha256sums=('SKIP'
             '094e8d10cbf1447514ef8238c54440d3669a380cf36b92a911cdce7d68ac4f75'
             'c49c5d0e3e53d07d0451328c448416015d74c39b813a530c18a70e717b407552'
             'cd64045dbd02bbc59918071f5a90d9f6c46f36bba528e111ee9e0ab5cd469c9a'
             '8b6665be4a7b5027f637aa492854e807f2462b023780746a6ee46da012254938'
-            '8c70e0307a7659a3ad6c49ecad2dad3f5db30ff7343897c74e9889d5c18d623d'
-            'f073f9e4495bbeb3a2c2a4f87fff82220deae8d5b1de15f138b081350b5e26c6'
-            'f59655742a7575117d4d23c5d17abc31f4f5072aa3acb0265aa55f3651b50bc2')
+            '3c9f52631215805943e0e8f236f6bb1d0eb1ff13f03b407dcfd388de08ddf1d4'
+            'f45a3a85874fd49bd573876d5238f832573edb4509e6485f24fb39c908f95348'
+            '42c05f0f8ddd5b4ce4264fbc5d2126949502a2ef2fb7ccecd6286d0115cbb6f8'
+            '7e00f2c7fcec4a30b490c2626af0012ac949b50f057f2bb21e2abb8b1f3722e4')
 
 _effect_id() {
     local fingerprint
@@ -48,6 +49,8 @@ build() {
 package() {
     DESTDIR="$pkgdir" cmake --install "$srcdir/build"
     install -d "$pkgdir/usr/share/myconfig/kde-glass"
+    install -Dm644 "$srcdir/LICENSE-OverShifted-LiquidGlass" \
+        "$pkgdir/usr/share/licenses/$pkgname/LICENSE-OverShifted-LiquidGlass"
     _effect_id > "$pkgdir/usr/share/myconfig/kde-glass/effect-id"
     pacman -Q kwin > "$pkgdir/usr/share/myconfig/kde-glass/kwin-version"
 }

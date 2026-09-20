@@ -51,10 +51,17 @@ for expected in \
     '--group Effect-blurplus --key IgnoreContentBlurRegion false' \
     '--group Effect-blurplus --key Saturation 1' \
     '--group Effect-blurplus --key FrostedIOR 1.50' \
-    '--group Effect-blurplus --key FrostedRoughness 0.45' \
+    '--group Effect-blurplus --key FrostedRoughness 0.08' \
     '--group Effect-blurplus --key FrostedThickness 80' \
-    '--group Effect-blurplus --key FrostedInteriorShadow 0.30' \
-    '--group Effect-blurplus --key FrostedCurvature 1.25' \
+    '--group Effect-blurplus --key FrostedInteriorShadow 0' \
+    '--group Effect-blurplus --key FrostedCurvature 1' \
+    '--group Effect-blurplus --key BlurDocks true' \
+    '--group Effect-blurplus --key RefractionStrength 15' \
+    '--group Effect-blurplus --key RefractionEdgeSize 20' \
+    '--group Effect-blurplus --key RefractionBevelIntensity 4' \
+    '--group Effect-blurplus --key RefractionNormalPow 1.15' \
+    '--group Effect-blurplus --key EdgeLighting false' \
+    '--group Effect-blurplus --key EdgeLightingDock false' \
     '--group Effect-blurplus --key RefractionExcludeOSD false' \
     '--group Plugins --key blurEnabled false' \
     '--group Plugins --key glassEnabled false' \

@@ -39,3 +39,24 @@ diff --git a/src/shaders/glass.glsl b/src/shaders/glass.glsl
 @@ -156,1 +161,1 @@
 -        vec4 r = clamp(cornerRadius * 2.0, min(64.0, minHalfSize), min(128.0, minHalfSize));
 +        vec4 r = cornerRadius;
+@@ -151,1 +156,1 @@
+-    if (dist >= 0.0) {
++    if (dist >= 0.0 && physicallyBasedRefraction == 0) {
+@@ -172,1 +177,4 @@
+-    return roundedRectangle(uv * blurSize, final, cornerRadius);
++    if (physicallyBasedRefraction == 1)
++        return vec4(final * s.color.a, s.color.a);
++
++    return roundedRectangle(uv * blurSize, final, cornerRadius);
+diff --git a/src/shaders/onscreen_rounded.glsl b/src/shaders/onscreen_rounded.glsl
+--- a/src/shaders/onscreen_rounded.glsl
++++ b/src/shaders/onscreen_rounded.glsl
+@@ -41,3 +41,5 @@
+-    float f = sdfRoundedBox(vertex, box.xy, box.zw, cornerRadius);
+-    float df = fwidth(f);
+-    sum *= 1.0 - clamp(0.5 + f / df, 0.0, 1.0);
++    if (physicallyBasedRefraction == 0) {
++        float f = sdfRoundedBox(vertex, box.xy, box.zw, cornerRadius);
++        float df = fwidth(f);
++        sum *= 1.0 - clamp(0.5 + f / df, 0.0, 1.0);
++    }

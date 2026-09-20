@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+
+from pathlib import Path
+import subprocess
+import sys
+
+CONFIG = Path.home() / ".config/wireplumber/wireplumber.conf.d/60-mono-playback.conf"
+DISABLED = CONFIG.with_name(CONFIG.name + ".disabled")
+ICON = Path(__file__).with_name("myconfig-mono.svg")
+
+
+def restart_wireplumber():
+    return subprocess.run(
+        ["systemctl", "--user", "restart", "wireplumber"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+
+
+def run_tray():
+    from PySide6.QtGui import QAction, QIcon
+    from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
+
+    app = QApplication(sys.argv)
+    app.setApplicationName("MyConfig PipeWire")
+    app.setQuitOnLastWindowClosed(False)
+
+    tray = QSystemTrayIcon(QIcon(str(ICON)), app)
+    tray.setToolTip("PipeWire: mono playback")
+    menu = QMenu()
+    mono = QAction("Mono playback", menu)
+    mono.setCheckable(True)
+    menu.addAction(mono)
+    menu.addSeparator()
+    quit_action = QAction("Quit", menu)
+    menu.addAction(quit_action)
+
+    def enabled():
+        return CONFIG.exists()
+
+    def refresh():
+        active = enabled()
+        mono.setChecked(active)
+        tray.setToolTip(f"PipeWire: {'mono' if active else 'stereo'} playback")
+        tray.show()
+
+    def toggle(checked):
+        try:
+            if checked:
+                if not CONFIG.exists() and DISABLED.exists():
+                    DISABLED.rename(CONFIG)
+            elif CONFIG.exists():
+                CONFIG.rename(DISABLED)
+            else:
+                raise FileNotFoundError(str(CONFIG))
+            result = restart_wireplumber()
+            if result.returncode != 0:
+                raise RuntimeError(result.stderr.strip() or "WirePlumber restart failed")
+            refresh()
+        except (OSError, RuntimeError) as error:
+            mono.blockSignals(True)
+            mono.setChecked(enabled())
+            mono.blockSignals(False)
+            tray.showMessage("PipeWire", str(error))
+
+    def quit_tray():
+        subprocess.run(
+            [
+                "systemctl",
+                "--user",
+                "--no-block",
+                "stop",
+                "myconfig-pipewire-tray.service",
+            ],
+            check=False,
+        )
+
+    mono.triggered.connect(toggle)
+    quit_action.triggered.connect(quit_tray)
+    tray.setContextMenu(menu)
+    refresh()
+    return app.exec()
+
+
+if __name__ == "__main__":
+    raise SystemExit(run_tray())

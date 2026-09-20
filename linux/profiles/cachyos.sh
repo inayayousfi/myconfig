@@ -21,6 +21,7 @@ run_profile() {
     module_kde_plasma
     module_kanata_kde
     module_handy
+    module_pipewire
     module_docker
     module_agents_configure
     module_authentication

@@ -61,7 +61,7 @@ Modules request logical package identifiers. `linux/registry/packages.sh` maps e
 
 The shared installer validates sudo once before package preparation and refreshes that credential every 60 seconds until the profile exits. Long package builds therefore do not ask for the same password again. The refresh process is stopped on both successful and failed exits.
 
-Linux profiles copy selected packages into `~/dotfiles`, back up the previous tree, back up conflicting home files, and run GNU Stow. CachyOS selects `zsh`, `yazi`, `ai`, `opencode`, `kanata`, `kanata-kde`, `handy`, `kde-plasma`, and `emacs`. Arch WSL selects `zsh`, `yazi`, `ai`, and `opencode`; it retains the Neovim binary without a managed configuration as its shell editor. Ubuntu Server selects only `zsh`.
+Linux profiles copy selected packages into `~/dotfiles`, back up the previous tree, back up conflicting home files, and run GNU Stow. CachyOS selects `zsh`, `yazi`, `ai`, `opencode`, `kanata`, `kanata-kde`, `handy`, `kde-plasma`, `emacs`, `phone`, and `pipewire`; the PipeWire configuration downmixes playback to mono without changing capture, and a KDE system-tray toggle enables or disables that downmix. Arch WSL selects `zsh`, `yazi`, `ai`, and `opencode`; it retains the Neovim binary without a managed configuration as its shell editor. Ubuntu Server selects only `zsh`.
 
 The complete profiles configure OpenSSH as a system service that listens on all IPv4 and IPv6 interfaces and allows only the current user. They also install Tailscale as a system service. The installer validates the SSH daemon configuration before enabling and restarting it, but leaves authentication policy and network perimeter security at OpenSSH and system defaults.
 
@@ -592,7 +592,7 @@ The `ai` package ships `settings.json` without a `hooks` key on purpose. Windows
 
 | Target              | Dotfile Strategy                                                                  |
 | ------------------- | --------------------------------------------------------------------------------- |
-| CachyOS             | Back up `~/dotfiles`, copy nine packages, back up conflicts, then `stow --restow` |
+| CachyOS             | Back up `~/dotfiles`, copy eleven packages, back up conflicts, then `stow --restow` |
 | Ubuntu Server       | Back up `~/dotfiles`, copy Zsh, back up conflicts, then `stow --restow`           |
 | Windows Workstation | Direct copy of Windows configs                                                    |
 | Arch WSL            | Back up `~/dotfiles`, copy four packages, back up conflicts, then `stow --restow` |

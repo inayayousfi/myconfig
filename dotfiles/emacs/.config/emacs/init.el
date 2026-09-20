@@ -92,7 +92,7 @@
 (defconst myconfig-required-packages
   `(evil evil-collection vertico orderless marginalia consult corfu cape
      yasnippet yasnippet-capf avy ghostel evil-ghostel magit diff-hl blamer flyover apheleia eldoc-box
-     treesit-auto mason multiple-cursors
+     treesit-auto mason dape multiple-cursors
      ,@(when (eq system-type 'windows-nt) '(treesit-langs)))
    "Elisp packages required by the live Atelier.")
 

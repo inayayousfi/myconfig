@@ -109,6 +109,7 @@
   (define-key myconfig-leader-map (kbd "u v") #'myconfig-toggle-auto-format-save)
   (define-key myconfig-leader-map (kbd "u r") #'myconfig-set-job-policy)
   (define-key myconfig-leader-map (kbd "w") #'atelier-navigator)
+  (define-key myconfig-leader-map (kbd "g f") #'dape)
   (define-key myconfig-leader-map (kbd "g g") #'magit-status)
   (define-key myconfig-leader-map (kbd "g d") #'diff)
    (define-key myconfig-leader-map (kbd "g c") #'myconfig-compile))

@@ -5,6 +5,18 @@
 (defvar-local myconfig-save-timer nil)
 (defvar-local myconfig-eglot-warning-shown nil)
 (defvar myconfig-auto-format-save t)
+(defvar myconfig-yank-highlight-active nil)
+
+(defun myconfig-highlight-yank (original-function &rest arguments)
+  "Briefly highlight text inserted by a yank or paste command."
+  (if myconfig-yank-highlight-active
+      (apply original-function arguments)
+    (let ((start (point)) result)
+      (let ((myconfig-yank-highlight-active t))
+        (setq result (apply original-function arguments)))
+      (when (> (point) start)
+        (pulse-momentary-highlight-region start (point)))
+      result)))
 
 (defun myconfig-never-offer-temporary-buffer-for-saving ()
   "Keep non-file buffers out of Emacs' save-on-exit questions.
@@ -154,6 +166,9 @@ so the default value alone is not sufficient."
         compile-command ""
         completion-cycle-threshold 3
         read-extended-command-predicate #'command-completion-default-include-p)
+  (require 'pulse)
+  (advice-add 'yank :around #'myconfig-highlight-yank)
+  (advice-add 'myconfig-paste :around #'myconfig-highlight-yank)
   (global-display-line-numbers-mode 1)
   (global-auto-revert-mode 1)
   (setq global-auto-revert-non-file-buffers t
@@ -226,6 +241,7 @@ so the default value alone is not sufficient."
     (treesit-auto-add-to-auto-mode-alist 'all)
     (global-treesit-auto-mode 1))
   (use-package mason :demand t)
+  (use-package dape)
   (use-package diff-hl
     :config
     (global-diff-hl-mode 1)

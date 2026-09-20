@@ -6,6 +6,7 @@ import socket
 import subprocess
 import sys
 import threading
+from pathlib import Path
 
 HOST = "127.0.0.1"
 PORT = 5829
@@ -15,6 +16,7 @@ MODES = (
     ("valo", "Valo"),
     ("off", "Off"),
 )
+ICON = Path(__file__).with_name("myconfig-kanata.svg")
 
 
 class KanataClient:
@@ -116,7 +118,7 @@ def run_tray():
     app.setApplicationName("MyConfig Kanata")
     app.setQuitOnLastWindowClosed(False)
 
-    tray = QSystemTrayIcon(QIcon.fromTheme("input-keyboard"), app)
+    tray = QSystemTrayIcon(QIcon(str(ICON)), app)
     tray.setToolTip("Kanata: connecting")
     menu = QMenu()
     mode_group = QActionGroup(menu)

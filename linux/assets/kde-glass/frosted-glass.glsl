@@ -112,6 +112,17 @@ GlassFragment snellsRefraction(vec2 position, vec2 halfBlurSize, vec4 cornerRadi
         ? normalize(surfaceGradient) : vec2(0.0);
     float oppositeLight = smoothstep(0.05, 0.90,
         dot(planarNormal, -normalize(keyLight.xy)));
+    // Add a separate, low-frequency light from the same source. Unlike the
+    // shoulder and rim terms below, it reaches across the full glass face to
+    // provide a quiet readability lift without softening their definition.
+    vec3 diffuseNormal = normalize(vec3(surfaceGradient * 0.70, 1.0));
+    float broadDiffuseLight = smoothstep(-0.20, 0.92,
+        dot(diffuseNormal, keyLight));
+    float diffuseFaceCoverage = smoothstep(0.0, 0.24,
+        interiorDistance + shapeAA);
+    float diffuseFill = (0.016 + 0.040 * broadDiffuseLight)
+        * diffuseFaceCoverage;
+    color.rgb = mix(color.rgb, vec3(1.0), diffuseFill);
     // Place the strongest light just inside the silhouette, on the shoulder
     // of the lens. This reads as a three-quarter bevel rather than an outline
     // painted directly on the edge or a gradient spread over the front face.

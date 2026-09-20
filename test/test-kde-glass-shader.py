@@ -125,6 +125,8 @@ assert "liquidGlassCurve(interiorDistance)" in glass, "LiquidGlass refraction do
 assert "opticalDepth" not in glass and "opticalGradient" not in glass, "LiquidGlass still contains a second optical surface"
 assert "1.0 - b * pow(c * liquidGlassE, -d * distance - a)" in glass, "LiquidGlass radial curve is missing"
 assert "vec3(-0.70, 0.70, 0.72)" in glass, "Top-left material light is missing"
+assert "broadDiffuseLight" in glass and "diffuseFaceCoverage" in glass, \
+    "Full-surface diffuse readability light is missing"
 assert "edgeRelease" in glass and "shoulderLight" in glass, "Material light is not positioned on the lens shoulder"
 assert "edgeKiss" in glass and "lightProfile" in glass, "Material light does not touch the silhouette"
 assert "silhouetteKiss" in glass and "edgeSpecular" in glass, "Material light does not compensate at alpha-covered edge pixels"

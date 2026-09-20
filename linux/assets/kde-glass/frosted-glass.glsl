@@ -18,6 +18,33 @@ float liquidGlassRandom(vec2 coordinate)
     return fract(sin(dot(coordinate, vec2(12.9898, 78.233))) * 43758.5453);
 }
 
+float liquidGlassRoundedRadialPosition(vec2 position, vec2 halfSize, float radius)
+{
+    vec2 absolutePosition = abs(position);
+    float positionLength = length(absolutePosition);
+    if (positionLength < 0.0001) {
+        return 0.0;
+    }
+
+    vec2 ray = absolutePosition / positionLength;
+    vec2 cornerCenter = max(halfSize - vec2(radius), vec2(0.0));
+    float verticalHit = halfSize.x / max(ray.x, 0.0001);
+    if (verticalHit * ray.y <= cornerCenter.y) {
+        return positionLength / verticalHit;
+    }
+
+    float horizontalHit = halfSize.y / max(ray.y, 0.0001);
+    if (horizontalHit * ray.x <= cornerCenter.x) {
+        return positionLength / horizontalHit;
+    }
+
+    float projectedCenter = dot(ray, cornerCenter);
+    float discriminant = max(projectedCenter * projectedCenter
+        - dot(cornerCenter, cornerCenter) + radius * radius, 0.0);
+    float cornerHit = projectedCenter + sqrt(discriminant);
+    return positionLength / max(cornerHit, 0.0001);
+}
+
 GlassFragment snellsRefraction(vec2 position, vec2 halfBlurSize, vec4 cornerRadius, float minHalfSize, float dist, float edgeFactor, float concaveFactor)
 {
     vec2 p = position / max(halfBlurSize, vec2(1.0));
@@ -28,13 +55,14 @@ GlassFragment snellsRefraction(vec2 position, vec2 halfBlurSize, vec4 cornerRadi
     float radiusFraction = mix(0.14, 1.0,
         smoothstep(1.35, 2.75, aspectRatio));
     float dynamicRadius = minHalfSize * radiusFraction;
-    vec4 dynamicCorners = vec4(dynamicRadius);
-    float shapeDistancePixels = roundedRectangleDist(position, halfBlurSize,
-        dynamicCorners);
-    float shapeDistance = shapeDistancePixels / max(minHalfSize, 1.0);
+    // Normalize every point by the rounded boundary reached along its ray
+    // from the center. One field now drives silhouette, optics, and lighting.
+    float radialPosition = liquidGlassRoundedRadialPosition(position,
+        halfBlurSize, dynamicRadius);
+    float shapeDistance = radialPosition - 1.0;
     float shapeAA = max(fwidth(shapeDistance), 1.0 / max(minHalfSize, 1.0));
     float shapeCoverage = 1.0 - smoothstep(-shapeAA, shapeAA, shapeDistance);
-    float interiorDistance = max(0.0, -shapeDistance);
+    float interiorDistance = max(0.0, 1.0 - radialPosition);
 
     // OverShifted's default fPower is 1.0. Keep the KWin strength control by
     // making its configured default (15 -> shader value 0.75) map to that.
@@ -68,13 +96,15 @@ GlassFragment snellsRefraction(vec2 position, vec2 halfBlurSize, vec4 cornerRadi
     // circular-looking gradient across the front face.
     const float gradientStep = 1.0;
     vec2 surfaceGradient = vec2(
-        roundedRectangleDist(position + vec2(gradientStep, 0.0), halfBlurSize,
-            dynamicCorners) - roundedRectangleDist(position - vec2(gradientStep, 0.0),
-            halfBlurSize, dynamicCorners),
-        roundedRectangleDist(position + vec2(0.0, gradientStep), halfBlurSize,
-            dynamicCorners) - roundedRectangleDist(position - vec2(0.0, gradientStep),
-            halfBlurSize, dynamicCorners)
-    );
+        liquidGlassRoundedRadialPosition(position + vec2(gradientStep, 0.0),
+            halfBlurSize, dynamicRadius)
+            - liquidGlassRoundedRadialPosition(position - vec2(gradientStep, 0.0),
+                halfBlurSize, dynamicRadius),
+        liquidGlassRoundedRadialPosition(position + vec2(0.0, gradientStep),
+            halfBlurSize, dynamicRadius)
+            - liquidGlassRoundedRadialPosition(position - vec2(0.0, gradientStep),
+                halfBlurSize, dynamicRadius)
+    ) * minHalfSize * 0.5;
     vec3 lightNormal = normalize(vec3(surfaceGradient * 2.2, 1.0));
     vec3 keyLight = normalize(vec3(-0.70, 0.70, 0.72));
     float diffuseLight = max(dot(lightNormal, keyLight), 0.0);
@@ -107,9 +137,8 @@ GlassFragment snellsRefraction(vec2 position, vec2 halfBlurSize, vec4 cornerRadi
         * pow(lightProfile, 1.5);
     color.rgb *= 1.0 - respondingShadow;
 
-    vec2 direction = length(p) > 0.0001 ? normalize(p) : vec2(0.0);
     float bend = clamp(1.0 - radialScale, 0.0, 1.0);
-    vec3 normal = normalize(vec3(direction * bend * 3.0, 1.0));
+    vec3 normal = normalize(vec3(planarNormal * bend * 3.0, 1.0));
     // glass() applies the remaining material stages, then premultiplies this
     // analytical coverage for KWin's GL_ONE/GL_ONE_MINUS_SRC_ALPHA blend.
     return GlassFragment(vec4(color.rgb, shapeCoverage), dist, edgeFactor,

@@ -1,6 +1,6 @@
 pkgname=myconfig-kde-glass
 pkgver=1.6.3
-pkgrel=35
+pkgrel=37
 pkgdesc='Glass refraction effect and rounded Plasma blur regions for MyConfig'
 arch=('x86_64')
 options=('!debug')
@@ -19,7 +19,7 @@ sha256sums=('SKIP'
             '8b6665be4a7b5027f637aa492854e807f2462b023780746a6ee46da012254938'
             '3c9f52631215805943e0e8f236f6bb1d0eb1ff13f03b407dcfd388de08ddf1d4'
             'f45a3a85874fd49bd573876d5238f832573edb4509e6485f24fb39c908f95348'
-            '42c05f0f8ddd5b4ce4264fbc5d2126949502a2ef2fb7ccecd6286d0115cbb6f8'
+            '931b81910f8480e341ebb6aba4a4f71c254a9f56a567fae2ff974df4ae939ed2'
             '7e00f2c7fcec4a30b490c2626af0012ac949b50f057f2bb21e2abb8b1f3722e4')
 
 _effect_id() {

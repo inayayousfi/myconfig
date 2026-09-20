@@ -28,26 +28,38 @@
     (kbd "SPC") myconfig-leader-map
      (kbd "RET") #'atelier-dired-open
      (kbd "<return>") #'atelier-dired-open
-     (kbd "l") #'atelier-dired-open
-     (kbd "h") #'dired-up-directory)
-  (evil-define-key 'normal atelier-detached-view-mode-map
-    (kbd "q") #'atelier-navigator-quit)
+      (kbd "l") #'atelier-dired-open
+      (kbd "h") #'dired-up-directory)
+  (define-key dired-mode-map [mouse-1] #'atelier-dired-mouse-open)
+  (define-key dired-mode-map [mouse-2] #'atelier-dired-mouse-open)
   (evil-define-key 'normal atelier-directory-chooser-mode-map
     (kbd "RET") #'atelier-directory-chooser-enter
     (kbd "<return>") #'atelier-directory-chooser-enter
+    (kbd "h") #'atelier-directory-chooser-up-directory
+    (kbd "H") #'atelier-directory-chooser-up-directory
+    (kbd "^") #'atelier-directory-chooser-up-directory
     (kbd "q") #'abort-recursive-edit)
   (evil-make-intercept-map atelier-directory-chooser-mode-map 'normal t)
   (global-set-key (kbd "C-S-v") #'myconfig-paste)
   (global-set-key (kbd "C-=") #'text-scale-increase)
   (global-set-key (kbd "C--") #'text-scale-decrease)
   (global-unset-key (kbd "C-x"))
+  (global-unset-key (kbd "C-c"))
+  (global-unset-key (kbd "C-u"))
+  (global-unset-key (kbd "C-v"))
   (evil-define-key '(normal insert visual motion operator replace emacs) 'global
     (kbd "C-S-v") #'myconfig-paste)
   (evil-define-key '(normal insert visual motion operator replace emacs) 'global
     (kbd "C-=") #'text-scale-increase
     (kbd "C--") #'text-scale-decrease)
+  ;; Do not let keys without an Evil meaning fall through to Emacs prefix
+  ;; maps.  C-u and C-v keep their native Evil bindings in editing states.
   (evil-define-key '(normal insert visual motion operator replace emacs) 'global
-    (kbd "C-x") nil)
+    (kbd "C-x") #'ignore
+    (kbd "C-c") #'ignore)
+  (evil-define-key 'emacs 'global
+    (kbd "C-u") #'ignore
+    (kbd "C-v") #'ignore)
   (evil-define-key '(normal insert visual motion operator replace emacs) 'global
     (kbd "C-l") #'atelier-multiple-cursors-toggle)
   (evil-define-key 'normal atelier-choice-mode-map

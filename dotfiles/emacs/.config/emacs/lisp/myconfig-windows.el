@@ -138,7 +138,7 @@
   (let ((key (myconfig-windows-mount-key workspace)))
     (unless (cl-some (lambda (other)
                        (and (not (eq other workspace))
-                            (plist-get other :live)
+                            (eq (atelier-workspace-status other) 'running)
                             (myconfig-windows-workspace-p other)
                             (equal key (myconfig-windows-mount-key other))))
                      atelier-workspaces)

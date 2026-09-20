@@ -3,23 +3,58 @@
 (require 'use-package)
 
 (defvar-local myconfig-save-timer nil)
+(defvar-local myconfig-eglot-warning-shown nil)
 (defvar myconfig-auto-format-save t)
 
-(defun myconfig-eglot-server-available-p ()
+(defun myconfig-never-offer-temporary-buffer-for-saving ()
+  "Keep non-file buffers out of Emacs' save-on-exit questions.
+
+Some packages make their temporary buffers offer-save buffers themselves,
+so the default value alone is not sufficient."
+  (when (and (not buffer-file-name) (not (minibufferp)))
+    (setq-local buffer-offer-save nil)))
+
+(defun myconfig-buffer-save-eligible-p ()
+  (and buffer-file-name
+       (buffer-modified-p)
+       (not buffer-read-only)
+       (not (and (bound-and-true-p evil-local-mode)
+                 (eq (bound-and-true-p evil-state) 'insert)))))
+
+(defun myconfig-eglot-server-command ()
+  "Return the configured Eglot server executable for the current buffer."
   (condition-case nil
       (let* ((contact (nth 3 (eglot--guess-contact)))
              (program (and (listp contact) (stringp (car contact)) (car contact))))
-        (and program (executable-find program)))
+        (and program (list program (executable-find program))))
     (error nil)))
 
+(defun myconfig-eglot-server-available-p ()
+  (when-let* ((server (myconfig-eglot-server-command)))
+    (executable-find (car server))))
+
+(defun myconfig-warn-missing-eglot-server ()
+  (unless myconfig-eglot-warning-shown
+    (setq myconfig-eglot-warning-shown t)
+    (let* ((server (myconfig-eglot-server-command))
+           (program (car server)))
+      (display-warning
+       'myconfig
+       (format "No language server found for %s%s. Install it with M-x mason."
+               major-mode
+               (if program (format " (expected command: %s)" program) ""))
+       :warning))))
+
 (defun myconfig-eglot-ensure-if-server-available ()
-  (when (and buffer-file-name (myconfig-eglot-server-available-p))
-    (eglot-ensure)))
+  (when buffer-file-name
+    (if (myconfig-eglot-server-available-p)
+        (eglot-ensure)
+      (myconfig-warn-missing-eglot-server))))
 
 (defun myconfig-save-all-file-buffers ()
   (dolist (buffer (buffer-list))
     (with-current-buffer buffer
-      (when (and buffer-file-name (buffer-modified-p) (not buffer-read-only))
+      (when (myconfig-buffer-save-eligible-p)
         (condition-case error
             (save-buffer)
           (error (myconfig-log "Save failed for %s: %s" buffer-file-name error)))))))
@@ -29,9 +64,7 @@
     (with-current-buffer buffer
       (setq myconfig-save-timer nil)
       (when (and myconfig-auto-format-save
-                 buffer-file-name
-                 (buffer-modified-p)
-                 (not buffer-read-only))
+                 (myconfig-buffer-save-eligible-p))
         (condition-case error
             (cond
              ((and (bound-and-true-p eglot--managed-mode)
@@ -53,6 +86,10 @@
     (cancel-timer myconfig-save-timer))
   (setq myconfig-save-timer
         (run-with-idle-timer 0.5 nil #'myconfig-format-and-save-buffer (current-buffer))))
+
+(defun myconfig-save-after-evil-insert ()
+  (when (and myconfig-auto-format-save buffer-file-name (buffer-modified-p))
+    (myconfig-schedule-format-save)))
 
 (defun myconfig-toggle-auto-format-save ()
   (interactive)
@@ -109,6 +146,8 @@
                 tab-width 2
                 standard-indent 2
                 truncate-lines t)
+  (add-hook 'after-change-major-mode-hook
+            #'myconfig-never-offer-temporary-buffer-for-saving)
   (setq display-line-numbers-type 'relative
         select-enable-clipboard t
         kill-do-not-save-duplicates t
@@ -123,6 +162,9 @@
   (add-hook 'after-change-functions #'myconfig-schedule-format-save)
 
   (use-package evil
+    :init (setq evil-want-minibuffer t
+                evil-want-C-u-scroll t
+                evil-want-C-u-delete t)
     :config
     (setq evil-want-keybinding nil
           evil-want-integration t
@@ -131,7 +173,9 @@
     (evil-mode 1))
   (use-package evil-collection
     :after evil
+    :init (setq evil-collection-setup-minibuffer t)
     :config (evil-collection-init))
+  (add-hook 'evil-insert-state-exit-hook #'myconfig-save-after-evil-insert)
   (use-package vertico :config (vertico-mode 1))
   (use-package orderless
     :config (setq completion-styles '(orderless basic)
@@ -157,13 +201,31 @@
     :config (add-to-list 'completion-at-point-functions #'yasnippet-capf))
   (use-package avy)
   (use-package apheleia)
+  ;; Windows users get the pre-built grammar bundle first.  It avoids the
+  ;; compiler requirement for the common languages; treesit-auto remains the
+  ;; fallback for languages which are not in the bundle.
+  (use-package treesit-langs
+    :if (eq system-type 'windows-nt)
+    :demand t)
   (use-package treesit-auto
     :custom (treesit-auto-install 'prompt)
     :config
+    ;; Native Windows Emacs does not always provide a `cc' command.  Prefer
+    ;; GCC when it is available and otherwise use LLVM's clang, which is part
+    ;; of the optional Windows DevTools package group.
+    (when (eq system-type 'windows-nt)
+      (let ((cc (cond ((executable-find "gcc") "gcc")
+                      ((executable-find "clang") "clang")))
+            (c++ (cond ((executable-find "g++") "g++")
+                       ((executable-find "clang++") "clang++"))))
+        (when cc
+          (dolist (recipe treesit-auto-recipe-list)
+            (setf (treesit-auto-recipe-cc recipe) cc)
+            (when c++
+              (setf (treesit-auto-recipe-c++ recipe) c++))))))
     (treesit-auto-add-to-auto-mode-alist 'all)
     (global-treesit-auto-mode 1))
-   (use-package mason
-     :config (mason-setup))
+  (use-package mason :demand t)
   (use-package diff-hl
     :config
     (global-diff-hl-mode 1)

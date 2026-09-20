@@ -99,10 +99,10 @@
     (condition-case error
         (let ((table (myconfig-proc-table)) changed)
           (dolist (workspace atelier-workspaces)
-            (when (equal (plist-get workspace :destination) "local")
-              (dolist (job (plist-get workspace :jobs))
-                (let* ((buffer (get-buffer (plist-get job :buffer)))
-                       (directory (and buffer (buffer-local-value 'default-directory buffer)))
+            (dolist (entry (atelier-workspace-job-entries workspace))
+              (when-let* ((buffer (atelier-entry-live-buffer entry)))
+                (let* ((job (atelier-entry-job entry))
+                       (directory (buffer-local-value 'default-directory buffer))
                        (foreground (myconfig-job-foreground job table))
                        (recipe (if foreground
                                    (myconfig-job-recipe job foreground directory)
@@ -118,8 +118,9 @@
 (defun myconfig-live-process-state ()
   (let ((table (and (eq system-type 'gnu/linux) (myconfig-proc-table))) state)
     (dolist (workspace atelier-workspaces)
-      (dolist (job (plist-get workspace :jobs))
-        (let ((foreground (and table (myconfig-job-foreground job table))))
+      (dolist (entry (atelier-workspace-job-entries workspace))
+        (let* ((job (atelier-entry-job entry))
+               (foreground (and table (myconfig-job-foreground job table))))
           (push (list :workspace (plist-get workspace :name)
                       :buffer (plist-get job :buffer)
                       :program (and foreground (plist-get foreground :executable)))
@@ -129,11 +130,12 @@
 (defun myconfig-saved-process-state (data)
   (let (state)
     (dolist (workspace (plist-get data :workspaces))
-      (dolist (job (plist-get workspace :jobs))
-        (push (list :workspace (plist-get workspace :name)
-                    :buffer (plist-get job :buffer)
-                    :program (plist-get (plist-get job :recipe) :executable))
-              state)))
+      (dolist (entry (atelier-workspace-job-entries workspace))
+        (let ((job (atelier-entry-job entry)))
+          (push (list :workspace (plist-get workspace :name)
+                      :buffer (plist-get job :buffer)
+                      :program (plist-get (plist-get job :recipe) :executable))
+                state))))
     (nreverse state)))
 
 (defun myconfig-process-replacements (live saved)
@@ -156,11 +158,9 @@
 (defun myconfig-job-process-exited (buffer)
   (when-let* ((owner (atelier-find-job-for-buffer (buffer-name buffer))))
     (let ((workspace (car owner))
-          (job (nth 1 owner)))
+          (entry (nth 2 owner)))
       (unless atelier-preserve-job-recipe
-        (setf (plist-get workspace :jobs) (delq job (plist-get workspace :jobs)))
-        (when (equal (plist-get workspace :agent-buffer) (buffer-name buffer))
-          (setf (plist-get workspace :agent-buffer) nil)))
+        (atelier-entry-remove workspace entry t))
       (myconfig-log "Job in %s exited: %s"
                     (plist-get workspace :name) (buffer-name buffer)))
     (atelier-notify-change)
@@ -179,19 +179,20 @@
     (message "Restart policy for %s: %s" (buffer-name) choice)))
 
 (defun myconfig-build-restart-plan (workspace)
-  (cl-loop for job in (plist-get workspace :jobs)
+  (cl-loop for entry in (atelier-workspace-job-entries workspace)
+           for job = (atelier-entry-job entry)
            for recipe = (plist-get job :recipe)
            when (plist-get recipe :executable)
-           collect (list :workspace workspace :job job
+           collect (list :workspace workspace :entry entry :job job
                          :recipe (copy-tree recipe)
                          :buffer (plist-get job :buffer))))
 
 (defun myconfig-restart-entry-valid-p (entry)
   (let ((workspace (plist-get entry :workspace))
-        (job (plist-get entry :job)))
+        (job (plist-get entry :job))
+        (workspace-entry (plist-get entry :entry)))
     (and (memq workspace atelier-workspaces)
-         (equal (plist-get workspace :destination) "local")
-         (memq job (plist-get workspace :jobs))
+          (memq workspace-entry (atelier-workspace-entries workspace))
          (equal (plist-get job :buffer) (plist-get entry :buffer))
          (equal (plist-get job :recipe) (plist-get entry :recipe))
          (not (when-let* ((buffer (get-buffer (plist-get entry :buffer)))
@@ -209,7 +210,7 @@
 (defun myconfig-restart-saved-jobs (&optional workspace)
   (when (fboundp 'myconfig-terminal-buffer)
     (let ((workspace (or workspace (atelier-current-workspace))))
-      (when (and workspace (equal (plist-get workspace :destination) "local"))
+      (when workspace
         (let ((plan (myconfig-build-restart-plan workspace)))
           (atelier-workspace-stop-jobs workspace)
           (myconfig-validate-restart-plan plan)
@@ -221,19 +222,19 @@
                    (executable (plist-get recipe :executable))
                    (saved-name (plist-get job :buffer)))
               (condition-case error
-                   (let* ((arguments (cdr (plist-get recipe :argv)))
+                    (let* ((arguments (cdr (plist-get recipe :argv)))
                           (shell (plist-get recipe :shell))
                           (shell-restart
                            (and shell
                                 (equal executable (plist-get shell :executable))))
                            (name saved-name)
+                           (atelier-job-owner-entry (plist-get entry :entry))
                            (buffer (myconfig-terminal-buffer
-                                   name (plist-get recipe :directory) executable arguments workspace
-                                   (and shell-restart shell))))
-                     (setf (plist-get job :buffer) (buffer-name buffer))
-                     (when-let* ((agent (plist-get job :agent)))
-                       (setf (plist-get workspace :agent-buffer) (buffer-name buffer))
-                       (run-hook-with-args 'atelier-agent-restored-functions
+                                    name (plist-get recipe :directory) executable arguments workspace
+                                    (and shell-restart shell))))
+                      (setf (plist-get job :buffer) (buffer-name buffer))
+                      (when-let* ((agent (plist-get job :agent)))
+                        (run-hook-with-args 'atelier-agent-restored-functions
                                            buffer agent workspace))
                     (myconfig-log "Accepted restart of %s in workspace %s"
                                   (file-name-nondirectory executable)
@@ -244,29 +245,28 @@
                                (plist-get workspace :name) error))))))))))
 
 (defun myconfig-snapshot-data ()
+  (atelier-ensure-detached-workspace)
   (unless (or myconfig-persist-restoring atelier-navigator-window-configurations)
     (atelier-capture-current-workspace))
-  (list :version 2
+  (list :version 5
         :generation (or myconfig-snapshot-generation (myconfig-new-generation))
-        :current-workspace atelier-current-workspace-name
+        :current-workspace-id (atelier-current-workspace-id)
         :ssh-destinations atelier-remembered-ssh-destinations
-        :workspaces atelier-workspaces))
+        :workspaces (mapcar #'atelier-workspace-persistent-copy atelier-workspaces)))
 
 (defun myconfig-workspace-topology (workspace)
-  (list :name (plist-get workspace :name)
+  (list :id (atelier-workspace-id workspace)
+        :name (plist-get workspace :name)
          :destination (plist-get workspace :destination)
          :path (plist-get workspace :path)
          :platform (plist-get workspace :platform)
          :mount-root (plist-get workspace :mount-root)
-          :live (plist-get workspace :live)
-          :state (plist-get workspace :state)
-          :buffers (plist-get workspace :buffers)
-          :owned-buffers (plist-get workspace :owned-buffers)
-          :jobs (plist-get workspace :jobs)
+         :status (atelier-workspace-status workspace)
+         :entries (plist-get workspace :entries)
          :agent-directory (plist-get workspace :agent-directory)))
 
 (defun myconfig-data-topology (data)
-  (list :current-workspace (plist-get data :current-workspace)
+  (list :current-workspace-id (plist-get data :current-workspace-id)
         :workspaces (mapcar #'myconfig-workspace-topology (plist-get data :workspaces))))
 
 (defun myconfig-affected-workspaces (left right)
@@ -281,117 +281,318 @@
                    (cl-find name right-workspaces :key (lambda (item) (plist-get item :name)) :test #'equal))))
      names)))
 
+(defun myconfig-migrate-entry-kind (descriptor)
+  (cond ((plist-get descriptor :file) 'file)
+        ((plist-get descriptor :dired) 'directory)
+        ((plist-get descriptor :scratch) 'scratch)
+        (t 'transient)))
+
+(defun myconfig-migrate-workspace-v3 (saved-workspace)
+  "Convert one legacy workspace's parallel buffer/job lists to entries."
+  (let ((workspace (copy-tree saved-workspace)) entries
+        (name-to-entry (make-hash-table :test #'equal)) layout)
+    (dolist (descriptor (append (plist-get workspace :buffers)
+                                (plist-get workspace :owned-buffers)))
+      (let* ((name (plist-get descriptor :name))
+             (entry (gethash name name-to-entry)))
+        (unless entry
+          (setq entry (list :id (atelier-new-entry-id)
+                            :job nil
+                            :kind (myconfig-migrate-entry-kind descriptor)
+                            :name name
+                            :file (plist-get descriptor :file)
+                            :directory (plist-get descriptor :directory)
+                            :point (plist-get descriptor :point)
+                            :persistent t))
+          (puthash name entry name-to-entry)
+          (push entry entries))))
+    (dolist (descriptor (plist-get workspace :buffers))
+      (when-let* ((entry (and name-to-entry
+                              (gethash (plist-get descriptor :name) name-to-entry))))
+        (push (list :entry-id (plist-get entry :id)
+                    :point (plist-get descriptor :point)
+                    :start (plist-get descriptor :start)
+                    :selected (plist-get descriptor :selected))
+              layout)))
+    (dolist (job (plist-get workspace :jobs))
+      (let* ((name (plist-get job :buffer))
+             (entry (and name-to-entry (gethash name name-to-entry))))
+        (unless entry
+          (setq entry (list :id (atelier-new-entry-id) :kind 'terminal
+                            :name name :directory (plist-get job :directory)
+                            :persistent t :job job))
+          (push entry entries))
+        (setf (plist-get entry :kind) 'terminal
+              (plist-get entry :job) job)))
+    (cl-remf workspace :buffers)
+    (cl-remf workspace :owned-buffers)
+    (cl-remf workspace :jobs)
+    (cl-remf workspace :agent-buffer)
+    (setf (plist-get workspace :entries) (nreverse entries)
+          (plist-get workspace :layout) (nreverse layout))
+    workspace))
+
+(defun myconfig-migration-layout-chain (items &optional orientation)
+  "Return a binary layout from (ENTRY . SPAN) ITEMS."
+  (setq orientation (or orientation 'horizontal))
+  (if (null (cdr items))
+      (caar items)
+    (let* ((first (car items))
+           (rest (cdr items))
+           (first-span (cdr first))
+           (rest-span (apply #'+ (mapcar #'cdr rest))))
+      (list :id (atelier-new-entry-id) :kind 'layout :orientation orientation
+            :ratio (/ (float first-span) (+ first-span rest-span)) :persistent t
+            :children
+            (list (car first)
+                  (myconfig-migration-layout-chain rest orientation))))))
+
+(defvar myconfig-migration-layout-leaves nil)
+
+(defun myconfig-window-state-node-p (item)
+  (and (listp item) (memq (nth 1 item) '(hc vc leaf))))
+
+(defun myconfig-window-state-span (state orientation)
+  (or (alist-get (if (eq orientation 'horizontal) 'pixel-width 'pixel-height)
+                 (cddr state))
+      (alist-get (if (eq orientation 'horizontal) 'total-width 'total-height)
+                 (cddr state))
+      1))
+
+(defun myconfig-migration-layout-from-state (state)
+  "Convert one V4 window STATE node using `myconfig-migration-layout-leaves'."
+  (pcase (nth 1 state)
+    ('leaf (pop myconfig-migration-layout-leaves))
+    ((or 'hc 'vc)
+     (let* ((orientation (if (eq (nth 1 state) 'hc) 'horizontal 'vertical))
+            (children (cl-remove-if-not #'myconfig-window-state-node-p (cddr state)))
+            (items
+             (delq nil
+                   (mapcar (lambda (child)
+                             (when-let* ((entry (myconfig-migration-layout-from-state child)))
+                               (cons entry (myconfig-window-state-span child orientation))))
+                           children))))
+       (myconfig-migration-layout-chain items orientation)))
+    (_ nil)))
+
+(defun myconfig-migrate-workspace-v4 (saved-workspace)
+  "Move V4's parallel layout records into its recursive entry hierarchy."
+  (let* ((workspace (copy-tree saved-workspace))
+         (entries (plist-get workspace :entries))
+         (layout (plist-get workspace :layout))
+         displayed displayed-ids)
+    (dolist (descriptor layout)
+      (when-let* ((id (plist-get descriptor :entry-id))
+                  ((not (member id displayed-ids)))
+                  (entry (cl-find id entries
+                                  :key (lambda (item) (plist-get item :id))
+                                  :test #'equal)))
+        (setf (plist-get entry :point) (or (plist-get descriptor :point)
+                                           (plist-get entry :point))
+              (plist-get entry :start) (plist-get descriptor :start)
+              (plist-get entry :selected) (plist-get descriptor :selected))
+        (push id displayed-ids)
+        (push entry displayed)))
+    (setq displayed (nreverse displayed))
+    (let* ((myconfig-migration-layout-leaves (copy-sequence displayed))
+           (from-state (and (myconfig-window-state-node-p (plist-get workspace :state))
+                            (myconfig-migration-layout-from-state
+                             (plist-get workspace :state))))
+           (root (if (and from-state (null myconfig-migration-layout-leaves))
+                     from-state
+                   (myconfig-migration-layout-chain
+                    (mapcar (lambda (entry) (cons entry 1)) displayed)))))
+      (when root (setf (plist-get root :displayed) t))
+      (setf (plist-get workspace :entries)
+            (append (and root (list root))
+                    (cl-remove-if
+                     (lambda (entry) (member (plist-get entry :id) displayed-ids))
+                     entries))))
+    (cl-remf workspace :layout)
+    (cl-remf workspace :state)
+    workspace))
+
 (defun myconfig-migrate-state (data)
   (pcase (plist-get data :version)
-    (2 data)
-    (1
-     (list :version 2
+    (5 data)
+    (4
+     (list :version 5
            :generation (plist-get data :generation)
-           :current-workspace (plist-get data :current-workspace)
+           :current-workspace-id (plist-get data :current-workspace-id)
            :ssh-destinations (copy-sequence (plist-get data :ssh-destinations))
-           :workspaces
-           (mapcar
-            (lambda (workspace)
-              (let* ((tabs (plist-get workspace :tabs))
-                     (current-id (plist-get workspace :current-tab))
-                     (current (or (cl-find current-id tabs
-                                           :key (lambda (tab) (plist-get tab :id))
-                                           :test #'equal)
-                                  (car tabs)))
-                     jobs)
-                (dolist (tab tabs)
-                  (dolist (job (plist-get tab :jobs))
-                    (cl-pushnew job jobs :key (lambda (item) (plist-get item :id))
-                                :test #'equal)))
-                (list :name (plist-get workspace :name)
-                      :destination (plist-get workspace :destination)
-                      :path (plist-get workspace :path)
-                      :platform (plist-get workspace :platform)
-                      :mount-root (plist-get workspace :mount-root)
-                      :created (plist-get workspace :created)
-                      :live (plist-get workspace :live)
+           :workspaces (mapcar #'myconfig-migrate-workspace-v4
+                               (plist-get data :workspaces))))
+    (3
+     (myconfig-migrate-state
+      (list :version 4
+            :generation (plist-get data :generation)
+            :current-workspace-id (plist-get data :current-workspace-id)
+            :ssh-destinations (copy-sequence (plist-get data :ssh-destinations))
+            :workspaces (mapcar #'myconfig-migrate-workspace-v3
+                                (plist-get data :workspaces)))))
+    (2
+     (let* ((workspaces
+             (mapcar
+              (lambda (saved-workspace)
+                (let ((workspace (copy-tree saved-workspace)))
+                  (setq workspace
+                        (plist-put workspace :id (atelier-new-workspace-id)))
+                  (setq workspace
+                        (plist-put workspace :status
+                                   (if (plist-get workspace :live)
+                                       'running
+                                     'stopped)))
+                  (cl-remf workspace :live)
+                  workspace))
+              (plist-get data :workspaces)))
+            (current-name (plist-get data :current-workspace)))
+       (let ((current (cl-find current-name workspaces
+                               :key (lambda (workspace) (plist-get workspace :name))
+                               :test #'equal)))
+          (myconfig-migrate-state
+           (list :version 3
+                 :generation (plist-get data :generation)
+                 :current-workspace-id (and current (plist-get current :id))
+                 :ssh-destinations (copy-sequence (plist-get data :ssh-destinations))
+                 :workspaces workspaces)))))
+    (1
+     (myconfig-migrate-state
+      (list :version 2
+            :generation (plist-get data :generation)
+            :current-workspace (plist-get data :current-workspace)
+            :ssh-destinations (copy-sequence (plist-get data :ssh-destinations))
+            :workspaces
+            (mapcar
+             (lambda (workspace)
+               (let* ((tabs (plist-get workspace :tabs))
+                      (current-id (plist-get workspace :current-tab))
+                      (current (or (cl-find current-id tabs
+                                            :key (lambda (tab) (plist-get tab :id))
+                                            :test #'equal)
+                                   (car tabs)))
+                      jobs)
+                 (dolist (tab tabs)
+                   (dolist (job (plist-get tab :jobs))
+                     (cl-pushnew job jobs :key (lambda (item) (plist-get item :id))
+                                 :test #'equal)))
+                 (list :name (plist-get workspace :name)
+                       :destination (plist-get workspace :destination)
+                       :path (plist-get workspace :path)
+                       :platform (plist-get workspace :platform)
+                       :mount-root (plist-get workspace :mount-root)
+                       :created (plist-get workspace :created)
+                       :live (plist-get workspace :live)
                        :state (copy-tree (plist-get current :state))
                        :buffers (copy-tree (plist-get current :buffers))
                        :owned-buffers nil
-                       :jobs (nreverse (copy-tree jobs))
-                      :agent-buffer nil
-                      :agent-directory (plist-get current :agent-directory))))
-            (plist-get data :workspaces))))
+                        :jobs (nreverse (copy-tree jobs))
+                       :agent-directory (plist-get current :agent-directory))))
+             (plist-get data :workspaces)))))
     (_ data)))
 
 (defun myconfig-validate-state (data)
   (setq data (myconfig-migrate-state data))
-  (unless (and (listp data) (equal (plist-get data :version) 2)
+  ;; Older snapshots could leave several top-level entries marked as the
+  ;; displayed layout when a window was replaced.  Keep the first displayed
+  ;; root and make the remaining entries unplaced so the state can recover.
+  (dolist (workspace (plist-get data :workspaces))
+    (let ((displayed-seen nil))
+      (dolist (entry (plist-get workspace :entries))
+        (when (plist-get entry :displayed)
+          (if displayed-seen
+              (atelier-plist-clear! entry :displayed)
+            (setq displayed-seen t))))))
+  (unless (and (listp data) (equal (plist-get data :version) 5)
                (stringp (plist-get data :generation))
                (listp (plist-get data :workspaces)))
     (error "Invalid state header"))
   (let (names)
     (dolist (workspace (plist-get data :workspaces))
-      (let ((name (plist-get workspace :name))
+       (let ((id (plist-get workspace :id))
+             (name (plist-get workspace :name))
             (destination (plist-get workspace :destination))
             (path (plist-get workspace :path)))
-        (unless (and (stringp name) (not (string-empty-p name))
+         (unless (and (stringp id) (not (string-empty-p id))
+                       (stringp name) (not (string-empty-p name))
+                       (memq (plist-get workspace :status) '(running stopped))
                       (stringp destination) (not (string-empty-p destination))
                        (stringp path) (not (string-empty-p path))
-                       (listp (plist-get workspace :buffers))
-                       (listp (plist-get workspace :owned-buffers))
-                       (listp (plist-get workspace :jobs)))
+                         (listp (plist-get workspace :entries)))
           (error "Invalid workspace definition"))
         (when (member name names) (error "Duplicate workspace name: %s" name))
         (push name names)
         (when (and (equal destination "local") (not (file-directory-p path)))
           (error "Workspace root is missing: %s" path))
-        (dolist (job (plist-get workspace :jobs))
-          (unless (and (listp job) (stringp (plist-get job :id))
-                       (stringp (plist-get job :buffer))
-                       (memq (plist-get job :policy) '(auto always never)))
-            (error "Invalid job record in workspace %s" name)))))
+        (let ((top-level (atelier-workspace-top-level-entries workspace))
+              entry-ids)
+          (when (> (cl-count-if (lambda (entry) (plist-get entry :displayed))
+                                top-level)
+                   1)
+            (error "Workspace %s has multiple displayed entry roots" name))
+          (cl-labels
+              ((validate-entry
+                (entry nested)
+                (let ((entry-id (plist-get entry :id))
+                      (kind (plist-get entry :kind)))
+                  (unless (and (stringp entry-id) (not (string-empty-p entry-id))
+                               (symbolp kind))
+                    (error "Invalid entry record in workspace %s" name))
+                  (when (member entry-id entry-ids)
+                    (error "Duplicate entry ID in workspace %s" name))
+                  (push entry-id entry-ids)
+                  (when (and nested (plist-get entry :displayed))
+                    (error "Nested entry is marked displayed in workspace %s" name))
+                  (if (eq kind 'layout)
+                      (progn
+                        (unless (and (= (length (atelier-entry-children entry)) 2)
+                                     (memq (plist-get entry :orientation)
+                                           '(horizontal vertical))
+                                     (numberp (plist-get entry :ratio))
+                                     (> (plist-get entry :ratio) 0)
+                                     (< (plist-get entry :ratio) 1))
+                          (error "Invalid layout entry in workspace %s" name))
+                        (dolist (child (atelier-entry-children entry))
+                          (validate-entry child t)))
+                    (when-let* ((job (atelier-entry-job entry)))
+                      (unless (and (listp job) (stringp (plist-get job :id))
+                                   (stringp (plist-get job :buffer))
+                                   (memq (plist-get job :policy) '(auto always never)))
+                        (error "Invalid terminal job in workspace %s" name)))))))
+            (dolist (entry top-level) (validate-entry entry nil))))))
     data))
 
 (defun myconfig-apply-state (data)
   (setq atelier-workspaces (copy-tree (plist-get data :workspaces))
-        atelier-current-workspace-name (plist-get data :current-workspace)
         atelier-remembered-ssh-destinations (copy-sequence (plist-get data :ssh-destinations))
         myconfig-snapshot-generation (plist-get data :generation))
+  (atelier-ensure-detached-workspace)
+  (atelier-select-workspace
+   (atelier-workspace-by-id (plist-get data :current-workspace-id)))
+  (clrhash atelier-entry-live-buffers)
   (dolist (workspace atelier-workspaces)
-    (setf (plist-get workspace :live) nil)
-    (let (kept-jobs dropped-names)
-      (dolist (job (plist-get workspace :jobs))
+    (atelier-set-workspace-status workspace 'stopped)
+    (dolist (entry (atelier-workspace-job-entries workspace))
+      (let ((job (atelier-entry-job entry)))
         (unless (or (plist-get job :recipe)
                     (eq (plist-get job :policy) 'never))
           (setf (plist-get job :recipe)
                 (atelier-shell-restart-recipe
                  (plist-get job :shell) (plist-get job :directory))))
-        (if (plist-get job :recipe)
-            (push job kept-jobs)
-          (push (plist-get job :buffer) dropped-names)))
-      (setf (plist-get workspace :jobs) (nreverse kept-jobs))
-      (when (cl-some (lambda (descriptor)
-                       (member (plist-get descriptor :name) dropped-names))
-                     (plist-get workspace :buffers))
-        (setf (plist-get workspace :state) nil
-               (plist-get workspace :buffers) nil
-               (plist-get workspace :owned-buffers) nil)))
-    (setf (plist-get workspace :agent-buffer) nil)
-    (setf (plist-get workspace :buffers)
-          (cl-remove-if (lambda (descriptor)
-                          (string-prefix-p "*scratch*"
-                                           (plist-get descriptor :name)))
-                        (plist-get workspace :buffers))
-          (plist-get workspace :owned-buffers)
-          (cl-remove-if (lambda (descriptor)
-                          (string-prefix-p "*scratch*"
-                                           (plist-get descriptor :name)))
-                        (plist-get workspace :owned-buffers)))
-   (myconfig-persist-open-saved-state)))
+        (unless (or (plist-get job :recipe) (eq (plist-get job :policy) 'never))
+          (myconfig-log "Terminal entry %s has no usable restart recipe"
+                        (plist-get entry :name))))))
+  (myconfig-persist-open-saved-state)
+  (run-hooks 'atelier-after-restore-hook))
 
 (defun myconfig-persist-now ()
   (interactive)
   (unless myconfig-persist-restoring
     (condition-case error
         (progn
+          (run-hooks 'atelier-before-save-hook)
           (setq myconfig-snapshot-generation (myconfig-new-generation))
-          (myconfig-write-data-atomically myconfig-state-file (myconfig-snapshot-data)))
+          (myconfig-write-data-atomically myconfig-state-file (myconfig-snapshot-data))
+          (run-hooks 'atelier-after-save-hook))
       (error (myconfig-log "Snapshot failed: %s" error)))))
 
 (defun myconfig-persist-schedule ()
@@ -410,10 +611,11 @@
      nil)))
 
 (defun myconfig-persist-open-saved-state ()
-  (when (and atelier-workspaces atelier-current-workspace-name)
-    (let ((workspace (atelier-workspace-get atelier-current-workspace-name)))
+  (when atelier-workspaces
+    (let ((workspace (or (atelier-current-workspace) (car atelier-workspaces))))
       (when workspace
-        (setf (plist-get workspace :live) t)
+        (atelier-select-workspace workspace)
+        (atelier-set-workspace-status workspace 'running)
         (unless myconfig-defer-job-restart
           (myconfig-restart-saved-jobs workspace)
           (when (display-graphic-p (selected-frame))

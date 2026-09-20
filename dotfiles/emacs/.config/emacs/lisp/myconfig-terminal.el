@@ -20,7 +20,7 @@
         name
       (format "*%s*" (string-trim name "*" "*")))))
 
-(defun myconfig-terminal-buffer (&optional name directory command args owner-workspace shell agent orphan)
+(defun myconfig-terminal-buffer (&optional name directory command args owner-workspace shell agent)
   (let* ((desired-directory (or directory (atelier-workspace-directory)))
          (wsl (and owner-workspace (myconfig-wsl-workspace-p owner-workspace)))
          (process-directory (if wsl (myconfig-home-directory) desired-directory))
@@ -46,20 +46,19 @@
       (error (signal (car error) (cdr error))))
     (with-current-buffer buffer
        (setq-local default-directory desired-directory
-                   atelier-buffer-global orphan
-                   myconfig-terminal-command (cons program args)
-                  kill-buffer-query-functions
-                  (remq #'process-kill-buffer-query-function kill-buffer-query-functions))
+                    myconfig-terminal-command (cons program args)
+                   kill-buffer-query-functions
+                   (remq #'process-kill-buffer-query-function kill-buffer-query-functions))
+       (remhash buffer atelier-internal-buffers)
       (when-let* ((process (get-buffer-process buffer)))
         (set-process-query-on-exit-flag process nil))
       (add-hook 'ghostel-exit-functions #'myconfig-terminal-process-exited nil t))
     (let ((atelier-job-owner-workspace owner-workspace)
           (shell (or shell (unless command
-                             (list :executable program :login (member "-l" args))))))
-       (unless orphan
-         (atelier-register-job-buffer
-          buffer shell desired-directory
-          (when (and command (null shell)) (cons program args)) nil agent)))
+                              (list :executable program :login (member "-l" args))))))
+      (atelier-register-job-buffer
+       buffer shell desired-directory
+       (when (and command (null shell)) (cons program args)) nil agent))
     buffer))
 
 (defun myconfig-terminal-process-exited (buffer _event)
@@ -72,8 +71,8 @@
     (select-window (window-main-window)))
   (let* ((workspace (atelier-current-workspace))
          (in-terminal (derived-mode-p 'ghostel-mode))
-         (existing (and (not in-terminal)
-                        (atelier-find-workspace-buffer
+         (existing (and workspace (not in-terminal)
+                         (atelier-find-workspace-buffer
                          (lambda (buffer workspace)
                            (with-current-buffer buffer
                               (and (derived-mode-p 'ghostel-mode)
@@ -81,17 +80,17 @@
                                    (not (when-let* ((owner (atelier-find-job-for-buffer
                                                             (buffer-name buffer))))
                                           (plist-get (nth 1 owner) :agent)))))))))
-          (remote (not (equal (plist-get workspace :destination) "local")))
-          (wsl (myconfig-wsl-workspace-p workspace))
-          (windows (myconfig-windows-workspace-p workspace))
-          (orphan (atelier-buffer-orphaned-p))
-         (name (format "terminal:%s" atelier-current-workspace-name))
+          (remote (and workspace
+                       (not (equal (plist-get workspace :destination) "local"))))
+          (wsl (and workspace (myconfig-wsl-workspace-p workspace)))
+          (windows (and workspace (myconfig-windows-workspace-p workspace)))
+         (name (format "terminal:%s" (plist-get workspace :name)))
          (buffer (or existing
                      (myconfig-terminal-buffer
                       (if in-terminal
                           (generate-new-buffer-name (myconfig-terminal-buffer-name name))
                         name)
-                        (if (or orphan wsl remote)
+                        (if (or wsl remote)
                             (myconfig-home-directory)
                           (atelier-workspace-directory))
                        (cond (wsl "wsl.exe")
@@ -102,7 +101,7 @@
                              (windows (myconfig-windows-powershell-arguments workspace))
                               (remote (list (plist-get workspace :destination)))
                               (t '("-l")))
-                       workspace nil t orphan))))
+                        workspace nil t))))
     (switch-to-buffer buffer)))
 
 (defun myconfig-terminal-split-right ()
@@ -120,37 +119,59 @@
 (defun myconfig-terminal-escape ()
   (interactive)
   (ghostel-emacs-mode)
+  (evil-local-mode 1)
+  (evil-ghostel-mode 1)
   (evil-normal-state))
 
+(defun myconfig-terminal-enter-input ()
+  "Give the terminal process all keyboard input through Ghostel char mode."
+  (interactive)
+  (when (bound-and-true-p evil-ghostel-mode)
+    (evil-ghostel-mode -1))
+  (when (bound-and-true-p evil-local-mode)
+    (evil-local-mode -1))
+  (ghostel-char-mode)
+  (setq buffer-read-only nil))
+
 (defun myconfig-terminal-display-setup ()
+  (setq buffer-read-only nil)
+  (add-hook 'post-command-hook #'myconfig-terminal-keep-writable nil t)
   (display-line-numbers-mode -1)
-  (hl-line-mode -1))
+  (hl-line-mode -1)
+  (myconfig-terminal-enter-input))
+
+(defun myconfig-terminal-keep-writable ()
+  (when (derived-mode-p 'ghostel-mode)
+    (setq buffer-read-only nil)))
 
 (defun myconfig-terminal-activate (buffer)
   (when (buffer-live-p buffer)
     (with-current-buffer buffer
       (when (and (derived-mode-p 'ghostel-mode)
                  (process-live-p (get-buffer-process buffer)))
-        (ghostel-semi-char-mode)
-        (evil-insert-state)))))
+        (myconfig-terminal-enter-input)))))
 
 (defun myconfig-terminal-setup ()
   (setq ghostel-kill-buffer-on-exit t
         ghostel-query-before-killing nil
         ghostel-term "xterm-256color"
-        ghostel-keymap-exceptions (delete "C-x" (copy-sequence ghostel-keymap-exceptions))
         evil-ghostel-escape 'terminal
-        evil-ghostel-initial-state 'insert
+        evil-ghostel-initial-state 'normal
         confirm-kill-processes nil)
-  (ghostel--rebuild-semi-char-keymap)
   (setq-default kill-buffer-query-functions
                 (remq #'process-kill-buffer-query-function
                       (default-value 'kill-buffer-query-functions)))
-  (evil-set-initial-state 'ghostel-mode 'insert)
-  (add-hook 'ghostel-mode-hook #'evil-ghostel-mode)
+  (evil-set-initial-state 'ghostel-mode 'normal)
   (add-hook 'ghostel-mode-hook #'myconfig-terminal-display-setup)
-   (define-key ghostel-mode-map myconfig-terminal-escape-key #'myconfig-terminal-escape)
-   (define-key evil-ghostel-mode-map myconfig-terminal-escape-key #'myconfig-terminal-escape))
+  (define-key ghostel-mode-map myconfig-terminal-escape-key #'myconfig-terminal-escape)
+  (define-key ghostel-char-mode-map myconfig-terminal-escape-key #'myconfig-terminal-escape)
+  (define-key ghostel-char-mode-map (kbd "C-S-v") #'myconfig-paste)
+  (define-key evil-ghostel-mode-map myconfig-terminal-escape-key #'myconfig-terminal-escape)
+  (evil-define-key 'normal evil-ghostel-mode-map
+    (kbd "i") #'myconfig-terminal-enter-input
+    (kbd "a") #'myconfig-terminal-enter-input
+    (kbd "I") #'myconfig-terminal-enter-input
+    (kbd "A") #'myconfig-terminal-enter-input))
 
 (provide 'myconfig-terminal)
 ;;; myconfig-terminal.el ends here

@@ -2,7 +2,9 @@
 
 (defconst myconfig-config-directory
   (file-name-directory (or load-file-name buffer-file-name)))
-(add-to-list 'load-path (expand-file-name "lisp" myconfig-config-directory))
+(let ((lisp-directory (expand-file-name "lisp" myconfig-config-directory)))
+  (add-to-list 'load-path lisp-directory)
+  (add-to-list 'load-path (expand-file-name "atelier" lisp-directory)))
 (require 'myconfig-platform)
 (require 'ls-lisp)
 (setq ls-lisp-dirs-first t)
@@ -21,13 +23,16 @@
       ;; Do not use Emacs' recovery autosaves: they create #...# files and
       ;; autosave-list entries.  myconfig-editing.el saves the visited file
       ;; itself after a short idle period, so disk always follows the buffer.
-      make-backup-files nil
-      backup-inhibited t
-      auto-save-default nil
-      auto-save-visited-file-name nil
-      auto-save-list-file-prefix nil
-      create-lockfiles nil
-      project-list-file (expand-file-name "projects.eld" myconfig-runtime-state-directory)
+       make-backup-files nil
+       backup-inhibited t
+       auto-save-default nil
+       auto-save-visited-file-name nil
+       auto-save-list-file-prefix nil
+       create-lockfiles nil
+       ;; Never offer package-created/non-file buffers (Magit, Ediff, etc.)
+       ;; for saving when Emacs exits.  File-visiting buffers are unaffected.
+       buffer-offer-save nil
+       project-list-file (expand-file-name "projects.eld" myconfig-runtime-state-directory)
       tramp-persistency-file-name (expand-file-name "tramp" myconfig-runtime-state-directory)
       savehist-file (expand-file-name "history" myconfig-runtime-state-directory)
       bookmark-default-file (expand-file-name "bookmarks" myconfig-runtime-state-directory)
@@ -48,10 +53,12 @@
 (require 'package)
 (require 'package-vc)
 (setq package-archives
-      '(("gnu" . "https://elpa.gnu.org/packages/")
-        ("nongnu" . "https://elpa.nongnu.org/nongnu/")
-        ("melpa" . "https://melpa.org/packages/"))
-      package-archive-priorities '(("gnu" . 30) ("nongnu" . 20) ("melpa" . 10)))
+       '(("gnu" . "https://elpa.gnu.org/packages/")
+         ("nongnu" . "https://elpa.nongnu.org/nongnu/")
+         ("jcs" . "https://jcs-emacs.github.io/jcs-elpa/packages/")
+         ("melpa" . "https://melpa.org/packages/"))
+       package-archive-priorities '(("gnu" . 30) ("nongnu" . 20)
+                                    ("jcs" . 15) ("melpa" . 10)))
 (defconst myconfig-evil-revision "6a3e1ddd04ac504a016590940d0af2a3361b9efd")
 (defconst myconfig-evil-source
   '(evil :url "https://github.com/emacs-evil/evil.git" :vc-backend Git))
@@ -83,9 +90,10 @@
   (package-activate 'evil-collection t))
 
 (defconst myconfig-required-packages
-  '(evil evil-collection vertico orderless marginalia consult corfu cape
+  `(evil evil-collection vertico orderless marginalia consult corfu cape
      yasnippet yasnippet-capf avy ghostel evil-ghostel magit diff-hl blamer flyover apheleia eldoc-box
-     treesit-auto mason multiple-cursors)
+     treesit-auto mason multiple-cursors
+     ,@(when (eq system-type 'windows-nt) '(treesit-langs)))
    "Elisp packages required by the live Atelier.")
 
 (unless (cl-every #'package-installed-p myconfig-required-packages)
@@ -95,6 +103,22 @@
       (package-install package))))
 
 (package-activate 'evil-ghostel t)
+
+;; Mason must be initialized from the main init file.  Its setup macro records
+;; the asynchronous registry state before packages which use Mason are loaded.
+(require 'mason)
+(let ((original-path (getenv "PATH")))
+  (mason-setup)
+  ;; mason.el currently joins PATH with a literal colon, which corrupts native
+  ;; Windows drive-letter paths.  Keep its bin directory but rebuild PATH with
+  ;; the separator for this host after setup starts.
+  (when (eq system-type 'windows-nt)
+    (setenv "PATH"
+            (mapconcat #'identity
+                       (delete-dups
+                        (cons (expand-file-name "bin" mason-dir)
+                              (parse-colon-path original-path)))
+                       path-separator))))
 
 (require 'myconfig-core)
 (require 'myconfig-ui)

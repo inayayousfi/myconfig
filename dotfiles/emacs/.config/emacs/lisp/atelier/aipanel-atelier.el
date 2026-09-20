@@ -34,13 +34,16 @@
          (directory (cond (wsl (plist-get workspace :path))
                           (remote (myconfig-home-directory))
                           (t (aipanel-atelier-local-directory workspace)))))
-    (list :id (plist-get workspace :name)
+    (list :id (atelier-workspace-id workspace)
           :name (plist-get workspace :name)
           :directory directory
           :destination (plist-get workspace :destination)
           :path (plist-get workspace :path)
           :platform (plist-get workspace :platform)
-          :workspace workspace)))
+          :workspace-id (atelier-workspace-id workspace))))
+
+(defun aipanel-atelier-workspace (owner)
+  (atelier-workspace-by-id (plist-get owner :workspace-id)))
 
 (defun aipanel-atelier-command (owner selection mini)
   (let* ((agent (plist-get selection :agent))
@@ -65,7 +68,7 @@
     (let* ((line (line-number-at-pos))
            (column (1+ (current-column)))
            (destination (plist-get owner :destination))
-           (workspace (plist-get owner :workspace))
+            (workspace (aipanel-atelier-workspace owner))
            (selection (buffer-local-value 'aipanel-selection buffer))
            (same-wsl (and (eq (plist-get owner :platform) 'wsl)
                           (eq (plist-get selection :location) 'wsl)
@@ -99,25 +102,21 @@
 (defun aipanel-atelier-terminal (name directory program arguments owner selection)
   (let ((agent (plist-get selection :agent)))
     (myconfig-terminal-buffer
-     name directory program arguments (plist-get owner :workspace) nil
+     name directory program arguments (aipanel-atelier-workspace owner) nil
      (list :id (plist-get agent :id)
            :location (plist-get selection :location)
            :distribution (plist-get selection :distribution))
      nil)))
 
 (defun aipanel-atelier-buffer-created ()
-  (let ((workspace (plist-get aipanel-owner :workspace)))
-    (setf (plist-get workspace :agent-buffer) (buffer-name))
-    (atelier-notify-change)))
+  (atelier-notify-change))
 
 (defun aipanel-atelier-buffer-exited ()
   (unless (bound-and-true-p atelier-preserve-job-recipe)
     (when-let* ((owner (atelier-find-job-for-buffer (buffer-name)))
                 (workspace (car owner))
-                (job (nth 1 owner)))
-      (setf (plist-get workspace :jobs) (delq job (plist-get workspace :jobs)))
-      (when (equal (plist-get workspace :agent-buffer) (buffer-name))
-        (setf (plist-get workspace :agent-buffer) nil))))
+                (entry (nth 2 owner)))
+      (atelier-entry-remove workspace entry t)))
   (atelier-notify-change)
   (when (fboundp 'myconfig-persist-schedule) (myconfig-persist-schedule)))
 
@@ -128,14 +127,14 @@
   (when-let* ((configuration
                (cl-find (plist-get agent :id) aipanel-agents
                         :key (lambda (item) (plist-get item :id)))))
-    (let ((owner (list :id (plist-get workspace :name)
-                       :name (plist-get workspace :name)
+    (let ((owner (list :id (atelier-workspace-id workspace)
+                        :name (plist-get workspace :name)
                        :directory (plist-get (nth 1 (atelier-find-job-for-buffer
                                                      (buffer-name buffer))) :directory)
                        :destination (plist-get workspace :destination)
                        :path (plist-get workspace :path)
-                       :platform (plist-get workspace :platform)
-                       :workspace workspace))
+                        :platform (plist-get workspace :platform)
+                        :workspace-id (atelier-workspace-id workspace)))
           (selection (list :agent configuration
                            :location (plist-get agent :location)
                            :distribution (plist-get agent :distribution))))

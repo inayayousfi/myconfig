@@ -587,9 +587,9 @@ The `ai` package ships `settings.json` without a `hooks` key on purpose. Windows
 
 ### Installation Model
 
-| Target              | Dotfile Strategy                                                                  |
-| ------------------- | --------------------------------------------------------------------------------- |
+| Target              | Dotfile Strategy                                                                    |
+| ------------------- | ----------------------------------------------------------------------------------- |
 | CachyOS             | Back up `~/dotfiles`, copy eleven packages, back up conflicts, then `stow --restow` |
-| Ubuntu Server       | Back up `~/dotfiles`, copy Zsh, back up conflicts, then `stow --restow`           |
-| Windows Workstation | Direct copy of Windows configs                                                    |
-| Arch WSL            | Back up `~/dotfiles`, copy four packages, back up conflicts, then `stow --restow` |
+| Ubuntu Server       | Back up `~/dotfiles`, copy Zsh, back up conflicts, then `stow --restow`             |
+| Windows Workstation | Direct copy of Windows configs                                                      |
+| Arch WSL            | Back up `~/dotfiles`, copy four packages, back up conflicts, then `stow --restow`   |

@@ -206,16 +206,19 @@ assert.equal(
 );
 
 const retainedIsland = managedTop.widgets()[0];
+const retainedDockWidgets = managedDock.widgets().slice();
 retainedIsland.writeConfig("savedWidgetState", "keep");
 runLayout([unrelated, managedTop, managedDock], "4");
 assert.equal(managedTop.widgets()[0], retainedIsland, "reconciliation recreated the island");
 assert.equal(retainedIsland.readConfig("savedWidgetState", ""), "keep", "reconciliation lost island widget state");
 assert.equal(managedTop.widgets().length, 1, "reconciliation duplicated the island");
+assert.deepEqual(managedDock.widgets(), retainedDockWidgets, "reconciliation recreated an already-correct dock");
 
 const secondDisplay = runLayout([managedTop, managedDock], "4", {screenCount: 2});
 const secondTop = secondDisplay.created.find(panel => panel.screen === 1 && panel.readConfig("myconfigRole", "") === "top");
 assert.deepEqual(secondTop.widgets().map(widget => widget.type), ["myconfig.island"], "new display did not receive an island");
 assert.equal(managedTop.widgets()[0], retainedIsland, "adding a display recreated the first island");
+assert.deepEqual(managedDock.widgets(), retainedDockWidgets, "adding a display recreated the first dock");
 
 const missingCalendar = knownWidgetTypes.indexOf("org.kde.plasma.calendar");
 knownWidgetTypes.splice(missingCalendar, 1);

@@ -76,6 +76,13 @@ if (missingWidgetTypes.length > 0) {
         if (role === "top" && widgets.length === 1 && widgets[0].type === "myconfig.island") {
             return;
         }
+        if (role === "dock"
+            && widgets.length === 3
+            && widgets[0].type === "org.kde.plasma.kickerdash"
+            && widgets[1].type === "myconfig.overview"
+            && widgets[2].type === "org.kde.plasma.icontasks") {
+            return;
+        }
         let launchers = [];
         if (role === "dock") {
             const tasks = panel.widgets().find(widget => widget.type === "org.kde.plasma.icontasks");

@@ -1,4 +1,4 @@
-const activationDepth = 8;
+const activationDepth = 24;
 const hideDelay = 400;
 const visibleMode = "windowsgobelow";
 const hiddenMode = "autohide";
@@ -271,7 +271,11 @@ function startLayoutUnit() {
     );
 }
 
-const layoutRetryTimer = newTimer(1000, startLayoutUnit);
+let layoutChangePending = false;
+const layoutRetryTimer = newTimer(1000, () => {
+    layoutChangePending = false;
+    startLayoutUnit();
+});
 function screensChanged() {
     const outputNames = new Set(workspace.screens.map(output => output.name));
     states.forEach((state, key) => {
@@ -281,7 +285,10 @@ function screensChanged() {
             states.delete(key);
         }
     });
-    startLayoutUnit();
+    if (!layoutChangePending) {
+        layoutChangePending = true;
+        startLayoutUnit();
+    }
     layoutRetryTimer.start();
 }
 

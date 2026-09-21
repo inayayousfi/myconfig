@@ -143,7 +143,7 @@ function mockWindow({
     };
 }
 
-workspace.cursorPos = {x: 12, y: 4};
+workspace.cursorPos = {x: 12, y: 23};
 cursorPosChanged.emit();
 assert.match(latestPlasmaScript(), /const myconfigRole = "top";/);
 assert.match(latestPlasmaScript(), /const myconfigMode = "windowsgobelow";/);
@@ -153,7 +153,12 @@ cursorPosChanged.emit();
 activeTimer(400).fire();
 assert.match(latestPlasmaScript(), /const myconfigMode = "autohide";/);
 
-workspace.cursorPos = {x: 5, y: 1076};
+const plasmaCallsBeforeTopBoundary = plasmaCalls().length;
+workspace.cursorPos = {x: 12, y: 24};
+cursorPosChanged.emit();
+assert.equal(plasmaCalls().length, plasmaCallsBeforeTopBoundary, "top activation zone extends beyond 24 pixels");
+
+workspace.cursorPos = {x: 5, y: 1056};
 cursorPosChanged.emit();
 assert.match(latestPlasmaScript(), /const myconfigRole = "dock";/);
 assert.match(latestPlasmaScript(), /const myconfigMode = "windowsgobelow";/);
@@ -185,16 +190,17 @@ assert.match(latestPlasmaScript(), /const myconfigMode = "autohide";/);
 
 const systemdCallsBefore = calls.filter(call => call.service === "org.freedesktop.systemd1").length;
 screensChanged.emit();
+screenOrderChanged.emit();
 assert.equal(
     calls.filter(call => call.service === "org.freedesktop.systemd1").length,
     systemdCallsBefore + 1,
-    "display change did not start the layout service immediately",
+    "paired display-change signals did not coalesce into one immediate layout service start",
 );
 activeTimer(1000).fire();
 assert.equal(
     calls.filter(call => call.service === "org.freedesktop.systemd1").length,
     systemdCallsBefore + 2,
-    "display change did not retry layout reconciliation",
+    "paired display-change signals did not coalesce into one layout retry",
 );
 
 const effectCallsBefore = calls.filter(call => call.service === "org.kde.kglobalaccel").length;

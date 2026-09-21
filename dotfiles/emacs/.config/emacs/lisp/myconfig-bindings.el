@@ -26,12 +26,12 @@
   (evil-set-initial-state 'dired-mode 'normal)
   (evil-define-key 'normal dired-mode-map
     (kbd "SPC") myconfig-leader-map
-     (kbd "RET") #'atelier-dired-open
-     (kbd "<return>") #'atelier-dired-open
-      (kbd "l") #'atelier-dired-open
-      (kbd "h") #'dired-up-directory)
-  (define-key dired-mode-map [mouse-1] #'atelier-dired-mouse-open)
-  (define-key dired-mode-map [mouse-2] #'atelier-dired-mouse-open)
+    (kbd "RET") #'atelier-dired-open
+    (kbd "<return>") #'atelier-dired-open
+    (kbd "l") #'atelier-dired-open
+    (kbd "h") #'atelier-dired-up-directory
+    [mouse-1] #'atelier-dired-mouse-open
+    [mouse-2] #'atelier-dired-mouse-open)
   (evil-define-key 'normal atelier-directory-chooser-mode-map
     (kbd "RET") #'atelier-directory-chooser-enter
     (kbd "<return>") #'atelier-directory-chooser-enter
@@ -90,8 +90,8 @@
   (define-key myconfig-leader-map (kbd "f") #'atelier-file-browser)
   (define-key myconfig-leader-map (kbd "m") #'set-mark-command)
   (define-key myconfig-leader-map (kbd "n") #'consult-mark)
-   (define-key myconfig-leader-map (kbd "C") #'execute-extended-command)
-   (define-key myconfig-leader-map (kbd "c") #'execute-extended-command)
+  (define-key myconfig-leader-map (kbd "C") #'execute-extended-command)
+  (define-key myconfig-leader-map (kbd "c") #'execute-extended-command)
   (when (fboundp 'aipanel-toggle)
     (define-key myconfig-leader-map (kbd "a") #'aipanel-toggle))
   (define-key myconfig-leader-map (kbd "t") #'myconfig-terminal)
@@ -112,7 +112,7 @@
   (define-key myconfig-leader-map (kbd "g f") #'dape)
   (define-key myconfig-leader-map (kbd "g g") #'magit-status)
   (define-key myconfig-leader-map (kbd "g d") #'diff)
-   (define-key myconfig-leader-map (kbd "g c") #'myconfig-compile))
+  (define-key myconfig-leader-map (kbd "g c") #'myconfig-compile))
 
- (provide 'myconfig-bindings)
+(provide 'myconfig-bindings)
 ;;; myconfig-bindings.el ends here

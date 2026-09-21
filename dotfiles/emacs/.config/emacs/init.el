@@ -7,7 +7,8 @@
   (add-to-list 'load-path (expand-file-name "atelier" lisp-directory)))
 (require 'myconfig-platform)
 (require 'ls-lisp)
-(setq ls-lisp-dirs-first t)
+(setq ls-lisp-use-insert-directory-program nil
+      ls-lisp-dirs-first t)
 (defconst myconfig-data-directory
   (myconfig-platform-path 'data "myconfig-emacs"))
 (defconst myconfig-runtime-state-directory
@@ -23,42 +24,42 @@
       ;; Do not use Emacs' recovery autosaves: they create #...# files and
       ;; autosave-list entries.  myconfig-editing.el saves the visited file
       ;; itself after a short idle period, so disk always follows the buffer.
-       make-backup-files nil
-       backup-inhibited t
-       auto-save-default nil
-       auto-save-visited-file-name nil
-       auto-save-list-file-prefix nil
-       create-lockfiles nil
-       ;; Never offer package-created/non-file buffers (Magit, Ediff, etc.)
-       ;; for saving when Emacs exits.  File-visiting buffers are unaffected.
-       buffer-offer-save nil
-       project-list-file (expand-file-name "projects.eld" myconfig-runtime-state-directory)
+      make-backup-files nil
+      backup-inhibited t
+      auto-save-default nil
+      auto-save-visited-file-name nil
+      auto-save-list-file-prefix nil
+      create-lockfiles nil
+      ;; Never offer package-created/non-file buffers (Magit, Ediff, etc.)
+      ;; for saving when Emacs exits.  File-visiting buffers are unaffected.
+      buffer-offer-save nil
+      project-list-file (expand-file-name "projects.eld" myconfig-runtime-state-directory)
       tramp-persistency-file-name (expand-file-name "tramp" myconfig-runtime-state-directory)
       savehist-file (expand-file-name "history" myconfig-runtime-state-directory)
       bookmark-default-file (expand-file-name "bookmarks" myconfig-runtime-state-directory)
       url-history-file (expand-file-name "url/history" myconfig-runtime-state-directory)
       load-prefer-newer t
-       evil-want-keybinding nil
-       evil-want-integration t)
+      evil-want-keybinding nil
+      evil-want-integration t)
 
 (let ((user-bin (expand-file-name "~/.local/bin")))
   (when (file-directory-p user-bin)
     (add-to-list 'exec-path user-bin)
     (setenv "PATH" (mapconcat #'identity
-                               (delete-dups
-                                (cons user-bin (parse-colon-path (getenv "PATH"))))
-                               path-separator))))
+                              (delete-dups
+                               (cons user-bin (parse-colon-path (getenv "PATH"))))
+                              path-separator))))
 
 (require 'cl-lib)
 (require 'package)
 (require 'package-vc)
 (setq package-archives
-       '(("gnu" . "https://elpa.gnu.org/packages/")
-         ("nongnu" . "https://elpa.nongnu.org/nongnu/")
-         ("jcs" . "https://jcs-emacs.github.io/jcs-elpa/packages/")
-         ("melpa" . "https://melpa.org/packages/"))
-       package-archive-priorities '(("gnu" . 30) ("nongnu" . 20)
-                                    ("jcs" . 15) ("melpa" . 10)))
+      '(("gnu" . "https://elpa.gnu.org/packages/")
+        ("nongnu" . "https://elpa.nongnu.org/nongnu/")
+        ("jcs" . "https://jcs-emacs.github.io/jcs-elpa/packages/")
+        ("melpa" . "https://melpa.org/packages/"))
+      package-archive-priorities '(("gnu" . 30) ("nongnu" . 20)
+                                   ("jcs" . 15) ("melpa" . 10)))
 (defconst myconfig-evil-revision "6a3e1ddd04ac504a016590940d0af2a3361b9efd")
 (defconst myconfig-evil-source
   '(evil :url "https://github.com/emacs-evil/evil.git" :vc-backend Git))
@@ -91,10 +92,10 @@
 
 (defconst myconfig-required-packages
   `(evil evil-collection vertico orderless marginalia consult corfu cape
-     yasnippet yasnippet-capf avy ghostel evil-ghostel magit diff-hl blamer flyover apheleia eldoc-box
-     treesit-auto mason dape multiple-cursors
-     ,@(when (eq system-type 'windows-nt) '(treesit-langs)))
-   "Elisp packages required by the live Atelier.")
+         yasnippet yasnippet-capf avy ghostel evil-ghostel magit diff-hl blamer flyover apheleia eldoc-box
+         treesit-auto mason dape multiple-cursors
+         ,@(when (eq system-type 'windows-nt) '(treesit-langs)))
+  "Elisp packages required by the live Atelier.")
 
 (unless (cl-every #'package-installed-p myconfig-required-packages)
   (package-refresh-contents)

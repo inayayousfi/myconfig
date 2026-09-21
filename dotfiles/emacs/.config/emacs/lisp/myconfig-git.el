@@ -57,7 +57,9 @@
             (insert (myconfig-fontified-source path text))
             (unless (bolp) (insert "\n"))))
         (setq-local truncate-lines nil
-                    buffer-read-only t)
+                    buffer-read-only t
+                    buffer-offer-save nil)
+        (set-buffer-modified-p nil)
         (goto-char (point-min))))
     buffer))
 

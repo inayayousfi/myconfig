@@ -106,7 +106,7 @@
      (list :id (plist-get agent :id)
            :location (plist-get selection :location)
            :distribution (plist-get selection :distribution))
-     nil)))
+      'aipanel nil)))
 
 (defun aipanel-atelier-buffer-created ()
   (atelier-notify-change))

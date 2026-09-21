@@ -229,9 +229,11 @@
                                 (equal executable (plist-get shell :executable))))
                            (name saved-name)
                            (atelier-job-owner-entry (plist-get entry :entry))
-                           (buffer (myconfig-terminal-buffer
-                                    name (plist-get recipe :directory) executable arguments workspace
-                                    (and shell-restart shell))))
+                            (buffer (myconfig-terminal-buffer
+                                     name (plist-get recipe :directory) executable arguments workspace
+                                     (and shell-restart shell)
+                                     (plist-get job :agent)
+                                     (plist-get (plist-get entry :entry) :type))))
                       (setf (plist-get job :buffer) (buffer-name buffer))
                       (when-let* ((agent (plist-get job :agent)))
                         (run-hook-with-args 'atelier-agent-restored-functions
@@ -248,7 +250,7 @@
   (atelier-ensure-detached-workspace)
   (unless (or myconfig-persist-restoring atelier-navigator-window-configurations)
     (atelier-capture-current-workspace))
-  (list :version 5
+  (list :version 6
         :generation (or myconfig-snapshot-generation (myconfig-new-generation))
         :current-workspace-id (atelier-current-workspace-id)
         :ssh-destinations atelier-remembered-ssh-destinations
@@ -412,16 +414,56 @@
     (cl-remf workspace :state)
     workspace))
 
+(defun myconfig-entry-v6-type (entry)
+  "Infer registered type metadata for a pre-V6 ENTRY."
+  (pcase (plist-get entry :kind)
+    ('directory 'dired)
+    ('terminal
+     (when-let* ((job (atelier-entry-job entry)))
+       (if (or (consp (plist-get job :agent))
+               (and (plist-get job :agent)
+                    (member (file-name-nondirectory
+                             (or (car (plist-get job :direct-command)) ""))
+                            '("opencode" "claude" "codex" "fx"))))
+           'aipanel
+         'terminal)))))
+
+(defun myconfig-migrate-entry-v6 (entry)
+  "Add registered type metadata recursively to pre-V6 ENTRY."
+  (let ((entry (copy-tree entry)))
+    (if (atelier-layout-entry-p entry)
+        (setf (plist-get entry :children)
+              (mapcar #'myconfig-migrate-entry-v6 (atelier-entry-children entry)))
+      (unless (plist-member entry :type)
+        (when-let* ((type (myconfig-entry-v6-type entry)))
+          (setf (plist-get entry :type) type))))
+    entry))
+
+(defun myconfig-migrate-workspace-v6 (workspace)
+  "Add registered entry types to a pre-V6 WORKSPACE."
+  (let ((workspace (copy-tree workspace)))
+    (setf (plist-get workspace :entries)
+          (mapcar #'myconfig-migrate-entry-v6 (plist-get workspace :entries)))
+    workspace))
+
 (defun myconfig-migrate-state (data)
   (pcase (plist-get data :version)
-    (5 data)
-    (4
-     (list :version 5
+    (6 data)
+    (5
+     (list :version 6
            :generation (plist-get data :generation)
            :current-workspace-id (plist-get data :current-workspace-id)
            :ssh-destinations (copy-sequence (plist-get data :ssh-destinations))
-           :workspaces (mapcar #'myconfig-migrate-workspace-v4
+           :workspaces (mapcar #'myconfig-migrate-workspace-v6
                                (plist-get data :workspaces))))
+    (4
+     (myconfig-migrate-state
+      (list :version 5
+            :generation (plist-get data :generation)
+            :current-workspace-id (plist-get data :current-workspace-id)
+            :ssh-destinations (copy-sequence (plist-get data :ssh-destinations))
+            :workspaces (mapcar #'myconfig-migrate-workspace-v4
+                                (plist-get data :workspaces)))))
     (3
      (myconfig-migrate-state
       (list :version 4
@@ -502,7 +544,7 @@
           (if displayed-seen
               (atelier-plist-clear! entry :displayed)
             (setq displayed-seen t))))))
-  (unless (and (listp data) (equal (plist-get data :version) 5)
+  (unless (and (listp data) (equal (plist-get data :version) 6)
                (stringp (plist-get data :generation))
                (listp (plist-get data :workspaces)))
     (error "Invalid state header"))
@@ -532,14 +574,16 @@
           (cl-labels
               ((validate-entry
                 (entry nested)
-                (let ((entry-id (plist-get entry :id))
-                      (kind (plist-get entry :kind)))
+                 (let ((entry-id (plist-get entry :id))
+                       (kind (plist-get entry :kind))
+                       (type (plist-get entry :type)))
                   (unless (and (stringp entry-id) (not (string-empty-p entry-id))
                                (symbolp kind))
                     (error "Invalid entry record in workspace %s" name))
                   (when (member entry-id entry-ids)
                     (error "Duplicate entry ID in workspace %s" name))
-                  (push entry-id entry-ids)
+                   (push entry-id entry-ids)
+                   (when type (atelier-entry-type-definition type))
                   (when (and nested (plist-get entry :displayed))
                     (error "Nested entry is marked displayed in workspace %s" name))
                   (if (eq kind 'layout)

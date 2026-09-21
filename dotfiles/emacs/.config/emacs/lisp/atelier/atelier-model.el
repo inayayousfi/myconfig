@@ -27,6 +27,11 @@
 (defconst atelier-empty-buffer-prefix "*Atelier empty:")
 (defconst atelier-global-buffer-names
   '("*Messages*" "*Warnings*" "*Completions*" "*Native-compile-Log*"))
+(defvar atelier-entry-types
+  '((dired :buffer-name "dired" :buffer-p atelier-dired-entry-buffer-p)
+    (terminal :buffer-name "terminal" :buffer-p atelier-terminal-entry-buffer-p)
+    (aipanel :buffer-name "aipanel"))
+  "Registered workspace entry types and their shared behavior.")
 (defvar-local atelier-navigator-first-position nil)
 (defvar-local atelier-directory-chooser-original-header nil)
 (defvar-local atelier-directory-chooser-header-was-local nil)
@@ -208,6 +213,41 @@ Nil selects the reserved Detached workspace."
   (cl-mapcan #'atelier-entry-leaves
              (atelier-workspace-top-level-entries workspace)))
 
+(defun atelier-entry-type-definition (type)
+  "Return the registered definition for TYPE."
+  (or (assq type atelier-entry-types)
+      (error "Unknown Atelier entry type: %s" type)))
+
+(defun atelier-register-entry-type (type buffer-name &optional buffer-p)
+  "Register TYPE with BUFFER-NAME and optional BUFFER-P predicate.
+BUFFER-P receives a live buffer and identifies automatic registrations of TYPE."
+  (unless (and (symbolp type) (stringp buffer-name)
+               (not (string-empty-p buffer-name)))
+    (error "Invalid Atelier entry type registration: %S %S" type buffer-name))
+  (let ((definition (list type :buffer-name buffer-name)))
+    (when buffer-p
+      (setq definition (append definition (list :buffer-p buffer-p))))
+    (if-let* ((existing (assq type atelier-entry-types)))
+        (setcdr existing (cdr definition))
+      (setq atelier-entry-types (append atelier-entry-types (list definition))))
+    definition))
+
+(defun atelier-entry-buffer-name (type workspace)
+  "Return the canonical buffer name for TYPE in WORKSPACE."
+  (let ((label (plist-get (cdr (atelier-entry-type-definition type)) :buffer-name)))
+    (format "*%s:%s*" label (plist-get workspace :name))))
+
+(defun atelier-workspace-entry-by-type (workspace type)
+  "Return WORKSPACE's oldest entry of TYPE."
+  (cl-find type (atelier-workspace-entries workspace)
+           :key (lambda (entry) (plist-get entry :type))))
+
+(defun atelier-workspace-buffer-by-type (workspace type)
+  "Return the live buffer of WORKSPACE's oldest live entry of TYPE."
+  (cl-loop for entry in (atelier-workspace-entries workspace)
+           when (eq (plist-get entry :type) type)
+           thereis (atelier-entry-live-buffer entry)))
+
 (defun atelier-workspace-displayed-entry (workspace)
   "Return WORKSPACE's top-level entry that describes its visible layout."
   (cl-find-if (lambda (entry) (plist-get entry :displayed))
@@ -264,8 +304,8 @@ Nil selects the reserved Detached workspace."
 (defun atelier-entry-add (workspace entry &optional no-notify)
   "Add ENTRY to WORKSPACE, which becomes its sole persistent owner.
 
-The same live Emacs file buffer may be resolved by independent entries in
-different workspaces."
+An entry type may occur more than once only when an explicit command creates
+another entry of that type."
   (unless (plist-get entry :id)
     (setq entry (plist-put entry :id (atelier-new-entry-id))))
   (unless (atelier-entry-by-id workspace (plist-get entry :id))

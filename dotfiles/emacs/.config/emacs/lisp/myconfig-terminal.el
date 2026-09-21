@@ -20,13 +20,16 @@
         name
       (format "*%s*" (string-trim name "*" "*")))))
 
-(defun myconfig-terminal-buffer (&optional name directory command args owner-workspace shell agent)
+(defun myconfig-terminal-buffer
+    (&optional name directory command args owner-workspace shell agent type explicit)
   (let* ((desired-directory (or directory (atelier-workspace-directory)))
          (wsl (and owner-workspace (myconfig-wsl-workspace-p owner-workspace)))
          (process-directory (if wsl (myconfig-home-directory) desired-directory))
          (default-directory process-directory)
          (program (or command (myconfig-default-shell)))
-         (name (myconfig-terminal-buffer-name name))
+         (name (if (and owner-workspace type)
+                   (atelier-entry-buffer-name type owner-workspace)
+                 (myconfig-terminal-buffer-name name)))
          buffer)
     (condition-case error
         (setq buffer
@@ -58,7 +61,7 @@
                               (list :executable program :login (member "-l" args))))))
       (atelier-register-job-buffer
        buffer shell desired-directory
-       (when (and command (null shell)) (cons program args)) nil agent))
+       (when (and command (null shell)) (cons program args)) nil agent type explicit))
     buffer))
 
 (defun myconfig-terminal-process-exited (buffer _event)
@@ -71,20 +74,13 @@
     (select-window (window-main-window)))
   (let* ((workspace (atelier-current-workspace))
          (in-terminal (derived-mode-p 'ghostel-mode))
-         (existing (and workspace (not in-terminal)
-                         (atelier-find-workspace-buffer
-                         (lambda (buffer workspace)
-                           (with-current-buffer buffer
-                              (and (derived-mode-p 'ghostel-mode)
-                                   (process-live-p (get-buffer-process buffer))
-                                   (not (when-let* ((owner (atelier-find-job-for-buffer
-                                                            (buffer-name buffer))))
-                                          (plist-get (nth 1 owner) :agent)))))))))
+          (existing (and workspace (not in-terminal)
+                         (atelier-workspace-buffer-by-type workspace 'terminal)))
           (remote (and workspace
                        (not (equal (plist-get workspace :destination) "local"))))
           (wsl (and workspace (myconfig-wsl-workspace-p workspace)))
           (windows (and workspace (myconfig-windows-workspace-p workspace)))
-         (name (format "terminal:%s" (plist-get workspace :name)))
+         (name (atelier-entry-buffer-name 'terminal workspace))
          (buffer (or existing
                      (myconfig-terminal-buffer
                       (if in-terminal
@@ -101,7 +97,7 @@
                              (windows (myconfig-windows-powershell-arguments workspace))
                               (remote (list (plist-get workspace :destination)))
                               (t '("-l")))
-                        workspace nil t))))
+                         workspace nil nil 'terminal in-terminal))))
     (switch-to-buffer buffer)))
 
 (defun myconfig-terminal-split-right ()

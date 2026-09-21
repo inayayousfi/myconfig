@@ -15,7 +15,8 @@
       (let ((myconfig-yank-highlight-active t))
         (setq result (apply original-function arguments)))
       (when (> (point) start)
-        (pulse-momentary-highlight-region start (point)))
+        (pulse-momentary-highlight-region start (point))
+        (redisplay t))
       result)))
 
 (defun myconfig-never-offer-temporary-buffer-for-saving ()
@@ -70,6 +71,24 @@ so the default value alone is not sufficient."
         (condition-case error
             (save-buffer)
           (error (myconfig-log "Save failed for %s: %s" buffer-file-name error)))))))
+
+(defun myconfig-never-save-some-buffers (&optional _argument _predicate)
+  "Never save buffers through the multi-buffer save command."
+  nil)
+
+(defun myconfig-never-save-before-kill (_buffer)
+  "Kill a modified buffer without saving or asking."
+  t)
+
+(defun myconfig-never-save-on-exit (original-function &optional argument restart)
+  "Discard modified buffers before exiting without asking or saving."
+  (dolist (buffer (buffer-list))
+    (with-current-buffer buffer
+      (when (buffer-modified-p)
+        (set-buffer-modified-p nil))))
+  (let ((confirm-kill-emacs nil)
+        (confirm-kill-processes nil))
+    (funcall original-function argument restart)))
 
 (defun myconfig-format-and-save-buffer (buffer)
   (when (buffer-live-p buffer)
@@ -143,9 +162,9 @@ so the default value alone is not sufficient."
           (let ((default-directory root))
             (consult--multi
              (list
-              (list :name "Files" :narrow ?f :category 'file
-                    :items (lambda () (myconfig-project-file-candidates root))
-                    :action (lambda (file) (find-file file)))
+               (list :name "Files" :narrow ?f :category 'file
+                     :items (lambda () (myconfig-project-file-candidates root))
+                     :action (lambda (file) (atelier-open-file file)))
               (myconfig-search-grep-source root))
              :prompt "Search: "
              :require-match t
@@ -169,6 +188,10 @@ so the default value alone is not sufficient."
   (require 'pulse)
   (advice-add 'yank :around #'myconfig-highlight-yank)
   (advice-add 'myconfig-paste :around #'myconfig-highlight-yank)
+  (advice-add 'save-some-buffers :override #'myconfig-never-save-some-buffers)
+  (when (fboundp 'kill-buffer--possibly-save)
+    (advice-add 'kill-buffer--possibly-save :override #'myconfig-never-save-before-kill))
+  (advice-add 'save-buffers-kill-emacs :around #'myconfig-never-save-on-exit)
   (global-display-line-numbers-mode 1)
   (global-auto-revert-mode 1)
   (setq global-auto-revert-non-file-buffers t

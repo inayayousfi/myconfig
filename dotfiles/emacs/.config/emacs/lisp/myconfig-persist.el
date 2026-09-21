@@ -250,7 +250,7 @@
   (atelier-ensure-detached-workspace)
   (unless (or myconfig-persist-restoring atelier-navigator-window-configurations)
     (atelier-capture-current-workspace))
-  (list :version 6
+  (list :version 7
         :generation (or myconfig-snapshot-generation (myconfig-new-generation))
         :current-workspace-id (atelier-current-workspace-id)
         :ssh-destinations atelier-remembered-ssh-destinations
@@ -264,8 +264,7 @@
          :platform (plist-get workspace :platform)
          :mount-root (plist-get workspace :mount-root)
          :status (atelier-workspace-status workspace)
-         :entries (plist-get workspace :entries)
-         :agent-directory (plist-get workspace :agent-directory)))
+         :entries (plist-get workspace :entries)))
 
 (defun myconfig-data-topology (data)
   (list :current-workspace-id (plist-get data :current-workspace-id)
@@ -446,16 +445,58 @@
           (mapcar #'myconfig-migrate-entry-v6 (plist-get workspace :entries)))
     workspace))
 
+(defun myconfig-aipanel-entry-attached-p (entry)
+  "Return non-nil when AIPanel ENTRY records a source entry attachment."
+  (let* ((agent (plist-get (atelier-entry-job entry) :agent))
+         (attachment (plist-get agent :attachment)))
+    (and (eq (plist-get entry :type) 'aipanel)
+         (stringp (plist-get attachment :entry-id)))))
+
+(defun myconfig-migrate-entry-v7 (entry)
+  "Remove a legacy unattached AIPanel ENTRY and repair its layout tree."
+  (if (atelier-layout-entry-p entry)
+      (let* ((copy (copy-tree entry))
+             (children (delq nil (mapcar #'myconfig-migrate-entry-v7
+                                         (atelier-entry-children entry))))
+             (displayed (plist-get entry :displayed)))
+        (pcase (length children)
+          (0 nil)
+          (1 (atelier-entry-with-display-state (car children) displayed))
+          (_ (setf (plist-get copy :children) children)
+             copy)))
+    (unless (and (eq (plist-get entry :type) 'aipanel)
+                 (not (myconfig-aipanel-entry-attached-p entry)))
+      (copy-tree entry))))
+
+(defun myconfig-migrate-workspace-v7 (workspace)
+  "Discard legacy workspace-level panels which have no source attachment."
+  (let ((workspace (copy-tree workspace)))
+    (setf (plist-get workspace :entries)
+          (delq nil (mapcar #'myconfig-migrate-entry-v7
+                            (plist-get workspace :entries))))
+    (cl-remf workspace :agent-directory)
+    workspace))
+
+(defun myconfig-migrate-data-v7 (data)
+  (list :version 7
+        :generation (plist-get data :generation)
+        :current-workspace-id (plist-get data :current-workspace-id)
+        :ssh-destinations (copy-sequence (plist-get data :ssh-destinations))
+        :workspaces (mapcar #'myconfig-migrate-workspace-v7
+                            (plist-get data :workspaces))))
+
 (defun myconfig-migrate-state (data)
   (pcase (plist-get data :version)
-    (6 data)
+    (7 data)
+    (6 (myconfig-migrate-data-v7 data))
     (5
-     (list :version 6
-           :generation (plist-get data :generation)
-           :current-workspace-id (plist-get data :current-workspace-id)
-           :ssh-destinations (copy-sequence (plist-get data :ssh-destinations))
-           :workspaces (mapcar #'myconfig-migrate-workspace-v6
-                               (plist-get data :workspaces))))
+     (myconfig-migrate-state
+      (list :version 6
+            :generation (plist-get data :generation)
+            :current-workspace-id (plist-get data :current-workspace-id)
+            :ssh-destinations (copy-sequence (plist-get data :ssh-destinations))
+            :workspaces (mapcar #'myconfig-migrate-workspace-v6
+                                (plist-get data :workspaces)))))
     (4
      (myconfig-migrate-state
       (list :version 5
@@ -527,8 +568,7 @@
                        :state (copy-tree (plist-get current :state))
                        :buffers (copy-tree (plist-get current :buffers))
                        :owned-buffers nil
-                        :jobs (nreverse (copy-tree jobs))
-                       :agent-directory (plist-get current :agent-directory))))
+                       :jobs (nreverse (copy-tree jobs)))))
              (plist-get data :workspaces)))))
     (_ data)))
 
@@ -544,7 +584,7 @@
           (if displayed-seen
               (atelier-plist-clear! entry :displayed)
             (setq displayed-seen t))))))
-  (unless (and (listp data) (equal (plist-get data :version) 6)
+  (unless (and (listp data) (equal (plist-get data :version) 7)
                (stringp (plist-get data :generation))
                (listp (plist-get data :workspaces)))
     (error "Invalid state header"))
@@ -603,6 +643,19 @@
                                    (memq (plist-get job :policy) '(auto always never)))
                         (error "Invalid terminal job in workspace %s" name)))))))
             (dolist (entry top-level) (validate-entry entry nil))))))
+    (dolist (workspace (plist-get data :workspaces))
+      (dolist (entry (atelier-workspace-entries workspace))
+        (when (eq (plist-get entry :type) 'aipanel)
+          (let* ((attachment (plist-get (plist-get (atelier-entry-job entry) :agent)
+                                        :attachment))
+                 (source-id (plist-get attachment :entry-id))
+                 (source
+                  (cl-loop for candidate-workspace in (plist-get data :workspaces)
+                           thereis (atelier-entry-by-id candidate-workspace source-id))))
+            (unless (and (stringp source-id) source
+                         (not (eq (plist-get source :type) 'aipanel)))
+              (error "Invalid AIPanel attachment in workspace %s"
+                     (plist-get workspace :name)))))))
     data))
 
 (defun myconfig-apply-state (data)

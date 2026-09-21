@@ -163,7 +163,7 @@
           (atelier-select-workspace workspace)
           (let* ((data (myconfig-snapshot-data))
                  (saved (plist-get data :workspaces)))
-            (should (= (plist-get data :version) 6))
+            (should (= (plist-get data :version) 7))
             (should (cl-find atelier-detached-workspace-id saved
                              :key (lambda (item) (plist-get item :id))
                              :test #'equal))))
@@ -372,7 +372,7 @@
         (when (buffer-live-p buffer) (kill-buffer buffer)))
       (delete-directory directory t))))
 
-(ert-deftest atelier-migrates-v5-entry-types-without-removing-duplicates ()
+(ert-deftest atelier-migrates-v5-entry-types-and-discards-unattached-panels ()
   (let* ((data '(:version 5 :generation "typed-v5"
                  :current-workspace-id "typed-id" :ssh-destinations nil
                  :workspaces
@@ -395,9 +395,9 @@
          (migrated (myconfig-validate-state data))
          (entries (atelier-workspace-entries
                    (car (plist-get migrated :workspaces)))))
-    (should (= (plist-get migrated :version) 6))
+    (should (= (plist-get migrated :version) 7))
     (should (equal (mapcar (lambda (entry) (plist-get entry :type)) entries)
-                   '(dired dired terminal aipanel aipanel nil)))))
+                   '(dired dired terminal nil)))))
 
 (ert-deftest atelier-dired-navigation-keeps-one-buffer-and-entry ()
   (let* ((root (make-temp-file "atelier-dired-navigation-" t))
@@ -464,6 +464,151 @@
       (set-frame-parameter nil 'atelier-workspace-id old-selection)
       (dolist (item (list buffer other-buffer))
         (when (buffer-live-p item) (kill-buffer item))))))
+
+(ert-deftest atelier-close-only-view-selects-most-recent-workspace-entry ()
+  (let* ((workspace (list :id "close-mru" :name "close-mru"
+                          :destination "local" :path "/tmp/" :entries nil))
+         (atelier-workspaces (list workspace))
+         (old-selection (atelier-current-workspace-id))
+         (older (generate-new-buffer "close-older"))
+         (recent (generate-new-buffer "close-recent"))
+         (closing (generate-new-buffer "close-current")))
+    (unwind-protect
+        (save-window-excursion
+          (atelier-select-workspace workspace)
+          (delete-other-windows)
+          (dolist (buffer (list older recent closing))
+            (atelier-register-buffer buffer workspace)
+            (switch-to-buffer buffer))
+          (cl-letf (((symbol-function 'display-graphic-p) (lambda (&optional _) t)))
+            (atelier-capture-current-workspace)
+            (atelier-close-current-view))
+          (should-not (buffer-live-p closing))
+          (should (eq (window-buffer) recent))
+          (should (= (length (atelier-workspace-entries workspace)) 2))
+          (should-not (string-prefix-p atelier-empty-buffer-prefix
+                                       (buffer-name (window-buffer)))))
+      (set-frame-parameter nil 'atelier-workspace-id old-selection)
+      (dolist (buffer (list older recent closing))
+        (when (buffer-live-p buffer) (kill-buffer buffer))))))
+
+(ert-deftest atelier-close-only-view-restores-a-saved-workspace-entry ()
+  (let* ((workspace (list :id "close-restore" :name "close-restore"
+                          :destination "local" :path "/tmp/" :entries nil))
+         (atelier-workspaces (list workspace))
+         (old-selection (atelier-current-workspace-id))
+         (closing (generate-new-buffer "close-before-restore"))
+         (saved (list :id "saved-scratch" :kind 'scratch :name "*saved-scratch*"
+                      :directory "/tmp/" :contents "saved text" :persistent t)))
+    (unwind-protect
+        (save-window-excursion
+          (atelier-select-workspace workspace)
+          (atelier-entry-add workspace saved)
+          (atelier-register-buffer closing workspace)
+          (delete-other-windows)
+          (switch-to-buffer closing)
+          (cl-letf (((symbol-function 'display-graphic-p) (lambda (&optional _) t)))
+            (atelier-capture-current-workspace)
+            (atelier-close-current-view))
+          (should (eq (window-buffer) (atelier-entry-live-buffer saved)))
+          (should (equal (with-current-buffer (window-buffer) (buffer-string))
+                         "saved text"))
+          (should (= (length (atelier-workspace-entries workspace)) 1)))
+      (set-frame-parameter nil 'atelier-workspace-id old-selection)
+      (dolist (entry (atelier-workspace-entries workspace))
+        (when-let* ((buffer (atelier-entry-live-buffer entry)))
+          (kill-buffer buffer)))
+      (when (buffer-live-p closing) (kill-buffer closing)))))
+
+(ert-deftest atelier-close-visible-entry-removes-its-split ()
+  (let* ((workspace (list :id "close-split" :name "close-split"
+                          :destination "local" :path "/tmp/" :entries nil))
+         (atelier-workspaces (list workspace))
+         (old-selection (atelier-current-workspace-id))
+         (left (generate-new-buffer "close-split-left"))
+         (right (generate-new-buffer "close-split-right")))
+    (unwind-protect
+        (save-window-excursion
+          (atelier-select-workspace workspace)
+          (delete-other-windows)
+          (set-window-buffer (selected-window) left)
+          (set-window-buffer (split-window-right) right)
+          (cl-letf (((symbol-function 'display-graphic-p) (lambda (&optional _) t)))
+            (atelier-capture-current-workspace)
+            (select-window (get-buffer-window right))
+            (atelier-close-current-view))
+          (should-not (buffer-live-p right))
+          (should (= (length (atelier-main-windows)) 1))
+          (should (eq (window-buffer) left))
+          (should (= (length (atelier-workspace-entries workspace)) 1)))
+      (set-frame-parameter nil 'atelier-workspace-id old-selection)
+      (dolist (buffer (list left right))
+        (when (buffer-live-p buffer) (kill-buffer buffer))))))
+
+(ert-deftest atelier-navigator-close-visible-entry-keeps-a-workspace-replacement ()
+  (let* ((workspace (list :id "navigator-close" :name "navigator-close"
+                          :destination "local" :path "/tmp/" :entries nil))
+         (atelier-workspaces (list workspace))
+         (atelier-navigator-window-configurations nil)
+         (old-selection (atelier-current-workspace-id))
+         (replacement (generate-new-buffer "navigator-close-replacement"))
+         (closing (generate-new-buffer "navigator-close-current")))
+    (unwind-protect
+        (save-window-excursion
+          (atelier-select-workspace workspace)
+          (delete-other-windows)
+          (dolist (buffer (list replacement closing))
+            (atelier-register-buffer buffer workspace)
+            (switch-to-buffer buffer))
+          (cl-letf (((symbol-function 'display-graphic-p) (lambda (&optional _) t))
+                    ((symbol-function 'myconfig-normalize-directory)
+                     #'file-name-as-directory)
+                    ((symbol-function 'y-or-n-p) (lambda (&rest _) t)))
+            (atelier-navigator)
+            (goto-char (point-min))
+            (let ((position
+                   (cl-find-if
+                    (lambda (candidate)
+                      (pcase (get-text-property candidate 'atelier-navigator-target)
+                        (`(workspace-buffer ,_ ,_ ,entry-id)
+                         (eq (atelier-entry-live-buffer
+                              (atelier-entry-by-id workspace entry-id))
+                             closing))))
+                    (atelier-navigator-positions))))
+              (should position)
+              (goto-char position)
+              (atelier-navigator-close)
+              (atelier-navigator-quit)))
+          (should-not (buffer-live-p closing))
+          (should (eq (window-buffer) replacement))
+          (should (= (length (atelier-workspace-entries workspace)) 1)))
+      (set-frame-parameter nil 'atelier-workspace-id old-selection)
+      (dolist (buffer (list replacement closing))
+        (when (buffer-live-p buffer) (kill-buffer buffer))))))
+
+(ert-deftest atelier-navigator-sorts-all-workspace-entries-by-permanent-id ()
+  (let* ((first-split '(:id "entry-z" :kind scratch :name "first split"))
+         (second-split '(:id "entry-a" :kind scratch :name "second split"))
+         (hidden '(:id "entry-m" :kind scratch :name "hidden"))
+         (layout (list :id "layout" :kind 'layout :displayed t
+                       :children (list first-split second-split)))
+         (workspace (list :id "sorted-workspace" :name "sorted"
+                          :destination "local" :path "/tmp/"
+                          :entries (list layout hidden)))
+         (atelier-workspaces (list workspace))
+         targets)
+    (cl-letf (((symbol-function 'myconfig-normalize-directory)
+               #'file-name-as-directory))
+      (with-current-buffer (atelier-render-navigator)
+        (dolist (position (atelier-navigator-positions))
+          (when-let* ((target (get-text-property position 'atelier-navigator-target))
+                      ((memq (car target) '(workspace-buffer workspace-owned-buffer))))
+            (push target targets)))))
+    (should
+     (equal (nreverse targets)
+            '((workspace-buffer "sorted" 1 "entry-a")
+              (workspace-owned-buffer "sorted" "entry-m")
+              (workspace-buffer "sorted" 0 "entry-z"))))))
 
 (ert-deftest atelier-dired-mouse-open-uses-the-current-buffer-path ()
   (let (point-set opened)
@@ -535,7 +680,7 @@
          (selected (cl-find (plist-get migrated :current-workspace-id) workspaces
                             :key (lambda (workspace) (plist-get workspace :id))
                             :test #'equal)))
-    (should (= (plist-get migrated :version) 6))
+    (should (= (plist-get migrated :version) 7))
     (should (equal (plist-get selected :name) "two"))
     (should (cl-every (lambda (workspace)
                         (and (stringp (plist-get workspace :id))
@@ -562,7 +707,7 @@
          (migrated (myconfig-validate-state data))
          (workspace (car (plist-get migrated :workspaces)))
          (root (atelier-workspace-displayed-entry workspace)))
-    (should (= (plist-get migrated :version) 6))
+    (should (= (plist-get migrated :version) 7))
     (should (atelier-layout-entry-p root))
     (should (equal (mapcar (lambda (entry) (plist-get entry :id))
                            (atelier-workspace-displayed-entries workspace))
@@ -695,7 +840,7 @@
     (should (equal (aipanel-agent-arguments agent "/project/" t t)
                    '("." "--auto" "--mini")))))
 
-(ert-deftest aipanel-lists-installed-host-and-wsl-agents ()
+(ert-deftest aipanel-lists-only-agents-in-the-attached-environment ()
   (let ((aipanel-agents
          '((:id opencode :name "OpenCode" :program "opencode")
            (:id fx :name "fx" :program "fx")
@@ -705,15 +850,23 @@
               ((symbol-function 'aipanel-run-wsl-probe)
                (lambda (&optional _distribution)
                  '(:distribution "Ubuntu" :programs ("fx")))))
-      (let ((labels (mapcar #'car (aipanel-candidates))))
-        (should (equal labels '("OpenCode (host)" "fx (WSL: Ubuntu)")))))))
+      (should
+       (equal (mapcar #'car (aipanel-candidates '(:location host)))
+              '("OpenCode (host)")))
+      (should
+       (equal (mapcar #'car
+                      (aipanel-candidates
+                       '(:location wsl :destination "Ubuntu")))
+              '("fx (WSL: Ubuntu)"))))))
 
 (ert-deftest aipanel-uses-the-only-installed-agent-without-prompting ()
   (cl-letf (((symbol-function 'aipanel-candidates)
-             (lambda () '(("fx (host)" . (:agent (:id fx) :location host)))))
+              (lambda (&optional _owner)
+                '(("fx (host)" . (:agent (:id fx) :location host)))))
             ((symbol-function 'completing-read)
              (lambda (&rest _arguments) (ert-fail "A single agent should not prompt"))))
-    (should (equal (plist-get (aipanel-read-agent) :location) 'host))))
+    (should (equal (plist-get (aipanel-read-agent '(:location host)) :location)
+                   'host))))
 
 (ert-deftest aipanel-cleanup-emits-one-lifecycle-event ()
   (let ((buffer (generate-new-buffer " *aipanel-cleanup-test*"))
@@ -828,6 +981,226 @@
           (myconfig-job-process-exited buffer)
           (should-not (atelier-workspace-entries workspace)))
       (when (buffer-live-p buffer) (kill-buffer buffer)))))
+
+(ert-deftest aipanel-standalone-attachment-uses-buffer-directory-and-identity ()
+  (let ((source (generate-new-buffer "aipanel-standalone-source")))
+    (unwind-protect
+        (with-current-buffer source
+          (setq default-directory "/tmp/project/src/")
+          (let ((owner (aipanel-default-owner)))
+            (should (eq (plist-get owner :id) source))
+            (should (eq (plist-get owner :source-buffer) source))
+            (should (equal (plist-get owner :directory) "/tmp/project/src/"))
+            (should (eq (plist-get owner :location) 'host))))
+      (when (buffer-live-p source) (kill-buffer source)))))
+
+(ert-deftest aipanel-context-is-relative-to-the-process-working-directory ()
+  (let ((source (generate-new-buffer "aipanel-relative-context")))
+    (unwind-protect
+        (with-current-buffer source
+          (setq default-directory "/tmp/project/src/"
+                buffer-file-name "/tmp/project/src/lib/example.el")
+          (insert "first\nsecond")
+          (goto-char (point-min))
+          (forward-line 1)
+          (forward-char 2)
+          (should
+           (equal (aipanel-default-context (aipanel-default-owner) nil)
+                  "lib/example.el:L2:C3: ")))
+      (when (buffer-live-p source) (kill-buffer source)))))
+
+(ert-deftest aipanel-killing-standalone-source-removes-its-panel ()
+  (let ((source (generate-new-buffer "aipanel-killed-source"))
+        (panel (generate-new-buffer "aipanel-killed-panel"))
+        (aipanel-sessions (make-hash-table :test #'equal))
+        (aipanel-buffer-exited-hook nil))
+    (unwind-protect
+        (let ((owner (with-current-buffer source (aipanel-default-owner))))
+          (aipanel-adopt-buffer
+           panel owner '(:agent (:id fx :program "fx") :location host))
+          (kill-buffer source)
+          (should-not (buffer-live-p panel))
+          (should-not (gethash source aipanel-sessions)))
+      (dolist (buffer (list source panel))
+        (when (buffer-live-p buffer) (kill-buffer buffer))))))
+
+(ert-deftest aipanel-atelier-attaches-to-the-current-layout-leaf ()
+  (let* ((source (generate-new-buffer "aipanel-leaf-source"))
+         (other '(:id "other-leaf" :kind scratch :name "other"))
+         (leaf '(:id "source-leaf" :kind scratch :name "source"
+                      :directory "/tmp/project/src/"))
+         (layout (list :id "layout-root" :kind 'layout :displayed t
+                       :orientation 'horizontal :ratio 0.5
+                       :children (list other leaf)))
+         (workspace (list :id "leaf-workspace" :name "leaf-workspace"
+                          :destination "local" :path "/tmp/project/"
+                          :platform 'local :entries (list layout)))
+         (atelier-workspaces (list workspace))
+         (old-selection (atelier-current-workspace-id)))
+    (unwind-protect
+        (progn
+          (atelier-select-workspace workspace)
+          (with-current-buffer source
+            (setq default-directory "/tmp/project/src/")
+            (atelier-entry-set-live-buffer leaf source)
+            (cl-letf (((symbol-function 'myconfig-windows-workspace-p)
+                       (lambda (_) nil))
+                      ((symbol-function 'myconfig-wsl-workspace-p)
+                       (lambda (_) nil)))
+              (let ((owner (aipanel-atelier-owner)))
+                (should (equal (plist-get owner :id) "source-leaf"))
+                (should (equal (plist-get owner :entry-id) "source-leaf"))
+                (should (equal (plist-get owner :directory) "/tmp/project/src/"))))))
+      (set-frame-parameter nil 'atelier-workspace-id old-selection)
+      (when (buffer-live-p source) (kill-buffer source)))))
+
+(ert-deftest aipanel-atelier-terminal-records-attachment-and-allows-duplicates ()
+  (let (captured-agent captured-explicit)
+    (cl-letf (((symbol-function 'myconfig-terminal-buffer)
+               (lambda (_name _directory _program _arguments _workspace
+                              _shell agent _type explicit)
+                 (setq captured-agent agent captured-explicit explicit)
+                 'panel-buffer))
+              ((symbol-function 'aipanel-atelier-workspace)
+               (lambda (_owner) '(:id "workspace"))))
+      (should
+       (eq (aipanel-atelier-terminal
+            "panel" "/tmp/" "fx" nil
+            '(:entry-id "source-entry" :directory "/tmp/project/"
+              :emacs-directory "/tmp/project/" :destination "local"
+              :platform local :location host)
+            '(:agent (:id fx) :location host))
+           'panel-buffer))
+      (should captured-explicit)
+      (should
+       (equal (plist-get (plist-get captured-agent :attachment) :entry-id)
+              "source-entry")))))
+
+(ert-deftest aipanel-atelier-panel-persistence-follows-its-source-entry ()
+  (let* ((source '(:id "transient-source" :kind transient :name "source"
+                        :persistent nil))
+         (workspace (list :id "transient-workspace" :name "transient"
+                          :entries (list source)))
+         (atelier-workspaces (list workspace))
+         (panel (generate-new-buffer "aipanel-transient-panel"))
+         panel-entry)
+    (unwind-protect
+        (cl-letf (((symbol-function 'myconfig-terminal-buffer)
+                   (lambda (_name _directory _program _arguments owner-workspace
+                                  _shell agent type _explicit)
+                     (setq panel-entry
+                           (list :id "transient-panel" :kind 'terminal :type type
+                                 :name (buffer-name panel) :persistent t
+                                 :job (list :id "transient-job"
+                                            :buffer (buffer-name panel)
+                                            :policy 'auto :agent agent)))
+                     (atelier-entry-add owner-workspace panel-entry t)
+                     (atelier-entry-set-live-buffer panel-entry panel)
+                     panel)))
+          (aipanel-atelier-terminal
+           "panel" "/tmp/" "fx" nil
+           '(:entry-id "transient-source" :workspace-id "transient-workspace"
+             :directory "/tmp/" :emacs-directory "/tmp/"
+             :destination "local" :platform local :location host)
+           '(:agent (:id fx) :location host))
+          (should-not (plist-get panel-entry :persistent)))
+      (when (buffer-live-p panel) (kill-buffer panel)))))
+
+(ert-deftest aipanel-atelier-removing-source-removes-attached-panel ()
+  (let* ((source-buffer (generate-new-buffer "aipanel-remove-source"))
+         (panel-buffer (generate-new-buffer "aipanel-remove-panel"))
+         (source (list :id "remove-source" :kind 'scratch :name "source"))
+         (job (list :id "remove-panel-job" :buffer (buffer-name panel-buffer)
+                    :policy 'auto :agent '(:id fx)))
+         (panel-entry (list :id "remove-panel-entry" :kind 'terminal
+                            :type 'aipanel :name (buffer-name panel-buffer)
+                            :job job))
+         (workspace (list :id "remove-workspace" :name "remove"
+                          :entries (list source panel-entry)))
+         (atelier-workspaces (list workspace))
+         (aipanel-sessions (make-hash-table :test #'equal))
+         (aipanel-buffer-exited-hook '(aipanel-atelier-buffer-exited))
+         (atelier-entry-removed-hook '(aipanel-atelier-entry-removed)))
+    (unwind-protect
+        (cl-letf (((symbol-function 'atelier-notify-change) #'ignore)
+                  ((symbol-function 'myconfig-persist-schedule) #'ignore))
+          (atelier-entry-set-live-buffer source source-buffer)
+          (atelier-entry-set-live-buffer panel-entry panel-buffer)
+          (aipanel-adopt-buffer
+           panel-buffer
+           (list :id "remove-source" :entry-id "remove-source"
+                 :source-buffer source-buffer)
+           '(:agent (:id fx :program "fx") :location host))
+          (atelier-entry-remove workspace source t)
+          (should-not (buffer-live-p panel-buffer))
+          (should-not (atelier-entry-by-id workspace "remove-panel-entry")))
+      (dolist (buffer (list source-buffer panel-buffer))
+        (when (buffer-live-p buffer) (kill-buffer buffer))))))
+
+(ert-deftest aipanel-atelier-moving-source-moves-its-panel-entry ()
+  (let* ((source-buffer (generate-new-buffer "aipanel-move-source"))
+         (panel-buffer (generate-new-buffer "aipanel-move-panel"))
+         (source (list :id "move-panel-source" :kind 'scratch :name "source"))
+         (job (list :id "move-panel-job" :buffer (buffer-name panel-buffer)
+                    :policy 'auto :agent '(:id fx)))
+         (panel-entry (list :id "moving-panel-entry" :kind 'terminal
+                            :type 'aipanel :name (buffer-name panel-buffer)
+                            :job job))
+         (old (list :id "old-panel-workspace" :name "old"
+                    :entries (list source panel-entry)))
+         (new (list :id "new-panel-workspace" :name "new" :entries nil))
+         (atelier-workspaces (list old new))
+         (aipanel-sessions (make-hash-table :test #'equal))
+         (atelier-entry-moved-hook '(aipanel-atelier-entry-moved)))
+    (unwind-protect
+        (progn
+          (atelier-entry-set-live-buffer source source-buffer)
+          (atelier-entry-set-live-buffer panel-entry panel-buffer)
+          (aipanel-adopt-buffer
+           panel-buffer
+           (list :id "move-panel-source" :entry-id "move-panel-source"
+                 :workspace-id "old-panel-workspace" :source-buffer source-buffer)
+           '(:agent (:id fx :program "fx") :location host))
+          (atelier-entry-move source old new)
+          (should-not (atelier-entry-by-id old "move-panel-source"))
+          (should-not (atelier-entry-by-id old "moving-panel-entry"))
+          (should (eq (atelier-entry-by-id new "move-panel-source") source))
+          (should (eq (atelier-entry-by-id new "moving-panel-entry") panel-entry))
+          (should
+           (equal (plist-get (buffer-local-value 'aipanel-owner panel-buffer)
+                             :workspace-id)
+                  "new-panel-workspace")))
+      (dolist (buffer (list source-buffer panel-buffer))
+        (when (buffer-live-p buffer) (kill-buffer buffer))))))
+
+(ert-deftest atelier-v7-migration-keeps-only-source-attached-panels ()
+  (let* ((source '(:id "migration-source" :kind scratch :name "source"
+                        :persistent t))
+         (legacy '(:id "legacy-panel" :kind terminal :type aipanel
+                        :name "legacy" :persistent t
+                        :job (:id "legacy-job" :buffer "legacy" :policy auto
+                              :agent (:id fx))))
+         (attached '(:id "attached-panel" :kind terminal :type aipanel
+                          :name "attached" :persistent t
+                          :job (:id "attached-job" :buffer "attached" :policy auto
+                                :agent (:id fx :attachment
+                                       (:entry-id "migration-source")))))
+         (data (list :version 6 :generation "migration-v7"
+                     :current-workspace-id "migration-workspace"
+                     :ssh-destinations nil
+                     :workspaces
+                     (list (list :id "migration-workspace" :name "migration"
+                                 :destination "local" :path "/tmp/" :status 'running
+                                 :entries (list source legacy attached)))))
+         (migrated (myconfig-validate-state data))
+         (entries (atelier-workspace-entries (car (plist-get migrated :workspaces)))))
+    (should (= (plist-get migrated :version) 7))
+    (should (cl-find "migration-source" entries :key (lambda (entry) (plist-get entry :id))
+                     :test #'equal))
+    (should-not (cl-find "legacy-panel" entries :key (lambda (entry) (plist-get entry :id))
+                         :test #'equal))
+    (should (cl-find "attached-panel" entries :key (lambda (entry) (plist-get entry :id))
+                     :test #'equal))))
 
 (ert-deftest atelier-job-observer-preserves-stopped-terminal-recipe ()
   (let* ((recipe '(:executable "/bin/bash" :argv ("/bin/bash" "-l")

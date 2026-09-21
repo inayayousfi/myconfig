@@ -873,7 +873,7 @@ When EXPLICIT is non-nil, permit another Dired entry of the same type."
                            :name name :destination destination :path path
                            :platform platform :mount-root mount-root
                            :created (float-time) :status 'running
-                           :entries nil :agent-directory nil)))
+                           :entries nil)))
       (atelier-capture-current-workspace)
       (setq atelier-workspaces (append atelier-workspaces (list workspace)))
       (run-hook-with-args 'atelier-workspace-created-hook workspace)
@@ -931,8 +931,7 @@ When EXPLICIT is non-nil, permit another Dired entry of the same type."
                     :path (if remote (file-remote-p root 'localname) root)
                     :platform (and remote 'posix)
                     :mount-root nil :created (float-time) :status 'running
-                    :entries nil
-                    :agent-directory nil)))
+                    :entries nil)))
         (atelier-capture-current-workspace)
         (setq atelier-workspaces (append atelier-workspaces (list workspace)))
         (run-hook-with-args 'atelier-workspace-created-hook workspace)
@@ -1255,8 +1254,7 @@ Interactively, choose an entry from the current workspace."
            (list :id (atelier-new-workspace-id)
                  :name name :destination "local" :path root :platform 'local
                  :mount-root nil :created (float-time)
-                 :status 'running :entries nil
-                 :agent-directory nil)))
+                 :status 'running :entries nil)))
       (setq atelier-workspaces (list workspace))
       (atelier-ensure-detached-workspace)
       (atelier-select-workspace workspace)

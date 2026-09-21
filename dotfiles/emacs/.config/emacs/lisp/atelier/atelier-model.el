@@ -11,6 +11,7 @@
 (defvar atelier-job-owner-workspace nil)
 (defvar atelier-job-owner-entry nil)
 (defvar atelier-preserve-job-recipe nil)
+(defvar atelier-inhibit-entry-removed-hook nil)
 (defvar atelier-navigator-window-configurations nil)
 (defvar atelier-agent-restored-functions nil)
 (defvar atelier-directory-choice-result nil)
@@ -133,11 +134,10 @@ Unlike `plist-put', this always preserves PLIST's cons identity."
       (setq workspace
             (list :id atelier-detached-workspace-id
                   :name atelier-detached-workspace-name
-                  :destination "local"
-                  :path (file-name-as-directory (expand-file-name "~/"))
-                  :platform 'local :mount-root nil :created 0
-                  :status 'running :entries nil
-                  :agent-directory nil :reserved t)
+                   :destination "local"
+                   :path (file-name-as-directory (expand-file-name "~/"))
+                   :platform 'local :mount-root nil :created 0
+                  :status 'running :entries nil :reserved t)
             atelier-workspaces (cons workspace atelier-workspaces)))
     ;; These fields are invariants, not user-editable workspace settings.
     (setf (plist-get workspace :name) atelier-detached-workspace-name
@@ -349,8 +349,9 @@ another entry of that type."
                    (atelier-workspace-top-level-entries workspace))))
     (dolist (leaf (atelier-entry-leaves entry))
       (remhash (plist-get leaf :id) atelier-entry-live-buffers)))
+  (unless atelier-inhibit-entry-removed-hook
+    (run-hook-with-args 'atelier-entry-removed-hook workspace entry))
   (unless no-notify
-    (run-hook-with-args 'atelier-entry-removed-hook workspace entry)
     (run-hooks 'atelier-change-hook))
   entry)
 
@@ -358,7 +359,8 @@ another entry of that type."
   "Move ENTRY from OLD-WORKSPACE to NEW-WORKSPACE atomically."
   (unless (eq old-workspace new-workspace)
     (let ((buffer (atelier-entry-live-buffer entry)))
-      (atelier-entry-remove old-workspace entry t)
+      (let ((atelier-inhibit-entry-removed-hook t))
+        (atelier-entry-remove old-workspace entry t))
       (atelier-plist-clear! entry :displayed)
       (atelier-plist-clear! entry :selected)
       (atelier-entry-add new-workspace entry t)

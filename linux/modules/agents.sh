@@ -33,10 +33,11 @@ module_agents_packages() {
 link_agent_config() {
     local skills_dir="$HOME/.agents/skills"
     [ -d "$skills_dir" ] || myconfig_fail "agent skills were not stowed"
+    [ -f "$HOME/.agents/AGENTS.md" ] || myconfig_fail "global AGENTS.md was not stowed"
 
     mkdir -p "$HOME/.claude/skills" "$HOME/.config/opencode"
 
-    local linked_skill linked_target skill_dir skill
+    local linked_skill linked_target skill_dir skill opencode_agents
     for linked_skill in "$HOME/.claude/skills"/*; do
         [ -L "$linked_skill" ] || continue
         linked_target="$(readlink "$linked_skill")"
@@ -55,7 +56,11 @@ link_agent_config() {
         ln -sfn "../../.agents/skills/$skill" "$HOME/.claude/skills/$skill"
     done
 
-    ln -sfn "$HOME/.agents/AGENTS.md" "$HOME/.config/opencode/AGENTS.md"
+    opencode_agents="$HOME/.config/opencode/AGENTS.md"
+    ln -sfnT "$HOME/.agents/AGENTS.md" "$opencode_agents"
+    [ -L "$opencode_agents" ] \
+        && [ "$(readlink "$opencode_agents")" = "$HOME/.agents/AGENTS.md" ] \
+        || myconfig_fail "OpenCode AGENTS bridge was not created"
 }
 
 write_environment_inventory() {

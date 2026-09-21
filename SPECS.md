@@ -61,7 +61,7 @@ Modules request logical package identifiers. `linux/registry/packages.sh` maps e
 
 The shared installer validates sudo once before package preparation and refreshes that credential every 60 seconds until the profile exits. Long package builds therefore do not ask for the same password again. The refresh process is stopped on both successful and failed exits.
 
-Linux profiles copy selected packages into `~/dotfiles`, back up the previous tree, back up conflicting home files, and run GNU Stow. CachyOS selects `zsh`, `yazi`, `ai`, `opencode`, `kanata`, `kanata-kde`, `handy`, `kde-plasma`, `emacs`, `phone`, and `pipewire`; the PipeWire configuration downmixes playback to mono without changing capture, and a KDE system-tray toggle enables or disables that downmix. Arch WSL selects `zsh`, `yazi`, `ai`, and `opencode`; it retains the Neovim binary without a managed configuration as its shell editor. Ubuntu Server selects only `zsh`.
+Linux profiles copy selected packages into `~/dotfiles`, back up the previous tree, back up conflicting home files, and run GNU Stow. CachyOS selects `zsh`, `yazi`, `ai`, `kanata`, `kanata-kde`, `handy`, `kde-plasma`, `emacs`, `phone`, and `pipewire`; the PipeWire configuration downmixes playback to mono without changing capture, and a KDE system-tray toggle enables or disables that downmix. Arch WSL selects `zsh`, `yazi`, and `ai`; it retains the Neovim binary without a managed configuration as its shell editor. Ubuntu Server selects only `zsh`.
 
 The complete profiles configure OpenSSH as a system service that listens on all IPv4 and IPv6 interfaces and allows only the current user. They also install Tailscale as a system service. The installer validates the SSH daemon configuration before enabling and restarting it, but leaves authentication policy and network perimeter security at OpenSSH and system defaults.
 
@@ -497,7 +497,7 @@ Disabling the timeouts stops WSL shutting the instance down, but nothing starts 
 
 The Arch WSL setup installs packages through `pacman` and `paru`, including `base-devel`, `rustup`, `openssh`, `zsh`, `rsync`, `stow`, `wsl2-ssh-agent`, `ripgrep`, `go`, `yazi-git`, `ffmpeg`, `7zip`, `jq`, `poppler`, `fd`, `fzf`, `bat`, `zoxide`, `resvg`, `imagemagick`, `eza`, `llvm`, `bun`, `python`, `fastfetch`, `lazygit`, `jdk-openjdk`, `maven`, `make`, `cmake`, `btop`, `tokei`, `hunk-bin`, `neovim`, `nodejs`, `npm`, `node-gyp`, `opencode`, and `github-cli`. Neovim remains the unconfigured shell editor; the profile does not stow the archived Neovim, tmux, Lazygit, or Hunk packages.
 
-The shared profile installs the latest Playwright MCP package through Bun, then downloads only its matching Chromium Headless Shell. The `opencode` Stow package owns the shared `opencode.jsonc`, `tui.json`, and `themes/blacknpink.json`: it launches Playwright through `{env:HOME}`, applies the Black & Pink theme, and binds half-page message scrolling to `Ctrl+U` and `Ctrl+D`. Machine-specific MCP servers can live in untracked `~/.config/opencode/config.json`, which OpenCode merges with the tracked runtime file. Existing conflicting configs are backed up but not migrated automatically. The installer validates the merged runtime configuration after Stow. Invalid configuration, browser failures, and SSH service failures stop the profile. Missing GitHub or Tailscale authentication offers an interactive login, or prints the deferred command without failing.
+The shared profile installs the latest Playwright MCP package through Bun, then downloads only its matching Chromium Headless Shell. The `ai` Stow package owns the shared agent instructions, skills, Claude configuration, and OpenCode configuration. OpenCode launches Playwright through `{env:HOME}`, applies the Black & Pink theme, binds half-page message scrolling to `Ctrl+U` and `Ctrl+D`, and receives its single generated `AGENTS.md` link during agent configuration. Machine-specific MCP servers can live in untracked `~/.config/opencode/config.json`, which OpenCode merges with the tracked runtime file. Existing conflicting configs are backed up but not migrated automatically. The installer validates the merged runtime configuration after Stow. Invalid configuration, browser failures, and SSH service failures stop the profile. Missing GitHub or Tailscale authentication offers an interactive login, or prints the deferred command without failing.
 
 The shared `update()` function updates global Bun packages, then updates Chromium Headless Shell when the Playwright command exists in Bun's global package workspace. Browser update failures produce a warning and do not stop later updates. The same browser step runs after Homebrew updates on macOS.
 
@@ -510,7 +510,6 @@ Arch WSL syncs and stows these shared dotfile packages from the Windows-accessib
 - `zsh`
 - `yazi`
 - `ai`
-- `opencode`
 
 ---
 
@@ -538,7 +537,6 @@ myconfig/
 │   │   ├── nvim/
 │   │   ├── tmux/
 │   │   └── zed/
-│   ├── opencode/
 │   ├── qbt-search/
 │   ├── wallpaper/
 │   ├── yazi/
@@ -572,13 +570,12 @@ myconfig/
 
 | Package | Description | Primary Target |
 | --- | --- | --- |
-| `ai` | Claude Code global instructions, skills, and settings | `~/.claude/` |
+| `ai` | Shared agent instructions, skills, Claude configuration, and OpenCode runtime | `~/.agents/`, `~/.claude/`, and `$XDG_CONFIG_HOME/opencode/` |
 | `emacs` | Normal-process graphical workbench | `$XDG_CONFIG_HOME/emacs/` |
 | `hermes` | Hermes config | `$XDG_CONFIG_HOME/hermes/` |
 | `hyfetch` | Hyfetch config | `$XDG_CONFIG_HOME/hyfetch.json` |
 | `kanata` | Portable key mappings and user service | `$XDG_CONFIG_HOME/kanata/` and user systemd units |
 | `kanata-kde` | Independent KDE tray for Kanata layer selection | `~/.local/bin/` and user systemd units |
-| `opencode` | OpenCode runtime, TUI, and Black & Pink theme | `$XDG_CONFIG_HOME/opencode/` |
 | `qbt-search` | qBittorrent search plugins | Application-specific search plugin directory |
 | `wallpaper` | Wallpaper assets | Wallpaper directory |
 | `yazi` | Yazi config and flavor | `$XDG_CONFIG_HOME/yazi/` |

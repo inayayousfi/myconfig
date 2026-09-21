@@ -2,8 +2,8 @@
 
 dotfile_packages_for_profile() {
     case "$MYCONFIG_PROFILE" in
-        cachyos) printf '%s\n' zsh yazi ai opencode kanata kanata-kde handy kde-plasma emacs phone pipewire ;;
-        arch-wsl) printf '%s\n' zsh yazi ai opencode ;;
+        cachyos) printf '%s\n' zsh yazi ai kanata kanata-kde handy kde-plasma emacs phone pipewire ;;
+        arch-wsl) printf '%s\n' zsh yazi ai ;;
         ubuntu-server) printf '%s\n' zsh ;;
         *) myconfig_fail "dotfile packages are undefined for $MYCONFIG_PROFILE" ;;
     esac
@@ -180,4 +180,8 @@ module_dotfiles() {
     for package in "${packages[@]}"; do
         stow --dir "$dotfiles_dir" --target "$HOME" --restow "$package"
     done
+
+    if [ -d "$dotfiles_dir/ai/.agents" ] && declare -F link_agent_config >/dev/null; then
+        link_agent_config
+    fi
 }

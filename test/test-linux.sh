@@ -1355,8 +1355,13 @@ agents_packages_source="$(declare -f module_agents_packages)"
 agents_configure_source="$(declare -f module_agents_configure)"
 [[ "$agents_configure_source" == *'systemctl --user enable ydotool.service'* ]] \
     || myconfig_fail "CachyOS agent module does not enable ydotoold"
+[[ -d "$REPO_ROOT/dotfiles/ai/.config/opencode" ]] \
+    || myconfig_fail "AI dotfile package does not own the OpenCode configuration"
+[[ ! -e "$REPO_ROOT/dotfiles/opencode" ]] \
+    || myconfig_fail "OpenCode remains a separate dotfile package"
 agents_home="$TEST_HOME/agents-home"
 mkdir -p "$agents_home/.agents/skills/demo" "$agents_home/.claude/skills" "$agents_home/.config/opencode"
+printf '%s\n' '# Test global instructions' > "$agents_home/.agents/AGENTS.md"
 ln -s "../../.agents/skills/stale" "$agents_home/.claude/skills/stale"
 HOME="$agents_home"
 link_agent_config

@@ -10,7 +10,6 @@
 (require 'aipan)
 (require 'atelier)
 (require 'myconfig-terminal)
-(require 'myconfig-windows)
 
 (defun aipanel-atelier-entry-directory (workspace entry)
   "Return ENTRY's live Emacs directory in WORKSPACE."
@@ -22,13 +21,7 @@
 
 (defun aipanel-atelier-execution-directory (workspace emacs-directory)
   "Map EMACS-DIRECTORY to the directory used inside WORKSPACE's agent host."
-  (cond
-   ((myconfig-windows-workspace-p workspace)
-    (myconfig-windows-native-path
-     (myconfig-windows-remote-path workspace emacs-directory)))
-   ((file-remote-p emacs-directory)
-    (file-name-as-directory (file-remote-p emacs-directory 'localname)))
-   (t emacs-directory)))
+  (funcall atelier-execution-directory-function workspace emacs-directory))
 
 (defun aipanel-atelier-owner ()
   "Return an AIPanel attachment for the current Atelier leaf entry."
@@ -52,7 +45,7 @@
             :emacs-directory emacs-directory
             :destination (plist-get workspace :destination)
             :platform (or (plist-get workspace :platform) 'local)
-            :location (cond ((myconfig-wsl-workspace-p workspace) 'wsl)
+            :location (cond ((eq (plist-get workspace :platform) 'wsl) 'wsl)
                             ((equal (plist-get workspace :destination) "local") 'host)
                             (t 'ssh))))))
 
@@ -61,57 +54,13 @@
   (or (atelier-entry-workspace (plist-get owner :entry-id))
       (atelier-workspace-by-id (plist-get owner :workspace-id))))
 
-(defun aipanel-atelier-powershell-quote (value)
-  (concat "'" (replace-regexp-in-string "'" "''" value t t) "'"))
-
-(defun aipanel-atelier-powershell-encoded-command (script)
-  (base64-encode-string (encode-coding-string script 'utf-16le t) t))
-
-(defun aipanel-atelier-run-windows-probe (destination)
-  "Return installed agent programs on Windows SSH DESTINATION."
-  (when-let* ((ssh (executable-find "ssh")))
-    (let* ((clauses
-            (mapcar
-             (lambda (program)
-               (format "if (Get-Command -Name %s -ErrorAction SilentlyContinue) { Write-Output %s }"
-                       (aipanel-atelier-powershell-quote program)
-                       (aipanel-atelier-powershell-quote program)))
-             (aipanel-programs)))
-           (encoded (aipanel-atelier-powershell-encoded-command
-                     (string-join clauses "; "))))
-      (myconfig-platform-run-command-lines
-       (list ssh destination
-             (format "powershell.exe -NoProfile -NonInteractive -EncodedCommand %s"
-                     encoded))
-       aipanel-wsl-probe-timeout))))
-
 (defun aipanel-atelier-candidates (owner)
   "Return installed agents in OWNER's Atelier execution environment."
-  (if (eq (plist-get owner :platform) 'windows)
-      (let ((destination (plist-get owner :destination)))
-        (aipanel-candidates-for-programs
-         (aipanel-atelier-run-windows-probe destination)
-         'ssh destination (format "SSH: %s" destination)))
-    (aipanel-default-candidates owner)))
+  (aipanel-default-candidates owner))
 
 (defun aipanel-atelier-command (owner selection mini)
   "Build the matching-environment command for OWNER and SELECTION."
-  (if (eq (plist-get owner :platform) 'windows)
-      (let* ((agent (plist-get selection :agent))
-             (directory (plist-get owner :directory))
-             (arguments (aipanel-agent-arguments agent directory mini t))
-             (script
-              (format "Set-Location -LiteralPath %s; & %s %s"
-                      (aipanel-atelier-powershell-quote directory)
-                      (aipanel-atelier-powershell-quote (plist-get agent :program))
-                      (mapconcat #'aipanel-atelier-powershell-quote arguments " ")))
-             (encoded (aipanel-atelier-powershell-encoded-command script)))
-        (list :program "ssh" :directory (myconfig-home-directory)
-              :arguments
-              (list "-t" (plist-get owner :destination)
-                    (format "powershell.exe -NoLogo -NoProfile -EncodedCommand %s"
-                            encoded))))
-    (aipanel-default-command owner selection mini)))
+  (aipanel-default-command owner selection mini))
 
 (defun aipanel-atelier-context (owner _buffer)
   "Return source context relative to OWNER's actual agent directory."

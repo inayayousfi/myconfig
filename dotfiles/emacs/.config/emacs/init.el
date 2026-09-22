@@ -5,14 +5,14 @@
 (let ((lisp-directory (expand-file-name "lisp" myconfig-config-directory)))
   (add-to-list 'load-path lisp-directory)
   (add-to-list 'load-path (expand-file-name "atelier" lisp-directory)))
-(require 'myconfig-platform)
+(require 'univers)
 (require 'ls-lisp)
 (setq ls-lisp-use-insert-directory-program nil
       ls-lisp-dirs-first t)
 (defconst myconfig-data-directory
-  (myconfig-platform-path 'data "myconfig-emacs"))
+  (universel-standard-path 'data "myconfig-emacs"))
 (defconst myconfig-runtime-state-directory
-  (myconfig-platform-path 'state "myconfig-emacs"))
+  (universel-standard-path 'state "myconfig-emacs"))
 
 (dolist (directory (list myconfig-data-directory myconfig-runtime-state-directory))
   (make-directory directory t))
@@ -44,11 +44,7 @@
 
 (let ((user-bin (expand-file-name "~/.local/bin")))
   (when (file-directory-p user-bin)
-    (add-to-list 'exec-path user-bin)
-    (setenv "PATH" (mapconcat #'identity
-                              (delete-dups
-                               (cons user-bin (parse-colon-path (getenv "PATH"))))
-                              path-separator))))
+    (universel-prepend-exec-path user-bin)))
 
 (require 'cl-lib)
 (require 'package)
@@ -94,8 +90,9 @@
   `(evil evil-collection vertico orderless marginalia consult corfu cape
          yasnippet yasnippet-capf avy ghostel evil-ghostel magit diff-hl blamer flyover apheleia eldoc-box
          treesit-auto mason dape multiple-cursors
-         ,@(when (eq system-type 'gnu/linux) '(simple-httpd websocket))
-         ,@(when (eq system-type 'windows-nt) '(treesit-langs)))
+         ,@(universel-select '((linux simple-httpd websocket)
+                               (windows treesit-langs))
+                             (universel-host-platform)))
   "Elisp packages required by the live Atelier.")
 
 (unless (cl-every #'package-installed-p myconfig-required-packages)
@@ -111,29 +108,24 @@
 (require 'mason)
 (let ((original-path (getenv "PATH")))
   (mason-setup)
-  ;; mason.el currently joins PATH with a literal colon, which corrupts native
-  ;; Windows drive-letter paths.  Keep its bin directory but rebuild PATH with
-  ;; the separator for this host after setup starts.
-  (when (eq system-type 'windows-nt)
-    (setenv "PATH"
-            (mapconcat #'identity
-                       (delete-dups
-                        (cons (expand-file-name "bin" mason-dir)
-                              (parse-colon-path original-path)))
-                       path-separator))))
+  (universel-repair-mason-path original-path (expand-file-name "bin" mason-dir)))
 
 (require 'myconfig-core)
+(setq universel-log-function #'myconfig-log)
 (require 'myconfig-ui)
-(require 'myconfig-windows)
 (require 'atelier)
+(require 'universel-atelier)
+(universel-atelier-setup myconfig-runtime-state-directory)
 (require 'myconfig-persist)
 (require 'myconfig-editing)
 (require 'myconfig-terminal)
 (when (require 'aipan nil t)
+  (require 'universel-aipanel)
+  (universel-aipanel-setup)
   (require 'aipanel-atelier nil t))
 (require 'myconfig-git)
 (require 'myconfig-bindings)
-(when (eq system-type 'gnu/linux)
+(when (universel-platform-p 'linux (universel-host-platform))
   (require 'remot)
   (defun myconfig-remot-context (frame)
     (when-let* ((workspace (atelier-current-workspace frame)))
@@ -154,5 +146,5 @@
   (load custom-file nil t))
 
 (myconfig-initialize)
-(when (eq system-type 'gnu/linux)
+(when (universel-platform-p 'linux (universel-host-platform))
   (remot-setup))

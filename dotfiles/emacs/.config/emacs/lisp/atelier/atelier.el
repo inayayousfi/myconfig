@@ -6,8 +6,35 @@
 (require 'subr-x)
 (require 'tramp)
 (require 'myconfig-core)
-(require 'myconfig-windows)
 (require 'atelier-model)
+
+(defvar atelier-directory-function #'atelier-default-directory
+  "Function mapping a workspace record to an Emacs directory.")
+(defvar atelier-execution-directory-function #'atelier-default-execution-directory
+  "Function mapping workspace and Emacs path to an execution path.")
+(defvar atelier-target-directory-function #'atelier-default-execution-directory
+  "Function mapping workspace and Emacs path to a stored connection path.")
+(defvar atelier-terminal-command-function #'atelier-default-terminal-command
+  "Function returning a workspace terminal's launch plist.")
+(defvar atelier-release-function #'ignore
+  "Function called with workspace and optional force flag to release files.")
+(defvar atelier-extra-destinations nil
+  "Additional destinations supplied by an optional environment adapter.")
+
+(defun atelier-default-directory (workspace)
+  "Resolve WORKSPACE with standard Emacs local and remote file handling."
+  (let ((destination (plist-get workspace :destination))
+        (path (plist-get workspace :path)))
+    (if (equal destination "local") (file-name-as-directory (expand-file-name path))
+      (format "/%s:%s:%s" (if (eq (plist-get workspace :platform) 'wsl) "wsl" "ssh")
+              destination (file-name-as-directory path)))))
+
+(defun atelier-default-execution-directory (_workspace directory)
+  (or (file-remote-p directory 'localname) directory))
+
+(defun atelier-default-terminal-command (workspace)
+  (list :program nil :shell shell-file-name :arguments nil
+        :directory (atelier-workspace-directory workspace)))
 
 (defcustom atelier-shell-history-files
   (delete-dups
@@ -69,17 +96,9 @@
   "Tree branches and secondary navigator text.")
 
 (defun atelier-workspace-directory (&optional workspace)
-  (let* ((workspace (or workspace (atelier-current-workspace)))
-         (destination (plist-get workspace :destination))
-         (path (plist-get workspace :path)))
+  (let ((workspace (or workspace (atelier-current-workspace))))
     (unless workspace (user-error "No workspace is open"))
-    (cond
-     ((equal destination "local") (myconfig-normalize-directory path))
-     ((myconfig-wsl-workspace-p workspace)
-      (myconfig-wsl-workspace-directory workspace))
-     ((myconfig-windows-workspace-p workspace)
-      (myconfig-windows-workspace-directory workspace))
-     (t (format "/ssh:%s:%s" destination (file-name-as-directory path))))))
+    (funcall atelier-directory-function workspace)))
 
 (defun atelier-title ()
   (let ((workspace (atelier-current-workspace)))
@@ -775,7 +794,7 @@ When EXPLICIT is non-nil, permit another Dired entry of the same type."
     (delete-dups destinations)))
 
 (defun atelier-ssh-aliases ()
-  (let ((files (list (myconfig-ssh-config-file))) aliases)
+  (let ((files (list (expand-file-name "~/.ssh/config"))) aliases)
     (while files
       (let ((file (pop files)))
         (when (file-readable-p file)
@@ -790,14 +809,14 @@ When EXPLICIT is non-nil, permit another Dired entry of the same type."
               (dolist (pattern (split-string (match-string 1)))
                 (setq files (append (file-expand-wildcards
                                      (expand-file-name pattern
-                                                       (file-name-directory (myconfig-ssh-config-file))))
+                                                        (expand-file-name "~/.ssh/")))
                                     files))))))))
     (delete-dups (nreverse aliases))))
 
 (defun atelier-read-workspace-target ()
   (let* ((destinations (delete-dups
                         (append '("local")
-                                (when (myconfig-windows-host-p) '("WSL"))
+                                atelier-extra-destinations
                                 '("Enter SSH destination")
                                 (atelier-ssh-aliases)
                                 (atelier-shell-history-ssh-destinations)
@@ -825,9 +844,9 @@ When EXPLICIT is non-nil, permit another Dired entry of the same type."
                               ((eq platform 'posix) (format "/ssh:%s:" destination))))
          (directory (atelier-read-directory-with-dired
                      (cond ((eq platform 'wsl) remote-prefix)
-                           (probe (myconfig-windows-workspace-directory probe))
+                            (probe (funcall atelier-directory-function probe))
                            (remote-prefix remote-prefix)
-                           (t (myconfig-home-directory))))))
+                            (t (expand-file-name "~/"))))))
     (unless (file-directory-p directory)
       (when (yes-or-no-p (format "Create %s? " directory)) (make-directory directory t)))
     (unless (file-directory-p directory) (user-error "Directory does not exist: %s" directory))
@@ -835,7 +854,7 @@ When EXPLICIT is non-nil, permit another Dired entry of the same type."
       (cl-pushnew destination atelier-remembered-ssh-destinations :test #'equal))
     (list destination
           (cond ((eq platform 'wsl) (file-remote-p directory 'localname))
-                (probe (myconfig-windows-remote-path probe directory))
+                (probe (funcall atelier-target-directory-function probe directory))
                 (remote-prefix (file-remote-p directory 'localname))
                 (t directory))
           platform mount-root)))
@@ -848,8 +867,7 @@ When EXPLICIT is non-nil, permit another Dired entry of the same type."
       (user-error "The Detached workspace target cannot be changed"))
     (let ((old-directory (atelier-workspace-directory workspace)))
       (pcase-let ((`(,destination ,path ,platform ,mount-root) (atelier-read-workspace-target)))
-        (when (myconfig-windows-workspace-p workspace)
-          (myconfig-windows-unmount-unused workspace))
+        (funcall atelier-release-function workspace)
         (setf (plist-get workspace :destination) destination
               (plist-get workspace :path) path
               (plist-get workspace :platform) platform
@@ -1059,8 +1077,7 @@ Interactively, choose an entry from the current workspace."
     (atelier-capture-current-workspace)
     (atelier-workspace-stop-jobs workspace)
     (atelier-set-workspace-status workspace 'stopped)
-    (when (myconfig-windows-workspace-p workspace)
-      (myconfig-windows-unmount-unused workspace))
+    (funcall atelier-release-function workspace)
     (let ((next (or (cl-find-if (lambda (item)
                                   (and (not (eq item workspace))
                                        (eq (atelier-workspace-status item) 'running)))
@@ -1086,8 +1103,7 @@ Interactively, choose an entry from the current workspace."
     (user-error "The Detached workspace cannot be deleted"))
   (let ((id (atelier-workspace-id workspace)))
     (atelier-workspace-stop-jobs workspace t)
-    (when (myconfig-windows-workspace-p workspace)
-      (myconfig-windows-unmount workspace))
+    (funcall atelier-release-function workspace t)
     (setq atelier-workspaces (delq workspace atelier-workspaces))
     (dolist (frame (frame-list))
       (when (equal (atelier-current-workspace-id frame) id)

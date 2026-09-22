@@ -12,7 +12,7 @@
   :type 'key-sequence
   :group 'myconfig)
 (require 'atelier)
-(require 'myconfig-windows)
+(require 'univers)
 
 (defun myconfig-terminal-buffer-name (name)
   (let ((name (or name "terminal")))
@@ -23,10 +23,8 @@
 (defun myconfig-terminal-buffer
     (&optional name directory command args owner-workspace shell agent type explicit)
   (let* ((desired-directory (or directory (atelier-workspace-directory)))
-         (wsl (and owner-workspace (myconfig-wsl-workspace-p owner-workspace)))
-         (process-directory (if wsl (myconfig-home-directory) desired-directory))
-         (default-directory process-directory)
-         (program (or command (myconfig-default-shell)))
+         (default-directory desired-directory)
+         (program (or command (plist-get shell :executable) (universel-default-shell)))
          (name (if (and owner-workspace type)
                    (atelier-entry-buffer-name type owner-workspace)
                  (myconfig-terminal-buffer-name name)))
@@ -76,28 +74,21 @@
          (in-terminal (derived-mode-p 'ghostel-mode))
           (existing (and workspace (not in-terminal)
                          (atelier-workspace-buffer-by-type workspace 'terminal)))
-          (remote (and workspace
-                       (not (equal (plist-get workspace :destination) "local"))))
-          (wsl (and workspace (myconfig-wsl-workspace-p workspace)))
-          (windows (and workspace (myconfig-windows-workspace-p workspace)))
+          (launch (unless existing (funcall atelier-terminal-command-function workspace)))
          (name (atelier-entry-buffer-name 'terminal workspace))
          (buffer (or existing
                      (myconfig-terminal-buffer
                       (if in-terminal
                           (generate-new-buffer-name (myconfig-terminal-buffer-name name))
                         name)
-                        (if (or wsl remote)
-                            (myconfig-home-directory)
-                          (atelier-workspace-directory))
-                       (cond (wsl "wsl.exe")
-                             (windows "ssh")
-                             (remote "ssh"))
-                       (cond (wsl (list "-d" (plist-get workspace :destination)
-                                        "--cd" (plist-get workspace :path) "--" "bash" "-l"))
-                             (windows (myconfig-windows-powershell-arguments workspace))
-                              (remote (list (plist-get workspace :destination)))
-                              (t '("-l")))
-                         workspace nil nil 'terminal in-terminal))))
+                        (plist-get launch :directory)
+                        (plist-get launch :program)
+                        (plist-get launch :arguments)
+                         workspace
+                         (when (plist-get launch :shell)
+                           (list :executable (plist-get launch :shell)
+                                 :login (member "-l" (plist-get launch :arguments))))
+                         nil 'terminal in-terminal))))
     (switch-to-buffer buffer)))
 
 (defun myconfig-terminal-split-right ()

@@ -1,5 +1,7 @@
 ;;; myconfig-ui.el --- Black and Pink interface -*- lexical-binding: t; -*-
 
+(require 'univers)
+
 (deftheme myconfig-blacknpink "Black and Pink workbench theme.")
 
 (defface myconfig-mode-line-state
@@ -21,9 +23,10 @@
   (custom-theme-set-faces
    'myconfig-blacknpink
    `(default ((t (:background ,black :foreground ,text
-                              :family ,(if (eq system-type 'windows-nt)
-                                           "Iosevka NFM"
-                                         "Iosevka Nerd Font Mono")
+                              :family ,(universel-select
+                                        '((windows . "Iosevka NFM")
+                                          (t . "Iosevka Nerd Font Mono"))
+                                        (universel-host-platform))
                               :height 150))))
    `(cursor ((t (:background ,pink))))
    `(fringe ((t (:background ,black :foreground ,disabled))))

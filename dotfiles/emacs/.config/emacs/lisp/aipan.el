@@ -17,7 +17,6 @@
 (require 'subr-x)
 (require 'tramp)
 (require 'ghostel)
-(require 'myconfig-platform)
 
 (defgroup aipanel nil
   "Coding-agent side panel."
@@ -63,6 +62,11 @@ is pasted."
 (defvar aipanel-command-function #'aipanel-default-command)
 (defvar aipanel-context-function #'aipanel-default-context)
 (defvar aipanel-terminal-function #'aipanel-default-terminal)
+(defvar aipanel-program-probe-function #'aipanel-default-program-probe
+  "Function called with programs, owner, and timeout to discover executables.
+Optional environment adapters can replace the Emacs file-handler default.")
+(defvar aipanel-process-command-function #'aipanel-default-process-command
+  "Function called with owner, selection, and arguments to build a launch.")
 (defvar aipanel-buffer-created-hook nil)
 (defvar aipanel-buffer-exited-hook nil)
 (defvar aipanel-window-change-hook nil)
@@ -98,42 +102,17 @@ is pasted."
           :emacs-directory emacs-directory :location location
           :destination (or destination "local") :port port)))
 
-(defun aipanel-run-wsl-probe (&optional distribution)
-  (when-let* ((wsl (executable-find "wsl.exe"))
-              (programs (delete-dups
-                         (delq nil (mapcar (lambda (agent) (plist-get agent :program))
-                                           aipanel-agents)))))
-    (let* ((script (concat "printf \"__distribution__%s\\n\" \"$WSL_DISTRO_NAME\"; "
-                           "for command do command -v -- \"$command\" >/dev/null 2>&1 "
-                           "&& printf \"%s\\n\" \"$command\"; done"))
-           (command (append (list wsl)
-                            (when distribution (list "-d" distribution))
-                            (list "-e" "sh" "-lc" script "aipanel") programs))
-           (lines (myconfig-platform-run-command-lines
-                   command aipanel-wsl-probe-timeout))
-           (header (car lines)))
-      (when (and header (string-prefix-p "__distribution__" header))
-        (list :distribution (string-remove-prefix "__distribution__" header)
-               :programs (cdr lines))))))
+(defun aipanel-default-program-probe (programs owner _timeout)
+  "Discover PROGRAMS through Emacs in OWNER's file environment."
+  (let ((default-directory (or (plist-get owner :emacs-directory)
+                               (plist-get owner :directory) default-directory)))
+    (list :programs (cl-remove-if-not
+                     (lambda (program) (executable-find program (file-remote-p default-directory)))
+                     programs))))
 
 (defun aipanel-programs ()
   (delete-dups (delq nil (mapcar (lambda (agent) (plist-get agent :program))
                                   aipanel-agents))))
-
-(defun aipanel-run-ssh-probe (destination &optional port)
-  "Return installed agent programs at POSIX SSH DESTINATION."
-  (when-let* ((ssh (executable-find "ssh"))
-              (destination (and (stringp destination) destination)))
-    (let* ((script "for command do command -v -- \"$command\" >/dev/null 2>&1 && printf '%s\\n' \"$command\"; done")
-           (remote-command
-            (mapconcat #'shell-quote-argument
-                       (append (list "sh" "-lc" script "aipanel") (aipanel-programs))
-                       " ")))
-      (myconfig-platform-run-command-lines
-       (append (list ssh) (when port (list "-p" (format "%s" port)))
-               (list destination remote-command))
-       aipanel-wsl-probe-timeout))))
-
 (defun aipanel-candidates-for-programs
     (programs location &optional destination label port)
   "Return configured candidates found in PROGRAMS at LOCATION."
@@ -155,17 +134,21 @@ is pasted."
   (pcase (plist-get owner :location)
     ('host
      (aipanel-candidates-for-programs
-      (cl-remove-if-not #'executable-find (aipanel-programs)) 'host nil "host"))
+      (plist-get (funcall aipanel-program-probe-function (aipanel-programs) owner
+                         aipanel-wsl-probe-timeout) :programs)
+      'host nil "host"))
     ('wsl
      (let* ((destination (plist-get owner :destination))
-            (probe (aipanel-run-wsl-probe destination)))
+            (probe (funcall aipanel-program-probe-function (aipanel-programs) owner
+                            aipanel-wsl-probe-timeout)))
        (aipanel-candidates-for-programs
         (plist-get probe :programs) 'wsl destination
         (format "WSL: %s" destination))))
     ('ssh
      (let ((destination (plist-get owner :destination)))
        (aipanel-candidates-for-programs
-        (aipanel-run-ssh-probe destination (plist-get owner :port))
+        (plist-get (funcall aipanel-program-probe-function (aipanel-programs) owner
+                           aipanel-wsl-probe-timeout) :programs)
         'ssh destination (format "SSH: %s" destination)
         (plist-get owner :port))))
     (_ nil)))
@@ -188,37 +171,20 @@ is pasted."
           (copy-sequence (plist-get agent :arguments))
           (when mini (copy-sequence (plist-get agent :mini-arguments)))))
 
+(defun aipanel-default-process-command (owner selection arguments)
+  "Build a launch using OWNER's directory and Emacs file handlers."
+  (list :program (plist-get (plist-get selection :agent) :program)
+        :arguments arguments
+        :directory (or (plist-get owner :emacs-directory)
+                       (plist-get owner :directory))))
+
 (defun aipanel-default-command (owner selection mini)
   (let* ((agent (plist-get selection :agent))
          (location (plist-get selection :location))
          (directory (plist-get owner :directory))
          (remote (memq location '(wsl ssh)))
          (arguments (aipanel-agent-arguments agent directory mini remote)))
-    (pcase location
-      ('wsl
-       (list :program "wsl.exe" :directory (expand-file-name "~/")
-             :arguments
-             (append (when-let* ((distribution (plist-get selection :distribution)))
-                       (list "-d" distribution))
-                     (list "--cd" directory "--" (plist-get agent :program))
-                     arguments)))
-      ('ssh
-       (let ((remote-command
-              (format "cd -- %s && exec %s%s"
-                      (shell-quote-argument directory)
-                      (shell-quote-argument (plist-get agent :program))
-                      (if arguments
-                          (concat " " (mapconcat #'shell-quote-argument arguments " "))
-                        ""))))
-         (list :program "ssh" :directory (expand-file-name "~/")
-               :arguments
-               (append (list "-t")
-                       (when-let* ((port (plist-get selection :port)))
-                         (list "-p" (format "%s" port)))
-                       (list (plist-get selection :destination) remote-command)))))
-      (_
-       (list :program (plist-get agent :program) :directory directory
-             :arguments arguments)))))
+    (funcall aipanel-process-command-function owner selection arguments)))
 
 (defun aipanel-default-context (owner _buffer)
   (when-let* ((source (plist-get owner :source-buffer))

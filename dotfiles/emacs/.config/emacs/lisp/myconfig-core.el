@@ -2,12 +2,12 @@
 
 (require 'cl-lib)
 (require 'subr-x)
-(require 'myconfig-platform)
 
 (defgroup myconfig nil "One stateful Emacs workbench." :group 'environment)
 
 (defconst myconfig-state-directory
-  (myconfig-platform-path 'state "myconfig-emacs"))
+  (or (bound-and-true-p myconfig-runtime-state-directory)
+      (expand-file-name "myconfig-emacs/" user-emacs-directory)))
 (defconst myconfig-state-file (expand-file-name "workbench-state.el" myconfig-state-directory))
 (defconst myconfig-restore-journal-file (expand-file-name "restore-journal.el" myconfig-state-directory))
 (defconst myconfig-log-buffer "*atelier-log*")

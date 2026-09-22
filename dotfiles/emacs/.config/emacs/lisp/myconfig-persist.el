@@ -3,11 +3,11 @@
 (require 'cl-lib)
 (require 'myconfig-core)
 (require 'atelier)
+(require 'univers)
 
 (defvar myconfig-persist-timer nil)
 (defvar myconfig-persist-restoring nil)
 (defvar myconfig-snapshot-generation nil)
-(defvar myconfig-clock-ticks-per-second 100)
 (defvar myconfig-job-observer-timer nil)
 (defvar myconfig-defer-job-restart nil)
 (defvar myconfig-restart-topology-guard nil)
@@ -23,62 +23,13 @@
 (defun myconfig-new-generation ()
   (format "%s-%08x" (float-time) (random #xffffffff)))
 
-(defun myconfig-read-proc-file (file &optional literally)
-  (with-temp-buffer
-    (if literally (insert-file-contents-literally file) (insert-file-contents file))
-    (buffer-string)))
-
-(defun myconfig-proc-entry (pid)
-  (condition-case nil
-      (let* ((stat (myconfig-read-proc-file (format "/proc/%d/stat" pid)))
-             (close (string-match ") " stat))
-             (fields (split-string (substring stat (+ close 2))))
-             (raw-argv (myconfig-read-proc-file (format "/proc/%d/cmdline" pid) t))
-             (argv (mapcar (lambda (arg) (decode-coding-string arg 'utf-8))
-                           (split-string raw-argv "\0" t)))
-             (executable (file-truename (format "/proc/%d/exe" pid))))
-        (list :pid pid :state (nth 0 fields)
-              :ppid (string-to-number (nth 1 fields))
-              :pgrp (string-to-number (nth 2 fields))
-              :tty (string-to-number (nth 4 fields))
-              :tpgid (string-to-number (nth 5 fields))
-              :start-ticks (string-to-number (nth 19 fields))
-              :executable executable :argv argv))
-    (error nil)))
-
-(defun myconfig-proc-table ()
-  (let (entries)
-    (dolist (path (directory-files "/proc" t "\\`[0-9]+\\'"))
-      (when-let* ((entry (myconfig-proc-entry
-                          (string-to-number (file-name-nondirectory path)))))
-        (push entry entries)))
-    entries))
-
-(defun myconfig-process-runtime (entry)
-  (let ((uptime (string-to-number (car (split-string (myconfig-read-proc-file "/proc/uptime"))))))
-    (max 0 (- uptime (/ (float (plist-get entry :start-ticks))
-                        myconfig-clock-ticks-per-second)))))
-
 (defun myconfig-job-foreground (job table)
   (when-let* ((buffer (get-buffer (plist-get job :buffer)))
               (process (get-buffer-process buffer))
-              (pid (with-current-buffer buffer
-                     (or (and (boundp 'ghostel--pid) ghostel--pid)
-                         (process-id process))))
-              (owner (cl-find pid table :key (lambda (entry) (plist-get entry :pid)))))
-    (if (plist-get job :direct-command)
-        owner
-      (let* ((tpgid (plist-get owner :tpgid))
-             (pgrp (plist-get owner :pgrp)))
-        (unless (or (<= tpgid 0) (= tpgid pgrp))
-          (let* ((group (cl-remove-if-not
-                         (lambda (entry)
-                           (and (= (plist-get entry :tty) (plist-get owner :tty))
-                                (= (plist-get entry :pgrp) tpgid))) table))
-                 (pids (mapcar (lambda (entry) (plist-get entry :pid)) group))
-                 (roots (cl-remove-if
-                         (lambda (entry) (member (plist-get entry :ppid) pids)) group)))
-            (when (= (length roots) 1) (car roots))))))))
+               (pid (with-current-buffer buffer
+                      (or (and (boundp 'ghostel--pid) ghostel--pid)
+                          (process-id process)))))
+    (universel-foreground-process pid table (plist-get job :direct-command))))
 
 (defun myconfig-job-recipe (job foreground directory)
   (let ((policy (plist-get job :policy))
@@ -87,7 +38,7 @@
     (cond
      ((eq policy 'never) nil)
      ((and (eq policy 'auto)
-           (< (myconfig-process-runtime foreground) 5)) fallback)
+            (< (universel-process-runtime foreground (universel-host-environment)) 5)) fallback)
      ((and (eq policy 'auto) (member program myconfig-process-denylist)) fallback)
      (t (list :executable (plist-get foreground :executable)
               :argv (copy-sequence (plist-get foreground :argv))
@@ -95,9 +46,9 @@
               :shell (copy-tree (plist-get job :shell)))))))
 
 (defun myconfig-observe-jobs ()
-  (when (eq system-type 'gnu/linux)
+  (when (universel-process-observation-p (universel-host-environment))
     (condition-case error
-        (let ((table (myconfig-proc-table)) changed)
+        (let ((table (universel-process-table (universel-host-environment))) changed)
           (dolist (workspace atelier-workspaces)
             (dolist (entry (atelier-workspace-job-entries workspace))
               (when-let* ((buffer (atelier-entry-live-buffer entry)))
@@ -116,7 +67,7 @@
       (error (myconfig-log "Foreground job observation failed: %s" error)))))
 
 (defun myconfig-live-process-state ()
-  (let ((table (and (eq system-type 'gnu/linux) (myconfig-proc-table))) state)
+  (let ((table (universel-process-table (universel-host-environment))) state)
     (dolist (workspace atelier-workspaces)
       (dolist (entry (atelier-workspace-job-entries workspace))
         (let* ((job (atelier-entry-job entry))

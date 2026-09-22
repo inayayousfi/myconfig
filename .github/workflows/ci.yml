@@ -136,7 +136,9 @@ jobs:
         run: ./test/test-linux.sh
 
       - name: Test Emacs workbench state
-        run: emacs -Q --batch --load test/test-emacs-workbench.el
+        run: |
+          emacs -Q --batch --load test/test-universel.el
+          emacs -Q --batch --load test/test-emacs-workbench.el
 
       - name: Test CachyOS VM installer
         run: ./vm/test-cachyos.sh

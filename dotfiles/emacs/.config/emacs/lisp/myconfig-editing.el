@@ -1,6 +1,7 @@
 ;;; myconfig-editing.el --- Editing and discovery -*- lexical-binding: t; -*-
 
 (require 'use-package)
+(require 'univers)
 
 (defvar-local myconfig-save-timer nil)
 (defvar-local myconfig-eglot-warning-shown nil)
@@ -243,7 +244,7 @@ so the default value alone is not sufficient."
   ;; compiler requirement for the common languages; treesit-auto remains the
   ;; fallback for languages which are not in the bundle.
   (use-package treesit-langs
-    :if (eq system-type 'windows-nt)
+    :if (universel-platform-p 'windows (universel-host-platform))
     :demand t)
   (use-package treesit-auto
     :custom (treesit-auto-install 'prompt)
@@ -251,16 +252,11 @@ so the default value alone is not sufficient."
     ;; Native Windows Emacs does not always provide a `cc' command.  Prefer
     ;; GCC when it is available and otherwise use LLVM's clang, which is part
     ;; of the optional Windows DevTools package group.
-    (when (eq system-type 'windows-nt)
-      (let ((cc (cond ((executable-find "gcc") "gcc")
-                      ((executable-find "clang") "clang")))
-            (c++ (cond ((executable-find "g++") "g++")
-                       ((executable-find "clang++") "clang++"))))
-        (when cc
-          (dolist (recipe treesit-auto-recipe-list)
-            (setf (treesit-auto-recipe-cc recipe) cc)
-            (when c++
-              (setf (treesit-auto-recipe-c++ recipe) c++))))))
+    (when-let* ((compilers (universel-grammar-compilers)))
+      (dolist (recipe treesit-auto-recipe-list)
+        (setf (treesit-auto-recipe-cc recipe) (car compilers))
+        (when (cdr compilers)
+          (setf (treesit-auto-recipe-c++ recipe) (cdr compilers)))))
     (treesit-auto-add-to-auto-mode-alist 'all)
     (global-treesit-auto-mode 1))
   (use-package mason :demand t)

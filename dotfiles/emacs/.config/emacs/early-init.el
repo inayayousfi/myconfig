@@ -3,7 +3,7 @@
 (defconst myconfig-early-config-directory
   (file-name-directory (or load-file-name buffer-file-name)))
 (add-to-list 'load-path (expand-file-name "lisp" myconfig-early-config-directory))
-(require 'myconfig-platform)
+(require 'univers)
 
 (setq package-enable-at-startup nil
       frame-inhibit-implied-resize t
@@ -12,7 +12,7 @@
       initial-scratch-message nil)
 
 (defconst myconfig-cache-directory
-  (myconfig-platform-path 'cache "myconfig-emacs"))
+  (universel-standard-path 'cache "myconfig-emacs"))
 (make-directory myconfig-cache-directory t)
 (startup-redirect-eln-cache (expand-file-name "eln-cache" myconfig-cache-directory))
 
@@ -21,8 +21,9 @@
 (scroll-bar-mode -1)
 
 (add-to-list 'default-frame-alist
-             `(font . ,(if (eq system-type 'windows-nt)
-                          "Iosevka NFM-15"
-                        "Iosevka Nerd Font Mono-15")))
+             `(font . ,(universel-select
+                        '((windows . "Iosevka NFM-15")
+                          (t . "Iosevka Nerd Font Mono-15"))
+                        (universel-host-platform))))
 (add-to-list 'default-frame-alist '(background-color . "#000000"))
 (add-to-list 'default-frame-alist '(foreground-color . "#d0d6e0"))

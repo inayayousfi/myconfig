@@ -29,6 +29,7 @@ command -v adb >/dev/null 2>&1 || die "adb is not installed or is not in PATH." 
 ADB="$(command -v adb)"
 ok "adb found: $ADB"
 command -v scrcpy >/dev/null 2>&1 || die "scrcpy is not installed or is not in PATH." "Install scrcpy, then run phone again."
+command -v timeout >/dev/null 2>&1 || die "timeout is not installed or is not in PATH."
 SCRCPY="$(command -v scrcpy)"
 ok "scrcpy found: $SCRCPY"
 adb version 2>&1 | sed 's/^/  /'
@@ -38,12 +39,12 @@ if [[ "$ADB" == "/usr/bin/adb" ]] && command -v pacman >/dev/null 2>&1 && pacman
 fi
 
 section "Checking ADB server"
-ADB_START="$(adb start-server 2>&1)"; ADB_START_STATUS=$?
+ADB_START="$(timeout 10 adb start-server 2>&1)"; ADB_START_STATUS=$?
 (( ADB_START_STATUS == 0 )) || die "Could not start the ADB server." "$ADB_START"
 ok "ADB server is running"
 
 section "Checking mDNS support"
-SERVER_STATUS="$(adb server-status 2>&1)"; SERVER_STATUS_CODE=$?
+SERVER_STATUS="$(timeout 5 adb server-status 2>&1)"; SERVER_STATUS_CODE=$?
 (( SERVER_STATUS_CODE == 0 )) || die "adb server-status failed." "$SERVER_STATUS"
 if grep -qiE 'mdns_enabled:[[:space:]]*true' <<<"$SERVER_STATUS"; then
     ok "ADB mDNS is enabled"
@@ -67,36 +68,122 @@ mapfile -t LAN_INTERFACES < <(ip -4 -o addr show scope global up 2>/dev/null | a
 ((${#LAN_INTERFACES[@]} > 0)) || die "No active IPv4 LAN interface was found." "Check your Wi-Fi or Ethernet connection."
 ok "Active LAN interface(s): ${LAN_INTERFACES[*]}"
 
-section "Looking for Android"
-info "Waiting for _adb-tls-connect._tcp..."
+ADB_DEVICE=""
 MDNS_OUTPUT=""
-for _ in {1..10}; do
-    MDNS_OUTPUT="$(adb mdns services 2>/dev/null || true)"
-    grep -q '_adb-tls-connect\._tcp' <<<"$MDNS_OUTPUT" && break
-    sleep 0.5
-done
-if ! grep -q '_adb-tls-connect\._tcp' <<<"$MDNS_OUTPUT"; then
-    fail "No Android Wireless Debugging service was discovered."
-    printf '\nPossible causes:\n  • Wireless Debugging is disabled on the phone.\n  • The phone and PC cannot exchange mDNS multicast traffic.\n  • Wi-Fi client/AP isolation is enabled.\n' >&2
-    exit 1
-fi
-ok "Android Wireless Debugging service discovered"
-printf '%s\n' "$MDNS_OUTPUT" | grep '_adb-tls-connect\._tcp' | sed 's/^/  /'
+SAW_SERVICE=0
+NETWORK_FAILURES=()
+
+find_connected_device() {
+    local devices serial state rest
+    devices="$(timeout 5 adb devices 2>&1)" || return 1
+    while read -r serial state rest; do
+        [[ "$state" == device ]] || continue
+        if timeout 5 adb -s "$serial" get-state 2>/dev/null | grep -qx device; then
+            ADB_DEVICE="$serial"
+            return 0
+        fi
+    done <<<"$devices"
+    return 1
+}
+
+discover_and_connect() {
+    local _ endpoint output status
+    local -a endpoints
+    NETWORK_FAILURES=()
+    info "Looking for your phone..."
+    for _ in {1..10}; do
+        find_connected_device && return 0
+        MDNS_OUTPUT="$(timeout 3 adb mdns services 2>&1)"; status=$?
+        if (( status != 0 )); then
+            warn "Discovery failed (status $status): $MDNS_OUTPUT"
+            return 1
+        fi
+        mapfile -t endpoints < <(awk '$2 ~ /^_adb-tls-connect\._tcp\.?$/ {print $3}' <<<"$MDNS_OUTPUT" | sort -u)
+        ((${#endpoints[@]} > 0)) && break
+        sleep 1
+    done
+    for endpoint in "${endpoints[@]}"; do
+        SAW_SERVICE=1
+        info "Connecting to $endpoint..."
+        output="$(timeout 12 adb connect "$endpoint" 2>&1)"; status=$?
+        [[ -z "$output" ]] || printf '  %s\n' "$output"
+        if (( status == 124 )); then
+            warn "Connection to $endpoint timed out after 12 seconds."
+        elif (( status != 0 )); then
+            warn "Connection attempt exited with status $status."
+        fi
+        if (( status == 124 )) || grep -qiE 'timed out|no route to host|network is unreachable' <<<"$output"; then
+            NETWORK_FAILURES+=("$endpoint")
+        fi
+        # adb connect may exit successfully even when its text reports failure.
+        find_connected_device && return 0
+    done
+    return 1
+}
+
+recover_wifi() {
+    local endpoint host route interface details uuid output
+    local -a interfaces=()
+    command -v nmcli >/dev/null 2>&1 || return 1
+    for endpoint in "${NETWORK_FAILURES[@]}"; do
+        host="${endpoint%:*}"
+        host="${host#[}"; host="${host%]}"
+        route="$(timeout 3 ip route get "$host" 2>/dev/null)" || continue
+        interface="$(awk '{for (i=1; i<NF; i++) if ($i == "dev") {print $(i+1); exit}}' <<<"$route")"
+        [[ -n "$interface" ]] || continue
+        details="$(timeout 3 nmcli -g GENERAL.TYPE,GENERAL.CON-UUID device show "$interface" 2>/dev/null)" || continue
+        [[ "${details%%$'\n'*}" == wifi ]] || continue
+        interfaces+=("$interface")
+    done
+    mapfile -t interfaces < <(printf '%s\n' "${interfaces[@]}" | sed '/^$/d' | sort -u)
+    ((${#interfaces[@]} > 0)) || return 1
+    if ((${#interfaces[@]} != 1)); then
+        warn "More than one Wi-Fi connection found. Skipping reconnect."
+        return 1
+    fi
+    interface="${interfaces[0]}"
+    uuid="$(timeout 3 nmcli -g GENERAL.CON-UUID device show "$interface" 2>/dev/null)" || return 1
+    [[ "$uuid" =~ ^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$ ]] || return 1
+    info "Reconnecting Wi-Fi... network will pause briefly."
+    output="$(timeout 35 nmcli --wait 30 connection up uuid "$uuid" ifname "$interface" 2>&1)" || {
+        warn "Could not reconnect Wi-Fi."
+        [[ -z "$output" ]] || printf '  %s\n' "$output" >&2
+        return 1
+    }
+    ok "Wi-Fi reconnected"
+    discover_and_connect
+}
 
 section "Checking ADB connection"
-ADB_DEVICE=""
-for _ in {1..10}; do
-    ADB_DEVICE="$(adb devices | awk 'NR > 1 && $2 == "device" { print $1; exit }')"
-    [[ -n "$ADB_DEVICE" ]] && break
-    sleep 0.5
-done
+if ! find_connected_device && ! discover_and_connect; then
+    DEVICE_LIST="$(timeout 5 adb devices 2>&1)"; DEVICE_LIST_STATUS=$?
+    if (( DEVICE_LIST_STATUS != 0 )); then
+        warn "Could not check ADB devices. Leaving the server running."
+    elif awk 'NR > 1 && NF >= 2 {found=1} END {exit !found}' <<<"$DEVICE_LIST"; then
+        warn "ADB lists other devices. Leaving the server running."
+        printf '%s\n' "$DEVICE_LIST"
+    else
+        info "Refreshing ADB discovery..."
+        timeout 5 adb kill-server || die "Could not stop the ADB server."
+        ADB_START="$(timeout 10 adb start-server 2>&1)"; ADB_START_STATUS=$?
+        (( ADB_START_STATUS == 0 )) || die "Could not restart the ADB server." "$ADB_START"
+        discover_and_connect || true
+    fi
+fi
+if [[ -z "$ADB_DEVICE" ]] && ((${#NETWORK_FAILURES[@]} > 0)); then
+    # Recheck in case an automatic connection completed during discovery.
+    find_connected_device || recover_wifi || true
+fi
 if [[ -z "$ADB_DEVICE" ]]; then
-    fail "The phone is visible over mDNS, but ADB did not connect to it."
-    printf '\nPair first with:\n  adb pair <address>:<pairing-port>\n' >&2
+    if (( SAW_SERVICE )); then
+        fail "Found your phone, but could not connect."
+    else
+        fail "Could not find your phone after retrying."
+        printf '  Check Wi-Fi and Wireless debugging on your phone.\n' >&2
+    fi
     exit 1
 fi
 ok "ADB connected: $ADB_DEVICE"
-adb -s "$ADB_DEVICE" get-state 2>/dev/null | grep -qx 'device' || die "ADB lists the phone, but the transport is not responding correctly." "Try: adb kill-server" "Then run phone again."
 ok "ADB transport is responsive"
 
 section "Launching scrcpy"

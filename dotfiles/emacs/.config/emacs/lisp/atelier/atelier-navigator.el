@@ -532,14 +532,8 @@ LAST-CHILD describe the current branch position in the rendered tree."
               (window (atelier-focus-workspace-split workspace-name index))
               (buffer (and entry (atelier-entry-live-buffer entry))))
          (unless (buffer-live-p buffer) (user-error "Entry buffer no longer exists"))
-         (atelier-entry-move entry workspace detached-workspace)
-          (if (one-window-p)
-              (let ((replacement
-                     (atelier-new-dired-buffer
-                      (atelier-workspace-directory workspace) t workspace)))
-                (atelier-register-dired-buffer replacement workspace t)
-                (set-window-buffer window replacement))
-            (delete-window window)))
+          (atelier-entry-move entry workspace detached-workspace)
+          (atelier-close-entry-window workspace window))
        (atelier-capture-current-workspace)
        (atelier-notify-change)
        (atelier-navigator))

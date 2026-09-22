@@ -1030,6 +1030,48 @@
       (when-let* ((buffer (get-buffer atelier-navigator-buffer)))
         (kill-buffer buffer)))))
 
+(ert-deftest atelier-navigator-detach-reuses-existing-replacement-entry ()
+  (let* ((source-entry '(:id "detach-source-entry" :kind scratch
+                             :name "source" :displayed t))
+         (replacement-entry '(:id "detach-replacement-entry" :kind scratch
+                                  :name "replacement"))
+         (workspace (list :id "detach-replacement" :name "work"
+                          :destination "local" :path "/tmp/"
+                          :entries (list source-entry replacement-entry)))
+         (atelier-workspaces (list workspace))
+         (atelier-entry-live-buffers (make-hash-table :test #'equal))
+         (old-selection (atelier-current-workspace-id))
+         (source (generate-new-buffer "detach-source-buffer"))
+         (replacement (generate-new-buffer "detach-replacement-buffer")))
+    (unwind-protect
+        (save-window-excursion
+          (atelier-select-workspace workspace)
+          (atelier-entry-set-live-buffer source-entry source)
+          (atelier-entry-set-live-buffer replacement-entry replacement)
+          (delete-other-windows)
+          (set-window-buffer (selected-window) source)
+          (cl-letf (((symbol-function 'display-graphic-p) (lambda (&optional _) t))
+                    ((symbol-function 'atelier-navigator-target)
+                     (lambda () '(workspace-buffer "work" 0
+                                                   "detach-source-entry")))
+                    ((symbol-function 'atelier-navigator-quit) #'ignore)
+                    ((symbol-function 'atelier-navigator) #'ignore)
+                    ((symbol-function 'atelier-notify-change) #'ignore))
+            (atelier-navigator-detach))
+          (should (eq (window-buffer) replacement))
+          (should
+           (equal (mapcar (lambda (entry) (plist-get entry :id))
+                          (atelier-workspace-entries workspace))
+                  '("detach-replacement-entry")))
+          (should
+           (equal (mapcar (lambda (entry) (plist-get entry :id))
+                          (atelier-workspace-entries
+                           (atelier-detached-workspace)))
+                  '("detach-source-entry"))))
+      (set-frame-parameter nil 'atelier-workspace-id old-selection)
+      (dolist (buffer (list source replacement))
+        (when (buffer-live-p buffer) (kill-buffer buffer))))))
+
 (ert-deftest atelier-navigator-header-controls-are-clickable ()
   (let* ((atelier-navigator-attach-source nil)
          (header (apply #'concat (atelier-navigator-header)))

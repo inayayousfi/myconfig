@@ -8,6 +8,16 @@
 (defvar myconfig-auto-format-save t)
 (defvar myconfig-yank-highlight-active nil)
 
+(defun myconfig-buffer-stale-p (&optional _noconfirm)
+  "Return non-nil when the visited file changed on disk.
+
+Unlike Emacs' default stale check, this deliberately ignores whether the
+buffer has unsaved edits.  Auto-Revert can therefore replace those edits with
+the current file contents on disk."
+  (and buffer-file-name
+       (file-readable-p buffer-file-name)
+       (not (verify-visited-file-modtime (current-buffer)))))
+
 (defun myconfig-highlight-yank (original-function &rest arguments)
   "Briefly highlight text inserted by a yank or paste command."
   (if myconfig-yank-highlight-active
@@ -194,10 +204,11 @@ so the default value alone is not sufficient."
     (advice-add 'kill-buffer--possibly-save :override #'myconfig-never-save-before-kill))
   (advice-add 'save-buffers-kill-emacs :around #'myconfig-never-save-on-exit)
   (global-display-line-numbers-mode 1)
-  (global-auto-revert-mode 1)
   (setq global-auto-revert-non-file-buffers t
-        auto-revert-avoid-polling t
+        auto-revert-avoid-polling nil
         auto-revert-check-vc-info t)
+  (setq-default buffer-stale-function #'myconfig-buffer-stale-p)
+  (global-auto-revert-mode 1)
   (add-hook 'after-change-functions #'myconfig-schedule-format-save)
 
   (use-package evil

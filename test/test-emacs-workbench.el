@@ -784,29 +784,41 @@
       (dolist (buffer (list replacement closing))
         (when (buffer-live-p buffer) (kill-buffer buffer))))))
 
-(ert-deftest atelier-navigator-sorts-all-workspace-entries-by-permanent-id ()
+(ert-deftest atelier-navigator-renders-recursive-layout-tree ()
   (let* ((first-split '(:id "entry-z" :kind scratch :name "first split"))
          (second-split '(:id "entry-a" :kind scratch :name "second split"))
+         (third-split '(:id "entry-b" :kind scratch :name "third split"))
          (hidden '(:id "entry-m" :kind scratch :name "hidden"))
-         (layout (list :id "layout" :kind 'layout :displayed t
-                       :children (list first-split second-split)))
+         (nested (list :id "nested" :kind 'layout :orientation 'vertical
+                       :children (list second-split third-split)))
+         (layout (list :id "layout" :kind 'layout :orientation 'horizontal
+                       :displayed t :children (list first-split nested)))
          (workspace (list :id "sorted-workspace" :name "sorted"
-                          :destination "local" :path "/tmp/"
-                          :entries (list layout hidden)))
+                           :destination "local" :path "/tmp/"
+                           :entries (list layout hidden)))
          (atelier-workspaces (list workspace))
-         targets)
+         targets text)
     (cl-letf (((symbol-function 'myconfig-normalize-directory)
-               #'file-name-as-directory))
+                #'file-name-as-directory))
       (with-current-buffer (atelier-render-navigator)
+        (setq text (buffer-string))
         (dolist (position (atelier-navigator-positions))
           (when-let* ((target (get-text-property position 'atelier-navigator-target))
                       ((memq (car target) '(workspace-buffer workspace-owned-buffer))))
             (push target targets)))))
+    (let ((position 0))
+      (dolist (label '("Entry (side-by-side)" "Split 1: first split"
+                       "Entry (stacked)" "Split 2: second split"
+                       "Split 3: third split" "hidden"))
+        (setq position (string-match (regexp-quote label) text position))
+        (should position)
+        (setq position (match-end 0))))
     (should
      (equal (nreverse targets)
-            '((workspace-buffer "sorted" 1 "entry-a")
-              (workspace-owned-buffer "sorted" "entry-m")
-              (workspace-buffer "sorted" 0 "entry-z"))))))
+             '((workspace-buffer "sorted" 0 "entry-z")
+               (workspace-buffer "sorted" 1 "entry-a")
+               (workspace-buffer "sorted" 2 "entry-b")
+               (workspace-owned-buffer "sorted" "entry-m"))))))
 
 (ert-deftest atelier-dired-mouse-open-uses-the-current-buffer-path ()
   (let (point-set opened)

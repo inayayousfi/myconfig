@@ -246,23 +246,55 @@ Modified file buffers are saved and running workspace jobs are stopped first."
   "Return a copy of ENTRIES sorted by permanent entry ID."
   (sort (copy-sequence entries) #'atelier-entry-id-less-p))
 
-(defun atelier-navigator-workspace-rows (workspace)
-  "Return WORKSPACE entry rows sorted by permanent ID.
+(defun atelier-navigator-layout-label (entry)
+  "Return a readable label for layout ENTRY's split direction."
+  (pcase (plist-get entry :orientation)
+    ('horizontal "Entry (side-by-side)")
+    ('vertical "Entry (stacked)")
+    (_ "Entry")))
 
-Each row is (ENTRY INDEX VISIBLE).  INDEX remains the entry's real window
-traversal index even though the rows have a separate display order."
-  (let* ((displayed (atelier-workspace-displayed-entries workspace))
-         (displayed-ids (mapcar (lambda (entry) (plist-get entry :id)) displayed))
-         (rows
-          (append
-           (cl-loop for entry in displayed
-                    for index from 0
-                    collect (list entry index t))
-           (cl-loop for entry in (atelier-workspace-entries workspace)
-                    unless (member (plist-get entry :id) displayed-ids)
-                    collect (list entry nil nil)))))
-    (sort rows (lambda (left right)
-                 (atelier-entry-id-less-p (car left) (car right))))))
+(defun atelier-navigator-render-entry-tree
+    (entry workspace-name displayed active prefix last-child)
+  "Render ENTRY and its children for WORKSPACE-NAME.
+DISPLAYED contains visible leaves in window traversal order.  PREFIX and
+LAST-CHILD describe the current branch position in the rendered tree."
+  (let* ((branch (if last-child "╰─" "├─"))
+         (child-prefix (concat prefix (if last-child "   " "│  "))))
+    (if (atelier-layout-entry-p entry)
+        (progn
+          (insert prefix
+                  (propertize branch 'face 'atelier-navigator-branch)
+                  " "
+                  (propertize (atelier-navigator-layout-label entry)
+                              'face 'atelier-navigator-branch)
+                  "\n")
+          (let ((children (atelier-entry-children entry)))
+            (cl-loop for child in children
+                     for tail on children
+                     do (atelier-navigator-render-entry-tree
+                         child workspace-name displayed active child-prefix
+                         (null (cdr tail))))))
+      (let* ((entry-id (plist-get entry :id))
+             (index (cl-position entry-id displayed
+                                 :key (lambda (candidate)
+                                        (plist-get candidate :id))
+                                 :test #'equal))
+             (visible (integerp index))
+             (live (atelier-entry-live-buffer entry))
+             (name (or (and live (buffer-name live))
+                       (plist-get entry :name) "Unavailable entry"))
+             (selected (and visible active (plist-get entry :selected))))
+        (atelier-navigator-insert
+         (format "%s%s %s%s%s\n"
+                 prefix
+                 (propertize branch 'face 'atelier-navigator-branch)
+                 (if selected "▸ " "")
+                 (if visible (format "Split %d: " (1+ index)) "")
+                 (atelier-navigator-buffer-name name))
+         (if visible
+             (list 'workspace-buffer workspace-name index entry-id)
+           (list 'workspace-owned-buffer workspace-name entry-id))
+         'atelier-navigator-buffer)))))
 
 (defun atelier-render-navigator ()
   (let ((buffer (get-buffer-create atelier-navigator-buffer))
@@ -284,32 +316,25 @@ traversal index even though the rows have a separate display order."
             (insert "\n")
             (when-let* ((root (atelier-workspace-project-root workspace)))
               (push root workspace-roots))
-             (let* ((displayed-entries (atelier-workspace-displayed-entries workspace))
-                    (multiple-splits (> (length displayed-entries) 1)))
-               (dolist (row (atelier-navigator-workspace-rows workspace))
-                 (pcase-let* ((`(,entry ,index ,visible) row)
-                              (entry-id (plist-get entry :id))
-                              (live (atelier-entry-live-buffer entry))
-                              (name (or (and live (buffer-name live))
-                                        (plist-get entry :name) "Unavailable entry")))
-                   (atelier-navigator-insert
-                    (if (and visible multiple-splits)
-                        (format "     %s %sSplit %d: %s\n"
-                                (if (and active (plist-get entry :selected)) "▸" "├")
-                                (propertize "─" 'face 'atelier-navigator-branch)
-                                (1+ index)
-                                (atelier-navigator-buffer-name name))
-                      (format "     %s %s%s\n"
-                              (if (and visible active (plist-get entry :selected)) "▸" "├")
-                              (propertize "─" 'face 'atelier-navigator-branch)
-                              (atelier-navigator-buffer-name name)))
-                    (if visible
-                        (list 'workspace-buffer workspace-name index entry-id)
-                      (list 'workspace-owned-buffer workspace-name entry-id))
-                    'atelier-navigator-buffer)))
-               (atelier-navigator-insert
-                "     ╰─ ＋ New scratch buffer\n"
-               (list 'workspace-scratch workspace-name) 'success))
+             (let* ((displayed-root (atelier-workspace-displayed-entry workspace))
+                    (displayed-entries (atelier-workspace-displayed-entries workspace))
+                    (displayed-ids
+                     (mapcar (lambda (entry) (plist-get entry :id)) displayed-entries))
+                    (hidden
+                     (atelier-sort-entries-by-id
+                      (cl-remove-if
+                       (lambda (entry)
+                         (member (plist-get entry :id) displayed-ids))
+                       (atelier-workspace-entries workspace)))))
+               (when displayed-root
+                 (atelier-navigator-render-entry-tree
+                  displayed-root workspace-name displayed-entries active "     " nil))
+               (dolist (entry hidden)
+                 (atelier-navigator-render-entry-tree
+                  entry workspace-name displayed-entries active "     " nil))
+                (atelier-navigator-insert
+                 "     ╰─ ＋ New scratch buffer\n"
+                (list 'workspace-scratch workspace-name) 'success))
             (insert "\n")))
         (atelier-navigator-insert "  ＋ New workspace\n" '(new-workspace) 'success)
         (let ((projects

@@ -21,18 +21,4 @@ module_emacs() {
         mv "$HOME/.emacs.d" "$legacy_backup"
     fi
 
-    systemctl --user disable --now emacs.service >/dev/null 2>&1 || true
-    rm -f \
-        "$HOME/.config/systemd/user/emacs.service.d/myconfig.conf" \
-        "$HOME/.local/bin/myconfig-emacs-client" \
-        "$HOME/.local/share/applications/emacs.desktop"
-    rmdir "$HOME/.config/systemd/user/emacs.service.d" 2>/dev/null || true
-    systemctl --user daemon-reload
-
-    if command -v update-desktop-database >/dev/null 2>&1; then
-        update-desktop-database "$HOME/.local/share/applications"
-    fi
-    if command -v kbuildsycoca6 >/dev/null 2>&1; then
-        kbuildsycoca6 --noincremental
-    fi
 }

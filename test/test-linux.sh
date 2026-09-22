@@ -326,35 +326,17 @@ zsh -n "$REPO_ROOT/dotfiles/zsh/.oh-my-zsh/custom/themes/blacknpink.zsh-theme"
     HOME="$TEST_HOME/emacs-module-home"
     MYCONFIG_PROFILE=cachyos
     package_log="$TEST_HOME/emacs-packages.log"
-    systemctl_log="$TEST_HOME/emacs-systemctl.log"
-    desktop_log="$TEST_HOME/emacs-desktop.log"
-    kde_cache_log="$TEST_HOME/emacs-kde-cache.log"
 
     mkdir -p \
         "$HOME/.config/emacs/lisp" \
-        "$HOME/.config/systemd/user/emacs.service.d" \
-        "$HOME/.emacs.d" \
-        "$HOME/.local/bin" \
-        "$HOME/.local/share/applications"
+        "$HOME/.emacs.d"
     touch \
         "$HOME/.config/emacs/early-init.el" \
         "$HOME/.config/emacs/init.el" \
-        "$HOME/.emacs.d/legacy" \
-        "$HOME/.config/systemd/user/emacs.service.d/myconfig.conf" \
-        "$HOME/.local/bin/myconfig-emacs-client" \
-        "$HOME/.local/share/applications/emacs.desktop"
+        "$HOME/.emacs.d/legacy"
 
     install_package_ids() {
         printf '%s\n' "$@" >>"$package_log"
-    }
-    systemctl() {
-        printf '%s\n' "$*" >>"$systemctl_log"
-    }
-    update-desktop-database() {
-        printf '%s\n' "$*" >>"$desktop_log"
-    }
-    kbuildsycoca6() {
-        printf '%s\n' "$*" >>"$kde_cache_log"
     }
 
     source "$REPO_ROOT/linux/modules/emacs.sh"
@@ -364,20 +346,6 @@ zsh -n "$REPO_ROOT/dotfiles/zsh/.oh-my-zsh/custom/themes/blacknpink.zsh-theme"
         || myconfig_fail "Emacs module installed unexpected packages"
     [ -f "$HOME/.emacs.d.backup."*/legacy ] \
         || myconfig_fail "Emacs module did not preserve the legacy Emacs directory"
-    [ ! -e "$HOME/.config/systemd/user/emacs.service.d/myconfig.conf" ] \
-        || myconfig_fail "Emacs module preserved the daemon override"
-    [ ! -e "$HOME/.local/bin/myconfig-emacs-client" ] \
-        || myconfig_fail "Emacs module preserved the client wrapper"
-    [ ! -e "$HOME/.local/share/applications/emacs.desktop" ] \
-        || myconfig_fail "Emacs module preserved the custom desktop entry"
-    grep -Fxq -- '--user disable --now emacs.service' "$systemctl_log" \
-        || myconfig_fail "Emacs module did not disable the daemon service"
-    grep -Fxq -- '--user daemon-reload' "$systemctl_log" \
-        || myconfig_fail "Emacs module did not reload the user service manager"
-    [ "$(cat "$desktop_log")" = "$HOME/.local/share/applications" ] \
-        || myconfig_fail "Emacs module did not refresh the desktop database"
-    [ "$(cat "$kde_cache_log")" = --noincremental ] \
-        || myconfig_fail "Emacs module did not refresh KDE's service cache"
 
     MYCONFIG_PROFILE=arch-wsl
     if module_emacs >/dev/null 2>&1; then

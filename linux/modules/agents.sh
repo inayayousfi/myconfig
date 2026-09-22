@@ -88,7 +88,7 @@ EOF
 
     if [ "$MYCONFIG_PROFILE" = cachyos ]; then
         cat >>"$HOME/environment.md" <<'EOF'
-- **Editor and terminal Atelier**: Graphical Emacs with restorable workspace layouts, native buffers, splits, libghostty-powered Ghostel terminals, Git review, and workspace-owned AIPanel coding agents. Closing its final frame ends the process; reopening starts fresh recorded jobs.
+- **Editor and terminal Atelier**: Native Wayland graphical Emacs with restorable workspace layouts, native buffers, splits, libghostty-powered Ghostel terminals, Git review, and workspace-owned AIPanel coding agents. `M-x remot-set-password` enables its plaintext private-LAN browser terminal at `http://HOSTNAME.local:18080`. Closing its final graphical frame ends the process; reopening starts fresh recorded jobs.
 - **On-screen keyboard**: Axidev OSK with desktop and login-screen startup.
 - **Keyboard remapping**: Kanata keyboard remapping with a KDE tray profile selector.
 - **Dictation**: Handy offline push-to-talk dictation on Ctrl+Space.

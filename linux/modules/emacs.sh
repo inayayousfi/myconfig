@@ -7,7 +7,7 @@ module_emacs() {
     }
 
     myconfig_log "Installing Emacs Atelier"
-    install_package_ids emacs_wayland sshfs iosevka_font
+    install_package_ids emacs_wayland sshfs iosevka_font ufw
 
     local config="$HOME/.config/emacs"
     [ -f "$config/early-init.el" ] || myconfig_fail "Emacs early init was not stowed"
@@ -20,5 +20,12 @@ module_emacs() {
         myconfig_log "Backing up legacy Emacs directory to $legacy_backup"
         mv "$HOME/.emacs.d" "$legacy_backup"
     fi
+
+    local subnet
+    for subnet in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16; do
+        sudo ufw allow in proto tcp from "$subnet" to any port 18080,18081 \
+            comment 'myconfig Emacs browser terminal'
+    done
+    sudo ufw --force enable
 
 }

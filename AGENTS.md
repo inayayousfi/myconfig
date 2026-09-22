@@ -72,7 +72,7 @@ The live global instruction file is different from this repository instruction f
 
 Linux manages the Emacs package through GNU Stow. A normal directory such as `~/.config/emacs` can contain generated runtime state, while tracked configuration files or a tracked subdirectory may resolve through links into the deployed `emacs` package. Do not mistake a regular folded directory or generated cache for an unmanaged configuration.
 
-The CachyOS Emacs module validates the stowed configuration and manages the user service and launcher files. Inspect `linux/modules/emacs.sh` and the package contents before changing startup or state paths.
+The CachyOS Emacs module validates the stowed configuration, requests the native Wayland package explicitly, and manages the private-LAN browser-terminal firewall policy. Inspect `linux/modules/emacs.sh` and the package contents before changing startup or state paths.
 
 Windows uses a separate direct-copy installer for Emacs. Do not assume that Linux Stow links, Linux service files, or Linux paths apply to the Windows installation.
 

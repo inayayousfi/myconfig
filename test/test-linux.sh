@@ -63,6 +63,8 @@ MYCONFIG_PROFILE=cachyos
     || myconfig_fail "Ghostty package did not resolve"
 [ "$(resolve_package emacs_wayland)" = official:emacs-wayland ] \
     || myconfig_fail "Native Wayland Emacs package did not resolve"
+[ "$(resolve_package ufw)" = official:ufw ] \
+    || myconfig_fail "UFW package did not resolve"
 [ "$(resolve_package sshfs)" = official:sshfs ] \
     || myconfig_fail "SSHFS package did not resolve"
 [ "$(resolve_package cachy_update)" = official:cachy-update ] \
@@ -322,10 +324,38 @@ zsh -n "$REPO_ROOT/dotfiles/zsh/.zshrc"
 zsh -n "$REPO_ROOT/dotfiles/zsh/.oh-my-zsh/custom/plugins/inaya/inaya.plugin.zsh"
 zsh -n "$REPO_ROOT/dotfiles/zsh/.oh-my-zsh/custom/themes/blacknpink.zsh-theme"
 
+python - "$REPO_ROOT/dotfiles/emacs/.config/emacs/lisp/remot.el" <<'PY' \
+    || myconfig_fail "Pinned embedded ghostty-web 0.4.0 assets changed"
+import base64
+import hashlib
+import re
+import sys
+
+source = open(sys.argv[1], encoding="utf-8").read()
+expected = {
+    "ghostty-web-js": "078b3fe37e4ef469d3f3d7772ee263070f8613e5a6f5ff305c85778907f45e72",
+    "ghostty-vt-wasm": "d6f0326f1874ad2ce9f289e3a4a0c5f3507d4cb38d8747e4b287def470a0c60a",
+    "ghostty-web-license": "5eccd0eeca906db6d661b64dd05e1d4a4b2e49d37d43bbcfd2c8cce4d7832920",
+}
+for name, digest in expected.items():
+    match = re.search(
+        rf"\(defconst remot--{name}-base64\n  \(concat\n(.*?)\n   \)\)",
+        source,
+        re.DOTALL,
+    )
+    if match is None:
+        raise SystemExit(f"missing embedded asset: {name}")
+    encoded = "".join(re.findall(r'"([A-Za-z0-9+/=]+)"', match.group(1)))
+    actual = hashlib.sha256(base64.b64decode(encoded, validate=True)).hexdigest()
+    if actual != digest:
+        raise SystemExit(f"checksum mismatch for embedded asset: {name}")
+PY
+
 (
     HOME="$TEST_HOME/emacs-module-home"
     MYCONFIG_PROFILE=cachyos
     package_log="$TEST_HOME/emacs-packages.log"
+    ufw_log="$TEST_HOME/emacs-ufw.log"
 
     mkdir -p \
         "$HOME/.config/emacs/lisp" \
@@ -338,14 +368,19 @@ zsh -n "$REPO_ROOT/dotfiles/zsh/.oh-my-zsh/custom/themes/blacknpink.zsh-theme"
     install_package_ids() {
         printf '%s\n' "$@" >>"$package_log"
     }
+    sudo() {
+        printf '%s\n' "$*" >>"$ufw_log"
+    }
 
     source "$REPO_ROOT/linux/modules/emacs.sh"
     module_emacs
 
-    [ "$(cat "$package_log")" = $'emacs_wayland\nsshfs\niosevka_font' ] \
+    [ "$(cat "$package_log")" = $'emacs_wayland\nsshfs\niosevka_font\nufw' ] \
         || myconfig_fail "Emacs module installed unexpected packages"
     [ -f "$HOME/.emacs.d.backup."*/legacy ] \
         || myconfig_fail "Emacs module did not preserve the legacy Emacs directory"
+    [ "$(cat "$ufw_log")" = $'ufw allow in proto tcp from 10.0.0.0/8 to any port 18080,18081 comment myconfig Emacs browser terminal\nufw allow in proto tcp from 172.16.0.0/12 to any port 18080,18081 comment myconfig Emacs browser terminal\nufw allow in proto tcp from 192.168.0.0/16 to any port 18080,18081 comment myconfig Emacs browser terminal\nufw --force enable' ] \
+        || myconfig_fail "Emacs module did not enforce the private-LAN browser firewall policy"
 
     MYCONFIG_PROFILE=arch-wsl
     if module_emacs >/dev/null 2>&1; then
@@ -1344,7 +1379,7 @@ mkdir -p "$inventory_home"
 HOME="$inventory_home"
 MYCONFIG_PROFILE=cachyos
 write_environment_inventory
-grep -Fq 'Graphical Emacs with restorable workspace layouts' "$HOME/environment.md" \
+grep -Fq 'http://HOSTNAME.local:18080' "$HOME/environment.md" \
     || myconfig_fail "CachyOS inventory omitted the Emacs workbench"
 grep -Fq 'Axidev OSK with desktop and login-screen startup' "$HOME/environment.md" \
     || myconfig_fail "CachyOS inventory omitted Axidev OSK"

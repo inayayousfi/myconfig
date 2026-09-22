@@ -94,6 +94,7 @@
   `(evil evil-collection vertico orderless marginalia consult corfu cape
          yasnippet yasnippet-capf avy ghostel evil-ghostel magit diff-hl blamer flyover apheleia eldoc-box
          treesit-auto mason dape multiple-cursors
+         ,@(when (eq system-type 'gnu/linux) '(simple-httpd websocket))
          ,@(when (eq system-type 'windows-nt) '(treesit-langs)))
   "Elisp packages required by the live Atelier.")
 
@@ -132,8 +133,26 @@
   (require 'aipanel-atelier nil t))
 (require 'myconfig-git)
 (require 'myconfig-bindings)
+(when (eq system-type 'gnu/linux)
+  (require 'remot)
+  (defun myconfig-remot-context (frame)
+    (when-let* ((workspace (atelier-current-workspace frame)))
+      (atelier-workspace-id workspace)))
+  (defun myconfig-remot-initialize-frame (workspace-id frame)
+    (when-let* ((workspace (atelier-workspace-by-id workspace-id)))
+      (with-selected-frame frame
+        (atelier-select-workspace workspace frame)
+        (atelier-restore-workspace workspace)
+        (atelier-navigator))))
+  (setq remot-state-directory
+        (expand-file-name "remot/" myconfig-runtime-state-directory)
+        remot-context-function #'myconfig-remot-context
+        remot-initialize-frame-function #'myconfig-remot-initialize-frame
+        remot-exit-with-last-graphical-frame t))
 
 (when (file-readable-p custom-file)
   (load custom-file nil t))
 
 (myconfig-initialize)
+(when (eq system-type 'gnu/linux)
+  (remot-setup))

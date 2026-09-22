@@ -61,8 +61,8 @@ MYCONFIG_PROFILE=cachyos
     || myconfig_fail "Axidev OSK LayerShellQt dependency did not resolve"
 [ "$(resolve_package ghostty)" = official:ghostty ] \
     || myconfig_fail "Ghostty package did not resolve"
-[ "$(resolve_package emacs)" = official:emacs ] \
-    || myconfig_fail "Emacs package did not resolve"
+[ "$(resolve_package emacs_wayland)" = official:emacs-wayland ] \
+    || myconfig_fail "Native Wayland Emacs package did not resolve"
 [ "$(resolve_package sshfs)" = official:sshfs ] \
     || myconfig_fail "SSHFS package did not resolve"
 [ "$(resolve_package cachy_update)" = official:cachy-update ] \
@@ -360,7 +360,7 @@ zsh -n "$REPO_ROOT/dotfiles/zsh/.oh-my-zsh/custom/themes/blacknpink.zsh-theme"
     source "$REPO_ROOT/linux/modules/emacs.sh"
     module_emacs
 
-    [ "$(cat "$package_log")" = $'emacs\nsshfs\niosevka_font' ] \
+    [ "$(cat "$package_log")" = $'emacs_wayland\nsshfs\niosevka_font' ] \
         || myconfig_fail "Emacs module installed unexpected packages"
     [ -f "$HOME/.emacs.d.backup."*/legacy ] \
         || myconfig_fail "Emacs module did not preserve the legacy Emacs directory"

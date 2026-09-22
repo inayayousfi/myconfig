@@ -7,7 +7,7 @@ module_emacs() {
     }
 
     myconfig_log "Installing Emacs Atelier"
-    install_package_ids emacs sshfs iosevka_font
+    install_package_ids emacs_wayland sshfs iosevka_font
 
     local config="$HOME/.config/emacs"
     [ -f "$config/early-init.el" ] || myconfig_fail "Emacs early init was not stowed"

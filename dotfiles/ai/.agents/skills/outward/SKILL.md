@@ -69,7 +69,7 @@ This is prose for a stranger. It is not the register the user asks for in chat.
 
 Write it as a person writes to another person.
 
-You MUST pass every outgoing text through the tone skill (`organic`), always, with no exception. Nothing leaves without that pass. It comes last on the wording, just before the collaboration block goes on.
+You MUST pass every outgoing text through the tone skill (`organic`), always, with no exception. Nothing leaves without that pass. It comes last on the wording, just before any collaboration block the user approved goes on.
 
 ### Use only delivered context
 
@@ -87,7 +87,7 @@ Never pad to look thorough. Whoever reads this reads many of them.
 
 ## 4. The collaboration block
 
-One two-line attribution block goes on top of every outgoing text unless an active session premise explicitly removes it. The user does not need to request it.
+Before adding a generic collaboration attribution, ask the user whether they want it included in this specific outgoing text. Do not draft or include the block unless the user approves it. Approval for one text does not apply to another. If the user approves it, place the block above the text unless the destination requires a different position.
 
 Write it in the same language as the outgoing text. When the text mixes languages, use its dominant language. Translate the meaning naturally instead of preserving the English words or sentence structure.
 
@@ -98,7 +98,7 @@ Write it in the same language as the outgoing text. When the text mixes language
 
 This example defines the meaning, not fixed wording. Fill in the real handle, model, and harness. They are useful facts for the reader, so name them.
 
-This block is the default collaboration attribution. It does not automatically satisfy an exact disclosure required by the recipient, template, or delivery tool. Include target-required wording in its required form and location. Do not add another generic collaboration credit or paraphrase elsewhere.
+When approved, this block is the generic collaboration attribution. It does not automatically satisfy an exact disclosure required by the recipient, template, or delivery tool. Include target-required wording in its required form and location. Do not add another generic collaboration credit or paraphrase elsewhere.
 
 This rule does not remove necessary technical discussion. Text about how a model, harness, or agent works stays when that subject is the content rather than a credit or disclosure.
 

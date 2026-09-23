@@ -31,7 +31,7 @@
   (load (expand-file-name "myconfig-terminal.el" lisp-directory) nil t)
   (load (expand-file-name "aipan.el" lisp-directory) nil t)
   (load (expand-file-name "atelier/aipanel-atelier.el" lisp-directory) nil t)
-  (load (expand-file-name "myconfig-persist.el" lisp-directory) nil t)
+  (load (expand-file-name "atelier/atelier-persist.el" lisp-directory) nil t)
   (load (expand-file-name "myconfig-editing.el" lisp-directory) nil t)
   (load (expand-file-name "remot.el" lisp-directory) nil t))
 
@@ -364,7 +364,8 @@
                         'vertical))
             (should-not (plist-member workspace :layout))
             (should-not (plist-member workspace :state))
-            (let ((copy (atelier-workspace-persistent-copy workspace)))
+            (let* ((flat (atelier-workspace-persistent-copy workspace))
+                   (copy (atelier-workspace-runtime-copy flat)))
               (should (atelier-layout-entry-p
                        (atelier-workspace-displayed-entry copy)))
               (should (= (length (atelier-workspace-displayed-entries copy)) 3)))
@@ -402,20 +403,58 @@
           (should-error (atelier-delete-workspace-record detached) :type 'user-error))
       (set-frame-parameter nil 'atelier-workspace-id old-selection))))
 
+(ert-deftest atelier-snapshot-flattens-and-rebuilds-entry-graphs-by-id ()
+  (let* ((first (list :id "flat-first" :kind 'terminal :persistent t))
+         (second (list :id "flat-second" :kind 'file :persistent t))
+         (root (list :id "flat-root" :kind 'layout :orientation 'horizontal
+                     :ratio 0.5 :children (list first second) :persistent t))
+         (workspace (list :id "flat-workspace" :name "flat"
+                          :entries (list root)))
+         (buffer (generate-new-buffer "flat-shared-content"))
+         (atelier-entry-live-buffers (make-hash-table :test #'equal)))
+    (unwind-protect
+        (progn
+          (atelier-entry-set-live-buffer first buffer)
+          (atelier-entry-set-live-buffer second buffer)
+          (let* ((flat (atelier-workspace-persistent-copy workspace))
+                 (records (plist-get flat :entries))
+                 (rebuilt (atelier-workspace-runtime-copy flat))
+                 (rebuilt-root (car (atelier-workspace-top-level-entries rebuilt)))
+                 (children (atelier-entry-children rebuilt-root)))
+            (should (equal (plist-get flat :entry-root-ids) '("flat-root")))
+            (should (equal (mapcar (lambda (entry) (plist-get entry :id)) records)
+                           '("flat-root" "flat-first" "flat-second")))
+            (should (equal (plist-get (nth 1 records) :parent-id) "flat-root"))
+            (should (equal (plist-get (car records) :child-ids)
+                           '("flat-first" "flat-second")))
+            (should-not (cl-some (lambda (entry) (plist-member entry :children)) records))
+            (should (equal (plist-get (nth 1 records) :content-id)
+                           (plist-get (nth 2 records) :content-id)))
+            (should (eq (atelier-entry-find rebuilt-root "flat-second")
+                        (cadr children)))
+            (should (equal (plist-get (cadr children) :parent-id) "flat-root"))
+            (atelier-entry-remove rebuilt (car children) t)
+            (should (equal (atelier-workspace-top-level-entries rebuilt)
+                           (list (cadr children))))
+            (should-not (plist-get (cadr children) :parent-id)))
+      (when (buffer-live-p buffer) (kill-buffer buffer))))))
+
 (ert-deftest atelier-snapshot-always-persists-detached-workspace ()
   (let* ((workspace (list :id "snapshot-workspace" :name "work"
                           :destination "local" :path "/tmp/" :platform 'local
                           :status 'running :entries nil))
          (atelier-workspaces (list workspace))
          (atelier-navigator-window-configurations t)
-         (myconfig-snapshot-generation "generation")
+         (atelier-snapshot-generation "generation")
          (old-selection (atelier-current-workspace-id)))
     (unwind-protect
         (progn
           (atelier-select-workspace workspace)
-          (let* ((data (myconfig-snapshot-data))
+          (let* ((data (atelier-snapshot-data))
                  (saved (plist-get data :workspaces)))
-            (should (= (plist-get data :version) 7))
+            (should (= (plist-get data :version) 8))
+            (should (equal (plist-get (car saved) :entries) nil))
+            (should (equal (plist-get (car saved) :entry-root-ids) nil))
             (should (cl-find atelier-detached-workspace-id saved
                              :key (lambda (item) (plist-get item :id))
                              :test #'equal))))
@@ -669,10 +708,11 @@
                            :policy auto :agent t
                            :direct-command ("/usr/bin/opencode" "--auto")))
                     (:id "leaked" :kind terminal :name "leaked"))))))
-         (migrated (myconfig-validate-state data))
-         (entries (atelier-workspace-entries
-                   (car (plist-get migrated :workspaces)))))
-    (should (= (plist-get migrated :version) 7))
+         (migrated (atelier-validate-state data))
+         (workspace (atelier-workspace-runtime-copy
+                     (car (plist-get migrated :workspaces))))
+         (entries (atelier-workspace-entries workspace)))
+    (should (= (plist-get migrated :version) 8))
     (should (equal (mapcar (lambda (entry) (plist-get entry :type)) entries)
                    '(dired dired terminal nil)))))
 
@@ -772,6 +812,50 @@
       (dolist (buffer (list one two))
         (when (buffer-live-p buffer) (kill-buffer buffer)))
       (delete-directory directory t))))
+
+(ert-deftest atelier-workspace-entry-root-is-the-disposition-root ()
+  (let* ((leaf (list :id "leaf" :kind 'file))
+         (nested (list :id "nested" :kind 'layout :children (list leaf)))
+         (root (list :id "root" :kind 'layout :children (list nested)))
+         (other (list :id "other" :kind 'layout :children nil))
+         (workspace (list :entries (list root other))))
+    (should (eq (atelier-workspace-entry-root workspace leaf) root))
+    (should (eq (atelier-workspace-entry-root workspace "nested") root))
+    (should (eq (atelier-workspace-entry-root workspace other) other))
+    (should-not (atelier-workspace-entry-root workspace "missing"))))
+
+(ert-deftest atelier-close-shared-displayed-content-removes-only-one-view ()
+  (let* ((workspace (list :id "shared-view" :name "shared-view"
+                          :destination "local" :path "/tmp/" :entries nil))
+         (atelier-workspaces (list workspace))
+         (old-selection (atelier-current-workspace-id))
+         (buffer (generate-new-buffer "shared-view-content"))
+         process)
+    (unwind-protect
+        (save-window-excursion
+          (atelier-select-workspace workspace)
+          (setq process (make-process :name "shared-view-process" :buffer buffer
+                                      :command '("sleep" "30") :noquery t))
+          (delete-other-windows)
+          (set-window-buffer (selected-window) buffer)
+          (set-window-buffer (split-window-right) buffer)
+          (cl-letf (((symbol-function 'display-graphic-p) (lambda (&optional _) t)))
+            (atelier-capture-current-workspace)
+            (should (= (cl-count buffer (atelier-workspace-entries workspace)
+                                 :key #'atelier-entry-live-buffer)
+                       2))
+            (select-window (car (atelier-main-windows)))
+            (atelier-close-current-view))
+          (should (buffer-live-p buffer))
+          (should (process-live-p process))
+          (should (= (length (atelier-main-windows)) 1))
+          (should (eq (window-buffer (car (atelier-main-windows))) buffer))
+          (should (= (cl-count buffer (atelier-workspace-entries workspace)
+                               :key #'atelier-entry-live-buffer)
+                     1)))
+      (set-frame-parameter nil 'atelier-workspace-id old-selection)
+      (when (process-live-p process) (delete-process process))
+      (when (buffer-live-p buffer) (kill-buffer buffer)))))
 
 (ert-deftest atelier-close-only-view-selects-most-recent-workspace-entry ()
   (let* ((workspace (list :id "close-mru" :name "close-mru"
@@ -907,6 +991,7 @@
                            :destination "local" :path "/tmp/"
                            :entries (list layout hidden)))
          (atelier-workspaces (list workspace))
+         (atelier-navigator-selection-by-frame nil)
          targets text)
     (cl-letf (((symbol-function 'myconfig-normalize-directory)
                 #'file-name-as-directory))
@@ -915,11 +1000,21 @@
         (dolist (position (atelier-navigator-positions))
           (when-let* ((target (get-text-property position 'atelier-navigator-target))
                       ((memq (car target) '(workspace-buffer workspace-owned-buffer))))
-            (push target targets)))))
+            (push target targets)))
+        (goto-char
+         (cl-find-if
+          (lambda (position)
+            (equal (get-text-property position 'atelier-navigator-target)
+                   '(workspace-buffer "sorted" 2 "entry-b")))
+          (atelier-navigator-positions)))
+        (atelier-navigator-quit)
+        (atelier-render-navigator)
+        (should (equal (atelier-navigator-target)
+                       '(workspace-buffer "sorted" 2 "entry-b")))))
     (let ((position 0))
-      (dolist (label '("Entry (side-by-side)" "Split 1: first split"
-                       "Entry (stacked)" "Split 2: second split"
-                       "Split 3: third split" "hidden"))
+      (dolist (label '("Split (side-by-side)" "View 1: first split"
+                       "Split (stacked)" "View 2: second split"
+                       "View 3: third split" "hidden"))
         (setq position (string-match (regexp-quote label) text position))
         (should position)
         (setq position (match-end 0))))
@@ -995,12 +1090,12 @@
                                               :live nil :buffers nil :owned-buffers nil :jobs nil)
                                        (:name "two" :destination "local" :path "/tmp/"
                                               :live t :buffers nil :owned-buffers nil :jobs nil))))
-         (migrated (myconfig-validate-state data))
+         (migrated (atelier-validate-state data))
          (workspaces (plist-get migrated :workspaces))
          (selected (cl-find (plist-get migrated :current-workspace-id) workspaces
                             :key (lambda (workspace) (plist-get workspace :id))
                             :test #'equal)))
-    (should (= (plist-get migrated :version) 7))
+    (should (= (plist-get migrated :version) 8))
     (should (equal (plist-get selected :name) "two"))
     (should (cl-every (lambda (workspace)
                         (and (stringp (plist-get workspace :id))
@@ -1024,10 +1119,11 @@
                                                            :persistent t)
                                                       (:id "three" :kind directory :name "three"
                                                            :persistent t))))))
-         (migrated (myconfig-validate-state data))
-         (workspace (car (plist-get migrated :workspaces)))
+         (migrated (atelier-validate-state data))
+         (workspace (atelier-workspace-runtime-copy
+                     (car (plist-get migrated :workspaces))))
          (root (atelier-workspace-displayed-entry workspace)))
-    (should (= (plist-get migrated :version) 7))
+    (should (= (plist-get migrated :version) 8))
     (should (atelier-layout-entry-p root))
     (should (equal (mapcar (lambda (entry) (plist-get entry :id))
                            (atelier-workspace-displayed-entries workspace))
@@ -1340,8 +1436,8 @@
                    (lambda (_name) (list workspace job entry)))
                   ((symbol-function 'atelier-notify-change) #'ignore)
                   ((symbol-function 'myconfig-log) #'ignore)
-                  ((symbol-function 'myconfig-persist-schedule) #'ignore))
-          (myconfig-job-process-exited buffer)
+                  ((symbol-function 'atelier-persist-schedule) #'ignore))
+          (atelier-job-process-exited buffer)
           (should-not (atelier-workspace-entries workspace)))
       (when (buffer-live-p buffer) (kill-buffer buffer)))))
 
@@ -1482,7 +1578,7 @@
          (atelier-entry-removed-hook '(aipanel-atelier-entry-removed)))
     (unwind-protect
         (cl-letf (((symbol-function 'atelier-notify-change) #'ignore)
-                  ((symbol-function 'myconfig-persist-schedule) #'ignore))
+                  ((symbol-function 'atelier-persist-schedule) #'ignore))
           (atelier-entry-set-live-buffer source source-buffer)
           (atelier-entry-set-live-buffer panel-entry panel-buffer)
           (aipanel-adopt-buffer
@@ -1551,9 +1647,11 @@
                      (list (list :id "migration-workspace" :name "migration"
                                  :destination "local" :path "/tmp/" :status 'running
                                  :entries (list source legacy attached)))))
-         (migrated (myconfig-validate-state data))
-         (entries (atelier-workspace-entries (car (plist-get migrated :workspaces)))))
-    (should (= (plist-get migrated :version) 7))
+         (migrated (atelier-validate-state data))
+         (workspace (atelier-workspace-runtime-copy
+                     (car (plist-get migrated :workspaces))))
+         (entries (atelier-workspace-entries workspace)))
+    (should (= (plist-get migrated :version) 8))
     (should (cl-find "migration-source" entries :key (lambda (entry) (plist-get entry :id))
                      :test #'equal))
     (should-not (cl-find "legacy-panel" entries :key (lambda (entry) (plist-get entry :id))
@@ -1572,9 +1670,9 @@
           (list (list :id "stopped-workspace" :name "stopped"
                       :destination "local" :entries (list entry)))))
     (cl-letf (((symbol-function 'universel-process-table) (lambda (&optional _platform) nil))
-              ((symbol-function 'myconfig-persist-now)
+              ((symbol-function 'atelier-persist-now)
                (lambda () (ert-fail "A stopped entry should not change"))))
-      (myconfig-observe-jobs)
+      (atelier-observe-jobs)
       (should (equal (plist-get job :recipe) recipe)))))
 
 (ert-deftest universel-atelier-preserves-local-posix-and-wsl-records ()

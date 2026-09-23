@@ -116,7 +116,7 @@
 (require 'atelier)
 (require 'universel-atelier)
 (universel-atelier-setup myconfig-runtime-state-directory)
-(require 'myconfig-persist)
+(require 'atelier-persist)
 (require 'myconfig-editing)
 (require 'myconfig-terminal)
 (when (require 'aipan nil t)

@@ -8,6 +8,20 @@
 (require 'myconfig-core)
 (require 'atelier-model)
 
+(defgroup atelier nil "Atelier workbench." :group 'myconfig)
+
+(declare-function mc/keyboard-quit "multiple-cursors-core")
+(declare-function mc/edit-lines "multiple-cursors-core")
+
+(defvar evil-normal-state-tag)
+(defvar evil-insert-state-tag)
+(defvar evil-visual-state-tag)
+(defvar evil-replace-state-tag)
+(defvar evil-operator-state-tag)
+(defvar evil-motion-state-tag)
+(defvar evil-emacs-state-tag)
+(defvar evil-mode-line-format)
+
 (defvar atelier-directory-function #'atelier-default-directory
   "Function mapping a workspace record to an Emacs directory.")
 (defvar atelier-execution-directory-function #'atelier-default-execution-directory
@@ -57,43 +71,53 @@
 
 (defface atelier-navigator-active
   '((t (:inherit font-lock-keyword-face :weight bold)))
-  "Selected workspace in the navigator.")
+  "Selected workspace in the navigator."
+  :group 'atelier)
 
 (defface atelier-navigator-live
   '((t (:inherit default :weight bold)))
-  "Live inactive workspace in the navigator.")
+  "Live inactive workspace in the navigator."
+  :group 'atelier)
 
 (defface atelier-navigator-saved
   '((t (:inherit shadow)))
-  "Stopped workspace in the navigator.")
+  "Stopped workspace in the navigator."
+  :group 'atelier)
 
 (defface atelier-navigator-hover
   '((t (:background "#ff4ead" :foreground "#000000" :weight bold)))
-  "Readable pointer hover for navigator controls.")
+  "Readable pointer hover for navigator controls."
+  :group 'atelier)
 
 (defface atelier-navigator-current
   '((t (:background "#ff4ead" :foreground "#000000" :weight bold :extend t)))
-  "Keyboard-selected navigator row.")
+  "Keyboard-selected navigator row."
+  :group 'atelier)
 
 (defface atelier-navigator-section
   '((t (:inherit font-lock-comment-face :weight bold :height 0.9)))
-  "Navigator section headings.")
+  "Navigator section headings."
+  :group 'atelier)
 
 (defface atelier-navigator-current-status
   '((t (:inherit success :weight bold)))
-  "Current workspace status label.")
+  "Current workspace status label."
+  :group 'atelier)
 
 (defface atelier-navigator-running-status
   '((t (:inherit font-lock-constant-face)))
-  "Background running workspace status label.")
+  "Background running workspace status label."
+  :group 'atelier)
 
 (defface atelier-navigator-buffer
   '((t (:inherit default)))
-  "Workspace buffer rows.")
+  "Workspace buffer rows."
+  :group 'atelier)
 
 (defface atelier-navigator-branch
   '((t (:inherit shadow)))
-  "Tree branches and secondary navigator text.")
+  "Tree branches and secondary navigator text."
+  :group 'atelier)
 
 (defun atelier-workspace-directory (&optional workspace)
   (let ((workspace (or workspace (atelier-current-workspace))))
@@ -228,7 +252,7 @@ no Atelier ownership metadata."
   (atelier-entry-set-live-buffer entry buffer)
   entry)
 
-(defun atelier-register-buffer (buffer &optional workspace no-notify type allow-duplicate-type)
+(defun atelier-register-buffer (buffer &optional workspace no-notify type _allow-duplicate-type)
   "Register BUFFER as an entry of WORKSPACE and return that entry.
 
 WORKSPACE defaults to the workspace selected by the current frame.  The
@@ -349,6 +373,7 @@ workspace record is authoritative; BUFFER receives no ownership metadata."
         (atelier-plist-clear! entry :displayed))
       (setf (plist-get workspace :entries)
             (append (and displayed (list displayed)) unplaced))
+      (atelier-workspace-refresh-parent-ids workspace)
       (cl-remf workspace :state)
       (cl-remf workspace :layout))
     workspace))
@@ -761,10 +786,10 @@ When EXPLICIT is non-nil, permit another Dired entry of the same type."
                          (line-beginning-position) (line-end-position))))
               (cond
                ((string-match (rx string-start ": " (+ digit) ":" (+ digit) ";"
-                                  (group (* any))) line)
+                                  (group (* anychar))) line)
                 (push (match-string 1 line) commands))
                ((string-match (rx string-start (* blank) "- cmd:" (* blank)
-                                  (group (* any))) line)
+                                  (group (* anychar))) line)
                 (push (replace-regexp-in-string "\\\\n" " " (match-string 1 line) t t)
                       commands))
                ((not (string-match-p (rx string-start "#" (+ digit) string-end) line))
@@ -1030,8 +1055,8 @@ Interactively, choose an entry from the current workspace."
           (progn
             (atelier-select-workspace workspace frame)
             (atelier-set-workspace-status workspace 'running)
-            (when (and (not was-running) (fboundp 'myconfig-restart-saved-jobs))
-              (myconfig-restart-saved-jobs workspace))
+            (when (and (not was-running) (fboundp 'atelier-restart-saved-jobs))
+              (atelier-restart-saved-jobs workspace))
             (atelier-restore-workspace workspace)
             (run-hook-with-args 'atelier-after-switch-workspace-hook
                                 frame old-workspace workspace)
@@ -1080,9 +1105,9 @@ Interactively, choose an entry from the current workspace."
                                 atelier-workspaces)
                     (cl-find-if (lambda (item) (not (eq item workspace))) atelier-workspaces))))
       (when (and next (eq (atelier-workspace-status next) 'stopped)
-                 (fboundp 'myconfig-restart-saved-jobs))
+                 (fboundp 'atelier-restart-saved-jobs))
         (atelier-set-workspace-status next 'running)
-        (myconfig-restart-saved-jobs next))
+        (atelier-restart-saved-jobs next))
       (dolist (frame (frame-list))
         (when (eq (atelier-current-workspace frame) workspace)
           (with-selected-frame frame
@@ -1261,7 +1286,7 @@ Interactively, choose an entry from the current workspace."
                   (cl-subseq atelier-workspaces target)))
     (atelier-notify-change)))
 
-(defun atelier-workspace-menu (event name)
+(defun atelier-workspace-menu (_event name)
   (interactive "e")
   (atelier-switch-workspace name)
   (popup-menu

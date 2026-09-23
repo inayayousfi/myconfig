@@ -13,6 +13,8 @@
 (defvar atelier-preserve-job-recipe nil)
 (defvar atelier-inhibit-entry-removed-hook nil)
 (defvar atelier-navigator-window-configurations nil)
+(defvar atelier-navigator-selection-by-frame nil
+  "Last selected navigator target per frame, restored after navigator refreshes.")
 (defvar atelier-agent-restored-functions nil)
 (defvar atelier-directory-choice-result nil)
 (defvar atelier-directory-chooser-active nil)
@@ -67,10 +69,15 @@
 (defvar atelier-after-restore-hook nil
   "Hook run after a complete persisted state has been restored.")
 
-;; This table is a disposable runtime cache.  Persistent ownership exists only
-;; in each workspace's recursive :entries tree.  Layout entries own child
-;; entries, basic entries resolve to live buffers, and buffers carry no Atelier
+;; A workspace :entries list owns its top-level entry roots directly.  Its
+;; displayed top-level layout entry is the disposition root; that root itself
+;; is the disposition (there is no separate disposition node).  Other
+;; top-level basic entries are unplaced content entries.  Layout entries own
+;; recursive child entries; basic entries resolve to live buffers.  Entry :id
+;; values identify workspace references, not buffers, so distinct entries may
+;; reference the same live buffer.  Buffers carry no Atelier ownership
 ;; metadata.
+;; This table is only a disposable cache from entry IDs to live buffers.
 (defvar atelier-entry-live-buffers (make-hash-table :test #'equal))
 
 (defun atelier-plist-set! (plist property value)
@@ -214,6 +221,16 @@ Nil selects the reserved Detached workspace."
   (cl-mapcan #'atelier-entry-leaves
              (atelier-workspace-top-level-entries workspace)))
 
+(defun atelier-workspace-refresh-parent-ids (workspace)
+  "Rebuild runtime parent-ID links throughout WORKSPACE's entry trees."
+  (cl-labels ((visit (entry parent-id)
+                (setf (plist-get entry :parent-id) parent-id)
+                (dolist (child (atelier-entry-children entry))
+                  (visit child (plist-get entry :id)))))
+    (dolist (root (atelier-workspace-top-level-entries workspace)
+                   workspace)
+      (visit root nil))))
+
 (defun atelier-entry-type-definition (type)
   "Return the registered definition for TYPE."
   (or (assq type atelier-entry-types)
@@ -270,6 +287,18 @@ BUFFER-P receives a live buffer and identifies automatic registrations of TYPE."
   (cl-loop for entry in (atelier-workspace-top-level-entries workspace)
            thereis (atelier-entry-find entry id)))
 
+(defun atelier-workspace-entry-root (workspace entry-or-id)
+  "Return the root under WORKSPACE that contains ENTRY-OR-ID.
+
+This top-level entry is the disposition to materialize when an entry nested
+inside its recursive split tree is selected.  Root-ness is structural, not a
+separate entry kind."
+  (let ((id (if (stringp entry-or-id)
+                entry-or-id
+              (plist-get entry-or-id :id))))
+    (cl-find-if (lambda (root) (atelier-entry-find root id))
+                (atelier-workspace-top-level-entries workspace))))
+
 (defun atelier-entry-workspace (entry-or-id)
   "Return the workspace containing ENTRY-OR-ID."
   (let ((id (if (stringp entry-or-id) entry-or-id
@@ -311,6 +340,7 @@ Entries of the same type form a stack in insertion order."
     (atelier-plist-set!
      workspace :entries
      (append (atelier-workspace-top-level-entries workspace) (list entry)))
+    (atelier-workspace-refresh-parent-ids workspace)
     (unless no-notify
       (run-hook-with-args 'atelier-entry-added-hook workspace entry)
       (run-hooks 'atelier-change-hook)))
@@ -346,6 +376,7 @@ Entries of the same type form a stack in insertion order."
      (delq nil
            (mapcar (lambda (tree) (atelier-entry-remove-from-tree tree id))
                    (atelier-workspace-top-level-entries workspace))))
+    (atelier-workspace-refresh-parent-ids workspace)
     (dolist (leaf (atelier-entry-leaves entry))
       (remhash (plist-get leaf :id) atelier-entry-live-buffers)))
   (unless atelier-inhibit-entry-removed-hook
@@ -391,14 +422,90 @@ Entries of the same type form a stack in insertion order."
              copy)))
     (and (plist-get entry :persistent) (copy-tree entry))))
 
-(defun atelier-workspace-persistent-copy (workspace)
-  "Return WORKSPACE without runtime-only state."
-  (let ((copy (copy-tree workspace)))
-    (setf (plist-get copy :entries)
-          (delq nil (mapcar #'atelier-entry-persistent-copy
-                            (atelier-workspace-top-level-entries workspace))))
+(defun atelier-entry-flatten (entry parent-id content-ids records)
+  "Append ENTRY and its descendants to flat RECORDS using stable IDs only."
+  (let* ((copy (copy-tree entry))
+         (children (atelier-entry-children entry))
+         (id (plist-get entry :id)))
+    (setf (plist-get copy :parent-id) parent-id)
+    (cl-remf copy :children)
+    (if (atelier-layout-entry-p entry)
+        (setf (plist-get copy :child-ids) (mapcar (lambda (child)
+                                                   (plist-get child :id))
+                                                 children))
+      (let* ((buffer (atelier-entry-live-buffer entry))
+             (content-id (or (plist-get entry :content-id)
+                             (and buffer (gethash buffer content-ids))
+                             (format "content-%s" id))))
+        (when buffer (puthash buffer content-id content-ids))
+        (setf (plist-get copy :content-id) content-id)
+        (cl-remf copy :child-ids)))
+    (push copy (car records))
+    (dolist (child children)
+      (atelier-entry-flatten child id content-ids records))))
+
+(defun atelier-workspace-flat-copy (workspace &optional persistent-only)
+  "Return WORKSPACE with flat ID-linked entries.
+When PERSISTENT-ONLY is non-nil, omit runtime-only content first."
+  (let* ((copy (copy-tree workspace))
+         (roots (if persistent-only
+                    (delq nil (mapcar #'atelier-entry-persistent-copy
+                                      (atelier-workspace-top-level-entries workspace)))
+                  (copy-tree (atelier-workspace-top-level-entries workspace))))
+         (content-ids (make-hash-table :test #'eq))
+         (records (list nil)))
+    (dolist (root roots)
+      (atelier-entry-flatten root nil content-ids records))
+    (setf (plist-get copy :entries) (nreverse (car records))
+          (plist-get copy :entry-root-ids) (mapcar (lambda (root)
+                                                     (plist-get root :id))
+                                                   roots))
     (cl-remf copy :layout)
     (cl-remf copy :state)
+    copy))
+
+(defun atelier-workspace-persistent-copy (workspace)
+  "Return WORKSPACE as flat persistent ID-linked records."
+  (atelier-workspace-flat-copy workspace t))
+
+(defun atelier-workspace-runtime-copy (workspace)
+  "Reconstruct WORKSPACE's runtime tree from its flat ID-linked records."
+  (let* ((copy (copy-tree workspace))
+         (records (plist-get workspace :entries))
+         (roots (plist-get workspace :entry-root-ids))
+         (by-id (make-hash-table :test #'equal))
+         (visiting (make-hash-table :test #'equal))
+         (visited (make-hash-table :test #'equal)))
+    (dolist (record records)
+      (let ((id (plist-get record :id)))
+        (unless (and (stringp id) (not (string-empty-p id))
+                     (not (gethash id by-id)))
+          (error "Invalid or duplicate flat entry ID: %S" id))
+        (puthash id record by-id)))
+    (cl-labels
+        ((build (id parent-id)
+           (let ((record (gethash id by-id)))
+             (unless record (error "Missing child entry %s" id))
+             (when (gethash id visiting) (error "Cycle in flat entry graph at %s" id))
+             (when (gethash id visited) (error "Entry %s has multiple parents" id))
+             (unless (equal (plist-get record :parent-id) parent-id)
+               (error "Incorrect parent ID for entry %s" id))
+             (puthash id t visiting)
+             (puthash id t visited)
+             (let* ((entry (copy-tree record))
+                    (child-ids (plist-get record :child-ids))
+                    (children (mapcar (lambda (child-id) (build child-id id))
+                                      child-ids)))
+               (cl-remf entry :child-ids)
+               (when (eq (plist-get entry :kind) 'layout)
+                 (setf (plist-get entry :children) children))
+               (remhash id visiting)
+               entry))))
+      (setf (plist-get copy :entries)
+            (mapcar (lambda (id) (build id nil)) roots)))
+    (unless (= (hash-table-count visited) (hash-table-count by-id))
+      (error "Flat workspace contains unreachable entries"))
+    (cl-remf copy :entry-root-ids)
     copy))
 
 (provide 'atelier-model)

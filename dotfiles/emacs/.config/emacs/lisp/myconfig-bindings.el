@@ -4,6 +4,17 @@
 (require 'multiple-cursors)
 (require 'atelier)
 
+(declare-function avy-goto-char-timer "avy")
+(declare-function eldoc-box-help-at-point "eldoc-box")
+(declare-function myconfig-search "myconfig-editing")
+(declare-function consult-mark "consult")
+(declare-function myconfig-terminal "myconfig-terminal")
+(declare-function myconfig-toggle-auto-format-save "myconfig-editing")
+(declare-function atelier-set-job-policy "atelier-persist")
+(declare-function dape "dape")
+(declare-function magit-status "magit")
+(declare-function myconfig-compile "myconfig-editing")
+
 (defvar myconfig-leader-map (make-sparse-keymap))
 
 (defun myconfig-paste ()
@@ -107,7 +118,7 @@
   (define-key myconfig-leader-map (kbd "l") #'windmove-right)
   (define-key myconfig-leader-map (kbd "x") #'atelier-close-current-view)
   (define-key myconfig-leader-map (kbd "u v") #'myconfig-toggle-auto-format-save)
-  (define-key myconfig-leader-map (kbd "u r") #'myconfig-set-job-policy)
+  (define-key myconfig-leader-map (kbd "u r") #'atelier-set-job-policy)
   (define-key myconfig-leader-map (kbd "w") #'atelier-navigator)
   (define-key myconfig-leader-map (kbd "g f") #'dape)
   (define-key myconfig-leader-map (kbd "g g") #'magit-status)

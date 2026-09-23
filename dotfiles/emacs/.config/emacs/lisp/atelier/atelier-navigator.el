@@ -249,8 +249,8 @@ Modified file buffers are saved and running workspace jobs are stopped first."
 (defun atelier-navigator-layout-label (entry)
   "Return a readable label for layout ENTRY's split direction."
   (pcase (plist-get entry :orientation)
-    ('horizontal "Entry (side-by-side)")
-    ('vertical "Entry (stacked)")
+    ('horizontal "Split (side-by-side)")
+    ('vertical "Split (stacked)")
     (_ "Entry")))
 
 (defun atelier-navigator-render-entry-tree
@@ -289,7 +289,7 @@ LAST-CHILD describe the current branch position in the rendered tree."
                  prefix
                  (propertize branch 'face 'atelier-navigator-branch)
                  (if selected "▸ " "")
-                 (if visible (format "Split %d: " (1+ index)) "")
+                 (if visible (format "View %d: " (1+ index)) "")
                  (atelier-navigator-buffer-name name))
          (if visible
              (list 'workspace-buffer workspace-name index entry-id)
@@ -382,14 +382,34 @@ LAST-CHILD describe the current branch position in the rendered tree."
           (delete-region (1- (point-max)) (point-max)))
         (setq atelier-navigator-first-position
               (or first-item (car (atelier-navigator-positions)) (point-min)))
-        (goto-char atelier-navigator-first-position)))
+        (let* ((frame (selected-frame))
+               (wanted (alist-get frame atelier-navigator-selection-by-frame
+                                  nil nil #'eq))
+               (position
+                (or (and wanted
+                         (cl-find-if
+                          (lambda (candidate)
+                            (equal wanted
+                                   (get-text-property
+                                    candidate 'atelier-navigator-target)))
+                          (atelier-navigator-positions)))
+                    atelier-navigator-first-position)))
+          (goto-char position))))
     buffer))
 
 (defun atelier-navigator-quit ()
   (interactive)
   (setq atelier-navigator-attach-source nil)
   (let* ((frame (selected-frame))
+         (navigator (get-buffer atelier-navigator-buffer))
+         (target (and navigator
+                      (with-current-buffer navigator
+                        (when (derived-mode-p 'atelier-navigator-mode)
+                          (atelier-navigator-target)))))
          (configuration (alist-get frame atelier-navigator-window-configurations nil nil #'eq)))
+    (when target
+      (setf (alist-get frame atelier-navigator-selection-by-frame nil nil #'eq)
+            target))
     (setq atelier-navigator-window-configurations
           (assq-delete-all frame atelier-navigator-window-configurations))
     (when configuration
@@ -410,8 +430,7 @@ LAST-CHILD describe the current branch position in the rendered tree."
       (delete-other-windows window)
       (select-window window)
       (switch-to-buffer (atelier-render-navigator))
-      (goto-char atelier-navigator-first-position)
-      (set-window-point window atelier-navigator-first-position))))
+      (set-window-point window (with-current-buffer (window-buffer window) (point))))))
 
 (defun atelier-focus-workspace-split (workspace-name index)
   (unless (eq (atelier-workspace-get workspace-name) (atelier-current-workspace))
@@ -425,10 +444,16 @@ LAST-CHILD describe the current branch position in the rendered tree."
     window))
 
 (defun atelier-workspace-buffer (workspace-name index entry-id)
+  "Resolve a displayed leaf and ensure it belongs to the workspace's root.
+The top-level entry containing the leaf is the disposition; selecting a nested
+entry never invents a nested disposition."
   (when-let* ((workspace (atelier-workspace-get workspace-name))
               (entry (nth index (atelier-workspace-displayed-entries workspace))))
     (unless (equal entry-id (plist-get entry :id))
-      (user-error "Split assignment changed"))
+      (user-error "View assignment changed"))
+    (unless (eq (atelier-workspace-entry-root workspace entry)
+                (atelier-workspace-displayed-entry workspace))
+      (user-error "Entry no longer belongs to the displayed disposition"))
     (atelier-restore-buffer entry workspace)))
 
 (defun atelier-workspace-owned-buffer (workspace entry-id)
@@ -650,12 +675,16 @@ Prefer the previous entry of TYPE when one remains."
   (cl-remove-if (lambda (window) (window-parameter window 'window-side))
                 (window-list (or frame (selected-frame)) 'no-minibuffer)))
 
-(defun atelier-close-entry-window (workspace window &optional type)
-  "Step back within TYPE's stack, otherwise remove or replace WINDOW."
+(defun atelier-close-entry-window (workspace window &optional type close-view-only)
+  "Remove WINDOW's view, retaining its content when CLOSE-VIEW-ONLY is non-nil.
+Otherwise step back within TYPE's stack, then remove or replace WINDOW."
   (when (window-live-p window)
-    (let ((same-type-buffer (and type
+    (let ((same-type-buffer (and (not close-view-only) type
                                  (atelier-workspace-replacement-buffer workspace type))))
       (cond
+       ((and close-view-only
+             (> (length (atelier-main-windows (window-frame window))) 1))
+        (delete-window window))
        (same-type-buffer
         (set-window-buffer window same-type-buffer))
        ((> (length (atelier-main-windows (window-frame window))) 1)
@@ -670,26 +699,31 @@ Prefer the previous entry of TYPE when one remains."
         (set-window-next-buffers window nil)))))
 
 (defun atelier-close-entry (workspace entry &optional window)
-  "Close ENTRY and remove it from WORKSPACE using one entry lifecycle."
-  (let ((buffer (atelier-entry-live-buffer entry))
-        (type (plist-get entry :type)))
-    (when (buffer-live-p buffer)
-      (when-let* ((process (get-buffer-process buffer)))
-        (set-process-query-on-exit-flag process nil)
-        (when (process-live-p process)
-          (let ((atelier-preserve-job-recipe nil)) (delete-process process))))
-      (atelier-entry-remove workspace entry t)
-      ;; A file buffer may be represented by a separate entry in another
-      ;; workspace.  Do not kill the shared live object in that case.
-      (unless (atelier-entries-for-buffer buffer)
-        (atelier-kill-buffer-without-save buffer)))
-    (unless (buffer-live-p buffer)
-      (atelier-entry-remove workspace entry t))
-    (when window
-      (atelier-close-entry-window workspace window type)
-      (when (eq workspace (atelier-current-workspace))
-        (atelier-capture-current-workspace)))
-    (atelier-notify-change)))
+  "Detach ENTRY and close its content only when no entry still references it.
+If another displayed split references the same buffer, remove only WINDOW."
+  (let* ((buffer (atelier-entry-live-buffer entry))
+         (type (plist-get entry :type))
+         (other-visible-view
+          (and (buffer-live-p buffer) window
+               (cl-some (lambda (candidate)
+                          (and (not (eq candidate window))
+                               (eq (window-buffer candidate) buffer)))
+                        (window-list (window-frame window) 'no-minibuffer)))))
+    (atelier-entry-remove workspace entry t)
+    (let ((retained (and (buffer-live-p buffer)
+                         (atelier-entries-for-buffer buffer))))
+      (when (and (buffer-live-p buffer) (not retained))
+        (when-let* ((process (get-buffer-process buffer)))
+          (set-process-query-on-exit-flag process nil)
+          (when (process-live-p process)
+            (let ((atelier-preserve-job-recipe nil)) (delete-process process))))
+        (atelier-kill-buffer-without-save buffer))
+      (when window
+        (atelier-close-entry-window workspace window type
+                                     (or other-visible-view retained))
+        (when (eq workspace (atelier-current-workspace))
+          (atelier-capture-current-workspace)))
+      (atelier-notify-change))))
 
 (defun atelier-close-buffer (name &optional window)
   (let ((window (or window (get-buffer-window name (selected-frame)))))

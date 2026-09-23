@@ -11,6 +11,8 @@
 (require 'atelier)
 (require 'myconfig-terminal)
 
+(defvar myconfig-data-directory)
+
 (defun aipanel-atelier-entry-directory (workspace entry)
   "Return ENTRY's live Emacs directory in WORKSPACE."
   (let* ((buffer (atelier-entry-live-buffer entry))
@@ -113,7 +115,7 @@
                 (entry (nth 2 owner)))
       (atelier-entry-remove workspace entry t)))
   (atelier-notify-change)
-  (when (fboundp 'myconfig-persist-schedule) (myconfig-persist-schedule)))
+  (when (fboundp 'atelier-persist-schedule) (atelier-persist-schedule)))
 
 (defun aipanel-atelier-window-changed ()
   (atelier-notify-change))

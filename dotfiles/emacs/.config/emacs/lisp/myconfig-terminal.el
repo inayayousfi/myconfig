@@ -1,6 +1,10 @@
 ;;; myconfig-terminal.el --- Ghostel terminal integration -*- lexical-binding: t; -*-
 
 (require 'myconfig-core)
+(defvar myconfig-data-directory)
+(defvar ghostel-module-directory)
+(defvar ghostel-module-auto-install)
+(declare-function myconfig-paste "myconfig-bindings")
 (setq ghostel-module-directory
       (expand-file-name "ghostel-module/" myconfig-data-directory)
       ghostel-module-auto-install 'download)
@@ -63,8 +67,8 @@
     buffer))
 
 (defun myconfig-terminal-process-exited (buffer _event)
-  (when (fboundp 'myconfig-job-process-exited)
-    (myconfig-job-process-exited buffer)))
+  (when (fboundp 'atelier-job-process-exited)
+    (atelier-job-process-exited buffer)))
 
 (defun myconfig-terminal ()
   (interactive)
@@ -151,7 +155,6 @@
   (evil-set-initial-state 'ghostel-mode 'normal)
   (add-hook 'ghostel-mode-hook #'myconfig-terminal-display-setup)
   (define-key ghostel-mode-map myconfig-terminal-escape-key #'myconfig-terminal-escape)
-  (define-key ghostel-char-mode-map myconfig-terminal-escape-key #'myconfig-terminal-escape)
   (define-key ghostel-char-mode-map (kbd "C-S-v") #'myconfig-paste)
   (define-key evil-ghostel-mode-map myconfig-terminal-escape-key #'myconfig-terminal-escape)
   (evil-define-key 'normal evil-ghostel-mode-map

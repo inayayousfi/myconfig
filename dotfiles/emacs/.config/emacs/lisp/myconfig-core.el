@@ -5,12 +5,21 @@
 
 (defgroup myconfig nil "One stateful Emacs workbench." :group 'environment)
 
+(defvar read-eval)
+(defvar myconfig-data-directory)
+(declare-function myconfig-ui-setup "myconfig-ui")
+(declare-function myconfig-editing-setup "myconfig-editing")
+(declare-function myconfig-terminal-setup "myconfig-terminal")
+(declare-function myconfig-git-setup "myconfig-git")
+(declare-function myconfig-bindings-setup "myconfig-bindings")
+(declare-function atelier-persist-setup "atelier-persist")
+
 (defconst myconfig-state-directory
   (or (bound-and-true-p myconfig-runtime-state-directory)
       (expand-file-name "myconfig-emacs/" user-emacs-directory)))
-(defconst myconfig-state-file (expand-file-name "workbench-state.el" myconfig-state-directory))
-(defconst myconfig-restore-journal-file (expand-file-name "restore-journal.el" myconfig-state-directory))
 (defconst myconfig-log-buffer "*atelier-log*")
+
+(declare-function atelier-persist-setup "atelier-persist")
 
 (defvar myconfig-initialized-p nil)
 (defvar myconfig-after-initialize-hook nil)
@@ -78,7 +87,7 @@
             (aipanel-atelier-setup))
           (myconfig-git-setup)
           (myconfig-bindings-setup)
-          (myconfig-persist-setup)
+          (atelier-persist-setup)
           (run-hooks 'myconfig-after-initialize-hook)
           (setq myconfig-initialized-p t)
           (myconfig-log "Atelier initialized"))

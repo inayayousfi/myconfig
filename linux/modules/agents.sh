@@ -3,7 +3,7 @@
 module_agents_packages() {
     myconfig_log "Installing agent tools and browser dependencies"
     local packages=(
-        opencode lsof at_spi2_core libxcomposite libxdamage libxrandr libxkbcommon
+        opencode fx_agent lsof at_spi2_core libxcomposite libxdamage libxrandr libxkbcommon
     )
 
     if [ "$MYCONFIG_PROFILE" = cachyos ]; then
@@ -35,9 +35,9 @@ link_agent_config() {
     [ -d "$skills_dir" ] || myconfig_fail "agent skills were not stowed"
     [ -f "$HOME/.agents/AGENTS.md" ] || myconfig_fail "global AGENTS.md was not stowed"
 
-    mkdir -p "$HOME/.claude/skills" "$HOME/.config/opencode"
+    mkdir -p "$HOME/.claude/skills" "$HOME/.config/opencode" "$HOME/.fx"
 
-    local linked_skill linked_target skill_dir skill opencode_agents
+    local linked_skill linked_target skill_dir skill opencode_agents fx_agents
     for linked_skill in "$HOME/.claude/skills"/*; do
         [ -L "$linked_skill" ] || continue
         linked_target="$(readlink "$linked_skill")"
@@ -61,6 +61,12 @@ link_agent_config() {
     [ -L "$opencode_agents" ] \
         && [ "$(readlink "$opencode_agents")" = "$HOME/.agents/AGENTS.md" ] \
         || myconfig_fail "OpenCode AGENTS bridge was not created"
+
+    fx_agents="$HOME/.fx/AGENTS.md"
+    ln -sfnT "$HOME/.agents/AGENTS.md" "$fx_agents"
+    [ -L "$fx_agents" ] \
+        && [ "$(readlink "$fx_agents")" = "$HOME/.agents/AGENTS.md" ] \
+        || myconfig_fail "fx AGENTS bridge was not created"
 }
 
 write_environment_inventory() {

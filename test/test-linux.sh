@@ -1370,6 +1370,8 @@ HOME="$agents_home"
 link_agent_config
 [[ "$(readlink "$HOME/.config/opencode/AGENTS.md")" == "$HOME/.agents/AGENTS.md" ]] \
     || myconfig_fail "OpenCode AGENTS bridge does not use the live absolute target"
+[[ "$(readlink "$HOME/.fx/AGENTS.md")" == "$HOME/.agents/AGENTS.md" ]] \
+    || myconfig_fail "fx AGENTS bridge does not use the live absolute target"
 [[ -L "$HOME/.claude/skills/demo" ]] \
     || myconfig_fail "Claude skill bridge was not created"
 [[ ! -L "$HOME/.claude/skills/stale" ]] \

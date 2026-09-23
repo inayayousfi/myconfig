@@ -183,13 +183,39 @@ so the default value alone is not sufficient."
     (unless selected
       (user-error "No search result"))))
 
+(defun myconfig-update-file-wrap-margin (window)
+  "Use four fifths of WINDOW's available width for a visited file."
+  (let* ((margins (window-margins window))
+         (left (car margins))
+         (right (cdr margins)))
+    (if (window-parameter window 'myconfig-file-wrap-margin)
+        (unless (buffer-file-name (window-buffer window))
+          (set-window-margins window left nil)
+          (set-window-parameter window 'myconfig-file-wrap-margin nil))
+      (when (buffer-file-name (window-buffer window))
+        (set-window-parameter window 'myconfig-file-wrap-margin t)))
+    (when (and (window-parameter window 'myconfig-file-wrap-margin)
+               (not (window-minibuffer-p window)))
+      ;; Include the current right margin so repeated updates do not shrink
+      ;; the text area each time a window changes size.
+      (let ((target (/ (+ (window-width window) (or right 0)) 5)))
+        (unless (equal right (and (> target 0) target))
+          (set-window-margins window left (and (> target 0) target)))))))
+
+(defun myconfig-update-file-wrap-margins (frame)
+  "Update visited-file windows on FRAME after a size or buffer change."
+  (walk-windows #'myconfig-update-file-wrap-margin nil frame))
+
 (defun myconfig-editing-setup ()
   (setq-default indent-tabs-mode nil
                 tab-width 2
                 standard-indent 2
-                truncate-lines t)
+                truncate-lines nil)
   (add-hook 'after-change-major-mode-hook
             #'myconfig-never-offer-temporary-buffer-for-saving)
+  (add-hook 'window-size-change-functions #'myconfig-update-file-wrap-margins)
+  (dolist (frame (frame-list))
+    (myconfig-update-file-wrap-margins frame))
   (setq display-line-numbers-type 'relative
         select-enable-clipboard t
         kill-do-not-save-duplicates t

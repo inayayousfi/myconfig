@@ -35,6 +35,34 @@
   (load (expand-file-name "myconfig-editing.el" lisp-directory) nil t)
   (load (expand-file-name "remot.el" lisp-directory) nil t))
 
+(ert-deftest myconfig-file-wrap-margin-tracks-window-width ()
+  (save-window-excursion
+    (let ((file-buffer (generate-new-buffer " *wrap-file*"))
+          (other-buffer (generate-new-buffer " *wrap-other*"))
+          (window (selected-window)))
+      (unwind-protect
+          (progn
+            (with-current-buffer file-buffer
+              (setq buffer-file-name "/tmp/myconfig-wrap-test.txt"))
+            (set-window-buffer window file-buffer)
+            (let ((original-width (window-total-width window)))
+              (myconfig-update-file-wrap-margin window)
+              (let* ((right (cdr (window-margins window)))
+                     (available (+ (window-width window) right)))
+                (should (= right (/ available 5))))
+              (split-window-right)
+              (should (< (window-total-width window) original-width))
+              (myconfig-update-file-wrap-margin window)
+              (let* ((right (cdr (window-margins window)))
+                     (available (+ (window-width window) right)))
+                (should (= right (/ available 5)))))
+            (set-window-buffer window other-buffer)
+            (myconfig-update-file-wrap-margin window)
+            (should-not (cdr (window-margins window)))
+            (should-not (window-parameter window 'myconfig-file-wrap-margin)))
+        (kill-buffer file-buffer)
+        (kill-buffer other-buffer)))))
+
 (ert-deftest myconfig-auto-revert-follows-disk-even-with-unsaved-edits ()
   (require 'autorevert)
   (let ((file (make-temp-file "myconfig-reload-" nil ".txt" "original\n"))

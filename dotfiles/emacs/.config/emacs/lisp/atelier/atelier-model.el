@@ -29,7 +29,8 @@
 (defconst atelier-global-buffer-names
   '("*Messages*" "*Warnings*" "*Completions*" "*Native-compile-Log*"))
 (defvar atelier-entry-types
-  '((dired :buffer-name "dired" :buffer-p atelier-dired-entry-buffer-p)
+  '((file :buffer-name "file" :buffer-p atelier-file-entry-buffer-p)
+    (dired :buffer-name "dired" :buffer-p atelier-dired-entry-buffer-p)
     (terminal :buffer-name "terminal" :buffer-p atelier-terminal-entry-buffer-p)
     (aipanel :buffer-name "aipanel"))
   "Registered workspace entry types and their shared behavior.")
@@ -238,13 +239,13 @@ BUFFER-P receives a live buffer and identifies automatic registrations of TYPE."
     (format "*%s:%s*" label (plist-get workspace :name))))
 
 (defun atelier-workspace-entry-by-type (workspace type)
-  "Return WORKSPACE's oldest entry of TYPE."
-  (cl-find type (atelier-workspace-entries workspace)
+  "Return the newest entry of TYPE in WORKSPACE."
+  (cl-find type (reverse (atelier-workspace-entries workspace))
            :key (lambda (entry) (plist-get entry :type))))
 
 (defun atelier-workspace-buffer-by-type (workspace type)
-  "Return the live buffer of WORKSPACE's oldest live entry of TYPE."
-  (cl-loop for entry in (atelier-workspace-entries workspace)
+  "Return the newest live buffer of TYPE in WORKSPACE."
+  (cl-loop for entry in (reverse (atelier-workspace-entries workspace))
            when (eq (plist-get entry :type) type)
            thereis (atelier-entry-live-buffer entry)))
 
@@ -303,9 +304,7 @@ BUFFER-P receives a live buffer and identifies automatic registrations of TYPE."
 
 (defun atelier-entry-add (workspace entry &optional no-notify)
   "Add ENTRY to WORKSPACE, which becomes its sole persistent owner.
-
-An entry type may occur more than once only when an explicit command creates
-another entry of that type."
+Entries of the same type form a stack in insertion order."
   (unless (plist-get entry :id)
     (setq entry (plist-put entry :id (atelier-new-entry-id))))
   (unless (atelier-entry-by-id workspace (plist-get entry :id))

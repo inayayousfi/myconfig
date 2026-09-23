@@ -633,32 +633,46 @@ LAST-CHILD describe the current branch position in the rendered tree."
                    when entry collect entry)))
     (append recent (cl-set-difference entries recent :test #'eq))))
 
-(defun atelier-workspace-replacement-buffer (workspace)
-  "Return or restore the best replacement buffer in WORKSPACE."
-  (cl-loop for entry in (atelier-workspace-replacement-entries workspace)
-           thereis (or (atelier-entry-live-buffer entry)
-                       (atelier-restore-buffer entry workspace))))
+(defun atelier-workspace-replacement-buffer (workspace &optional type)
+  "Return or restore the best replacement buffer in WORKSPACE.
+Prefer the previous entry of TYPE when one remains."
+  (let* ((entries (atelier-workspace-replacement-entries workspace))
+         (same-type (and type
+                         (cl-remove-if-not
+                          (lambda (entry) (eq (plist-get entry :type) type))
+                          entries))))
+    (cl-loop for entry in (append same-type entries)
+             thereis (or (atelier-entry-live-buffer entry)
+                         (atelier-restore-buffer entry workspace)))))
 
 (defun atelier-main-windows (&optional frame)
   "Return FRAME's ordinary windows, excluding side windows."
   (cl-remove-if (lambda (window) (window-parameter window 'window-side))
                 (window-list (or frame (selected-frame)) 'no-minibuffer)))
 
-(defun atelier-close-entry-window (workspace window)
-  "Remove WINDOW or show another WORKSPACE entry when it is the last window."
+(defun atelier-close-entry-window (workspace window &optional type)
+  "Step back within TYPE's stack, otherwise remove or replace WINDOW."
   (when (window-live-p window)
-    (if (> (length (atelier-main-windows (window-frame window))) 1)
-        (delete-window window)
-      (set-window-buffer
-       window
-       (or (atelier-workspace-replacement-buffer workspace)
-           (atelier-empty-workspace-buffer workspace)))
-      (set-window-prev-buffers window nil)
-      (set-window-next-buffers window nil))))
+    (let ((same-type-buffer (and type
+                                 (atelier-workspace-replacement-buffer workspace type))))
+      (cond
+       (same-type-buffer
+        (set-window-buffer window same-type-buffer))
+       ((> (length (atelier-main-windows (window-frame window))) 1)
+        (delete-window window))
+       (t
+        (set-window-buffer
+         window
+         (or (atelier-workspace-replacement-buffer workspace)
+             (atelier-empty-workspace-buffer workspace)))))
+      (when (window-live-p window)
+        (set-window-prev-buffers window nil)
+        (set-window-next-buffers window nil)))))
 
 (defun atelier-close-entry (workspace entry &optional window)
   "Close ENTRY and remove it from WORKSPACE using one entry lifecycle."
-  (let ((buffer (atelier-entry-live-buffer entry)))
+  (let ((buffer (atelier-entry-live-buffer entry))
+        (type (plist-get entry :type)))
     (when (buffer-live-p buffer)
       (when-let* ((process (get-buffer-process buffer)))
         (set-process-query-on-exit-flag process nil)
@@ -672,7 +686,7 @@ LAST-CHILD describe the current branch position in the rendered tree."
     (unless (buffer-live-p buffer)
       (atelier-entry-remove workspace entry t))
     (when window
-      (atelier-close-entry-window workspace window)
+      (atelier-close-entry-window workspace window type)
       (when (eq workspace (atelier-current-workspace))
         (atelier-capture-current-workspace)))
     (atelier-notify-change)))

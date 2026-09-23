@@ -141,6 +141,10 @@
 (defun atelier-buffer-entry-persistent-p (buffer)
   (memq (atelier-buffer-entry-kind buffer) '(file directory scratch terminal)))
 
+(defun atelier-file-entry-buffer-p (buffer)
+  "Return non-nil when BUFFER visits a file."
+  (buffer-local-value 'buffer-file-name buffer))
+
 (defun atelier-dired-entry-buffer-p (buffer)
   "Return non-nil when BUFFER is a Dired entry."
   (with-current-buffer buffer
@@ -232,17 +236,12 @@ workspace record is authoritative; BUFFER receives no ownership metadata."
   (setq workspace (or workspace (atelier-current-workspace))
         type (or type (atelier-buffer-entry-type buffer)))
   (when (and workspace (atelier-buffer-registerable-p buffer workspace))
-    (let ((entry (atelier-workspace-entry-for-buffer workspace buffer))
-          (typed-entry (and type (atelier-workspace-entry-by-type workspace type))))
-      (when (and typed-entry (not entry) (not allow-duplicate-type)
-                 (not (atelier-entry-live-buffer typed-entry)))
-        (setq entry typed-entry))
-      (unless (and typed-entry (not entry) (not allow-duplicate-type))
-        (unless entry
-          (setq entry (list :id (atelier-new-entry-id) :job nil))
-          (setq entry (atelier-update-entry-from-buffer entry buffer type))
-          (atelier-entry-add workspace entry no-notify))
-        (atelier-update-entry-from-buffer entry buffer type)))))
+    (let ((entry (atelier-workspace-entry-for-buffer workspace buffer)))
+      (unless entry
+        (setq entry (list :id (atelier-new-entry-id) :job nil))
+        (setq entry (atelier-update-entry-from-buffer entry buffer type))
+        (atelier-entry-add workspace entry no-notify))
+      (atelier-update-entry-from-buffer entry buffer type))))
 
 (defvar atelier-capturing-layout-p nil)
 (defvar atelier-capture-used-entry-ids nil)
@@ -252,9 +251,6 @@ workspace record is authoritative; BUFFER receives no ownership metadata."
   (setq workspace (or workspace (atelier-current-workspace)))
   (let ((type (atelier-buffer-entry-type buffer)))
     (when-let* ((_ (atelier-buffer-registerable-p buffer workspace))
-                (_ (or (atelier-workspace-entry-for-buffer workspace buffer)
-                       (not type)
-                       (not (atelier-workspace-entry-by-type workspace type))))
                 (entry
                  (if atelier-capturing-layout-p
                      (or (cl-find-if
@@ -1140,17 +1136,22 @@ Interactively, choose an entry from the current workspace."
        (when (window-live-p window) (delete-window window))
        (signal (car error) (cdr error))))))
 
+(defvar atelier-file-browser-window-configurations nil
+  "Saved window configurations while the workspace file browser is shown.")
+
 (defun atelier-file-browser ()
   (interactive)
   (when (window-parameter nil 'window-side)
     (select-window (window-main-window)))
-  (let* ((workspace (atelier-current-workspace))
+  (let* ((frame (selected-frame))
+         (saved (assq frame atelier-file-browser-window-configurations))
+         (workspace (atelier-current-workspace))
          (in-dired (derived-mode-p 'dired-mode))
          (directory (unless (derived-mode-p 'atelier-navigator-mode)
                       default-directory))
          (existing (and (not in-dired)
                         (atelier-workspace-buffer-by-type workspace 'dired))))
-    (when (assq (selected-frame) atelier-navigator-window-configurations)
+    (when (assq frame atelier-navigator-window-configurations)
       (atelier-navigator-quit))
     (setq directory (if (and directory (file-directory-p directory))
                         directory
@@ -1164,7 +1165,26 @@ Interactively, choose an entry from the current workspace."
                    (t (atelier-new-dired-buffer directory nil workspace)))))
       (unless existing
         (atelier-register-dired-buffer buffer workspace explicit))
+      (unless saved
+        (push (cons frame (current-window-configuration frame))
+              atelier-file-browser-window-configurations))
+      (delete-other-windows)
       (switch-to-buffer buffer))))
+
+(defun atelier-file-browser-quit ()
+  "Restore the frame layout that was active before opening the file browser."
+  (interactive)
+  (let* ((frame (selected-frame))
+         (configuration (alist-get frame atelier-file-browser-window-configurations
+                                   nil nil #'eq)))
+    (unless configuration
+      (user-error "No saved layout for the file browser"))
+    (setq atelier-file-browser-window-configurations
+          (assq-delete-all frame atelier-file-browser-window-configurations))
+    (set-window-configuration configuration)
+    (atelier-clean-window-buffer-history)))
+
+(define-key dired-mode-map (kbd "q") #'atelier-file-browser-quit)
 
 (defun atelier-dired-open ()
   (interactive)

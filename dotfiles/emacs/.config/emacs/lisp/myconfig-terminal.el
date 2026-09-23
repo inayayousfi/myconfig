@@ -155,6 +155,7 @@
   (evil-set-initial-state 'ghostel-mode 'normal)
   (add-hook 'ghostel-mode-hook #'myconfig-terminal-display-setup)
   (define-key ghostel-mode-map myconfig-terminal-escape-key #'myconfig-terminal-escape)
+  (define-key ghostel-char-mode-map myconfig-terminal-escape-key #'myconfig-terminal-escape)
   (define-key ghostel-char-mode-map (kbd "C-S-v") #'myconfig-paste)
   (define-key evil-ghostel-mode-map myconfig-terminal-escape-key #'myconfig-terminal-escape)
   (evil-define-key 'normal evil-ghostel-mode-map

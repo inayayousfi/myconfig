@@ -86,12 +86,13 @@
   (let (state)
     (dolist (workspace (mapcar #'atelier-workspace-runtime-copy
                                (plist-get data :workspaces)))
-      (dolist (entry (atelier-workspace-job-entries workspace))
+      (let ((atelier-model-workspace workspace))
+       (dolist (entry (atelier-workspace-job-entries workspace))
         (let ((job (atelier-entry-job entry)))
           (push (list :workspace (plist-get workspace :name)
                       :buffer (plist-get job :buffer)
                       :program (plist-get (plist-get job :recipe) :executable))
-                state))))
+                state)))))
     (nreverse state)))
 
 (defun atelier-process-replacements (live saved)
@@ -206,7 +207,7 @@
   (atelier-ensure-detached-workspace)
   (unless (or atelier-persist-restoring atelier-navigator-window-configurations)
     (atelier-capture-current-workspace))
-  (list :version 8
+  (list :version 10
         :generation (or atelier-snapshot-generation (atelier-new-generation))
         :current-workspace-id (atelier-current-workspace-id)
         :ssh-destinations atelier-remembered-ssh-destinations
@@ -372,9 +373,10 @@
 (defun atelier-entry-v6-type (entry)
   "Infer registered type metadata for a pre-V6 ENTRY."
   (pcase (plist-get entry :kind)
+    ('file 'file)
     ('directory 'dired)
     ('terminal
-     (when-let* ((job (atelier-entry-job entry)))
+     (when-let* ((job (plist-get entry :job)))
        (if (or (consp (plist-get job :agent))
                (and (plist-get job :agent)
                     (member (file-name-nondirectory
@@ -391,7 +393,7 @@
               (mapcar #'atelier-migrate-entry-v6 (atelier-entry-children entry)))
       (unless (plist-member entry :type)
         (when-let* ((type (atelier-entry-v6-type entry)))
-          (setf (plist-get entry :type) type))))
+          (atelier-plist-set! entry :type type))))
     entry))
 
 (defun atelier-migrate-workspace-v6 (workspace)
@@ -403,7 +405,7 @@
 
 (defun atelier-aipanel-entry-attached-p (entry)
   "Return non-nil when AIPanel ENTRY records a source entry attachment."
-  (let* ((agent (plist-get (atelier-entry-job entry) :agent))
+  (let* ((agent (plist-get (plist-get entry :job) :agent))
          (attachment (plist-get agent :attachment)))
     (and (eq (plist-get entry :type) 'aipanel)
          (stringp (plist-get attachment :entry-id)))))
@@ -441,20 +443,146 @@
         :workspaces (mapcar #'atelier-migrate-workspace-v7
                             (plist-get data :workspaces))))
 
+(defun atelier-legacy-flat-copy (workspace)
+  "Flatten pre-v8 inline entries without interpreting them as v10 contents."
+  (let ((copy (copy-tree workspace)) (records nil))
+    (cl-labels ((visit (entry parent)
+                  (let ((record (copy-tree entry))
+                        (children (atelier-entry-children entry)))
+                    (cl-remf record :children)
+                    (atelier-plist-set! record :parent-id parent)
+                    (when children
+                      (atelier-plist-set! record :child-ids
+                                         (mapcar (lambda (child) (plist-get child :id))
+                                                 children)))
+                    (push record records)
+                    (dolist (child children) (visit child (plist-get entry :id))))))
+      (dolist (root (plist-get workspace :entries)) (visit root nil)))
+    (atelier-plist-set! copy :entry-root-ids
+                       (mapcar (lambda (root) (plist-get root :id))
+                               (plist-get workspace :entries)))
+    (atelier-plist-set! copy :entries (nreverse records))
+    copy))
+
 (defun atelier-migrate-data-v8 (data)
   "Migrate the v7 recursive entry trees to flat ID-linked records."
   (let* ((data (atelier-migrate-data-v7 data))
          (copy (copy-tree data)))
     (setf (plist-get copy :version) 8
           (plist-get copy :workspaces)
-          (mapcar #'atelier-workspace-flat-copy
+          (mapcar #'atelier-legacy-flat-copy
                   (plist-get data :workspaces)))
+    copy))
+
+(defun atelier-legacy-entry-content (entry)
+  (cl-loop for (key value) on entry by #'cddr
+           when (memq key atelier-content-properties)
+           append (list key (copy-tree value))))
+
+(defun atelier-legacy-replace-content (entry content)
+  (dolist (key atelier-content-properties) (cl-remf entry key))
+  (dolist (key '(:content-id)) (cl-remf entry key))
+  (cl-loop for (key value) on content by #'cddr
+           do (atelier-plist-set! entry key value)))
+
+(defun atelier-migrate-workspace-v9 (workspace)
+  "Stack legacy undisplayed entries of one type without altering any view.
+Keep entries referenced by an agent attachment independent so their IDs survive."
+  (let ((roots (plist-get workspace :entry-root-ids))
+        (entries (plist-get workspace :entries))
+        (owners (make-hash-table :test #'eq))
+        referenced removed)
+    (dolist (entry entries)
+      (when-let* ((id (plist-get (plist-get (plist-get (plist-get entry :job)
+                                                  :agent) :attachment) :entry-id)))
+        (push id referenced)))
+    (dolist (id roots)
+      (when-let* ((entry (cl-find id entries :key (lambda (item) (plist-get item :id))
+                                 :test #'equal)))
+        (when (and (not (eq (plist-get entry :kind) 'layout))
+                   (not (plist-get entry :displayed))
+                   (not (plist-get entry :job))
+                   (not (member id referenced)))
+          (let ((type (or (plist-get entry :type)
+                          (and (eq (plist-get entry :kind) 'file) 'file))))
+            (when (and type (not (memq type '(terminal aipanel))))
+              (atelier-plist-set! entry :type type)
+              (if-let* ((owner (gethash type owners)))
+                  (let ((previous (atelier-legacy-entry-content owner)))
+                    (atelier-plist-set! previous :content-id
+                                       (or (plist-get previous :content-id)
+                                           (format "content-%s" (plist-get owner :id))))
+                    (atelier-plist-set! owner :stack
+                                       (cons previous (plist-get owner :stack)))
+                    (atelier-legacy-replace-content owner (atelier-legacy-entry-content entry))
+                    (push id removed))
+                (puthash type entry owners)))))))
+    (atelier-plist-set! workspace :entry-root-ids
+                       (cl-remove-if (lambda (id) (member id removed)) roots))
+    (atelier-plist-set! workspace :entries
+                       (cl-remove-if (lambda (entry)
+                                       (member (plist-get entry :id) removed))
+                                     entries))
+    workspace))
+
+(defun atelier-migrate-data-v9 (data)
+  "Convert v8 flat entries to content stacks without moving displayed views."
+  (let ((copy (copy-tree data)))
+    (setf (plist-get copy :version) 9)
+    (dolist (workspace (plist-get copy :workspaces))
+      (dolist (entry (plist-get workspace :entries))
+        (unless (eq (plist-get entry :kind) 'layout)
+          (atelier-plist-set! entry :stack nil)))
+      (atelier-migrate-workspace-v9 workspace))
+    copy))
+
+(defun atelier-migrate-data-v10 (data)
+  "Move v9 inline content and stacks into workspace-owned v10 records."
+  (let ((copy (copy-tree data)))
+    (setf (plist-get copy :version) 10)
+    (dolist (workspace (plist-get copy :workspaces))
+      (let ((contents nil)
+            (seen (make-hash-table :test #'equal)))
+        (atelier-plist-set!
+         workspace :entries
+         (mapcar
+          (lambda (entry)
+            (unless (eq (plist-get entry :kind) 'layout)
+              (let* ((active (cl-loop for (key value) on entry by #'cddr
+                                      when (memq key atelier-content-properties)
+                                      append (list key value)))
+                     (stack (plist-get entry :stack))
+                     ids)
+                (dolist (item (cons (append (list :content-id
+                                                   (plist-get entry :content-id)) active)
+                                          stack))
+                  (let* ((candidate (plist-get item :content-id))
+                         (id (if (and (stringp candidate)
+                                      (not (string-empty-p candidate)))
+                                 candidate (atelier-content-new-id)))
+                         (record (list :id id)))
+                    (cl-loop for (key value) on item by #'cddr
+                             when (memq key atelier-content-properties)
+                             do (atelier-plist-set! record key (copy-tree value)))
+                    (unless (gethash id seen)
+                      (puthash id t seen)
+                      (push record contents))
+                    (push id ids)))
+                (dolist (key (append atelier-content-properties
+                                     '(:content-id :stack)))
+                  (cl-remf entry key))
+                (atelier-plist-set! entry :content-ids (nreverse ids))))
+            entry)
+          (plist-get workspace :entries)))
+        (atelier-plist-set! workspace :contents (nreverse contents))))
     copy))
 
 (defun atelier-migrate-state (data)
   (pcase (plist-get data :version)
-    (8 data)
-    (7 (atelier-migrate-data-v8 data))
+    (10 data)
+    (9 (atelier-migrate-data-v10 data))
+    (8 (atelier-migrate-data-v10 (atelier-migrate-data-v9 data)))
+    (7 (atelier-migrate-state (atelier-migrate-data-v8 data)))
     (6 (atelier-migrate-state (atelier-migrate-data-v7 data)))
     (5
      (atelier-migrate-state
@@ -558,6 +686,7 @@
     (dolist (workspace (plist-get data :workspaces))
        (let ((id (plist-get workspace :id))
              (name (plist-get workspace :name))
+             (atelier-model-workspace workspace)
             (destination (plist-get workspace :destination))
             (path (plist-get workspace :path)))
          (unless (and (stringp id) (not (string-empty-p id))
@@ -581,10 +710,12 @@
               ((validate-entry
                 (entry nested)
                  (let ((entry-id (plist-get entry :id))
-                       (kind (plist-get entry :kind))
-                       (type (plist-get entry :type)))
+                       (kind (if (atelier-layout-entry-p entry) 'layout
+                               (atelier-entry-value entry :kind workspace)))
+                       (type (unless (atelier-layout-entry-p entry)
+                               (atelier-entry-value entry :type workspace))))
                   (unless (and (stringp entry-id) (not (string-empty-p entry-id))
-                               (symbolp kind))
+                               (symbolp kind) kind)
                     (error "Invalid entry record in workspace %s" name))
                   (when (member entry-id entry-ids)
                     (error "Duplicate entry ID in workspace %s" name))
@@ -610,8 +741,9 @@
                         (error "Invalid terminal job in workspace %s" name)))))))
             (dolist (entry top-level) (validate-entry entry nil))))))
     (dolist (workspace (plist-get data :workspaces))
-      (dolist (entry (atelier-workspace-entries workspace))
-        (when (eq (plist-get entry :type) 'aipanel)
+      (let ((atelier-model-workspace workspace))
+       (dolist (entry (atelier-workspace-entries workspace))
+        (when (eq (atelier-entry-value entry :type workspace) 'aipanel)
           (let* ((attachment (plist-get (plist-get (atelier-entry-job entry) :agent)
                                         :attachment))
                  (source-id (plist-get attachment :entry-id))
@@ -619,15 +751,76 @@
                   (cl-loop for candidate-workspace in (plist-get data :workspaces)
                            thereis (atelier-entry-by-id candidate-workspace source-id))))
             (unless (and (stringp source-id) source
-                         (not (eq (plist-get source :type) 'aipanel)))
+                         (not (cl-some (lambda (owner)
+                                         (and (atelier-entry-by-id owner source-id)
+                                              (eq (atelier-entry-value source :type owner)
+                                                  'aipanel)))
+                                       (plist-get data :workspaces))))
               (error "Invalid AIPanel attachment in workspace %s"
-                     (plist-get workspace :name)))))))
+                     (plist-get workspace :name))))))))
     data))
 
+(defun atelier-validate-content-ownership (data)
+  "Reject missing, duplicate, orphaned or inline content in v10 workspaces."
+  (dolist (workspace (plist-get data :workspaces))
+    (let ((records (make-hash-table :test #'equal))
+          (used (make-hash-table :test #'equal)))
+      (unless (listp (plist-get workspace :contents))
+        (error "Invalid workspace contents"))
+      (dolist (content (plist-get workspace :contents))
+        (let ((id (plist-get content :id)))
+          (unless (and (stringp id) (not (string-empty-p id))
+                       (not (gethash id records))
+                       (symbolp (plist-get content :kind))
+                       (plist-get content :kind)
+                       (not (eq (plist-get content :kind) 'layout)))
+            (error "Invalid or duplicate content ID: %S" id))
+          (when-let* ((type (plist-get content :type)))
+            (atelier-entry-type-definition type))
+          (when-let* ((job (plist-get content :job)))
+            (unless (and (listp job) (stringp (plist-get job :id))
+                         (stringp (plist-get job :buffer))
+                         (memq (plist-get job :policy) '(auto always never)))
+              (error "Invalid content job: %S" id)))
+          (puthash id t records)))
+      (cl-labels ((check (entry)
+                    (if (atelier-layout-entry-p entry)
+                        (progn
+                          (when (plist-get entry :content-ids)
+                            (error "Layout has content IDs"))
+                          (mapc #'check (atelier-entry-children entry)))
+                      (let ((ids (plist-get entry :content-ids)))
+                        (unless (and (consp ids) (cl-every #'stringp ids)
+                                     (= (length ids)
+                                        (length (delete-dups (copy-sequence ids)))))
+                          (error "Invalid content IDs on entry %S"
+                                 (plist-get entry :id)))
+                        (dolist (key (append atelier-content-properties
+                                             '(:content-id :stack)))
+                          (when (plist-member entry key)
+                            (error "Inline content property %S" key)))
+                        (when (and (cdr ids)
+                                   (cl-some (lambda (id)
+                                              (let ((content (atelier-workspace-content
+                                                              workspace id)))
+                                                (or (plist-get content :job)
+                                                    (memq (plist-get content :type)
+                                                          '(terminal aipanel)))))
+                                            ids))
+                          (error "Job content cannot be stacked"))
+                        (dolist (id ids)
+                          (unless (gethash id records)
+                            (error "Missing content %S" id))
+                          (puthash id t used))))))
+        (mapc #'check (plist-get workspace :entries)))
+      (maphash (lambda (id _)
+                 (unless (gethash id used) (error "Orphan content %S" id)))
+               records))))
+
 (defun atelier-validate-state (data)
-  "Validate flat v8 state by rebuilding its runtime entry trees."
+  "Validate flat v10 state by rebuilding its runtime entry trees."
   (setq data (atelier-migrate-state data))
-  (unless (and (listp data) (equal (plist-get data :version) 8)
+  (unless (and (listp data) (equal (plist-get data :version) 10)
                (listp (plist-get data :workspaces)))
     (error "Invalid flat state header"))
   (let ((runtime (copy-tree data)))
@@ -635,6 +828,14 @@
           (plist-get runtime :workspaces)
           (mapcar #'atelier-workspace-runtime-copy
                   (plist-get data :workspaces)))
+    ;; Earlier snapshots left file entries untyped even though new ones use `file'.
+    (dolist (workspace (plist-get runtime :workspaces))
+      (let ((atelier-model-workspace workspace))
+       (dolist (entry (atelier-workspace-entries workspace))
+        (when (and (eq (atelier-entry-value entry :kind workspace) 'file)
+                   (not (atelier-entry-value entry :type workspace)))
+          (atelier-entry-set-value entry :type 'file workspace)))))
+    (atelier-validate-content-ownership runtime)
     (setq runtime (atelier-validate-runtime-state runtime))
     (let ((normalized (copy-tree data)))
       (setf (plist-get normalized :workspaces)
@@ -650,7 +851,7 @@
   (atelier-ensure-detached-workspace)
   (atelier-select-workspace
    (atelier-workspace-by-id (plist-get data :current-workspace-id)))
-  (clrhash atelier-entry-live-buffers)
+  (clrhash atelier-content-live-buffers)
   (dolist (workspace atelier-workspaces)
     (atelier-set-workspace-status workspace 'stopped)
     (dolist (entry (atelier-workspace-job-entries workspace))
@@ -662,7 +863,7 @@
                  (plist-get job :shell) (plist-get job :directory))))
         (unless (or (plist-get job :recipe) (eq (plist-get job :policy) 'never))
           (myconfig-log "Terminal entry %s has no usable restart recipe"
-                        (plist-get entry :name))))))
+                        (atelier-entry-value entry :name))))))
   (atelier-persist-open-saved-state)
   (run-hooks 'atelier-after-restore-hook))
 

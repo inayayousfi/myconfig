@@ -83,6 +83,8 @@
   (evil-define-key 'normal atelier-navigator-mode-map
     (kbd "j") #'atelier-navigator-next
     (kbd "k") #'atelier-navigator-previous
+    (kbd "h") #'atelier-navigator-stack-previous
+    (kbd "l") #'atelier-navigator-stack-next
     (kbd "<down>") #'atelier-navigator-next
     (kbd "<up>") #'atelier-navigator-previous
     (kbd "RET") #'atelier-navigator-open
@@ -91,7 +93,7 @@
     (kbd "f") #'isearch-forward
     (kbd "F") #'isearch-forward
     (kbd "x") #'atelier-navigator-close
-    (kbd "X") #'atelier-navigator-close
+    (kbd "X") #'atelier-navigator-close-entry
     (kbd "r") #'atelier-navigator-rename
     (kbd "R") #'atelier-navigator-rename
     (kbd "q") #'atelier-navigator-quit)

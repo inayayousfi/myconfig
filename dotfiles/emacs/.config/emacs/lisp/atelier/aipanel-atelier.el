@@ -17,7 +17,7 @@
   "Return ENTRY's live Emacs directory in WORKSPACE."
   (let* ((buffer (atelier-entry-live-buffer entry))
          (directory (or (and buffer (buffer-local-value 'default-directory buffer))
-                        (plist-get entry :directory)
+                        (atelier-entry-value entry :directory)
                         (atelier-workspace-directory workspace))))
     (file-name-as-directory (expand-file-name directory))))
 
@@ -33,13 +33,13 @@
                     (atelier-register-buffer buffer workspace))))
     (unless entry
       (user-error "The current buffer is not an Atelier entry"))
-    (when (eq (plist-get entry :type) 'aipanel)
+    (when (eq (atelier-entry-value entry :type) 'aipanel)
       (user-error "An AIPanel cannot be attached to another AIPanel"))
     (atelier-update-entry-from-buffer entry buffer)
     (let* ((emacs-directory (aipanel-atelier-entry-directory workspace entry))
            (directory (aipanel-atelier-execution-directory workspace emacs-directory)))
       (list :id (plist-get entry :id)
-            :name (or (plist-get entry :name) (buffer-name buffer))
+            :name (or (atelier-entry-value entry :name) (buffer-name buffer))
             :source-buffer buffer
             :entry-id (plist-get entry :id)
             :workspace-id (atelier-workspace-id workspace)
@@ -101,8 +101,8 @@
     (when (bufferp buffer)
       (when-let* ((job-owner (atelier-find-job-for-buffer (buffer-name buffer)))
                   (panel-entry (nth 2 job-owner)))
-        (setf (plist-get panel-entry :persistent)
-              (and source (plist-get source :persistent)))))
+        (atelier-entry-set-value panel-entry :persistent
+                                 (and source (atelier-entry-value source :persistent)))))
     buffer))
 
 (defun aipanel-atelier-buffer-created ()
@@ -148,7 +148,7 @@
               (source-workspace (atelier-entry-workspace entry-id))
               (entry (atelier-entry-by-id source-workspace entry-id)))
     (list :id entry-id
-          :name (or (plist-get entry :name) entry-id)
+          :name (or (atelier-entry-value entry :name) entry-id)
           :source-buffer (atelier-entry-live-buffer entry)
           :entry-id entry-id
           :workspace-id (atelier-workspace-id source-workspace)

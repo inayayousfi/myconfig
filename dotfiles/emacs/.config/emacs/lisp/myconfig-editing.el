@@ -6,7 +6,6 @@
 (defvar-local myconfig-save-timer nil)
 (defvar-local myconfig-eglot-warning-shown nil)
 (defvar myconfig-auto-format-save t)
-(defvar myconfig-yank-highlight-active nil)
 
 (defun myconfig-buffer-stale-p (&optional _noconfirm)
   "Return non-nil when the visited file changed on disk.
@@ -18,17 +17,11 @@ the current file contents on disk."
        (file-readable-p buffer-file-name)
        (not (verify-visited-file-modtime (current-buffer)))))
 
-(defun myconfig-highlight-yank (original-function &rest arguments)
-  "Briefly highlight text inserted by a yank or paste command."
-  (if myconfig-yank-highlight-active
-      (apply original-function arguments)
-    (let ((start (point)) result)
-      (let ((myconfig-yank-highlight-active t))
-        (setq result (apply original-function arguments)))
-      (when (> (point) start)
-        (pulse-momentary-highlight-region start (point))
-        (redisplay t))
-      result)))
+(defun myconfig-highlight-copy (beg end &rest _)
+  "Briefly highlight the region copied by Evil's yank operator."
+  (when (< beg end)
+    (pulse-momentary-highlight-region beg end)
+    (redisplay t)))
 
 (defun myconfig-never-offer-temporary-buffer-for-saving ()
   "Keep non-file buffers out of Emacs' save-on-exit questions.
@@ -223,8 +216,7 @@ so the default value alone is not sufficient."
         completion-cycle-threshold 3
         read-extended-command-predicate #'command-completion-default-include-p)
   (require 'pulse)
-  (advice-add 'yank :around #'myconfig-highlight-yank)
-  (advice-add 'myconfig-paste :around #'myconfig-highlight-yank)
+  (advice-add 'evil-yank :after #'myconfig-highlight-copy)
   (advice-add 'save-some-buffers :override #'myconfig-never-save-some-buffers)
   (when (fboundp 'kill-buffer--possibly-save)
     (advice-add 'kill-buffer--possibly-save :override #'myconfig-never-save-before-kill))

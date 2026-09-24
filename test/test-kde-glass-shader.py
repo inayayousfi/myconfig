@@ -124,6 +124,12 @@ assert "float shapeDistance = radialPosition - 1.0" in glass, "LiquidGlass alpha
 assert "liquidGlassCurve(interiorDistance)" in glass, "LiquidGlass refraction does not use the shared surface"
 assert "opticalDepth" not in glass and "opticalGradient" not in glass, "LiquidGlass still contains a second optical surface"
 assert "1.0 - b * pow(c * liquidGlassE, -d * distance - a)" in glass, "LiquidGlass radial curve is missing"
+assert "const float d = 1.9" in glass, "LiquidGlass wrap no longer reaches into the face"
+assert "smoothstep(-0.95, 0.95," in glass and "float oppositeLight = 1.0 - lightBlend" in glass, \
+    "Material light and shadow no longer share a soft directional transition"
+assert "lightProfile = shoulderLight + 0.82 * edgeKiss * (1.0 - shoulderLight)" in glass, \
+    "Material light has a hard seam between edge and shoulder"
+assert "liquidGlassRandom(gl_FragCoord.xy)" in glass, "Material grain is not pixel-scale"
 assert "vec3(-0.70, 0.70, 0.72)" in glass, "Top-left material light is missing"
 assert "broadDiffuseLight" in glass and "diffuseFaceCoverage" in glass, \
     "Full-surface diffuse readability light is missing"

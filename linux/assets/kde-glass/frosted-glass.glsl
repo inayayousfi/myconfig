@@ -9,7 +9,8 @@ float liquidGlassCurve(float distance)
     const float a = 0.7;
     const float b = 2.3;
     const float c = 5.2;
-    const float d = 6.9;
+    // Let the wrap persist across the lens rather than ending at its shoulder.
+    const float d = 1.9;
     return 1.0 - b * pow(c * liquidGlassE, -d * distance - a);
 }
 
@@ -83,7 +84,8 @@ GlassFragment snellsRefraction(vec2 position, vec2 halfBlurSize, vec4 cornerRadi
         + texture(texUnit, clamp(sampleUV - roughnessOffset, 0.0, 1.0))
     );
     color = mix(color, roughTransmission, clamp(materialRoughness, 0.0, 0.16));
-    color.rgb += vec3(liquidGlassRandom(gl_FragCoord.xy * 0.001) - 0.5) * 0.06;
+    // Pixel-scale noise avoids the broad, correlated patches of a tiny input scale.
+    color.rgb += vec3(liquidGlassRandom(gl_FragCoord.xy) - 0.5) * 0.075;
 
     float angularGlow = sin(atan(p.y, p.x) - 0.5);
     float edgeGlow = 1.0 - smoothstep(-0.5, 0.5, interiorDistance);
@@ -105,13 +107,15 @@ GlassFragment snellsRefraction(vec2 position, vec2 halfBlurSize, vec4 cornerRadi
             - liquidGlassRoundedRadialPosition(position - vec2(0.0, gradientStep),
                 halfBlurSize, dynamicRadius)
     ) * minHalfSize * 0.5;
-    vec3 lightNormal = normalize(vec3(surfaceGradient * 2.2, 1.0));
     vec3 keyLight = normalize(vec3(-0.70, 0.70, 0.72));
-    float diffuseLight = max(dot(lightNormal, keyLight), 0.0);
     vec2 planarNormal = length(surfaceGradient) > 0.0001
         ? normalize(surfaceGradient) : vec2(0.0);
-    float oppositeLight = smoothstep(0.05, 0.90,
-        dot(planarNormal, -normalize(keyLight.xy)));
+    // Share one wide angular transition between light and shade so neither
+    // side has its own cutoff or a visible join halfway around the lens.
+    float lightBlend = smoothstep(-0.95, 0.95,
+        dot(planarNormal, normalize(keyLight.xy)));
+    float diffuseLight = mix(0.12, 0.92, lightBlend);
+    float oppositeLight = 1.0 - lightBlend;
     // Add a separate, low-frequency light from the same source. Unlike the
     // shoulder and rim terms below, it reaches across the full glass face to
     // provide a quiet readability lift without softening their definition.
@@ -126,26 +130,27 @@ GlassFragment snellsRefraction(vec2 position, vec2 halfBlurSize, vec4 cornerRadi
     // Place the strongest light just inside the silhouette, on the shoulder
     // of the lens. This reads as a three-quarter bevel rather than an outline
     // painted directly on the edge or a gradient spread over the front face.
-    float innerReach = 1.0 - smoothstep(0.16, 0.52, interiorDistance);
-    float edgeRelease = smoothstep(0.0, 0.10, interiorDistance);
+    float innerReach = 1.0 - smoothstep(0.12, 0.62, interiorDistance);
+    float edgeRelease = smoothstep(0.0, 0.16, interiorDistance);
     float shoulderLight = innerReach * mix(0.38, 1.0, edgeRelease);
-    float edgeKiss = 1.0 - smoothstep(0.0, 0.075, interiorDistance);
-    float lightProfile = max(shoulderLight, 0.82 * edgeKiss);
+    float edgeKiss = 1.0 - smoothstep(0.0, 0.11, interiorDistance);
+    // A soft union avoids a ridge where the edge band meets the shoulder.
+    float lightProfile = shoulderLight + 0.82 * edgeKiss * (1.0 - shoulderLight);
     // Compensate for analytical alpha falloff at the silhouette. Without this
     // narrow term the premultiplied highlight appears to stop one pixel early.
     float silhouetteKiss = 1.0 - smoothstep(0.0, 0.11 + shapeAA,
         interiorDistance);
     float coverageCompensation = mix(1.0, 2.2, 1.0 - shapeCoverage);
     float transmittedRim = (0.018 + 0.070 * diffuseLight)
-        * pow(lightProfile, 1.35);
-    float rimHighlight = 0.24 * pow(diffuseLight, 2.5)
-        * pow(lightProfile, 2.4);
-    float edgeSpecular = 0.16 * pow(diffuseLight, 2.0)
+        * pow(lightProfile, 1.2);
+    float rimHighlight = 0.17 * pow(diffuseLight, 1.7)
+        * pow(lightProfile, 1.7);
+    float edgeSpecular = 0.10 * pow(diffuseLight, 1.5)
         * silhouetteKiss * coverageCompensation;
     color.rgb = mix(color.rgb, vec3(1.0),
         clamp(transmittedRim + rimHighlight + edgeSpecular, 0.0, 0.38));
-    float respondingShadow = (0.040 + 0.26 * oppositeLight)
-        * pow(lightProfile, 1.5);
+    float respondingShadow = (0.035 + 0.19 * oppositeLight)
+        * pow(lightProfile, 1.2);
     color.rgb *= 1.0 - respondingShadow;
 
     float bend = clamp(1.0 - radialScale, 0.0, 1.0);

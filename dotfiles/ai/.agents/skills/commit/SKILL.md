@@ -23,13 +23,12 @@ Drafts the intended result early when a request includes future work, establishe
    - The first line must be a concise, descriptive subject line about the change. Never put attribution, disclosure, or other metadata before it.
    - Infer style (tense, capitalization, prefix conventions like `fix:`/`feat:`) from the recent commits above and match it.
    - Include a body only if it adds real information beyond the subject.
-   - If another instruction makes attribution or disclosure unavoidable, put it in the body after the subject and a blank line. The subject must remain the first line so short Git history shows the actual change.
    - Reconcile any provisional message with the actual staged changes. Preserve its outcome focus when it remains accurate, but change it when the real change set requires that.
    - No emojis, no filler, no restating the diff line-by-line.
 
 5. **Preview the final message.** Output the commit message directly in the ordinary chat response as plain text, in a fenced code block tagged `text`. Do not put the commit message inside a tool call. In the same response, immediately continue to step 6.
 
-6. **Confirm once.** Call the question tool: Confirm / Request changes / Cancel. Do not put the commit message in this tool call; it was already shown in step 5. Do not run `git commit` until the user confirms the final message. If they ask for changes, redraft, repeat step 5, then ask again. The provisional message from step 1 never counts as this confirmation.
+6. **Confirm once.** You HAVE to call the question tool: Confirm / Request changes / Cancel. Do not put the commit message in this tool call; it was already shown in step 5. Do not run `git commit` until the user confirms the final message. If they ask for changes, redraft, repeat step 5, then ask again. The provisional message from step 1 never counts as this confirmation.
 
 7. Once confirmed, commit with the approved message (e.g. `git commit -F -` fed the final message, or `git commit -m`/`-m` flags as appropriate).
 

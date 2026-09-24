@@ -87,7 +87,7 @@ Never pad to look thorough. Whoever reads this reads many of them.
 
 ## 4. The collaboration block
 
-Before adding a generic collaboration attribution, ask the user whether they want it included in this specific outgoing text. Do not draft or include the block unless the user approves it. Approval for one text does not apply to another. If the user approves it, place the block above the text unless the destination requires a different position.
+Before adding a generic collaboration attribution, ask (with a question tool if available) the user whether they want it included in this specific outgoing text. Do not draft or include the block unless the user approves it. Approval for one text does not apply to another. If the user approves it, place the block where it would make sense, which means that it is somewhere that doesn't really pollute the content of what is being sent, but is not either hidden from the final recipient, as is the goal with any attribution.
 
 Write it in the same language as the outgoing text. When the text mixes languages, use its dominant language. Translate the meaning naturally instead of preserving the English words or sentence structure.
 

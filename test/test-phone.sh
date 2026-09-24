@@ -99,23 +99,23 @@ for SCENARIO in direct refresh unreachable existing offline wifi wifi-timeout wi
     status=0
     bash "$TEST_ROOT/phone" --no-audio >"$TEST_ROOT/output" 2>&1 || status=$?
     case "$SCENARIO" in
-        direct|refresh|existing)
+        direct | refresh | existing)
             [[ "$status" == 0 ]]
             grep -qx -- '-s 192.0.2.1:33385 --no-audio' "$TEST_ROOT/launched"
             ;;
-        wifi|wifi-timeout)
+        wifi | wifi-timeout)
             [[ "$status" == 0 ]]
             grep -qx -- '-s 192.0.2.1:44444 --no-audio' "$TEST_ROOT/launched"
             ;;
-        unreachable|offline|wifi-fail|wifi-unreachable)
+        unreachable | offline | wifi-fail | wifi-unreachable)
             [[ "$status" == 1 && ! -f "$TEST_ROOT/launched" ]]
             grep -q 'No route to host' "$TEST_ROOT/output"
             if grep -q 'Pair first' "$TEST_ROOT/output"; then exit 1; fi
             ;;
-        auth|absent) [[ "$status" == 1 && ! -f "$TEST_ROOT/launched" ]] ;;
+        auth | absent) [[ "$status" == 1 && ! -f "$TEST_ROOT/launched" ]] ;;
     esac
     case "$SCENARIO" in
-        refresh|unreachable|wifi*|auth|absent) [[ "$(grep -c '^kill-server$' "$TEST_ROOT/calls")" == 1 ]] ;;
+        refresh | unreachable | wifi* | auth | absent) [[ "$(grep -c '^kill-server$' "$TEST_ROOT/calls")" == 1 ]] ;;
         *) if grep -q '^kill-server$' "$TEST_ROOT/calls"; then exit 1; fi ;;
     esac
     case "$SCENARIO" in

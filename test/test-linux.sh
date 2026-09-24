@@ -324,8 +324,7 @@ zsh -n "$REPO_ROOT/dotfiles/zsh/.zshrc"
 zsh -n "$REPO_ROOT/dotfiles/zsh/.oh-my-zsh/custom/plugins/inaya/inaya.plugin.zsh"
 zsh -n "$REPO_ROOT/dotfiles/zsh/.oh-my-zsh/custom/themes/blacknpink.zsh-theme"
 
-python - "$REPO_ROOT/dotfiles/emacs/.config/emacs/lisp/remot.el" <<'PY' \
-    || myconfig_fail "Pinned embedded ghostty-web 0.4.0 assets changed"
+python - "$REPO_ROOT/dotfiles/emacs/.config/emacs/lisp/remot.el" <<'PY' || myconfig_fail "Pinned embedded ghostty-web 0.4.0 assets changed"
 import base64
 import hashlib
 import re
@@ -1364,7 +1363,7 @@ agents_configure_source="$(declare -f module_agents_configure)"
     || myconfig_fail "OpenCode remains a separate dotfile package"
 agents_home="$TEST_HOME/agents-home"
 mkdir -p "$agents_home/.agents/skills/demo" "$agents_home/.claude/skills" "$agents_home/.config/opencode"
-printf '%s\n' '# Test global instructions' > "$agents_home/.agents/AGENTS.md"
+printf '%s\n' '# Test global instructions' >"$agents_home/.agents/AGENTS.md"
 ln -s "../../.agents/skills/stale" "$agents_home/.claude/skills/stale"
 HOME="$agents_home"
 link_agent_config
@@ -1372,6 +1371,24 @@ link_agent_config
     || myconfig_fail "OpenCode AGENTS bridge does not use the live absolute target"
 [[ "$(readlink "$HOME/.fx/AGENTS.md")" == "$HOME/.agents/AGENTS.md" ]] \
     || myconfig_fail "fx AGENTS bridge does not use the live absolute target"
+cat >"$HOME/.fx/mcp.json" <<'EOF'
+{
+  "mcp": {
+    "existing-server": {"type": "http", "url": "https://example.test/mcp"}
+  }
+}
+EOF
+BUN_INSTALL="$HOME/.bun"
+configure_fx_playwright_mcp
+jq -e --arg command "$HOME/.bun/bin/playwright-mcp" '
+    .mcp["existing-server"].url == "https://example.test/mcp"
+    and .mcp.playwright.command == [$command, "--headless"]
+    and .mcp.playwright.type == "stdio"
+    and .mcp.playwright.enabled == true
+' "$HOME/.fx/mcp.json" >/dev/null \
+    || myconfig_fail "fx MCP configuration did not preserve existing servers and add Playwright"
+[[ "$(stat -c %a "$HOME/.fx/mcp.json")" = 600 ]] \
+    || myconfig_fail "fx MCP configuration is not private"
 [[ -L "$HOME/.claude/skills/demo" ]] \
     || myconfig_fail "Claude skill bridge was not created"
 [[ ! -L "$HOME/.claude/skills/stale" ]] \

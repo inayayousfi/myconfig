@@ -30,6 +30,44 @@ module_agents_packages() {
         "const { chromium } = require('$playwright_module'); const browser = await chromium.launch({ headless: true }); await browser.close();"
 }
 
+configure_fx_playwright_mcp() {
+    require_command jq
+
+    local mcp_config="$HOME/.fx/mcp.json"
+    local temporary_config
+    mkdir -p "$HOME/.fx"
+    temporary_config="$(mktemp "$HOME/.fx/mcp.json.XXXXXX")" \
+        || myconfig_fail "Could not create temporary fx MCP configuration"
+
+    if [ -f "$mcp_config" ]; then
+        jq --arg command "$BUN_INSTALL/bin/playwright-mcp" '
+            .mcp = ((.mcpServers // {}) + (.mcp // {}))
+            | .mcp.playwright = {
+                "type": "stdio",
+                "command": [$command, "--headless"],
+                "enabled": true
+            }
+            | del(.mcpServers)
+        ' "$mcp_config" >"$temporary_config" \
+            || myconfig_fail "Could not merge fx MCP configuration"
+    else
+        jq -n --arg command "$BUN_INSTALL/bin/playwright-mcp" '{
+            "mcp": {
+                "playwright": {
+                    "type": "stdio",
+                    "command": [$command, "--headless"],
+                    "enabled": true
+                }
+            }
+        }' >"$temporary_config" \
+            || myconfig_fail "Could not create fx MCP configuration"
+    fi
+
+    chmod 600 "$temporary_config"
+    mv -f "$temporary_config" "$mcp_config" \
+        || myconfig_fail "Could not install fx MCP configuration"
+}
+
 link_agent_config() {
     local skills_dir="$HOME/.agents/skills"
     [ -d "$skills_dir" ] || myconfig_fail "agent skills were not stowed"
@@ -120,6 +158,7 @@ module_agents_configure() {
 
     opencode debug config >/dev/null
     link_agent_config
+    configure_fx_playwright_mcp
 
     if [ "$MYCONFIG_PROFILE" = cachyos ]; then
         require_command ydotool

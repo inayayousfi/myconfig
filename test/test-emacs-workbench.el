@@ -35,6 +35,53 @@
   (load (expand-file-name "myconfig-editing.el" lisp-directory) nil t)
   (load (expand-file-name "remot.el" lisp-directory) nil t))
 
+(defvar ghostel-char-mode-map)
+
+(ert-deftest myconfig-terminal-char-keys-forward-by-default ()
+  (let ((ghostel-char-mode-map (make-sparse-keymap)))
+    (cl-letf (((symbol-function 'ghostel--define-terminal-keys)
+               (lambda (map _no-exceptions)
+                 (define-key map (kbd "<escape>") #'ghostel--send-event)
+                 (define-key map (kbd "M-RET") #'ghostel-semi-char-mode))))
+      (myconfig-terminal-configure-char-keys))
+    (with-temp-buffer
+      (use-local-map ghostel-char-mode-map)
+      (setq-local meta-prefix-char nil)
+      (dolist (key '("ESC" "<escape>" "C-c" "C-u" "C-S-q"
+                     "C-=" "M-a" "M-RET" "<f13>"))
+        (should (eq (key-binding (kbd key)) #'ghostel--send-event)))
+      (should (eq (key-binding (kbd "M-x")) #'myconfig-terminal-escape))
+      (should (eq (key-binding (kbd "C-S-v")) #'myconfig-paste)))))
+
+(ert-deftest myconfig-terminal-mode-line-shows-char-input ()
+  (with-temp-buffer
+    (cl-letf (((symbol-function 'derived-mode-p)
+               (lambda (&rest modes) (memq 'ghostel-mode modes))))
+      (setq-local ghostel--input-mode 'char)
+      (should (equal (myconfig-terminal-mode-line-state) " INSERT "))
+      (should (eq (get-text-property 1 'face (myconfig-terminal-mode-line-state))
+                  'myconfig-mode-line-state))
+      (setq-local ghostel--input-mode 'emacs)
+      (should-not (myconfig-terminal-mode-line-state)))))
+
+(ert-deftest myconfig-terminal-restores-meta-prefix-on-exit ()
+  (with-temp-buffer
+    (cl-letf (((symbol-function 'ghostel-char-mode) #'ignore)
+              ((symbol-function 'ghostel-emacs-mode) #'ignore)
+              ((symbol-function 'evil-local-mode) #'ignore)
+              ((symbol-function 'evil-ghostel-mode) #'ignore)
+              ((symbol-function 'evil-normal-state) #'ignore))
+      (myconfig-terminal-enter-input)
+      (should (local-variable-p 'meta-prefix-char))
+      (should-not meta-prefix-char)
+      (myconfig-terminal-escape)
+      (should-not (local-variable-p 'meta-prefix-char)))))
+
+(ert-deftest myconfig-terminal-mode-line-ignores-other-buffers ()
+  (with-temp-buffer
+    (setq-local ghostel--input-mode 'char)
+    (should-not (myconfig-terminal-mode-line-state))))
+
 (ert-deftest myconfig-file-wrap-margin-tracks-window-width ()
   (save-window-excursion
     (let ((file-buffer (generate-new-buffer " *wrap-file*"))

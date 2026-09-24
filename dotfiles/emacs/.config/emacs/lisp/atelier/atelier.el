@@ -1359,6 +1359,7 @@ Interactively, choose an entry from the current workspace."
   (setq-default
    mode-line-format
    '("%e" atelier-evil-mode-line-anchor
+     (:eval (myconfig-terminal-mode-line-state))
      "  " mode-line-buffer-identification
      (:eval (atelier-mode-line-status))
      (:eval (atelier-mode-line-navigator))

@@ -109,10 +109,17 @@
 
 (defun myconfig-terminal-escape ()
   (interactive)
+  (kill-local-variable 'meta-prefix-char)
   (ghostel-emacs-mode)
   (evil-local-mode 1)
   (evil-ghostel-mode 1)
   (evil-normal-state))
+
+(defun myconfig-terminal-mode-line-state ()
+  "Show input state while Evil is disabled in a Ghostel terminal."
+  (when (and (derived-mode-p 'ghostel-mode)
+             (eq ghostel--input-mode 'char))
+    (propertize " INSERT " 'face 'myconfig-mode-line-state)))
 
 (defun myconfig-terminal-enter-input ()
   "Give the terminal process all keyboard input through Ghostel char mode."
@@ -122,6 +129,9 @@
   (when (bound-and-true-p evil-local-mode)
     (evil-local-mode -1))
   (ghostel-char-mode)
+  ;; In graphical Emacs, preserve Meta as a distinct event so literal ESC
+  ;; can go to the PTY without stealing M-x from the editor.
+  (setq-local meta-prefix-char nil)
   (setq buffer-read-only nil))
 
 (defun myconfig-terminal-display-setup ()
@@ -142,6 +152,29 @@
                  (process-live-p (get-buffer-process buffer)))
         (myconfig-terminal-enter-input)))))
 
+(defun myconfig-terminal-configure-char-keys ()
+  "Send terminal input by default; reserve only the exit and paste keys."
+  ;; Ghostel handles ordinary input.  Cover modified printable keys as a
+  ;; class so none fall through to Emacs bindings, including future ones.
+  ;; Keeping Meta distinct from ESC also lets literal ESC reach the PTY.
+  (let ((meta-prefix-char nil))
+    (ghostel--define-terminal-keys ghostel-char-mode-map 'no-exceptions)
+    (dolist (modifier '("C-" "M-" "C-M-" "C-S-" "M-S-" "C-M-S-"))
+      (dolist (character (number-sequence ?! ?~))
+        (ignore-errors
+          (define-key ghostel-char-mode-map
+            (kbd (format "%s%c" modifier character)) #'ghostel--send-event))))
+    (dolist (modifier '("" "S-" "C-" "M-" "C-S-" "M-S-" "C-M-" "C-M-S-"))
+      (dolist (number (number-sequence 1 35))
+        (define-key ghostel-char-mode-map (kbd (format "<%sf%d>" modifier number))
+                    #'ghostel--send-event)))
+    (define-key ghostel-char-mode-map [remap ghostel-semi-char-mode]
+                #'ghostel--send-event)
+    (define-key ghostel-char-mode-map (kbd "ESC") #'ghostel--send-event)
+    (define-key ghostel-char-mode-map (kbd "C-S-v") #'myconfig-paste)
+    (define-key ghostel-char-mode-map myconfig-terminal-escape-key
+                #'myconfig-terminal-escape)))
+
 (defun myconfig-terminal-setup ()
   (setq ghostel-kill-buffer-on-exit t
         ghostel-query-before-killing nil
@@ -155,8 +188,7 @@
   (evil-set-initial-state 'ghostel-mode 'normal)
   (add-hook 'ghostel-mode-hook #'myconfig-terminal-display-setup)
   (define-key ghostel-mode-map myconfig-terminal-escape-key #'myconfig-terminal-escape)
-  (define-key ghostel-char-mode-map myconfig-terminal-escape-key #'myconfig-terminal-escape)
-  (define-key ghostel-char-mode-map (kbd "C-S-v") #'myconfig-paste)
+  (myconfig-terminal-configure-char-keys)
   (define-key evil-ghostel-mode-map myconfig-terminal-escape-key #'myconfig-terminal-escape)
   (evil-define-key 'normal evil-ghostel-mode-map
     (kbd "i") #'myconfig-terminal-enter-input

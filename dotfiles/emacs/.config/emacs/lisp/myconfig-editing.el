@@ -131,6 +131,45 @@ so the default value alone is not sufficient."
   (setq myconfig-auto-format-save (not myconfig-auto-format-save))
   (message "Automatic format and save %s" (if myconfig-auto-format-save "enabled" "disabled")))
 
+(defun myconfig-flyover-refresh-eob ()
+  "Hide end-of-buffer diagnostics only while point is at their anchor."
+  (let ((eob (point-max)))
+    (dolist (overlay (overlays-in eob (1+ eob)))
+      (when-let* ((text (overlay-get overlay 'myconfig-flyover-eob-text)))
+        (overlay-put overlay 'before-string (unless (= (point) eob) text))))))
+
+(defun myconfig-flyover-use-margin (overlay &rest _)
+  "Show Flyover after its line without placing the cursor after it."
+  (when-let* ((text (or (overlay-get overlay 'display)
+                        (overlay-get overlay 'after-string)))
+              ((stringp text))
+              (buffer (overlay-buffer overlay)))
+    (with-current-buffer buffer
+      (save-excursion
+        (goto-char (overlay-start overlay))
+        (let* ((eol (line-end-position))
+               (message-text (if (string-prefix-p "\n" text)
+                                 (substring text 1)
+                               text))
+               (rendered (concat (propertize " " 'cursor 1) message-text)))
+          (overlay-put overlay 'after-string nil)
+          (overlay-put overlay 'before-string nil)
+          (overlay-put overlay 'display nil)
+          (if (< eol (point-max))
+              ;; Replacing the newline makes point at EOL fall within the
+              ;; display string, so its cursor anchor is actually respected.
+              (progn
+                (move-overlay overlay eol (1+ eol))
+                (overlay-put overlay 'display (concat rendered "\n")))
+            ;; At EOB there is no character to replace.  Hide the message
+            ;; only at that position rather than drawing the cursor behind it.
+            (overlay-put overlay 'evaporate nil)
+            (move-overlay overlay eol eol)
+            (overlay-put overlay 'myconfig-flyover-eob-text rendered)
+            (add-hook 'post-command-hook #'myconfig-flyover-refresh-eob nil t)))))
+      (when (overlay-get overlay 'myconfig-flyover-eob-text)
+        (myconfig-flyover-refresh-eob))))
+
 (defun myconfig-compile ()
   (interactive)
   (compile (read-shell-command "Compile command: " compile-command)))
@@ -228,6 +267,7 @@ so the default value alone is not sufficient."
   (setq-default buffer-stale-function #'myconfig-buffer-stale-p)
   (global-auto-revert-mode 1)
   (add-hook 'after-change-functions #'myconfig-schedule-format-save)
+  (electric-pair-mode 1)
 
   (use-package evil
     :init (setq evil-want-minibuffer t
@@ -236,8 +276,8 @@ so the default value alone is not sufficient."
     :config
     (setq evil-want-keybinding nil
           evil-want-integration t
-          evil-undo-system 'undo-redo
           evil-search-module 'isearch)
+    (customize-set-variable 'evil-undo-system 'undo-redo)
     (evil-mode 1))
   (use-package evil-collection
     :after evil
@@ -257,7 +297,9 @@ so the default value alone is not sufficient."
                   "rg --null --line-buffered --color=never --max-columns=1000 --path-separator / --smart-case --hidden --glob=!.git/* --glob=!.svn/* --glob=!.hg/* --glob=!node_modules/* --no-heading --line-number ."))
   (use-package corfu
     :config
-    (setq corfu-auto t corfu-auto-delay 0.1 corfu-cycle t corfu-preselect 'prompt)
+    (setq corfu-auto t corfu-auto-delay 0.1 corfu-auto-prefix 1
+          corfu-cycle t corfu-preselect 'first)
+    (keymap-set corfu-map "TAB" #'corfu-insert)
     (global-corfu-mode 1))
   (use-package cape
     :config
@@ -318,7 +360,12 @@ so the default value alone is not sufficient."
     (flyover-info-icon "I")
     (flyover-wrap-messages nil)
     (flyover-hide-during-completion t)
-    (flyover-debounce-interval 0.2))
+    (flyover-debounce-interval 0.2)
+    :config
+    (advice-add 'flyover--configure-overlay-display :after
+                #'myconfig-flyover-use-margin)
+    (advice-add 'flyover--configure-overlay :after
+                #'myconfig-flyover-use-margin))
   (use-package eldoc-box :demand t)
 
   (require 'eldoc)

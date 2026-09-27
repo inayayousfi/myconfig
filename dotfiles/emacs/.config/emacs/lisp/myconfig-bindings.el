@@ -31,6 +31,7 @@
   (evil-define-key '(normal visual motion) 'global (kbd "SPC") myconfig-leader-map)
   (evil-define-key '(normal visual operator) 'global (kbd "f") #'avy-goto-char-timer)
   (evil-define-key 'normal 'global (kbd ":") #'execute-extended-command)
+  (evil-define-key '(normal insert visual) 'global (kbd "C-r") #'evil-redo)
   (evil-define-key 'normal 'global (kbd "g k") #'eldoc-box-help-at-point)
   (evil-set-initial-state 'atelier-navigator-mode 'normal)
   (evil-set-initial-state 'atelier-choice-mode 'normal)

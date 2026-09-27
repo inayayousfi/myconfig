@@ -490,6 +490,13 @@ Its return value is passed unchanged to `remot-initialize-frame-function'."
     (advice-remove 'httpd/ #'remot--http-dispatch))
   (setq remot-started-p nil))
 
+(defun remot-start-local-server ()
+  "Allow same-user local clients through Remot's protected Unix socket.
+This does not expose the browser terminal or bypass its password."
+  (let ((server-name remot-server-name))
+    (unless (server-running-p server-name)
+      (server-start nil t))))
+
 (defun remot-start ()
   "Start browser terminal listeners for an existing password verifier."
   (unless (display-graphic-p)
@@ -497,8 +504,7 @@ Its return value is passed unchanged to `remot-initialize-frame-function'."
   (unless remot-password-record
     (user-error "Set a browser terminal password first"))
   (unless remot-started-p
-    (setq server-name remot-server-name)
-    (server-start nil t)
+    (remot-start-local-server)
     (setq httpd-host "0.0.0.0"
           httpd-port remot-http-port
           httpd-root nil
@@ -524,6 +530,7 @@ Its return value is passed unchanged to `remot-initialize-frame-function'."
 (defun remot-setup ()
   "Configure Remot for the current graphical GNU/Linux Emacs process."
   (when (and (eq system-type 'gnu/linux) (display-graphic-p))
+    (remot-start-local-server)
     (setq remot-password-record
           (remot-read-password-record))
     (add-hook 'server-after-make-frame-hook

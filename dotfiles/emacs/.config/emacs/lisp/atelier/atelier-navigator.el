@@ -260,15 +260,15 @@
        (buffer-list))))))
 
 (defun atelier-navigator-buffer-name (name)
+  "Show Emacs duplicate suffixes as readable qualifiers, without renaming buffers."
   (let* ((buffer (get-buffer name))
          (title (and buffer
                      (local-variable-p 'ghostel-title buffer)
                      (buffer-local-value 'ghostel-title buffer))))
     (if (and (stringp title) (not (string-empty-p (string-trim title))))
         (string-trim (replace-regexp-in-string "[[:cntrl:]]+" " " title))
-      (if (and (string-match "\\`\\(.*\\)<[0-9]+>\\'" name)
-               (get-buffer (match-string 1 name)))
-          (match-string 1 name)
+      (if (string-match "\\`\\(.*\\)<\\([^<>]+\\)>\\'" name)
+          (format "%s (%s)" (match-string 1 name) (match-string 2 name))
         name))))
 
 (defun atelier-new-scratch-buffer (&optional workspace)
@@ -552,6 +552,10 @@ LAST-CHILD describe the current branch position in the rendered tree."
 
 (defun atelier-navigator ()
   (interactive)
+  ;; Side windows (including AIPanel) are not Atelier views.  Save and
+  ;; restore navigation from the main view, never from the side panel.
+  (when (window-parameter nil 'window-side)
+    (select-window (window-main-window)))
   (let* ((frame (selected-frame))
          (existing (assq frame atelier-navigator-window-configurations))
          (window (cl-find-if (lambda (item) (not (window-parameter item 'window-side)))

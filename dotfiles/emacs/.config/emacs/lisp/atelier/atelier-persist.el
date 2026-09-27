@@ -11,6 +11,7 @@
   (expand-file-name "restore-journal.el" myconfig-state-directory))
 (defvar atelier-persist-timer nil)
 (defvar atelier-persist-restoring nil)
+(defvar atelier-persist-pruned-state nil)
 (defvar atelier-snapshot-generation nil)
 (defvar atelier-job-observer-timer nil)
 (defvar atelier-defer-job-restart nil)
@@ -168,7 +169,7 @@
   (when (fboundp 'myconfig-terminal-buffer)
     (let ((workspace (or workspace (atelier-current-workspace))))
       (when workspace
-        (let ((plan (atelier-build-restart-plan workspace)))
+        (let ((plan (atelier-build-restart-plan workspace)) failed)
           (atelier-workspace-stop-jobs workspace)
           (atelier-validate-restart-plan plan)
           (dolist (entry plan)
@@ -199,9 +200,13 @@
                                   (file-name-nondirectory executable)
                                   (plist-get workspace :name)))
                 (error
+                 (push (plist-get entry :entry) failed)
                  (myconfig-log "Job restart failed for %s in workspace %s: %s"
                                (file-name-nondirectory executable)
-                               (plist-get workspace :name) error))))))))))
+                               (plist-get workspace :name) error)))))
+          (dolist (entry failed)
+            (atelier-entry-remove workspace entry t))
+          (when failed (atelier-persist-record-pruning)))))))
 
 (defun atelier-snapshot-data ()
   (atelier-ensure-detached-workspace)
@@ -843,6 +848,35 @@ Keep entries referenced by an agent attachment independent so their IDs survive.
                     (plist-get runtime :workspaces)))
       normalized)))
 
+(defun atelier-prune-unrestorable-saved-entries (workspace)
+  "Discard saved entries with no local source or restart recipe."
+  (let ((atelier-model-workspace workspace))
+    (dolist (entry (copy-sequence (atelier-workspace-entries workspace)))
+      (let* ((job (atelier-entry-job entry))
+             (file (atelier-entry-value entry :file workspace))
+             (directory (atelier-entry-value entry :directory workspace))
+             (kind (atelier-entry-value entry :kind workspace)))
+        (when (and (not (atelier-entry-live-buffer entry))
+                   (or (and (eq kind 'terminal) (not job))
+                       (and job
+                            (let* ((recipe (plist-get job :recipe))
+                                   (executable (plist-get recipe :executable))
+                                   (job-directory (plist-get recipe :directory)))
+                              (or (eq (plist-get workspace :status) 'running)
+                                  (not executable)
+                                  (and job-directory (not (file-remote-p job-directory))
+                                       (not (file-directory-p job-directory)))
+                                  (and (file-name-absolute-p executable)
+                                       (not (file-remote-p executable))
+                                       (not (file-executable-p executable))))))
+                       (and file (not (file-remote-p file))
+                            (not (file-readable-p file)))
+                       (and (eq kind 'directory) directory
+                            (not (file-remote-p directory))
+                            (not (file-directory-p directory)))))
+          (atelier-entry-remove workspace entry t)
+          (atelier-persist-record-pruning))))))
+
 (defun atelier-apply-state (data)
   (setq atelier-workspaces
         (mapcar #'atelier-workspace-runtime-copy (plist-get data :workspaces))
@@ -863,7 +897,8 @@ Keep entries referenced by an agent attachment independent so their IDs survive.
                  (plist-get job :shell) (plist-get job :directory))))
         (unless (or (plist-get job :recipe) (eq (plist-get job :policy) 'never))
           (myconfig-log "Terminal entry %s has no usable restart recipe"
-                        (atelier-entry-value entry :name))))))
+                        (atelier-entry-value entry :name)))))
+    (atelier-prune-unrestorable-saved-entries workspace))
   (atelier-persist-open-saved-state)
   (run-hooks 'atelier-after-restore-hook))
 
@@ -877,6 +912,12 @@ Keep entries referenced by an agent attachment independent so their IDs survive.
           (myconfig-write-data-atomically atelier-persist-state-file (atelier-snapshot-data))
           (run-hooks 'atelier-after-save-hook))
       (error (myconfig-log "Snapshot failed: %s" error)))))
+
+(defun atelier-persist-record-pruning ()
+  "Write failed-entry removal back to the snapshot after restoration."
+  (if atelier-persist-restoring
+      (setq atelier-persist-pruned-state t)
+    (atelier-persist-schedule)))
 
 (defun atelier-persist-schedule ()
   (unless atelier-persist-restoring
@@ -963,18 +1004,21 @@ Keep entries referenced by an agent attachment independent so their IDs survive.
               (error "A live job changed before replacement"))
             (atelier-stop-all-live-jobs)
             (atelier-apply-state saved)
-            (let ((atelier-restart-topology-guard wanted))
+            (let ((atelier-restart-topology-guard
+                   (atelier-data-topology (atelier-snapshot-data))))
               (atelier-restart-saved-jobs))
             (when (display-graphic-p (selected-frame))
               (atelier-restore-workspace (atelier-current-workspace)))
             (let ((journal (myconfig-read-data atelier-persist-restore-journal-file)))
               (when (equal token (plist-get journal :token))
                 (delete-file atelier-persist-restore-journal-file)))
-            (atelier-persist-now)
+            (let ((atelier-persist-restoring nil))
+              (atelier-persist-now))
             (message "Restored workbench state"))
         (error
           (atelier-apply-state live)
-          (let ((atelier-restart-topology-guard expected))
+          (let ((atelier-restart-topology-guard
+                 (atelier-data-topology (atelier-snapshot-data))))
             (atelier-restart-saved-jobs))
           (when (display-graphic-p (selected-frame))
             (atelier-restore-workspace (atelier-current-workspace)))
@@ -982,13 +1026,19 @@ Keep entries referenced by an agent attachment independent so their IDs survive.
          (signal (car error) (cdr error)))))))
 
 (defun atelier-persist-setup ()
+  (setq atelier-persist-pruned-state nil)
   (let ((atelier-persist-restoring t))
     (condition-case error
         (atelier-restore-journal-recover)
       (error (myconfig-log "Restore journal recovery failed: %s" error)))
-    (atelier-persist-load))
+    (atelier-persist-load)
+    (dolist (workspace atelier-workspaces)
+      (atelier-coalesce-unplaced-files workspace)))
   (add-hook 'atelier-change-hook #'atelier-persist-schedule)
   (add-hook 'kill-emacs-hook #'atelier-persist-now)
+  (when atelier-persist-pruned-state
+    (setq atelier-persist-pruned-state nil)
+    (atelier-persist-now))
   (setq atelier-job-observer-timer (run-with-timer 5 5 #'atelier-observe-jobs)))
 
 (provide 'atelier-persist)

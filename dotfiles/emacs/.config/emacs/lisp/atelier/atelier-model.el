@@ -33,8 +33,8 @@
 (defvar atelier-entry-types
   '((file :buffer-name "file" :buffer-p atelier-file-entry-buffer-p)
     (dired :buffer-name "dired" :buffer-p atelier-dired-entry-buffer-p)
-    (terminal :buffer-name "terminal" :buffer-p atelier-terminal-entry-buffer-p)
-    (aipanel :buffer-name "aipanel"))
+    (aipanel :buffer-name "aipanel" :buffer-p atelier-aipanel-entry-buffer-p)
+    (terminal :buffer-name "terminal" :buffer-p atelier-terminal-entry-buffer-p))
   "Registered workspace entry types and their shared behavior.")
 (defvar-local atelier-navigator-first-position nil)
 (defvar-local atelier-directory-chooser-original-header nil)
@@ -240,11 +240,38 @@ Transfer disposable buffers from legacy entry/content keys before dropping them.
             (memq (atelier-entry-value entry :type) '(terminal aipanel))
             (memq (plist-get content :type) '(terminal aipanel)))
     (error "Only ordinary content may be stacked; jobs own their entry"))
+  (when (and (plist-member content :type)
+             (not (eq (atelier-entry-value entry :type) (plist-get content :type))))
+    (error "A content stack may contain only one entry type"))
   (let* ((workspace (atelier-entry-owner entry))
          (id (atelier-workspace-store-content workspace content)))
     (atelier-plist-set! entry :content-ids (cons id (plist-get entry :content-ids)))
     (atelier-entry-set-live-buffer entry buffer)
     entry))
+
+(defun atelier-entry-absorb-unplaced (workspace target source)
+  "Move SOURCE's content IDs into TARGET without discarding live buffers.
+SOURCE must be an unplaced root of the same ordinary type.  Callers must
+keep entries referenced by external attachments separate."
+  (unless (and (not (eq source target))
+               (memq source (atelier-workspace-top-level-entries workspace))
+               (not (plist-get source :displayed))
+               (not (atelier-entry-job source))
+               (not (atelier-entry-job target))
+               (eq (atelier-entry-value source :type workspace)
+                   (atelier-entry-value target :type workspace))
+               (not (memq (atelier-entry-value source :type workspace)
+                          '(terminal aipanel))))
+    (error "Cannot absorb this workspace entry"))
+  (atelier-entry-stack source workspace)
+  (atelier-entry-stack target workspace)
+  (atelier-plist-set! target :content-ids
+                     (append (plist-get target :content-ids)
+                             (cl-remove-if
+                              (lambda (id) (member id (plist-get target :content-ids)))
+                              (plist-get source :content-ids))))
+  (atelier-entry-remove workspace source t)
+  target)
 
 (defun atelier-entry-activate-content (entry content-id)
   "Rotate ENTRY so CONTENT-ID becomes active without changing its view identity."

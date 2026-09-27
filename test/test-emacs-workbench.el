@@ -103,6 +103,20 @@
     (let ((evil-mode-line-tag " VISUAL "))
       (should (equal (atelier-mode-line-state) " VISUAL ")))))
 
+(ert-deftest atelier-mode-line-buffer-name-opens-navigator ()
+  (with-temp-buffer
+    (rename-buffer "mode-line-click-test" t)
+    (let* ((label (atelier-mode-line-buffer-name))
+           (map (get-text-property 0 'keymap label))
+           (opened nil))
+      (should (string-prefix-p (buffer-name) label))
+      (should-not (string-match-p "Navigator" label))
+      (should (eq (lookup-key map [mode-line mouse-1]) 'atelier-navigator))
+      (cl-letf (((symbol-function 'atelier-navigator)
+                 (lambda () (interactive) (setq opened t))))
+        (funcall (lookup-key map [mode-line mouse-1]))
+        (should opened)))))
+
 (ert-deftest myconfig-terminal-mode-line-ignores-other-buffers ()
   (with-temp-buffer
     (setq-local ghostel--input-mode 'char)
@@ -865,6 +879,63 @@
         (when (buffer-live-p buffer) (kill-buffer buffer)))
       (delete-directory directory t))))
 
+(ert-deftest atelier-navigator-from-side-window-restores-main-view ()
+  (save-window-excursion
+    (let* ((main (generate-new-buffer " *navigator-main-test*"))
+           (panel (generate-new-buffer " *navigator-panel-test*"))
+           (target (generate-new-buffer " *navigator-target-test*"))
+           (navigator (get-buffer-create atelier-navigator-buffer))
+           (atelier-navigator-window-configurations nil)
+           (main-window (selected-window))
+           side)
+      (unwind-protect
+          (progn
+            (set-window-buffer main-window main)
+            (setq side (display-buffer-in-side-window
+                        panel '((side . left) (slot . 0) (window-width . 0.3))))
+            (select-window side)
+            (cl-letf (((symbol-function 'atelier-capture-current-workspace) #'ignore)
+                      ((symbol-function 'atelier-render-navigator) (lambda () navigator))
+                      ((symbol-function 'atelier-navigator-target)
+                       (lambda () (list 'buffer (buffer-name target))))
+                      ((symbol-function 'atelier-assign-buffer-to-workspace) #'ignore)
+                      ((symbol-function 'atelier-notify-change) #'ignore))
+              (atelier-navigator)
+              (should (eq (selected-window) main-window))
+              (atelier-navigator-open)
+              (should (eq (selected-window) main-window))
+              (should (eq (window-buffer main-window) target))
+              (should (eq (window-buffer side) panel))))
+        (dolist (buffer (list main panel target))
+          (when (buffer-live-p buffer) (kill-buffer buffer)))))))
+
+(ert-deftest atelier-dired-navigation-preserves-listing-position ()
+  (let* ((root (make-temp-file "atelier-dired-position-" t))
+         (child (expand-file-name "middle" root))
+         (workspace (list :id "dired-position" :name "position" :entries nil))
+         (atelier-workspaces (list workspace))
+         (ls-lisp-use-insert-directory-program nil)
+         (ls-lisp-dirs-first t)
+         buffer)
+    (unwind-protect
+        (progn
+          (make-directory child)
+          (dolist (name '("alpha" "bravo" "charlie" "delta" "echo" "foxtrot"))
+            (write-region "" nil (expand-file-name name child) nil 'silent))
+          (dolist (name '("aardvark" "before"))
+            (make-directory (expand-file-name name root)))
+          (setq buffer (atelier-new-dired-buffer root t workspace))
+          (with-current-buffer buffer
+            (should (dired-goto-file child))
+            (let ((row (line-number-at-pos)))
+              (atelier-dired-change-directory child)
+              (should (<= (abs (- (line-number-at-pos) row)) 1))
+              (should (dired-get-filename nil t))
+              (atelier-dired-up-directory)
+              (should (equal (dired-get-filename nil t) child)))))
+      (when (buffer-live-p buffer) (kill-buffer buffer))
+      (delete-directory root t))))
+
 (ert-deftest atelier-dired-navigation-keeps-one-buffer-and-entry ()
   (let* ((root (make-temp-file "atelier-dired-navigation-" t))
          (child (file-name-as-directory (expand-file-name "child" root)))
@@ -1093,16 +1164,21 @@
       (dolist (buffer (list left right))
         (when (buffer-live-p buffer) (kill-buffer buffer))))))
 
-(ert-deftest atelier-navigator-hides-generated-duplicate-number ()
+(ert-deftest atelier-navigator-formats-duplicate-qualifiers-without-renaming ()
   (let ((first (generate-new-buffer "*atelier-duplicate*"))
         second)
     (unwind-protect
         (progn
           (setq second (generate-new-buffer "*atelier-duplicate*"))
+          (should (equal (buffer-name second) "*atelier-duplicate*<2>"))
           (should (equal (atelier-navigator-buffer-name (buffer-name second))
-                         "*atelier-duplicate*"))
+                         "*atelier-duplicate* (2)"))
+          (should (equal (atelier-navigator-buffer-name "lib.rs<typed-fs-rs>")
+                         "lib.rs (typed-fs-rs)"))
           (should (equal (atelier-navigator-buffer-name "example<2>")
-                         "example<2>")))
+                         "example (2)"))
+          (should (equal (atelier-navigator-buffer-name "example")
+                         "example")))
       (kill-buffer first)
       (when (buffer-live-p second) (kill-buffer second)))))
 
@@ -2015,6 +2091,79 @@
       (dolist (buffer (list first second))
         (when (buffer-live-p buffer) (kill-buffer buffer))))))
 
+(ert-deftest atelier-aipanel-buffer-type-precedes-ghostel-terminal ()
+  (with-temp-buffer
+    (cl-letf (((symbol-function 'derived-mode-p)
+               (lambda (&rest modes) (memq 'ghostel-mode modes))))
+      (should (eq (atelier-buffer-entry-type (current-buffer)) 'terminal))
+      (setq-local aipanel-owner '(:entry-id "source"))
+      (should (eq (atelier-buffer-entry-type (current-buffer)) 'aipanel)))))
+
+(ert-deftest atelier-push-buffer-keeps-file-and-dired-types-in-separate-entries ()
+  (let* ((directory (make-temp-file "atelier-typed-stack-" t))
+         (file (expand-file-name "example.txt" directory))
+         (other-file (expand-file-name "other.txt" directory))
+         (workspace (list :id "typed-stack" :name "typed-stack" :entries nil))
+         (atelier-workspaces (list workspace))
+         (atelier-content-live-buffers (make-hash-table :test #'equal))
+         (old-selection (atelier-current-workspace-id))
+         dired-buffer file-buffer other-buffer)
+    (unwind-protect
+        (save-window-excursion
+          (write-region "example" nil file nil 'silent)
+          (write-region "other" nil other-file nil 'silent)
+          (atelier-select-workspace workspace)
+          (setq dired-buffer (dired-noselect directory))
+          (switch-to-buffer dired-buffer)
+          (atelier-register-buffer dired-buffer workspace nil 'dired)
+          (setq file-buffer (atelier-open-file file workspace))
+          (should (= (length (atelier-workspace-entries workspace)) 2))
+          (should (eq (atelier-entry-value
+                       (atelier-workspace-entry-for-buffer workspace dired-buffer) :type)
+                      'dired))
+          (should (eq (atelier-entry-value
+                       (atelier-workspace-entry-for-buffer workspace file-buffer) :type)
+                      'file))
+          (switch-to-buffer dired-buffer)
+          (setq other-buffer (atelier-open-file other-file workspace))
+          (should (= (length (atelier-workspace-entries workspace)) 2))
+          (should (= (length (atelier-entry-stack
+                              (atelier-workspace-entry-for-buffer workspace other-buffer))) 2))
+          (should-error
+           (atelier-entry-push-content
+            (atelier-workspace-entry-for-buffer workspace dired-buffer)
+            '(:type file :kind file :name "wrong"))))
+      (set-frame-parameter nil 'atelier-workspace-id old-selection)
+      (dolist (buffer (list dired-buffer file-buffer other-buffer))
+        (when (buffer-live-p buffer) (kill-buffer buffer)))
+      (delete-directory directory t))))
+
+(ert-deftest atelier-coalesces-hidden-file-entries-without-killing-buffers ()
+  (let* ((workspace (list :id "coalesce-files" :name "coalesce-files" :entries nil))
+         (atelier-workspaces (list workspace))
+         (atelier-content-live-buffers (make-hash-table :test #'equal))
+         (first (generate-new-buffer "coalesce-first"))
+         (second (generate-new-buffer "coalesce-second"))
+         (third (generate-new-buffer "coalesce-third"))
+         entry hidden attached)
+    (unwind-protect
+        (progn
+          (setq entry (atelier-register-buffer first workspace nil 'file)
+                hidden (atelier-register-buffer second workspace nil 'file)
+                attached (atelier-register-buffer third workspace nil 'file))
+          (setf (plist-get entry :displayed) t)
+          (cl-letf (((symbol-function 'atelier-entry-attached-panel-p)
+                     (lambda (candidate) (eq candidate attached))))
+            (atelier-coalesce-unplaced-files workspace))
+          (should (= (length (atelier-workspace-entries workspace)) 2))
+          (should-not (atelier-entry-by-id workspace (plist-get hidden :id)))
+          (should (eq (atelier-entry-live-buffer entry) first))
+          (should (atelier-entry-inactive-buffer-p entry second))
+          (should (atelier-entry-by-id workspace (plist-get attached :id)))
+          (should (buffer-live-p second)))
+      (dolist (buffer (list first second third))
+        (when (buffer-live-p buffer) (kill-buffer buffer))))))
+
 (ert-deftest atelier-reopening-stacked-file-reuses-content-and-keeps-workspaces-private ()
   (let* ((directory (make-temp-file "atelier-stack-file-" t))
          (first-file (expand-file-name "first.txt" directory))
@@ -2427,6 +2576,95 @@
           (should-not (buffer-live-p newer)))
       (dolist (buffer (list older newer))
         (when (buffer-live-p buffer) (kill-buffer buffer))))))
+
+(ert-deftest atelier-persist-prunes-unrestorable-entries-and-collapses-layout ()
+  (let* ((missing (make-temp-name (expand-file-name "atelier-missing-" temporary-file-directory)))
+         (good '(:id "good" :kind scratch :name "good" :persistent t))
+         (bad (list :id "bad" :kind 'terminal :name "dead terminal" :persistent t
+                    :job '(:id "job-bad" :buffer "dead terminal" :policy auto)))
+         (gone (list :id "gone" :kind 'file :name "gone" :file missing :persistent t))
+         (invalid (list :id "invalid" :kind 'terminal :name "invalid" :persistent t
+                        :job (list :id "job-invalid" :buffer "invalid" :policy 'always
+                                   :recipe (list :executable missing :directory temporary-file-directory))))
+         (restorable '(:id "restorable" :kind terminal :name "restorable" :persistent t
+                       :job (:id "job-restorable" :buffer "restorable" :policy always
+                             :recipe (:executable "/bin/sh" :directory "/tmp"))))
+         (workspace (list :id "prune" :name "prune" :destination "local"
+                          :path temporary-file-directory :status 'stopped
+                          :entries (list (list :id "split" :kind 'layout :displayed t
+                                               :orientation 'horizontal :ratio 0.5
+                                               :children (list good bad)) gone invalid restorable)))
+         (atelier-content-live-buffers (make-hash-table :test #'equal)))
+    (atelier-prune-unrestorable-saved-entries workspace)
+    (should (equal (mapcar (lambda (entry) (plist-get entry :id))
+                           (atelier-workspace-top-level-entries workspace))
+                   '("good" "restorable")))
+    (should (eq (atelier-workspace-displayed-entry workspace) good))
+    (should-not (atelier-entry-by-id workspace "bad"))
+    (should-not (atelier-entry-by-id workspace "invalid"))
+    (should-not (atelier-entry-by-id workspace "gone"))))
+
+(ert-deftest atelier-restart-prunes-failed-job-but-keeps-successful-job ()
+  (let* ((good '(:id "good-job" :kind terminal :name "good terminal" :persistent t
+                 :job (:id "good" :buffer "good terminal" :policy always
+                       :recipe (:executable "/bin/sh" :argv ("/bin/sh") :directory "/tmp"))))
+         (bad '(:id "bad-job" :kind terminal :name "bad terminal" :persistent t
+                :job (:id "bad" :buffer "bad terminal" :policy always
+                      :recipe (:executable "/bin/false" :argv ("/bin/false") :directory "/tmp"))))
+         (workspace (list :id "jobs" :name "jobs" :destination "local"
+                          :path temporary-file-directory :entries (list good bad)))
+         (atelier-workspaces (list workspace))
+         (atelier-entry-live-buffers (make-hash-table :test #'equal))
+         (atelier-content-live-buffers (make-hash-table :test #'equal))
+         (buffer (generate-new-buffer " *successful-restart*")))
+    (unwind-protect
+        (cl-letf (((symbol-function 'myconfig-log) #'ignore)
+                  ((symbol-function 'myconfig-terminal-buffer)
+                   (lambda (name &rest _)
+                     (if (equal name "bad terminal")
+                         (error "Cannot start terminal")
+                       buffer))))
+          (atelier-restart-saved-jobs workspace)
+          (should (eq (atelier-entry-by-id workspace "good-job") good))
+          (should-not (atelier-entry-by-id workspace "bad-job")))
+      (kill-buffer buffer))))
+
+(ert-deftest atelier-restore-workspace-drops-unrestorable-file ()
+  (let* ((missing (make-temp-name (expand-file-name "atelier-missing-" temporary-file-directory)))
+         (gone (list :id "gone" :kind 'file :name "gone" :file missing :persistent t))
+         (good '(:id "good" :kind scratch :name "restored scratch" :persistent t
+                 :contents "saved text"))
+         (workspace (list :id "restore" :name "restore" :destination "local"
+                          :path temporary-file-directory :entries (list gone good)))
+         (atelier-workspaces (list workspace))
+         (atelier-entry-live-buffers (make-hash-table :test #'equal))
+         (atelier-content-live-buffers (make-hash-table :test #'equal))
+         restored)
+    (unwind-protect
+        (save-window-excursion
+          (atelier-restore-workspace workspace)
+          (setq restored (atelier-entry-live-buffer good))
+          (should-not (atelier-entry-by-id workspace "gone"))
+          (should (buffer-live-p restored))
+          (should (equal (with-current-buffer restored (buffer-string)) "saved text")))
+      (when (buffer-live-p restored) (kill-buffer restored)))))
+
+(ert-deftest atelier-persist-saves-pruned-registry-after-startup-restore ()
+  (let ((atelier-workspaces nil)
+        (atelier-change-hook nil)
+        (kill-emacs-hook nil)
+        (atelier-persist-pruned-state nil)
+        (atelier-job-observer-timer nil)
+        (writes 0))
+    (cl-letf (((symbol-function 'atelier-restore-journal-recover) #'ignore)
+              ((symbol-function 'atelier-persist-load)
+               (lambda () (atelier-persist-record-pruning)))
+              ((symbol-function 'atelier-persist-now)
+               (lambda () (setq writes (1+ writes))))
+              ((symbol-function 'run-with-timer) (lambda (&rest _) nil)))
+      (atelier-persist-setup)
+      (should (= writes 1))
+      (should-not atelier-persist-pruned-state))))
 
 (ert-run-tests-batch-and-exit)
 ;;; test-emacs-workbench.el ends here

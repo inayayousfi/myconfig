@@ -24,6 +24,25 @@
         name
       (format "*%s*" (string-trim name "*" "*")))))
 
+(defun myconfig-terminal-exec-buffer (name directory program args &optional identity)
+  "Run PROGRAM in a regular Ghostel buffer without Atelier job ownership."
+  (let ((buffer (generate-new-buffer (generate-new-buffer-name
+                                      (myconfig-terminal-buffer-name name)))))
+    (condition-case error
+        (progn
+          (with-current-buffer buffer
+            (setq-local default-directory directory))
+          (ghostel-exec buffer program args identity)
+          (with-current-buffer buffer
+            ;; Ghostel resets input mode after its mode hook when executing.
+            (myconfig-terminal-enter-input)
+            (when-let* ((process (get-buffer-process buffer)))
+              (set-process-query-on-exit-flag process nil)))
+          buffer)
+      (error
+       (when (buffer-live-p buffer) (kill-buffer buffer))
+       (signal (car error) (cdr error))))))
+
 (defun myconfig-terminal-buffer
     (&optional name directory command args owner-workspace shell agent type explicit)
   (let* ((desired-directory (or directory (atelier-workspace-directory)))
@@ -36,16 +55,7 @@
     (condition-case error
         (setq buffer
               (if command
-                  (let ((buffer (generate-new-buffer (generate-new-buffer-name name))))
-                    (with-current-buffer buffer
-                      (setq-local default-directory desired-directory))
-                    (condition-case error
-                        (progn
-                          (ghostel-exec buffer program args)
-                          buffer)
-                      (error
-                       (when (buffer-live-p buffer) (kill-buffer buffer))
-                       (signal (car error) (cdr error)))))
+                  (myconfig-terminal-exec-buffer name desired-directory program args)
                 (let ((ghostel-shell (cons program args)))
                   (ghostel-create name))))
       (error (signal (car error) (cdr error))))

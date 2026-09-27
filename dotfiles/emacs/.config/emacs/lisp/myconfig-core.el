@@ -83,8 +83,6 @@
           (atelier-setup)
           (myconfig-editing-setup)
           (myconfig-terminal-setup)
-          (when (fboundp 'aipanel-atelier-setup)
-            (aipanel-atelier-setup))
           (myconfig-git-setup)
           (myconfig-bindings-setup)
           (atelier-persist-setup)

@@ -78,6 +78,7 @@ Optional environment adapters can replace the Emacs file-handler default.")
 (defvar-local aipanel-owner nil)
 (defvar-local aipanel-selection nil)
 (defvar-local aipanel-cleaned-up nil)
+(defvar-local aipanel-hidden nil)
 (defvar-local aipanel-attached-panel-ids nil)
 
 (defun aipanel-default-owner ()
@@ -202,7 +203,12 @@ Optional environment adapters can replace the Emacs file-handler default.")
     (condition-case error
         (progn
           (with-current-buffer buffer (setq-local default-directory directory))
-          (ghostel-exec buffer program arguments)
+          ;; This terminal belongs to one agent process, not a respawnable
+          ;; Ghostel command slot or a reusable shell.
+          (ghostel-exec buffer program arguments '((kind . aipanel)))
+          ;; `ghostel-exec' resets input mode after `ghostel-mode-hook'.
+          ;; Enter char mode only after startup so C-x reaches the agent.
+          (with-current-buffer buffer (ghostel-char-mode))
           (when-let* ((process (get-buffer-process buffer)))
             (set-process-query-on-exit-flag process nil))
           buffer)
@@ -217,7 +223,8 @@ Optional environment adapters can replace the Emacs file-handler default.")
                   aipanel-command command
                   aipanel-owner (copy-tree owner)
                   aipanel-selection (copy-tree selection)
-                  aipanel-cleaned-up nil)
+                  aipanel-cleaned-up nil
+                  aipanel-hidden nil)
       (add-hook 'ghostel-exit-functions #'aipanel-process-exited nil t)
       (add-hook 'kill-buffer-hook #'aipanel-current-buffer-exited nil t))
     (puthash (plist-get owner :id) (buffer-name buffer) aipanel-sessions)
@@ -368,7 +375,10 @@ Optional environment adapters can replace the Emacs file-handler default.")
          (buffer (or (aipanel-live-buffer owner) (aipanel-start owner (< width 45))))
          (visible (aipanel-visible-window buffer)))
     (if visible
-        (delete-window visible)
+        (progn
+          (with-current-buffer buffer (setq aipanel-hidden t))
+          (delete-window visible))
+      (with-current-buffer buffer (setq aipanel-hidden nil))
       (with-current-buffer source-buffer
         (when-let* ((context (funcall aipanel-context-function owner buffer)))
           (aipanel-queue-context buffer context)))

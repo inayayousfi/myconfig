@@ -6,6 +6,8 @@
 (defvar-local myconfig-save-timer nil)
 (defvar-local myconfig-eglot-warning-shown nil)
 (defvar myconfig-auto-format-save t)
+(defconst myconfig-search-ripgrep-args
+  "rg --null --line-buffered --color=never --max-columns=1000 --path-separator / --smart-case --hidden --glob=!.git/* --glob=!.svn/* --glob=!.hg/* --glob=!node_modules/* --no-heading --line-number")
 
 (defun myconfig-buffer-stale-p (&optional _noconfirm)
   "Return non-nil when the visited file changed on disk.
@@ -179,41 +181,104 @@ so the default value alone is not sufficient."
       (project-files project)
     (directory-files-recursively root directory-files-no-dot-files-regexp)))
 
-(defun myconfig-search-grep-source (root)
-  (let* ((ripgrep (executable-find "rg"))
-         (make-builder (funcall (if ripgrep
-                                   #'consult--ripgrep-make-builder
-                                 #'consult--grep-make-builder)
-                                (list root))))
-    (list :name (if ripgrep "Text (rg)" "Text (grep)")
-          :narrow ?t
-          :category 'consult-grep
-          :async (consult--process-collection
-                  make-builder
-                  :transform (consult--grep-format make-builder)
-                  :file-handler t)
-          :state #'consult--grep-state
-          :action (lambda (candidate)
-                    (consult--jump (consult--grep-position candidate))))))
+(defun myconfig-search-text-candidates (root files input)
+  "Search FILES below ROOT for INPUT using only Emacs."
+  (require 'consult)
+  (when-let* ((query (car (consult--command-split input)))
+              ((not (string-empty-p query)))
+              (regexp (condition-case nil
+                          (let ((parts (car (consult--compile-regexp
+                                             query 'emacs nil))))
+                            (and parts (consult--join-regexps parts 'emacs)))
+                        (invalid-regexp nil))))
+    (let (candidates)
+      (dolist (file files)
+        (let ((path (expand-file-name file root)))
+          (when (file-readable-p path)
+            (condition-case nil
+                (with-temp-buffer
+                  (insert-file-contents path)
+                  (goto-char (point-min))
+                  (while (re-search-forward regexp nil t)
+                    (let* ((position (match-beginning 0))
+                           (line (line-number-at-pos position))
+                           (text (buffer-substring-no-properties
+                                  (line-beginning-position) (line-end-position)))
+                           (candidate (format "%s:%d:%s"
+                                              (file-relative-name path root) line text)))
+                      (put-text-property 0 (length candidate) 'myconfig-search-location
+                                         (cons path position) candidate)
+                      (push candidate candidates))))
+              (file-error nil)))))
+      (nreverse candidates))))
+
+(defun myconfig-search-text-source (root)
+  "Return a live project text source for the combined search in ROOT."
+  (if-let* ((program (cond ((executable-find "rg") 'rg)
+                           ((executable-find "grep") 'grep)))
+            (builder (funcall (if (eq program 'rg)
+                                  #'consult--ripgrep-make-builder
+                                #'consult--grep-make-builder)
+                              (list root))))
+      (list :name (if (eq program 'rg) "Text (rg)" "Text (grep)")
+            :narrow ?t :category 'consult-grep
+            :async (consult--process-collection
+                    builder :transform (consult--grep-format builder) :file-handler t)
+            :state #'consult--grep-state
+            :action (lambda (candidate)
+                      (consult--jump (consult--grep-position candidate))))
+    (let ((files (myconfig-project-file-candidates root)))
+      (list :name "Text (Emacs)" :narrow ?t :category 'consult-grep
+            :async (consult--async-dynamic
+                    (lambda (input)
+                      (myconfig-search-text-candidates root files input)))
+            :action (lambda (candidate)
+                      (pcase-let ((`(,file . ,position)
+                                   (get-text-property 0 'myconfig-search-location candidate)))
+                        (atelier-open-file file)
+                        (goto-char position)))))))
+
+(defun myconfig-search-combined (root)
+  "Search file names and file contents together below ROOT."
+  (let ((default-directory root))
+    (consult--multi
+     (list (myconfig-search-text-source root)
+           (list :name "Files" :narrow ?f
+                 :items (lambda ()
+                          (mapcar (lambda (file) (file-relative-name file root))
+                                  (myconfig-project-file-candidates root)))
+                 :action (lambda (file)
+                           (atelier-open-file (expand-file-name file root)))))
+     :prompt "Search: " :require-match t :sort nil)))
+
+(defun myconfig-search-text (root &optional selected-text)
+  "Search ROOT for text, starting with SELECTED-TEXT when present."
+  (let ((default-directory root)
+        (initial (and selected-text
+                      (replace-regexp-in-string
+                       " " "\\ " (regexp-quote selected-text) t t))))
+    (cond
+     ((executable-find "rg") (consult-ripgrep root initial))
+     ((executable-find "grep") (consult-grep root initial))
+     (t
+      ;; `project-search' and `rgrep' also need external programs.  Occur
+      ;; searches Emacs buffers directly, including files not yet visited.
+      (let ((regexp (or initial (read-regexp "Search text: "))))
+        (multi-occur
+         (mapcar (lambda (file) (find-file-noselect (expand-file-name file root)))
+                 (myconfig-project-file-candidates root))
+         regexp))))))
 
 (defun myconfig-search ()
+  "Search project files and text together; a selection searches text directly."
   (interactive)
   (let* ((root (myconfig-project-root))
-         (_grep (or (executable-find "rg") (executable-find "grep")
-                    (user-error "Neither rg nor grep is installed")))
-         (selected
-          (let ((default-directory root))
-            (consult--multi
-             (list
-               (list :name "Files" :narrow ?f :category 'file
-                     :items (lambda () (myconfig-project-file-candidates root))
-                     :action (lambda (file) (atelier-open-file file)))
-              (myconfig-search-grep-source root))
-             :prompt "Search: "
-             :require-match t
-             :sort nil))))
-    (unless selected
-      (user-error "No search result"))))
+         (selected-text (when (use-region-p)
+                          (buffer-substring-no-properties
+                           (region-beginning) (region-end)))))
+    (if selected-text
+        (myconfig-search-text root selected-text)
+      (myconfig-search-combined root))))
 
 (defun myconfig-update-file-wrap-margin (window)
   "Use four fifths of WINDOW's available width for a visited file."
@@ -293,8 +358,7 @@ so the default value alone is not sufficient."
   (use-package consult
     :config (setq consult-preview-key 'any
                   consult-buffer-list-function #'atelier-buffer-list
-                  consult-ripgrep-args
-                  "rg --null --line-buffered --color=never --max-columns=1000 --path-separator / --smart-case --hidden --glob=!.git/* --glob=!.svn/* --glob=!.hg/* --glob=!node_modules/* --no-heading --line-number ."))
+                   consult-ripgrep-args myconfig-search-ripgrep-args))
   (use-package corfu
     :config
     (setq corfu-auto t corfu-auto-delay 0.1 corfu-auto-prefix 1

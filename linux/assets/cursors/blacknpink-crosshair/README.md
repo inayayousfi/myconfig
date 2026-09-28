@@ -1,9 +1,11 @@
 # Black & Pink Crosshair
 
-This XCursor theme is derived from the Crosshair Cursors set by AarogyaGaming. The original cyan was recolored to the Black & Pink theme's `#ff4ead`; cursor hotspots, animation order, and timing are preserved.
+The Black & Pink Crosshair cursor theme uses editable shapes in `artwork.svg`. `build.py` renders those shapes into the 40 px cursor files under `cursors/`. The dark outline follows the pink strokes on both sides instead of sitting below and to the right.
 
-The original 32×32 artwork was stored in a 24 px cursor slot despite Plasma selecting the theme at 32 px. The artwork is now enlarged to 40×40 with nearest-neighbor scaling and stored in a matching 40 px slot; The KDE module selects it at 40 px and synchronizes GTK, GNOME, and XSettings cursor sizes. Hotspots are scaled and animation timings are unchanged. Text selection, pointing, grabbing, moving, and drag-and-drop aliases use the pack's Precision Select crosshair consistently.
+After editing the SVG, rebuild the cursor files with:
 
-Source: <http://www.rw-designer.com/cursor-set/crosshar>
+    python3 build.py
 
-The original work was released into the public domain and may be used for any legal purpose.
+The build needs Python 3, `rsvg-convert`, and ImageMagick's `magick` command. To check the output without replacing the stored cursor files, run `python3 build.py --output-dir /path/to/empty/directory`. The animated cursors keep their frame counts and timing in `build.py`; cursor names and aliases remain under `cursors/`.
+
+The theme takes its crosshair idea and pink palette from the Crosshair Cursors set by AarogyaGaming. The original set is public domain: <http://www.rw-designer.com/cursor-set/crosshar>.

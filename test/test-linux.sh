@@ -672,6 +672,73 @@ for (const name of fs.readdirSync(root)) {
 }
 ' "$cursor_theme_root/cursors" \
     || myconfig_fail "Black & Pink Crosshair artwork and cursor slots must both be 40 px"
+cursor_build_dir="$TEST_HOME/cursor-build"
+python3 "$cursor_theme_root/build.py" --output-dir "$cursor_build_dir" \
+    || myconfig_fail "Black & Pink Crosshair SVG artwork did not build"
+for cursor in default crosshair help no-drop up-arrow person location size_hor size_ver size_fdiag size_bdiag progress wait; do
+    cmp -s "$cursor_theme_root/cursors/$cursor" "$cursor_build_dir/$cursor" \
+        || myconfig_fail "Black & Pink Crosshair $cursor does not match its SVG source"
+done
+python3 - "$cursor_theme_root/cursors/default" "$cursor_theme_root/cursors/crosshair" <<'PY' \
+    || myconfig_fail "Black & Pink Crosshair contours or centers are incorrect"
+import pathlib
+import struct
+import sys
+
+images = {}
+for file in sys.argv[1:]:
+    data = pathlib.Path(file).read_bytes()
+    offset = struct.unpack_from('<I', data, 24)[0]
+    pixels = struct.unpack_from('<1600I', data, offset + 36)
+    images[pathlib.Path(file).name] = pixels
+    for y in range(40):
+        for x in range(20):
+            assert pixels[y * 40 + x] == pixels[y * 40 + 39 - x]
+    if file.endswith('/default'):
+        for y in range(40):
+            for x in range(40):
+                assert pixels[y * 40 + x] == pixels[x * 40 + 39 - y]
+    for x, y in ((19, 19), (20, 19), (19, 20), (20, 20)):
+        pixel = pixels[y * 40 + x]
+        if file.endswith('/default'):
+            assert pixel == 0x66000000
+        else:
+            assert pixel >> 24 == 255 and (pixel >> 16) & 255 > (pixel >> 8) & 255
+for index, (normal, precision) in enumerate(zip(images['default'], images['crosshair'])):
+    if index % 40 in range(17, 23) and index // 40 in range(17, 23):
+        assert normal == 0x66000000
+        if index % 40 in (19, 20) and index // 40 in (19, 20):
+            assert precision == 0xffff4ead
+    else:
+        assert normal == precision
+PY
+python3 - "$cursor_theme_root/cursors" <<'PY' \
+    || myconfig_fail "Black & Pink resize arrows or shared cross are incorrect"
+import pathlib
+import struct
+import sys
+
+root = pathlib.Path(sys.argv[1])
+for name in ('size_hor', 'size_ver', 'size_fdiag', 'size_bdiag'):
+    data = (root / name).read_bytes()
+    assert struct.unpack_from('<I', data, 12)[0] == 2
+    for index in range(2):
+        offset = struct.unpack_from('<I', data, 24 + 12 * index)[0]
+        assert struct.unpack_from('<3I', data, offset + 24) == (20, 20, 167)
+        pixels = struct.unpack_from('<1600I', data, offset + 36)
+        for y in range(17, 23):
+            for x in range(17, 23):
+                assert pixels[y * 40 + x] == 0x66000000
+        if index == 0:
+            nw, ne, sw, se = (pixels[y * 40 + x] for x, y in
+                               ((11, 11), (28, 11), (11, 28), (28, 28)))
+            if name == 'size_fdiag':
+                assert nw and se and not ne and not sw
+            elif name == 'size_bdiag':
+                assert ne and sw and not nw and not se
+            else:
+                assert not (nw or ne or sw or se)
+PY
 for cursor in pointer grab grabbing move dnd-move dnd-copy text; do
     [ "$(readlink "$cursor_theme_root/cursors/$cursor")" = crosshair ] \
         || myconfig_fail "Black & Pink Crosshair cursor theme does not use Precision Select for $cursor"

@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">
+  <!-- Each named group is editable artwork. The builder composes and animates these groups. -->
+  <g id="precision">
+    <path d="M18 9 H22 V18 H31 V22 H22 V31 H18 V22 H9 V18 H18 Z" fill="#000" stroke="#000" stroke-opacity=".25" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M18 9 H22 V18 H31 V22 H22 V31 H18 V22 H9 V18 H18 Z" fill="#000"/>
+    <path d="M19 10 H21 V19 H30 V21 H21 V30 H19 V21 H10 V19 H19 Z" fill="#ff4ead"/>
+  </g>
+  <g id="normal-center">
+    <path d="M17 17 H23 V23 H17 Z" fill="#000" opacity=".4"/>
+  </g>
+  <g id="help">
+    <path d="M24 11 A5 5 0 1 1 29 16 Q27 17 27 19 M27 22 V23" fill="none" stroke="#000" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M24 11 A5 5 0 1 1 29 16 Q27 17 27 19 M27 22 V23" fill="none" stroke="#ff4ead" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <g id="forbidden">
+    <circle cx="20" cy="20" r="9" fill="none" stroke="#000" stroke-width="5"/>
+    <path d="M14 14 26 26" fill="none" stroke="#000" stroke-width="5"/>
+    <circle cx="20" cy="20" r="9" fill="none" stroke="#ff4ead" stroke-width="2.5"/>
+    <path d="M14 14 26 26" fill="none" stroke="#ff4ead" stroke-width="2.5"/>
+  </g>
+  <g id="resize-arrow">
+    <path d="M27 16 33 20 27 24 Z" fill="#ff4ead" stroke="#000" stroke-width="2" stroke-linejoin="round"/>
+  </g>
+  <g id="up-arrow">
+    <path d="M20 2 29 12 H24 V17 H16 V12 H11 Z" fill="#ff4ead" stroke="#000" stroke-width="3" stroke-linejoin="round"/>
+  </g>
+  <g id="arrow">
+    <path d="M2 2 2 27 8 22 13 34 18 32 13 20 22 20 Z" fill="#ff4ead" stroke="#000" stroke-width="3" stroke-linejoin="round"/>
+  </g>
+  <g id="person">
+    <circle cx="27" cy="28" r="5" fill="none" stroke="#000" stroke-width="4"/>
+    <circle cx="27" cy="28" r="5" fill="none" stroke="#ff4ead" stroke-width="2"/>
+    <path d="M19 38 Q19 33 27 33 Q35 33 35 38" fill="none" stroke="#000" stroke-width="4"/>
+    <path d="M19 38 Q19 33 27 33 Q35 33 35 38" fill="none" stroke="#ff4ead" stroke-width="2"/>
+  </g>
+  <g id="location">
+    <path d="M27 35 Q18 25 18 20 A9 9 0 1 1 36 20 Q36 25 27 35 Z" fill="#ff4ead" stroke="#000" stroke-width="3" stroke-linejoin="round"/>
+    <circle cx="27" cy="20" r="3" fill="#000"/>
+  </g>
+  <g id="spinner">
+    <path d="M20 13 V15 M25 15 24 16 M27 20 H25 M25 25 24 24 M20 27 V25 M15 25 16 24 M13 20 H15 M15 15 16 16" fill="none" stroke="#000" stroke-width="3" stroke-linecap="round"/>
+  </g>
+</svg>

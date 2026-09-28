@@ -651,6 +651,27 @@ for cursor in default pointer progress text wait size_hor size_ver; do
     [ -s "$cursor_theme_root/cursors/$cursor" ] \
         || myconfig_fail "Black & Pink Crosshair cursor theme is missing $cursor"
 done
+node -e '
+const fs = require("node:fs");
+const path = require("node:path");
+const root = process.argv[1];
+for (const name of fs.readdirSync(root)) {
+    const file = path.join(root, name);
+    if (!fs.statSync(file).isFile() || fs.lstatSync(file).isSymbolicLink()) continue;
+    const data = fs.readFileSync(file);
+    const count = data.readUInt32LE(12);
+    if (!count || data.toString("ascii", 0, 4) !== "Xcur") process.exit(1);
+    for (let i = 0; i < count; i++) {
+        const slot = data.readUInt32LE(16 + i * 12 + 4);
+        const offset = data.readUInt32LE(16 + i * 12 + 8);
+        if (slot !== 40 || offset + 36 + 40 * 40 * 4 > data.length ||
+            data.readUInt32LE(offset + 8) !== 40 ||
+            data.readUInt32LE(offset + 16) !== 40 ||
+            data.readUInt32LE(offset + 20) !== 40) process.exit(1);
+    }
+}
+' "$cursor_theme_root/cursors" \
+    || myconfig_fail "Black & Pink Crosshair artwork and cursor slots must both be 40 px"
 for cursor in pointer grab grabbing move dnd-move dnd-copy text; do
     [ "$(readlink "$cursor_theme_root/cursors/$cursor")" = crosshair ] \
         || myconfig_fail "Black & Pink Crosshair cursor theme does not use Precision Select for $cursor"
@@ -778,6 +799,12 @@ cp "$REPO_ROOT/dotfiles/kde-plasma/.local/share/kwin/scripts/myconfig-plasma-pan
 cp "$REPO_ROOT/dotfiles/kde-plasma/.local/share/kwin/scripts/myconfig-plasma-panels/contents/code/main.js" \
     "$plasma_layout_home/.local/share/kwin/scripts/myconfig-plasma-panels/contents/code/main.js"
 
+mkdir -p "$plasma_layout_home/.config/gtk-3.0" "$plasma_layout_home/.config/gtk-4.0" "$plasma_layout_home/.config/xsettingsd"
+for file in "$plasma_layout_home/.gtkrc-2.0" "$plasma_layout_home/.config/gtk-3.0/settings.ini" "$plasma_layout_home/.config/gtk-4.0/settings.ini"; do
+    printf 'gtk-cursor-theme-size=32\nother-setting=preserved\n' >"$file"
+done
+printf 'Gtk/CursorThemeSize 32\nOther/Setting 1\n' >"$plasma_layout_home/.config/xsettingsd/xsettingsd.conf"
+
 plasma_module_log="$plasma_layout_test_root/module.log"
 : >"$plasma_module_log"
 install_package_ids() {
@@ -800,6 +827,13 @@ plasma-apply-lookandfeel() {
 }
 kwriteconfig6() {
     printf 'config:%s\n' "$*" >>"$plasma_module_log"
+}
+gsettings() {
+    case "$1" in
+        list-keys) printf 'cursor-size\n' ;;
+        set) printf 'gsettings:%s\n' "$*" >>"$plasma_module_log" ;;
+        *) return 1 ;;
+    esac
 }
 fc-match() {
     printf 'IosevkaNerdFont-Regular.ttf: Iosevka Nerd Font\n'
@@ -826,6 +860,18 @@ HOME="$plasma_layout_home" \
     activate_kde_plasma_glass() { printf '%s\n' 'glass:activate' >>"$plasma_module_log"; }
     HOME="$plasma_layout_home" PATH="$plasma_layout_bin:/usr/bin:/bin" module_kde_plasma
 )
+for file in "$plasma_layout_home/.gtkrc-2.0" "$plasma_layout_home/.config/gtk-3.0/settings.ini" "$plasma_layout_home/.config/gtk-4.0/settings.ini"; do
+    grep -Fxq 'gtk-cursor-theme-size=40' "$file" \
+        || myconfig_fail "KDE Plasma module did not synchronize GTK cursor size in $file"
+    grep -Fxq 'other-setting=preserved' "$file" \
+        || myconfig_fail "KDE Plasma module overwrote unrelated GTK settings in $file"
+done
+grep -Fxq 'Gtk/CursorThemeSize 40' "$plasma_layout_home/.config/xsettingsd/xsettingsd.conf" \
+    || myconfig_fail "KDE Plasma module did not synchronize XSettings cursor size"
+grep -Fxq 'Other/Setting 1' "$plasma_layout_home/.config/xsettingsd/xsettingsd.conf" \
+    || myconfig_fail "KDE Plasma module overwrote unrelated XSettings"
+grep -Fxq 'gsettings:set org.gnome.desktop.interface cursor-size 40' "$plasma_module_log" \
+    || myconfig_fail "KDE Plasma module did not synchronize GNOME cursor size"
 grep -Fxq 'glass:install' "$plasma_module_log" || myconfig_fail "Plasma module omitted Glass installation"
 grep -Fxq 'glass:activate' "$plasma_module_log" || myconfig_fail "Plasma module omitted Glass activation"
 grep -Fxq 'systemctl:--user try-restart plasma-plasmashell.service' "$plasma_module_log" \
@@ -837,7 +883,7 @@ grep -Fxq "sudo:install -Dm644 $pointer_plugin /etc/libinput/plugins/90-myconfig
     || myconfig_fail "KDE Plasma module did not install the libinput plugin"
 grep -Fxq 'global-theme:--apply org.myconfig.blacknpink.desktop' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not apply its global theme headlessly"
-grep -Fxq 'cursors:--size 32 blacknpink-crosshair' "$plasma_module_log" \
+grep -Fxq 'cursors:--size 40 blacknpink-crosshair' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not apply its cursor theme headlessly"
 grep -Fxq 'config:--file kwinrc --group Windows --key ElectricBorderPushbackPixels 0' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not remove KWin edge pushback"
@@ -849,7 +895,7 @@ grep -Fxq 'config:--file kwinrc --group Effect-overview --key BorderActivate 9' 
     || myconfig_fail "KDE Plasma module did not disable the Overview hot corner"
 grep -Fxq 'config:--file kwinrc --group Windows --key PerOutputVirtualDesktops true' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not isolate virtual desktops per screen"
-grep -Fxq 'config:--file kcminputrc --group Mouse --key cursorSize 32' "$plasma_module_log" \
+grep -Fxq 'config:--file kcminputrc --group Mouse --key cursorSize 40' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not configure the cursor size"
 grep -Fxq 'config:--file kcminputrc --group Libinput --group Defaults --group Pointer --key PointerAcceleration 1.000' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not configure pointer sensitivity"

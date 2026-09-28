@@ -53,11 +53,29 @@ configure_kde_plasma_input() {
 
 configure_kde_plasma_cursor_theme() {
     local theme="${BLACKNPINK_CURSOR_THEME:-blacknpink-crosshair}"
+    local size=40
     [ -f "$HOME/.local/share/icons/$theme/cursors/default" ] \
         || myconfig_fail "Black & Pink Crosshair cursor theme was not installed"
 
-    kwriteconfig6 --file kcminputrc --group Mouse --key cursorSize 32
-    QT_QPA_PLATFORM=offscreen plasma-apply-cursortheme --size 32 "$theme"
+    kwriteconfig6 --file kcminputrc --group Mouse --key cursorSize "$size"
+    QT_QPA_PLATFORM=offscreen plasma-apply-cursortheme --size "$size" "$theme" || return 1
+
+    # Plasma's theme tool updates the KDE and X11 settings, but leaves these
+    # generated GTK settings at the old size in an existing session.
+    local file
+    for file in "$HOME/.gtkrc-2.0" "$HOME/.config/gtk-3.0/settings.ini" "$HOME/.config/gtk-4.0/settings.ini"; do
+        if [ -f "$file" ]; then
+            sed -i -E "s/^(gtk-cursor-theme-size=)[0-9]+$/\1$size/" "$file"
+        fi
+    done
+    file="$HOME/.config/xsettingsd/xsettingsd.conf"
+    if [ -f "$file" ]; then
+        sed -i -E "s/^(Gtk\/CursorThemeSize )[0-9]+$/\1$size/" "$file"
+    fi
+    if command -v gsettings >/dev/null 2>&1 \
+        && gsettings list-keys org.gnome.desktop.interface 2>/dev/null | grep -Fxq cursor-size; then
+        gsettings set org.gnome.desktop.interface cursor-size "$size"
+    fi
 }
 
 module_kde_plasma_validate() {

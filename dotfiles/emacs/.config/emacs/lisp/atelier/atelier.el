@@ -597,14 +597,15 @@ Displayed split views and entries with attached panels keep their IDs."
        (eq (atelier-entry-value entry :type) type)
        (not (atelier-entry-attached-panel-p entry))))
 
-(defun atelier-push-buffer (buffer &optional workspace type)
+(defun atelier-push-buffer (buffer &optional workspace type preferred-entry)
   "Place BUFFER in WORKSPACE's stack of TYPE, retaining its entry view.
-Explicit split views and entries with attached panels retain their identity."
+Explicit split views and entries with attached panels retain their identity.
+When PREFERRED-ENTRY is stackable, use it instead of another file entry."
   (setq workspace (or workspace (atelier-current-workspace))
         type (or type (atelier-buffer-entry-type buffer)))
   (unless (and workspace (atelier-buffer-registerable-p buffer workspace))
     (user-error "Buffer cannot be owned by this workspace"))
-  (when (eq type 'file)
+  (when (and (eq type 'file) (not preferred-entry))
     (atelier-coalesce-unplaced-files workspace))
   (let* ((owned (cl-find-if
                  (lambda (candidate)
@@ -614,6 +615,9 @@ Explicit split views and entries with attached panels retain their identity."
          (current (and (eq workspace (atelier-current-workspace))
                        (atelier-current-entry (window-buffer (selected-window)) workspace)))
          (entry (or owned
+                    (and (atelier-stackable-entry-p preferred-entry type)
+                         (memq preferred-entry (atelier-workspace-entries workspace))
+                         preferred-entry)
                     (and (atelier-stackable-entry-p current type) current)
                     (cl-find-if (lambda (candidate)
                                   (atelier-stackable-entry-p candidate type))
@@ -632,6 +636,54 @@ Explicit split views and entries with attached panels retain their identity."
         (atelier-update-entry-from-buffer entry buffer type))
       (atelier-notify-change)
       entry))))
+
+(defvar-local atelier-xref-source nil
+  "Workspace and file entry to use when choosing from an Xref results buffer.")
+
+(defun atelier-xref-follow (command)
+  "Run Xref COMMAND and stack a visited file in the originating file entry."
+  (let* ((workspace (atelier-current-workspace))
+         (entry (and workspace (atelier-current-entry (current-buffer) workspace)))
+         (source (and (atelier-stackable-entry-p entry 'file)
+                      (cons workspace entry)))
+         (result (let ((atelier-inhibit-buffer-ownership (and source t)))
+                   (call-interactively command))))
+    (when source
+      (cond
+       ((and (bufferp result)
+             (with-current-buffer result (derived-mode-p 'xref--xref-buffer-mode)))
+        (with-current-buffer result (setq-local atelier-xref-source source))
+        (when (buffer-file-name (current-buffer))
+          (atelier-push-buffer (current-buffer) workspace 'file entry)))
+       ((buffer-file-name (current-buffer))
+        (atelier-push-buffer (current-buffer) workspace 'file entry))))
+    result))
+
+(defun atelier-xref-find-definitions ()
+  "Find a definition and keep its file in the current Atelier file stack."
+  (interactive)
+  (atelier-xref-follow #'xref-find-definitions))
+
+(defun atelier-xref-find-implementation ()
+  "Find an implementation in the current Atelier file stack."
+  (interactive)
+  (atelier-xref-follow #'eglot-find-implementation))
+
+(defun atelier-xref-select (original &rest arguments)
+  "Stack the file chosen from an Atelier-owned Xref results buffer."
+  (let* ((source atelier-xref-source)
+         (result (let ((atelier-inhibit-buffer-ownership (and source t)))
+                   (apply original arguments))))
+    (when (and source (buffer-file-name (current-buffer)))
+      (atelier-push-buffer (current-buffer) (car source) 'file (cdr source)))
+    result))
+
+(defun atelier-xref-preview (original &rest arguments)
+  "Do not register a preview from an Atelier-owned Xref results buffer."
+  (let ((atelier-inhibit-buffer-ownership
+         (or (and (derived-mode-p 'xref--xref-buffer-mode) atelier-xref-source)
+             atelier-inhibit-buffer-ownership)))
+    (apply original arguments)))
 
 (defun atelier-open-file (file &optional workspace)
   "Open FILE in WORKSPACE, stacking it in the current entry when possible."
@@ -1351,6 +1403,22 @@ Interactively, choose an entry from the current workspace."
 
 (define-key dired-mode-map (kbd "q") #'atelier-file-browser-quit)
 
+(defun atelier-dired-create (name)
+  "Create a file named NAME, or a directory if NAME ends in a slash.
+Create it relative to the current Dired directory and refresh the listing."
+  (interactive (list (read-string "New file or directory (end with / for directory): ")))
+  (when (string-empty-p name)
+    (user-error "Enter a file or directory name"))
+  (let* ((directory-p (eq (aref name (1- (length name))) ?/))
+         (path (expand-file-name name (dired-current-directory))))
+    (when (or (file-exists-p path) (file-symlink-p path))
+      (user-error "Already exists: %s" path))
+    (if directory-p
+        (make-directory path)
+      (write-region "" nil path nil 'silent nil 'excl))
+    (revert-buffer)
+    (dired-goto-file path)))
+
 (defun atelier-dired-open ()
   (interactive)
   (if atelier-directory-chooser-mode
@@ -1525,6 +1593,12 @@ On entry, stay near the same listing row; on return, select TARGET."
     (atelier-mark-internal-buffer scratch))
   (add-hook 'window-configuration-change-hook #'atelier-notify-change)
   (add-hook 'window-buffer-change-functions #'atelier-register-visible-frame-buffers)
+  (unless (advice-member-p #'atelier-xref-select 'xref-goto-xref)
+    (advice-add 'xref-goto-xref :around #'atelier-xref-select))
+  (unless (advice-member-p #'atelier-xref-select 'xref--next-error-function)
+    (advice-add 'xref--next-error-function :around #'atelier-xref-select))
+  (unless (advice-member-p #'atelier-xref-preview 'xref--show-pos-in-buf)
+    (advice-add 'xref--show-pos-in-buf :around #'atelier-xref-preview))
   (add-hook 'after-rename-buffer-hook #'atelier-refresh-current-buffer-entries)
   (add-hook 'kill-buffer-hook #'atelier-current-buffer-killed)
   (add-hook 'delete-frame-functions #'atelier-capture-closing-frame)

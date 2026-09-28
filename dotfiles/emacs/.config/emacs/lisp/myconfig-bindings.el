@@ -3,6 +3,7 @@
 (require 'evil)
 (require 'multiple-cursors)
 (require 'atelier)
+(require 'eglot)
 
 (declare-function avy-goto-char-timer "avy")
 (declare-function eldoc-box-help-at-point "eldoc-box")
@@ -42,8 +43,12 @@
     (kbd "<return>") #'atelier-dired-open
     (kbd "l") #'atelier-dired-open
     (kbd "h") #'atelier-dired-up-directory
+    (kbd "n") #'atelier-dired-create
     [mouse-1] #'atelier-dired-mouse-open
     [mouse-2] #'atelier-dired-mouse-open)
+  (evil-define-key 'normal eglot-mode-map
+    (kbd "g d") #'atelier-xref-find-definitions
+    (kbd "g D") #'atelier-xref-find-implementation)
   (evil-define-key 'normal atelier-directory-chooser-mode-map
     (kbd "RET") #'atelier-directory-chooser-enter
     (kbd "<return>") #'atelier-directory-chooser-enter
@@ -123,6 +128,7 @@
   (define-key myconfig-leader-map (kbd "u v") #'myconfig-toggle-auto-format-save)
   (define-key myconfig-leader-map (kbd "u r") #'atelier-set-job-policy)
   (define-key myconfig-leader-map (kbd "w") #'atelier-navigator)
+  (define-key myconfig-leader-map (kbd "g a") #'eglot-code-actions)
   (define-key myconfig-leader-map (kbd "g f") #'dape)
   (define-key myconfig-leader-map (kbd "g g") #'magit-status)
   (define-key myconfig-leader-map (kbd "g d") #'diff)

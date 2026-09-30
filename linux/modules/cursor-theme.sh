@@ -3,7 +3,7 @@
 BLACKNPINK_CURSOR_THEME=blacknpink-crosshair
 
 blacknpink_cursor_theme_asset() {
-    printf '%s\n' "$MYCONFIG_REPO_ROOT/linux/assets/cursors/$BLACKNPINK_CURSOR_THEME"
+    printf '%s\n' "$MYCONFIG_REPO_ROOT/dotfiles/assets/cursor-theme/cursors/$BLACKNPINK_CURSOR_THEME"
 }
 
 module_cursor_theme_validate() {

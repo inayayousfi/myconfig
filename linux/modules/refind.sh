@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 refind_asset_root() {
-    printf '%s\n' "$MYCONFIG_REPO_ROOT/linux/assets/refind"
+    printf '%s\n' "$MYCONFIG_REPO_ROOT/dotfiles/assets/refind/refind"
 }
 
 refind_config_path() {

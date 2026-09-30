@@ -1,0 +1,9 @@
+[package]
+name = "myconfig-windows"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+myconfig-modules = { path = "../../crates/modules" }
+myconfig-utils = { path = "../../crates/utils" }
+xshell = "0.2.7"

@@ -1,0 +1,11 @@
+[package]
+name = "myconfig-modules"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+myconfig-utils = { path = "../utils" }
+package-catalog = { path = "../package-catalog" }
+xshell = "0.2.7"
+embedded-dotfiles = { path = "../embedded-dotfiles" }
+typed-fs-rs = { path = "../typed-fs-rs" }

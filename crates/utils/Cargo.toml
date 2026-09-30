@@ -1,0 +1,9 @@
+[package]
+name = "myconfig-utils"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+package-catalog = { path = "../package-catalog" }
+typed-fs-rs = { path = "../typed-fs-rs" }
+xshell = "0.2.7"

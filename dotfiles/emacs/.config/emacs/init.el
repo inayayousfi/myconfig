@@ -103,9 +103,19 @@
 
 (package-activate 'evil-ghostel t)
 
-;; Mason must be initialized from the main init file.  Its setup macro records
-;; the asynchronous registry state before packages which use Mason are loaded.
+;; Initialize Mason before packages which use it are loaded.
 (require 'mason)
+(defun myconfig-mason-utf8-command (command)
+  "Make Mason's batch COMMAND write Unicode data without prompting."
+  (append (butlast command)
+          (list (prin1-to-string
+                 `(let ((coding-system-for-write 'utf-8-unix))
+                    ,(read (car (last command))))))))
+(when (eq system-type 'windows-nt)
+  ;; Mason starts a separate Emacs with -Q, so it does not inherit this
+  ;; process's coding preferences.  Windows otherwise prompts for a coding
+  ;; system when the registry contains characters outside Latin-1.
+  (advice-add 'mason--emacs-cmd :filter-return #'myconfig-mason-utf8-command))
 (let ((original-path (getenv "PATH")))
   (mason-setup)
   (universel-repair-mason-path original-path (expand-file-name "bin" mason-dir)))

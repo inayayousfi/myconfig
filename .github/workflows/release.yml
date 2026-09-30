@@ -12,7 +12,138 @@ on:
         default: "v1.0.0"
 
 jobs:
+  build-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Prepare static Linux target
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools stow
+          rustup target add x86_64-unknown-linux-musl
+
+      - name: Test Rust workspace
+        run: cargo test --workspace --locked
+
+      - name: Build Linux installers
+        run: |
+          cargo build --release --locked --target x86_64-unknown-linux-musl \
+            -p myconfig-cachyos -p myconfig-arch-wsl -p myconfig-ubuntu-server
+          mkdir -p release-assets
+          for platform in cachyos arch-wsl ubuntu-server; do
+            asset="myconfig-${platform}-x86_64-unknown-linux-musl"
+            cp "target/x86_64-unknown-linux-musl/release/myconfig-${platform}" "release-assets/$asset"
+            (cd release-assets && sha256sum "$asset" > "$asset.sha256")
+          done
+
+      - name: Upload Linux installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-installers
+          path: release-assets/
+
+  build-windows:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Materialize Git symlinks as copies for the embedded files
+        shell: pwsh
+        run: |
+          @'
+          import os
+          import subprocess
+          from pathlib import Path
+
+          root = Path.cwd()
+          entries = subprocess.check_output(["git", "ls-files", "-s", "-z"]).split(b"\0")
+          links = set()
+          for entry in entries:
+              if entry.startswith(b"120000 "):
+                  links.add(root / os.fsdecode(entry.split(b"\t", 1)[1]))
+
+          def content(path, seen):
+              if path in seen:
+                  raise RuntimeError(f"cyclic symlink: {path}")
+              if path not in links or path.is_symlink():
+                  return path.read_bytes()
+              target = (path.parent / path.read_text(encoding="utf-8")).resolve()
+              if not target.is_relative_to(root):
+                  raise RuntimeError(f"symlink leaves repository: {path}")
+              return content(target, seen | {path})
+
+          for link in links:
+              if not link.is_symlink():
+                  link.write_bytes(content(link, set()))
+          '@ | python -
+
+      - name: Sign PowerShell files before embedding
+        shell: pwsh
+        env:
+          CODESIGN_PFX_B64: ${{ secrets.CODESIGN_PFX_B64 }}
+          CODESIGN_PFX_PASSWORD: ${{ secrets.CODESIGN_PFX_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrEmpty($env:CODESIGN_PFX_B64)) {
+            Write-Warning "CODESIGN_PFX_B64 secret is not set; embedded PowerShell files will be unsigned."
+            exit 0
+          }
+
+          $pfxPath = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+          try {
+            [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:CODESIGN_PFX_B64))
+            $securePassword = ConvertTo-SecureString -String $env:CODESIGN_PFX_PASSWORD -AsPlainText -Force
+            $cert = [Security.Cryptography.X509Certificates.X509Certificate2]::new(
+              $pfxPath,
+              $securePassword,
+              [Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet
+            )
+            $scripts = Get-ChildItem -Path dotfiles -Recurse -Filter *.ps1 -File
+            foreach ($script in $scripts) {
+              Set-AuthenticodeSignature -FilePath $script.FullName -Certificate $cert -TimestampServer 'http://timestamp.digicert.com' | Out-Null
+              $signature = Get-AuthenticodeSignature -FilePath $script.FullName
+              if ($signature.Status -ne 'Valid') {
+                throw "Embedded PowerShell signature invalid: $($script.FullName): $($signature.Status)"
+              }
+            }
+          }
+          finally {
+            if (Test-Path $pfxPath) {
+              Remove-Item -Path $pfxPath -Force
+            }
+          }
+
+      - name: Test Rust workspace
+        shell: pwsh
+        run: cargo test --workspace --locked
+
+      - name: Build Windows installer
+        shell: pwsh
+        env:
+          MYCONFIG_RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
+        run: |
+          cargo build --release --locked -p myconfig-windows
+          New-Item -ItemType Directory -Path release-assets | Out-Null
+          $asset = "myconfig-windows-x86_64-pc-windows-msvc.exe"
+          Copy-Item "target/release/myconfig-windows.exe" "release-assets/$asset"
+          $hash = (Get-FileHash "release-assets/$asset" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $asset" | Set-Content -Encoding ascii "release-assets/$asset.sha256"
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: release-assets/
+
   release:
+    needs: [build-linux, build-windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -90,16 +221,26 @@ jobs:
           find . -type f -name "*.sh" -exec chmod +x {} +
           zip -r setup-config.zip . \
             -x "*.git*" \
+            -x "release-assets/*" \
             -x "*.DS_Store" \
             -x "*__pycache__*" \
             -x "*.pyc"
+
+      - name: Download built installers
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "*-installer*"
+          path: release-assets
+          merge-multiple: true
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.tag.outputs.tag_name }}
           name: ${{ steps.tag.outputs.tag_name }}
-          files: setup-config.zip
+          files: |
+            setup-config.zip
+            release-assets/*
           draft: false
           prerelease: false
         env:

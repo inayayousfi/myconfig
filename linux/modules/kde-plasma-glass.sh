@@ -6,12 +6,12 @@ install_kde_plasma_glass() {
     [[ ! -r "$data_dir/effect-id" ]] || previous_effect="$(<"$data_dir/effect-id")"
     [[ ! -r "$data_dir/kwin-version" ]] || built_for="$(<"$data_dir/kwin-version")"
     kwin_version="$(pacman -Q kwin)" || return 1
-    expected="$(bash -c 'source "$1"; printf "%s %s-%s" "$pkgname" "$pkgver" "$pkgrel"' _ "$MYCONFIG_REPO_ROOT/linux/assets/kde-glass/PKGBUILD")" || return 1
+    expected="$(bash -c 'source "$1"; printf "%s %s-%s" "$pkgname" "$pkgver" "$pkgrel"' _ "$MYCONFIG_REPO_ROOT/dotfiles/assets/kde-plasma/kde-glass/PKGBUILD")" || return 1
     if [[ "$(pacman -Q myconfig-kde-glass 2>/dev/null)" != "$expected" || "$built_for" != "$kwin_version" ]]; then
         require_command makepkg || return 1
         local build_dir
         build_dir="$(mktemp -d)" || return 1
-        cp "$MYCONFIG_REPO_ROOT/linux/assets/kde-glass/"* "$build_dir/" || return 1
+        cp "$MYCONFIG_REPO_ROOT/dotfiles/assets/kde-plasma/kde-glass/"* "$build_dir/" || return 1
         if ! (cd "$build_dir" && makepkg --syncdeps --noconfirm); then
             myconfig_fail "Glass build failed; build files retained in $build_dir"
             return 1

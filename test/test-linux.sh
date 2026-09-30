@@ -548,7 +548,7 @@ fi
 if validate_kde_plasma_version 'unknown version' >/dev/null 2>&1; then
     myconfig_fail "KDE Plasma configuration accepted an unparseable version"
 fi
-pointer_plugin="$REPO_ROOT/linux/assets/libinput/90-myconfig-pointer-sensitivity.lua"
+pointer_plugin="$REPO_ROOT/dotfiles/assets/kde-plasma/libinput/90-myconfig-pointer-sensitivity.lua"
 MYCONFIG_POINTER_PLUGIN="$pointer_plugin" lua -e '
 libinput = {
     register = function() return 1 end,
@@ -616,8 +616,8 @@ for (const capability of ["canLock", "canSwitchUser", "canLogout", "canSuspend",
 ' "$plasma_plasmoid_root"
 plasma_theme_root="$REPO_ROOT/dotfiles/kde-plasma/.local/share/plasma/desktoptheme/blacknpink"
 plasma_global_theme_root="$REPO_ROOT/dotfiles/kde-plasma/.local/share/plasma/look-and-feel/org.myconfig.blacknpink.desktop"
-cursor_theme_root="$REPO_ROOT/linux/assets/cursors/blacknpink-crosshair"
-refind_asset_root="$REPO_ROOT/linux/assets/refind"
+cursor_theme_root="$REPO_ROOT/dotfiles/assets/cursor-theme/cursors/blacknpink-crosshair"
+refind_asset_root="$REPO_ROOT/dotfiles/assets/refind/refind"
 refind_global_config="$refind_asset_root/global.conf"
 refind_theme_root="$refind_asset_root/themes/black-pink"
 refind_theme_test_dir="$TEST_HOME/refind-theme"

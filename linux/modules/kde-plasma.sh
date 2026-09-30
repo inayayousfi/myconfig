@@ -109,7 +109,7 @@ module_kde_plasma() {
 
     install_kde_plasma_glass || return 1
 
-    local pointer_plugin="$MYCONFIG_REPO_ROOT/linux/assets/libinput/90-myconfig-pointer-sensitivity.lua"
+    local pointer_plugin="$MYCONFIG_REPO_ROOT/dotfiles/assets/kde-plasma/libinput/90-myconfig-pointer-sensitivity.lua"
     [ -f "$pointer_plugin" ] \
         || myconfig_fail "libinput pointer-sensitivity plugin was not found"
     sudo install -Dm644 \

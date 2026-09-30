@@ -1,0 +1,14 @@
+[workspace]
+members = [
+    "apps/cachyos",
+    "apps/windows",
+    "apps/arch-wsl",
+    "apps/ubuntu-server",
+    "crates/package-catalog",
+    "crates/utils",
+    "crates/modules",
+    "crates/embedded-dotfiles",
+    "crates/typed-fs-rs",
+    "crates/typed-fs-rs/macros",
+]
+resolver = "3"

@@ -8,7 +8,7 @@
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot = Split-Path -Parent $ScriptDir
 $SharedDotfilesDir = Join-Path $RepoRoot "dotfiles"
-$WindowsDotfilesDir = Join-Path $ScriptDir "dotfiles"
+$WindowsDotfilesDir = Join-Path $RepoRoot "dotfiles\assets\windows\dotfiles"
 
 # Colors
 # Centralize output colors so log messages stay consistent.
@@ -489,7 +489,7 @@ function Install-LLVMPath {
 # ============================================================================
 
 function Install-RegistryTweaks {
-    $path = Join-Path $ScriptDir "RegistryPreferences.reg"
+    $path = Join-Path $RepoRoot "dotfiles\assets\windows\RegistryPreferences.reg"
 
     if (-not (Test-Path $path)) {
         Write-Log "Registry file not found: $path" -Level 'WARNING'

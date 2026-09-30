@@ -9,7 +9,7 @@ data_dir="$test_root/data"
 mkdir "$data_dir"
 log="$test_root/calls"
 host_kwin='kwin 6.7.4-test'
-package_version="$(bash -c 'source "$1"; printf "%s %s-%s" "$pkgname" "$pkgver" "$pkgrel"' _ "$MYCONFIG_REPO_ROOT/linux/assets/kde-glass/PKGBUILD")"
+package_version="$(bash -c 'source "$1"; printf "%s %s-%s" "$pkgname" "$pkgver" "$pkgrel"' _ "$MYCONFIG_REPO_ROOT/dotfiles/assets/kde-plasma/kde-glass/PKGBUILD")"
 installed_package="$package_version"
 effect_id=myconfig_glass_fixture
 printf '%s\n' "$effect_id" >"$data_dir/effect-id"
@@ -33,7 +33,7 @@ pacman() {
 kwriteconfig6() { printf 'config:%s\n' "$*" >>"$log"; }
 makepkg() {
     printf 'build:%s\n' "$*" >>"$log"
-    cmp PKGBUILD "$MYCONFIG_REPO_ROOT/linux/assets/kde-glass/PKGBUILD"
+    cmp PKGBUILD "$MYCONFIG_REPO_ROOT/dotfiles/assets/kde-plasma/kde-glass/PKGBUILD"
     touch myconfig-kde-glass-test.pkg.tar.zst
 }
 sudo() {

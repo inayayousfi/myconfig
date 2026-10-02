@@ -1355,7 +1355,7 @@
 
 (ert-deftest atelier-navigator-close-visible-entry-keeps-a-workspace-replacement ()
   (let* ((workspace (list :id "navigator-close" :name "navigator-close"
-                          :destination "local" :path "/tmp/" :entries nil))
+                          :status 'running :destination "local" :path "/tmp/" :entries nil))
          (atelier-workspaces (list workspace))
          (atelier-navigator-window-configurations nil)
          (old-selection (atelier-current-workspace-id))
@@ -1402,7 +1402,7 @@
 
 (ert-deftest atelier-navigator-renders-hidden-entries-without-type-grouping ()
   (let* ((workspace (list :id "group-files" :name "group-files"
-                          :destination "local" :path "/tmp/"
+                          :status 'running :destination "local" :path "/tmp/"
                           :entries (list
                                     '(:id "terminal" :kind terminal :type terminal
                                       :name "terminal" :displayed t)
@@ -1433,7 +1433,7 @@
 
 (ert-deftest atelier-navigator-keeps-displayed-file-in-view-tree ()
   (let* ((workspace (list :id "visible-file" :name "visible-file"
-                          :destination "local" :path "/tmp/"
+                          :status 'running :destination "local" :path "/tmp/"
                           :entries (list
                                     '(:id "visible" :kind file :type file
                                       :name "visible.txt" :displayed t)
@@ -1468,7 +1468,7 @@
          (layout (list :id "layout" :kind 'layout :orientation 'horizontal
                        :displayed t :children (list first-split nested)))
          (workspace (list :id "sorted-workspace" :name "sorted"
-                           :destination "local" :path "/tmp/"
+                           :status 'running :destination "local" :path "/tmp/"
                            :entries (list layout hidden)))
          (atelier-workspaces (list workspace))
          (atelier-navigator-selection-by-frame nil)
@@ -1658,8 +1658,14 @@
           (cl-letf (((symbol-function 'atelier-workspace-project-root) (lambda (_) nil))
                     ((symbol-function 'atelier-known-project-roots) (lambda () nil)))
             (with-current-buffer (atelier-render-navigator)
-              (should (string-match-p "current/  (current)" (buffer-string)))
-              (should (string-match-p "stopped/  (stopped)" (buffer-string)))
+               (should (string-match-p "current/  (current)" (buffer-string)))
+               (goto-char (cl-find-if
+                           (lambda (position)
+                             (equal (get-text-property position 'atelier-navigator-target)
+                                    '(stopped-workspaces)))
+                           (atelier-navigator-positions)))
+               (atelier-navigator-toggle-fold)
+               (should (string-match-p "stopped/  (stopped)" (buffer-string)))
               (goto-char (point-min))
               (should (search-forward "Clear all buffers" nil t))
               (should (eq (get-text-property (match-beginning 0) 'face) 'error)))))
@@ -2472,7 +2478,7 @@
                                (:content-id "third" :kind file :type file
                                 :name "third.txt" :persistent t))))
          (workspace (list :id "stacked-ws" :name "stacked-ws"
-                          :destination "local" :path temporary-file-directory
+                          :status 'running :destination "local" :path temporary-file-directory
                           :entries (list entry)))
          (atelier-workspaces (list workspace))
          (atelier-navigator-selection-by-frame nil)
@@ -2522,7 +2528,7 @@
                       :name "first" :stack '((:content-id "second"
                                                :kind scratch :name "second"))))
          (workspace (list :id "visible-ws" :name "visible-ws"
-                          :destination "local" :path temporary-file-directory
+                          :status 'running :destination "local" :path temporary-file-directory
                           :entries (list entry)))
          (atelier-workspaces (list workspace))
          (atelier-navigator-selection-by-frame nil)
@@ -3559,6 +3565,231 @@
       (should-not (buffer-live-p acquired))
       (should-not (atelier-workspace-entries workspace))
       (should (= (hash-table-count atelier-content-live-buffers) 0)))))
+
+(defmacro atelier-test-with-lifecycle (&rest body)
+  "Run BODY with isolated workspace records, windows, and frame navigation."
+  (declare (indent 0))
+  `(let* ((active (list :id "active" :name "active" :destination "local"
+                        :platform 'local :path temporary-file-directory :status 'running))
+          (idle (list :id "idle" :name "idle" :destination "local"
+                      :platform 'local :path temporary-file-directory :status 'running))
+          (atelier-workspaces (list active idle))
+          (atelier-content-live-buffers (make-hash-table :test #'equal))
+          (atelier-workspace-inactive-since (make-hash-table :test #'equal))
+          (atelier-workspace-inactive-timeout 14400)
+          (atelier-workspace-process-buffers-functions nil)
+          (atelier-change-hook nil)
+          (atelier-release-function #'ignore)
+          (atelier-navigator-window-configurations nil)
+          (atelier-navigator-selection-by-frame nil)
+          (old-id (frame-parameter nil 'atelier-workspace-id))
+          (old-navigator (frame-parameter nil 'atelier-navigator-buffer))
+          (initial-buffers (buffer-list)))
+     (unwind-protect
+         (save-window-excursion
+           (set-frame-parameter nil 'atelier-navigator-buffer nil)
+           (atelier-ensure-detached-workspace)
+           (atelier-select-workspace active)
+           (cl-letf (((symbol-function 'atelier-known-project-roots) (lambda () nil)))
+             ,@body))
+       (set-frame-parameter nil 'atelier-workspace-id old-id)
+       (set-frame-parameter nil 'atelier-navigator-buffer old-navigator)
+       (dolist (buffer (buffer-list))
+         (unless (memq buffer initial-buffers)
+           (when (buffer-live-p buffer)
+             (with-current-buffer buffer
+               (set-buffer-modified-p nil)
+               (setq-local kill-buffer-query-functions nil))
+             (kill-buffer buffer)))))))
+
+(ert-deftest atelier-navigator-folds-stopped-group-and-every-workspace-without-opening ()
+  (atelier-test-with-lifecycle
+    (let* ((stopped (list :id "saved" :name "saved" :destination "local"
+                          :path temporary-file-directory :status 'stopped))
+           (live-buffer (generate-new-buffer "live-fold-content"))
+           (saved-buffer (generate-new-buffer "saved-fold-content")))
+      (push stopped atelier-workspaces)
+      (atelier-register-buffer live-buffer idle)
+      (atelier-register-buffer saved-buffer stopped)
+      (switch-to-buffer (atelier-render-navigator))
+      (should (string-match-p "live-fold-content" (buffer-string)))
+      (should-not (string-match-p "saved/" (buffer-string)))
+      (goto-char (cl-find-if
+                  (lambda (position)
+                    (equal (get-text-property position 'atelier-navigator-target)
+                           '(stopped-workspaces)))
+                  (atelier-navigator-positions)))
+      (call-interactively (lookup-key atelier-navigator-mode-map (kbd "o")))
+      (should (string-match-p "saved/" (buffer-string)))
+      (should-not (string-match-p "saved-fold-content" (buffer-string)))
+      (goto-char (cl-find-if
+                  (lambda (position)
+                    (equal (get-text-property position 'atelier-navigator-target)
+                           '(workspace "saved")))
+                  (atelier-navigator-positions)))
+      (atelier-navigator-toggle-fold)
+      (should (string-match-p "saved-fold-content" (buffer-string)))
+      (should (eq (atelier-workspace-status stopped) 'stopped))
+      (should (eq (atelier-current-workspace) active))
+      (goto-char (cl-find-if
+                  (lambda (position)
+                    (equal (get-text-property position 'atelier-navigator-target)
+                           '(workspace "idle")))
+                  (atelier-navigator-positions)))
+      (atelier-navigator-toggle-fold)
+      (should-not (string-match-p "live-fold-content" (buffer-string)))
+      (atelier-render-navigator)
+      (should-not (string-match-p "live-fold-content" (buffer-string)))
+      (should (eq (atelier-workspace-status idle) 'running)))))
+
+(ert-deftest atelier-inactivity-stops-at-four-hours-but-never-current-workspaces ()
+  (atelier-test-with-lifecycle
+    (let ((now 1000.0))
+      (cl-letf (((symbol-function 'float-time) (lambda (&optional _) now)))
+        (atelier-stop-inactive-workspaces)
+        (setq now 15399.0)
+        (atelier-stop-inactive-workspaces)
+        (should (eq (atelier-workspace-status idle) 'running))
+        (setq now 15400.0)
+        (atelier-stop-inactive-workspaces)
+        (should (eq (atelier-workspace-status idle) 'stopped))
+        (should (eq (atelier-workspace-status active) 'running))
+        (should (eq (atelier-current-workspace) active))
+        (should (eq (atelier-workspace-status (atelier-detached-workspace)) 'running))))))
+
+(ert-deftest atelier-inactivity-return-resets-timeout-and-queued-stop-rechecks-selection ()
+  (atelier-test-with-lifecycle
+    (let ((now 1000.0))
+      (cl-letf (((symbol-function 'float-time) (lambda (&optional _) now)))
+        (atelier-track-inactive-workspaces)
+        (setq now 15000.0)
+        (atelier-select-workspace idle)
+        (atelier-stop-workspace idle t)
+        (should (eq (atelier-workspace-status idle) 'running))
+        (atelier-track-inactive-workspaces)
+        (atelier-select-workspace active)
+        (atelier-track-inactive-workspaces)
+        (setq now 15400.0)
+        (atelier-stop-inactive-workspaces)
+        (should (eq (atelier-workspace-status idle) 'running))
+        (setq atelier-workspace-inactive-timeout nil now 50000.0)
+        (atelier-stop-inactive-workspaces)
+        (should (eq (atelier-workspace-status idle) 'running))))))
+
+(ert-deftest atelier-stopping-preserves-content-and-saved-job-recipes-and-stops-panels ()
+  (atelier-test-with-lifecycle
+    (let* ((source (generate-new-buffer "*scratch-stop-source*"))
+           (terminal (generate-new-buffer "stop-terminal"))
+           (panel (generate-new-buffer "stop-panel"))
+           (process (make-pipe-process :name "stop-job" :buffer terminal :noquery t))
+           (panel-process (make-pipe-process :name "stop-agent" :buffer panel :noquery t))
+           (aipanel-sessions (make-hash-table :test #'equal))
+           (atelier-workspace-process-buffers-functions
+            '(aipanel-atelier-workspace-process-buffers))
+           (atelier-close-without-asking t)
+           (atelier-persist-restoring nil)
+           (saved-directory (make-temp-file "atelier-stop-state-" t))
+           (saved-file (expand-file-name "state.el" saved-directory))
+           (atelier-persist-state-file saved-file)
+           restored)
+      (unwind-protect
+          (progn
+            (with-current-buffer source (insert "unsaved scratch text"))
+            (atelier-register-buffer source idle)
+            (atelier-register-job-buffer terminal '(:executable "/bin/sh")
+                                         temporary-file-directory nil 'auto nil 'terminal)
+            ;; Register the job in the workspace that is away, not the current one.
+            (atelier-entry-move (atelier-workspace-entry-for-buffer active terminal) active idle)
+            (aipanel-adopt-buffer panel
+                                  (list :id "stop-panel" :source-buffer source :name "source") nil)
+            (atelier-stop-workspace idle)
+            (should-not (process-live-p process))
+            (should-not (process-live-p panel-process))
+            (should-not (buffer-live-p terminal))
+            (should-not (buffer-live-p panel))
+            (should (buffer-live-p source))
+            (should (equal (with-current-buffer source (buffer-string)) "unsaved scratch text"))
+            (should (eq (atelier-workspace-status idle) 'stopped))
+            (should (atelier-entry-job (car (atelier-workspace-job-entries idle))))
+            (atelier-persist-now)
+            (let ((saved (atelier-read-data saved-file)))
+              (should (eq (plist-get (cl-find "idle" (plist-get saved :workspaces)
+                                             :key (lambda (workspace) (plist-get workspace :id))
+                                             :test #'equal) :status) 'stopped))
+              (atelier-apply-state (atelier-validate-state saved)))
+            (setq restored (atelier-workspace-by-id "idle"))
+            (should (atelier-workspace-job-entries restored))
+            (should (cl-find "unsaved scratch text" (plist-get restored :contents)
+                             :key (lambda (content) (plist-get content :contents)) :test #'equal))
+            (let ((atelier-job-start-function
+                   (lambda (name directory executable arguments workspace &rest _)
+                     (let ((buffer (generate-new-buffer name)))
+                       (make-pipe-process :name name :buffer buffer :noquery t)
+                       (atelier-register-job-buffer
+                        buffer nil directory (cons executable arguments) 'auto nil 'terminal)
+                       buffer))))
+              (atelier-open-workspace restored))
+            (should (eq (atelier-workspace-status restored) 'running))
+            (should (process-live-p
+                     (get-buffer-process
+                      (atelier-entry-live-buffer
+                       (car (atelier-workspace-job-entries restored)))))))
+        (when (file-exists-p saved-file) (delete-file saved-file))
+        (delete-directory saved-directory)))))
+
+(ert-deftest atelier-stopping-preserves-processes-and-panels-shared-with-running-workspace ()
+  (atelier-test-with-lifecycle
+    (let* ((source (generate-new-buffer "shared-stop-source"))
+           (panel (generate-new-buffer "shared-stop-panel"))
+           (process (make-pipe-process :name "shared-stop-job" :buffer source :noquery t))
+           (panel-process (make-pipe-process :name "shared-stop-agent" :buffer panel :noquery t))
+           (aipanel-sessions (make-hash-table :test #'equal))
+           (atelier-workspace-process-buffers-functions
+            '(aipanel-atelier-workspace-process-buffers)))
+      (atelier-register-buffer source active)
+      (atelier-register-buffer source idle)
+      (aipanel-adopt-buffer panel
+                            (list :id "shared-panel" :source-buffer source :name "source") nil)
+      (atelier-stop-workspace idle)
+      (should (eq (atelier-workspace-status idle) 'stopped))
+      (should (process-live-p process))
+      (should (process-live-p panel-process))
+      (should (buffer-live-p source))
+      (should (buffer-live-p panel)))))
+
+(ert-deftest atelier-inactivity-protects-a-workspace-current-in-another-frame ()
+  (atelier-test-with-lifecycle
+    (let ((original-query (symbol-function 'atelier-current-workspace-id)))
+      (puthash "idle" (- (float-time) 14400) atelier-workspace-inactive-since)
+      (cl-letf (((symbol-function 'frame-list)
+                 (lambda () (list (selected-frame) 'other-test-frame)))
+                ((symbol-function 'atelier-current-workspace-id)
+                 (lambda (&optional frame)
+                   (if (eq frame 'other-test-frame) "idle"
+                     (funcall original-query frame)))))
+        (atelier-stop-inactive-workspaces)
+        (should (eq (atelier-workspace-status idle) 'running))
+        (should-not (gethash "idle" atelier-workspace-inactive-since))))))
+
+(ert-deftest atelier-cancelled-stop-preserves-processes-records-and-attached-panels ()
+  (atelier-test-with-lifecycle
+    (let* ((terminal (generate-new-buffer "cancel-stop-job"))
+           (panel (generate-new-buffer "cancel-stop-panel"))
+           (process (make-pipe-process :name "cancel-stop-job" :buffer terminal :noquery t))
+           (panel-process (make-pipe-process :name "cancel-stop-panel" :buffer panel :noquery t))
+           (atelier-close-without-asking nil)
+           (atelier-workspace-process-buffers-functions (list (lambda (_) (list panel)))))
+      (let ((atelier-job-owner-workspace idle))
+        (atelier-register-job-buffer terminal '(:executable "/bin/sh")
+                                     temporary-file-directory nil 'auto nil 'terminal))
+      (with-current-buffer panel
+        (setq-local kill-buffer-query-functions (list (lambda () nil))))
+      (should-error (atelier-stop-workspace idle) :type 'user-error)
+      (should (eq (atelier-workspace-status idle) 'running))
+      (should (process-live-p process))
+      (should (process-live-p panel-process))
+      (should (eq terminal (atelier-entry-live-buffer
+                            (car (atelier-workspace-job-entries idle))))))))
 
 (ert-run-tests-batch-and-exit)
 ;;; test-emacs-workbench.el ends here

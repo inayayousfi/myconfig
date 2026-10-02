@@ -16,6 +16,16 @@
   "Release the current panel's Atelier exclusion on exit."
   (atelier-set-buffer-excluded nil))
 
+(defun aipanel-atelier-workspace-process-buffers (workspace)
+  "Return panels attached to WORKSPACE's unshared live source buffers."
+  (let (panels)
+    (dolist (source (atelier-workspace-live-content-buffers workspace))
+      (unless (atelier-buffer-shared-with-running-workspace-p source workspace)
+        (dolist (id (buffer-local-value 'aipanel-attached-panel-ids source))
+          (when-let* ((panel (get-buffer (gethash id aipanel-sessions))))
+            (push panel panels)))))
+    (delete-dups panels)))
+
 (defun aipanel-atelier-setup ()
   "Keep AIPanel side windows separate from workspace entries and jobs."
   (atelier-register-entry-type 'aipanel "aipanel" #'aipanel-buffer-p)
@@ -23,6 +33,8 @@
         aipanel-context-function #'aipanel-atelier-context)
   (add-hook 'aipanel-buffer-created-hook #'aipanel-atelier-buffer-created)
   (add-hook 'aipanel-buffer-exited-hook #'aipanel-atelier-buffer-exited)
+  (add-hook 'atelier-workspace-process-buffers-functions
+            #'aipanel-atelier-workspace-process-buffers)
   (aipanel-follow-source-setup))
 
 (provide 'aipanel-atelier)

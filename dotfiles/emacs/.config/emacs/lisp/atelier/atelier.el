@@ -950,14 +950,21 @@ When EXPLICIT is non-nil, permit another Dired entry of the same type."
   (unless (assq (selected-frame) atelier-navigator-window-configurations)
     (atelier-operation-notify 'atelier-change-hook)))
 
-(defun atelier-workspace-stop-jobs (workspace &optional forget)
-  (let ((atelier-approved-buffer-closes
-         (append (mapcar #'atelier-prepare-buffer-close
-                         (delq nil (mapcar #'atelier-entry-live-buffer
-                                           (atelier-workspace-job-entries workspace))))
-                 atelier-approved-buffer-closes)))
+(defun atelier-workspace-stop-jobs (workspace &optional forget preserve-shared)
+  "Stop WORKSPACE's jobs, optionally retaining jobs used by running workspaces."
+  (let* ((entries (cl-remove-if
+                   (lambda (entry)
+                     (and preserve-shared
+                          (atelier-buffer-shared-with-running-workspace-p
+                           (atelier-entry-live-buffer entry) workspace)))
+                   (atelier-workspace-job-entries workspace)))
+         (atelier-approved-buffer-closes
+          (append (mapcar #'atelier-prepare-buffer-close
+                          (delq nil (mapcar #'atelier-entry-live-buffer
+                                            entries)))
+                  atelier-approved-buffer-closes)))
     (atelier-validate-buffer-closes)
-    (dolist (entry (copy-sequence (atelier-workspace-job-entries workspace)))
+    (dolist (entry entries)
       (let ((buffer (atelier-entry-live-buffer entry)))
         (when (buffer-live-p buffer)
           (let ((atelier-preserve-job-recipe (not forget)))
@@ -1378,6 +1385,7 @@ Interactively, choose an entry from the current workspace."
         (atelier-restart-saved-jobs workspace)))
     (atelier-restore-workspace workspace)
     (atelier-set-workspace-status workspace 'running)
+    (atelier-operation-after #'atelier-track-inactive-workspaces)
     workspace))
 
 (defun atelier-switch-workspace (name)
@@ -1420,6 +1428,133 @@ Interactively, choose an entry from the current workspace."
   (let ((workspace (atelier-select-workspace nil)))
     (atelier-open-workspace workspace)))
 
+(defcustom atelier-workspace-inactive-timeout nil
+  "Seconds not current in any frame before stopping a workspace, or nil.
+Stopping retains saved views and job recipes, not process-internal state."
+  :type '(choice (const :tag "Disabled" nil) (number :tag "Seconds"))
+  :group 'atelier)
+
+(defvar atelier-workspace-inactive-since (make-hash-table :test #'equal)
+  "Runtime-only times at which running workspaces ceased to be current.")
+(defvar atelier-workspace-inactive-timer nil)
+(defvar atelier-workspace-process-buffers-functions nil
+  "Functions called with a workspace to return attached process buffers.
+Optional integrations supply buffers without becoming Atelier dependencies.")
+
+(defun atelier-workspace-current-p (workspace)
+  "Whether WORKSPACE is current in any live frame."
+  (cl-some (lambda (frame)
+             (equal (atelier-workspace-id workspace)
+                    (atelier-current-workspace-id frame)))
+           (frame-list)))
+
+(defun atelier-track-inactive-workspaces ()
+  "Track time away from all frames, without treating process output as use."
+  (let ((now (float-time)) ids)
+    (dolist (workspace (atelier-user-workspaces))
+      (let ((id (atelier-workspace-id workspace)))
+        (push id ids)
+        (if (or (not (eq (atelier-workspace-status workspace) 'running))
+                (atelier-workspace-current-p workspace))
+            (remhash id atelier-workspace-inactive-since)
+          (unless (gethash id atelier-workspace-inactive-since)
+            (puthash id now atelier-workspace-inactive-since)))))
+    (dolist (id (hash-table-keys atelier-workspace-inactive-since))
+      (unless (member id ids) (remhash id atelier-workspace-inactive-since)))))
+
+(defun atelier-workspace-inactive-expired-p (workspace)
+  "Whether WORKSPACE is still eligible for automatic stopping now."
+  (and (numberp atelier-workspace-inactive-timeout)
+       (> atelier-workspace-inactive-timeout 0)
+       (not (atelier-detached-workspace-p workspace))
+       (eq (atelier-workspace-status workspace) 'running)
+       (not (atelier-workspace-current-p workspace))
+       (when-let* ((since (gethash (atelier-workspace-id workspace)
+                                  atelier-workspace-inactive-since)))
+         (>= (- (float-time) since) atelier-workspace-inactive-timeout))))
+
+(defun atelier-stop-inactive-workspaces ()
+  "Stop expired workspaces through the same operation as manual stopping."
+  (atelier-track-inactive-workspaces)
+  (dolist (workspace (atelier-user-workspaces))
+    (when (atelier-workspace-inactive-expired-p workspace)
+      (condition-case error
+          (atelier-stop-workspace workspace t)
+        ((error quit)
+         (atelier-log "Automatic stop of %s failed: %s"
+                      (plist-get workspace :name) (error-message-string error)))))))
+
+(defun atelier-workspace-live-content-buffers (workspace)
+  "Return every live content buffer of WORKSPACE, including inactive stacks."
+  (delete-dups
+   (delq nil
+         (mapcar (lambda (content)
+                   (let ((buffer (gethash (atelier-content-cache-key
+                                          workspace (plist-get content :id))
+                                         atelier-content-live-buffers)))
+                     (and (buffer-live-p buffer) buffer)))
+                 (plist-get workspace :contents)))))
+
+(defun atelier-buffer-shared-with-running-workspace-p (buffer workspace)
+  "Whether another running workspace needs BUFFER."
+  (cl-some (lambda (other)
+             (and (not (equal (atelier-workspace-id other)
+                              (atelier-workspace-id workspace)))
+                  (eq (atelier-workspace-status other) 'running)
+                  (memq buffer (atelier-workspace-live-content-buffers other))))
+           atelier-workspaces))
+
+(atelier-define-operation atelier-stop-workspace (workspace &optional inactive-only)
+    (let ((next (atelier-workspace-successor workspace)))
+      (delete-dups (list (atelier-workspace-id workspace)
+                         (if next (atelier-workspace-id next) atelier-detached-workspace-id))))
+    ((workspace (atelier-operation-workspace workspace)))
+  "Stop WORKSPACE's processes, preserving views, buffers, and restart recipes.
+INACTIVE-ONLY rechecks the timeout when an automatic request was queued."
+  (interactive (list (atelier-current-workspace)))
+  (when (atelier-detached-workspace-p workspace)
+    (user-error "The Detached workspace cannot be stopped"))
+  (when (and (eq (atelier-workspace-status workspace) 'running)
+             (or (not inactive-only)
+                 (atelier-workspace-inactive-expired-p workspace)))
+    (dolist (frame (frame-list))
+      (when (equal (atelier-current-workspace-id frame) (atelier-workspace-id workspace))
+        (with-selected-frame frame (atelier-capture-current-workspace))))
+    (let* ((buffers (atelier-workspace-live-content-buffers workspace))
+           (attached (delete-dups
+                      (cl-loop for function in atelier-workspace-process-buffers-functions
+                               append (funcall function workspace)))))
+      (atelier-workspace-stop-jobs workspace nil t)
+      (dolist (buffer attached)
+        (when (buffer-live-p buffer)
+          (atelier-prepare-buffer-close buffer)
+          (atelier-kill-buffer buffer)))
+      (dolist (buffer buffers)
+        (unless (atelier-buffer-shared-with-running-workspace-p buffer workspace)
+          (when-let* ((process (and (buffer-live-p buffer) (get-buffer-process buffer)))
+                      ((process-live-p process)))
+            (atelier-operation-after
+             (lambda ()
+               (when (process-live-p process)
+                 (set-process-query-on-exit-flag process nil)
+                 (delete-process process))))))))
+    (atelier-set-workspace-status workspace 'stopped)
+    (let ((old (copy-tree workspace)))
+      (atelier-operation-after (lambda () (funcall atelier-release-function old))))
+    (let ((next (atelier-workspace-successor workspace)))
+      (dolist (frame (frame-list))
+        (when (equal (atelier-current-workspace-id frame) (atelier-workspace-id workspace))
+          (with-selected-frame frame
+            (if next (atelier-open-workspace next frame)
+              (atelier-show-detached-workspace))))))
+    (atelier-operation-after
+     (lambda ()
+       (atelier-track-inactive-workspaces)
+       (dolist (frame (frame-list))
+         (when (assq frame atelier-navigator-window-configurations)
+           (with-selected-frame frame (atelier-render-navigator))))))
+    (atelier-notify-change)))
+
 (atelier-define-operation atelier-close-workspace (&optional confirmed)
     (let* ((workspace (atelier-current-workspace))
            (next (atelier-workspace-successor workspace)))
@@ -1433,20 +1568,7 @@ Interactively, choose an entry from the current workspace."
                 (y-or-n-p (format "Close workspace %s and stop its jobs? "
                                   (plist-get workspace :name))))
       (user-error "Cancelled"))
-    (atelier-capture-current-workspace)
-    (atelier-workspace-stop-jobs workspace)
-    (atelier-set-workspace-status workspace 'stopped)
-    (let ((old (copy-tree workspace)))
-      (atelier-operation-after (lambda () (funcall atelier-release-function old))))
-    (let ((next (atelier-workspace-successor workspace)))
-      (dolist (frame (frame-list))
-        (when (eq (atelier-current-workspace frame) workspace)
-          (with-selected-frame frame
-            (if next
-                (progn
-                  (atelier-open-workspace next frame))
-              (atelier-show-detached-workspace)))))
-      (atelier-notify-change))))
+    (atelier-stop-workspace workspace)))
 
 (atelier-define-operation atelier-delete-workspace-record (workspace)
     (let ((next (atelier-workspace-successor workspace t)))
@@ -1752,6 +1874,12 @@ On entry, stay near the same listing row; on return, select TARGET."
   (add-hook 'delete-frame-functions #'atelier-capture-closing-frame)
   (add-hook 'after-make-frame-functions #'atelier-restore-new-frame)
   (add-hook 'emacs-startup-hook #'atelier-navigator-at-startup)
+  (add-hook 'atelier-change-hook #'atelier-track-inactive-workspaces)
+  (atelier-track-inactive-workspaces)
+  (when (timerp atelier-workspace-inactive-timer)
+    (cancel-timer atelier-workspace-inactive-timer))
+  (setq atelier-workspace-inactive-timer
+        (run-with-timer 60 60 #'atelier-stop-inactive-workspaces))
   nil)
 
 ;; UI modules depend on the complete service layer above, while the service

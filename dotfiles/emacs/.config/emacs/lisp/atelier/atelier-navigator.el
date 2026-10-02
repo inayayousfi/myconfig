@@ -14,6 +14,8 @@
   "<down>" #'atelier-navigator-next
   "<up>" #'atelier-navigator-previous
   "RET" #'atelier-navigator-open
+  "o" #'atelier-navigator-toggle-fold
+  "s" #'atelier-navigator-stop-workspace
   "a" #'atelier-navigator-attach
   "d" #'atelier-navigator-detach
   "f" #'isearch-forward
@@ -26,6 +28,59 @@
 
 (defvar-local atelier-navigator-changed-views nil
   "Entries whose restored windows need their newly active content.")
+(defvar-local atelier-navigator-workspace-expansions nil
+  "Workspace ID to (status . expanded), local to this frame's navigator.")
+(defvar-local atelier-navigator-stopped-expanded nil
+  "Whether this navigator shows the stopped workspace headings.")
+
+(defun atelier-navigator-workspace-expanded-p (workspace)
+  "Return navigator-only expansion, resetting on a lifecycle transition."
+  (let* ((id (atelier-workspace-id workspace))
+         (status (atelier-workspace-status workspace))
+         (state (alist-get id atelier-navigator-workspace-expansions nil nil #'equal)))
+    (unless (eq (car state) status)
+      (setq state (cons status (eq status 'running)))
+      (setf (alist-get id atelier-navigator-workspace-expansions nil nil #'equal) state))
+    (cdr state)))
+
+(defun atelier-navigator-toggle-fold ()
+  "Toggle the stopped group or the workspace under point without opening it."
+  (interactive)
+  (atelier-navigator-commit-stack-selection)
+  (let ((target (atelier-navigator-target)))
+    (pcase target
+      (`(stopped-workspaces)
+       (setq atelier-navigator-stopped-expanded
+             (not atelier-navigator-stopped-expanded)))
+      (_
+       (let ((workspace (and (memq (car-safe target)
+                                  '(workspace workspace-buffer workspace-owned-buffer
+                                    workspace-content workspace-owned-content workspace-scratch))
+                             (atelier-navigator-target-workspace target))))
+         (unless (and workspace (not (atelier-detached-workspace-p workspace)))
+           (user-error "Select a workspace or the stopped workspaces group"))
+         (let ((expanded (atelier-navigator-workspace-expanded-p workspace)))
+           (setf (alist-get (atelier-workspace-id workspace)
+                           atelier-navigator-workspace-expansions nil nil #'equal)
+                 (cons (atelier-workspace-status workspace) (not expanded))))
+         (setq target (list 'workspace (plist-get workspace :name))))))
+    (setf (alist-get (selected-frame) atelier-navigator-selection-by-frame nil nil #'eq)
+          target)
+    (atelier-render-navigator)))
+
+(defun atelier-navigator-stop-workspace ()
+  "Stop the workspace under point without removing its saved record."
+  (interactive)
+  (let* ((target (atelier-navigator-target))
+         (workspace (and (memq (car-safe target)
+                               '(workspace workspace-buffer workspace-owned-buffer
+                                 workspace-content workspace-owned-content workspace-scratch))
+                         (atelier-navigator-target-workspace target))))
+    (unless (and workspace (not (atelier-detached-workspace-p workspace)))
+      (user-error "Select a workspace to stop"))
+    (atelier-navigator-quit)
+    (atelier-stop-workspace workspace)
+    (atelier-navigator)))
 (defvar-local atelier-navigator-stack-timer nil
   "Idle timer for activating the selected stack content.")
 (defvar-local atelier-navigator-stack-pending-target nil
@@ -85,7 +140,11 @@
           (atelier-navigator-header-button "Next" #'atelier-navigator-next
                                            "Select the next item")
           (atelier-navigator-header-button "Stack h/l" #'atelier-navigator-stack-next
-                                           "Select another content on this row")
+                                            "Select another content on this row")
+          (atelier-navigator-header-button "Fold o" #'atelier-navigator-toggle-fold
+                                           "Fold or expand without opening")
+          (atelier-navigator-header-button "Stop s" #'atelier-navigator-stop-workspace
+                                           "Stop the selected workspace's processes")
           (atelier-navigator-header-button "Open" #'atelier-navigator-open
                                            "Open the selected item")
           (atelier-navigator-header-button "Attach" #'atelier-navigator-attach
@@ -141,7 +200,7 @@
                         ('current 'atelier-navigator-current-status)
                         ('running 'atelier-navigator-running-status)
                         (_ 'atelier-navigator-saved))))
-    (concat "  "
+    (concat (if (atelier-navigator-workspace-expanded-p workspace) "  ▾ " "  ▸ ")
             (propertize icon 'face status-face)
             "  "
             (propertize (format "%s/" name) 'face name-face)
@@ -462,6 +521,32 @@ LAST-CHILD describe the current branch position in the rendered tree."
             (put-text-property start (point) 'atelier-navigator-stack-item t)))
         (insert "\n")))))
 
+(defun atelier-navigator-render-workspace (workspace)
+  "Render WORKSPACE's heading and, when expanded, its saved contents."
+  (let* ((workspace-name (plist-get workspace :name))
+         (active (eq workspace (atelier-current-workspace))))
+    (atelier-navigator-insert
+     (atelier-navigator-workspace-label workspace active)
+     (list 'workspace workspace-name))
+    (insert "\n")
+    (when (atelier-navigator-workspace-expanded-p workspace)
+      (let* ((displayed-root (atelier-workspace-displayed-entry workspace))
+             (displayed-entries (atelier-workspace-displayed-entries workspace))
+             (displayed-ids (mapcar (lambda (entry) (plist-get entry :id)) displayed-entries))
+             (hidden (cl-remove-if
+                      (lambda (entry) (member (plist-get entry :id) displayed-ids))
+                      (atelier-workspace-entries workspace))))
+        (when displayed-root
+          (atelier-navigator-render-entry-tree
+           displayed-root workspace-name displayed-entries active "     " nil))
+        (cl-loop for entry in hidden for tail on hidden
+                 do (atelier-navigator-render-entry-tree
+                     entry workspace-name displayed-entries active "     " (null (cdr tail))))
+        (atelier-navigator-insert
+         "     ╰─ ＋ New scratch buffer\n"
+         (list 'workspace-scratch workspace-name) 'success)))
+    (insert "\n")))
+
 (defun atelier-render-navigator ()
   (let ((buffer (atelier-navigator-frame-buffer nil t))
         workspace-roots first-item)
@@ -473,36 +558,23 @@ LAST-CHILD describe the current branch position in the rendered tree."
         (atelier-navigator-section
          "Workspaces" (format "%d total" (length (atelier-user-workspaces))))
         (dolist (workspace (atelier-user-workspaces))
-          (let* ((workspace-name (plist-get workspace :name))
-                 (active (eq workspace (atelier-current-workspace))))
+          (when-let* ((root (atelier-workspace-project-root workspace)))
+            (push root workspace-roots))
+          (when (eq (atelier-workspace-status workspace) 'running)
             (unless first-item (setq first-item (point)))
-            (atelier-navigator-insert
-             (atelier-navigator-workspace-label workspace active)
-             (list 'workspace workspace-name))
-            (insert "\n")
-            (when-let* ((root (atelier-workspace-project-root workspace)))
-              (push root workspace-roots))
-             (let* ((displayed-root (atelier-workspace-displayed-entry workspace))
-                    (displayed-entries (atelier-workspace-displayed-entries workspace))
-                    (displayed-ids
-                     (mapcar (lambda (entry) (plist-get entry :id)) displayed-entries))
-                    (hidden
-                     (cl-remove-if
-                      (lambda (entry)
-                        (member (plist-get entry :id) displayed-ids))
-                      (atelier-workspace-entries workspace))))
-               (when displayed-root
-                 (atelier-navigator-render-entry-tree
-                  displayed-root workspace-name displayed-entries active "     " nil))
-               (cl-loop for entry in hidden
-                        for tail on hidden
-                        do (atelier-navigator-render-entry-tree
-                            entry workspace-name displayed-entries active
-                            "     " (null (cdr tail))))
-                (atelier-navigator-insert
-                 "     ╰─ ＋ New scratch buffer\n"
-                (list 'workspace-scratch workspace-name) 'success))
-            (insert "\n")))
+            (atelier-navigator-render-workspace workspace)))
+        (when-let* ((stopped (cl-remove-if
+                             (lambda (workspace)
+                               (eq (atelier-workspace-status workspace) 'running))
+                             (atelier-user-workspaces))))
+          (unless first-item (setq first-item (point)))
+          (atelier-navigator-insert
+           (format "  %s Stopped workspaces (%d)\n\n"
+                   (if atelier-navigator-stopped-expanded "▾" "▸") (length stopped))
+           '(stopped-workspaces) 'atelier-navigator-saved)
+          (when atelier-navigator-stopped-expanded
+            (dolist (workspace stopped)
+              (atelier-navigator-render-workspace workspace))))
         (atelier-navigator-insert "  ＋ New workspace\n" '(new-workspace) 'success)
         (let ((projects
                (cl-remove-if
@@ -665,11 +737,14 @@ entry never invents a nested disposition."
            (atelier-workspace-owned-buffer workspace entry-id))))
     (`(buffer ,name) (get-buffer name))))
 
-(defun atelier-navigator-target-workspace (target buffer)
+(defun atelier-navigator-target-workspace (target &optional buffer)
   (pcase target
     (`(workspace ,name) (atelier-workspace-get name))
     (`(workspace-buffer ,name . ,_) (atelier-workspace-get name))
     (`(workspace-owned-buffer ,name . ,_) (atelier-workspace-get name))
+    (`(workspace-content ,name . ,_) (atelier-workspace-get name))
+    (`(workspace-owned-content ,name . ,_) (atelier-workspace-get name))
+    (`(workspace-scratch ,name) (atelier-workspace-get name))
     (_ (or (and buffer
                 (car (car (atelier-entries-for-buffer buffer))))
            (atelier-current-workspace)))))
@@ -820,6 +895,7 @@ entry never invents a nested disposition."
         (atelier-navigator-finish-attach target)
       (pcase target
         ('nil (user-error "No item on this line"))
+        (`(stopped-workspaces) (atelier-navigator-toggle-fold))
         (`(new-workspace) (atelier-navigator-quit) (atelier-create-workspace))
         (`(workspace-scratch ,workspace-name)
          (let ((workspace (atelier-workspace-get workspace-name)))

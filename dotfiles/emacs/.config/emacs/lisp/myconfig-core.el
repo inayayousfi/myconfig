@@ -7,6 +7,11 @@
 
 (defvar myconfig-data-directory)
 
+(defcustom myconfig-workspace-inactive-timeout (* 4 60 60)
+  "Seconds away from every frame before stopping a workspace, or nil."
+  :type '(choice (const :tag "Disabled" nil) (number :tag "Seconds"))
+  :group 'myconfig)
+
 (defconst myconfig-state-directory
   (or (bound-and-true-p myconfig-runtime-state-directory)
       (expand-file-name "myconfig-emacs/" user-emacs-directory)))

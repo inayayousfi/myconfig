@@ -108,6 +108,8 @@
     (kbd "<down>") #'atelier-navigator-next
     (kbd "<up>") #'atelier-navigator-previous
     (kbd "RET") #'atelier-navigator-open
+    (kbd "o") #'atelier-navigator-toggle-fold
+    (kbd "s") #'atelier-navigator-stop-workspace
     (kbd "a") #'atelier-navigator-attach
     (kbd "d") #'atelier-navigator-detach
     (kbd "f") #'isearch-forward

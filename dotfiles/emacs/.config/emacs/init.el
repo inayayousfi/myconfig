@@ -124,7 +124,8 @@
 (require 'myconfig-ui)
 (require 'atelier)
 (setq atelier-state-directory myconfig-runtime-state-directory
-      atelier-close-without-asking t)
+      atelier-close-without-asking t
+      atelier-workspace-inactive-timeout myconfig-workspace-inactive-timeout)
 (require 'universel-atelier)
 (universel-atelier-setup myconfig-runtime-state-directory)
 (require 'atelier-persist)

@@ -3,11 +3,12 @@
 module_pipewire() {
     [ "$MYCONFIG_PROFILE" = cachyos ] || return 0
 
-    myconfig_log "Configuring the PipeWire mono playback toggle"
+    myconfig_log "Configuring the PipeWire audio settings tray"
     install_package_ids python pyside6
 
     require_command python
     require_command systemctl
+    require_command pactl
 
     local tray="$HOME/.local/bin/myconfig-pipewire-tray"
     local service="$HOME/.config/systemd/user/myconfig-pipewire-tray.service"

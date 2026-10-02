@@ -186,7 +186,80 @@ fi
 ok "ADB connected: $ADB_DEVICE"
 ok "ADB transport is responsive"
 
+# Match the launching process through its audio client: native PipeWire streams
+# do not necessarily carry application.process.id on the stream itself.
+check_scrcpy_audio() {
+    local pid="$1" clients streams ids matches stream mute attempt
+    for attempt in {1..30}; do
+        kill -0 "$pid" 2>/dev/null || return
+        clients="$(LC_ALL=C timeout 2 pactl list clients 2>&1)" || {
+            warn "Could not inspect scrcpy audio: $clients"
+            return
+        }
+        ids="$(awk -v pid="$pid" '
+            function emit() { if (process == pid && app == "scrcpy") print id }
+            /^Client #/ { emit(); id=substr($2, 2); process=""; app="" }
+            /application.process.id = / { split($0, p, "\""); process=p[2] }
+            /application.name = / { split($0, p, "\""); app=p[2] }
+            END { emit() }
+        ' <<<"$clients")"
+        if [[ -n "$ids" ]]; then
+            streams="$(LC_ALL=C timeout 2 pactl list sink-inputs 2>&1)" || {
+                warn "Could not inspect scrcpy audio: $streams"
+                return
+            }
+            matches="$(awk -v clients=" ${ids//$'\n'/ } " '
+                function emit() {
+                    if (app == "scrcpy" && index(clients, " " client " "))
+                        print id, mute
+                }
+                /^Sink Input #/ { emit(); id=substr($3, 2); client=""; app=""; mute="" }
+                /^[[:space:]]*Client:/ { client=$2 }
+                /^[[:space:]]*Mute:/ { mute=$2 }
+                /application.name = / { split($0, p, "\""); app=p[2] }
+                END { emit() }
+            ' <<<"$streams")"
+            if [[ -n "$matches" ]]; then
+                while read -r stream mute; do
+                    case "$mute" in
+                        yes)
+                            info "scrcpy audio is muted on the laptop. Unmuting..."
+                            if LC_ALL=C timeout 2 pactl set-sink-input-mute "$stream" 0; then
+                                ok "scrcpy audio unmuted; volume unchanged"
+                            else
+                                warn "Could not unmute scrcpy audio. Check the laptop application mixer."
+                            fi
+                            ;;
+                        no) ok "scrcpy audio is not muted; volume unchanged" ;;
+                        *) warn "Could not determine whether scrcpy audio is muted." ;;
+                    esac
+                done <<<"$matches"
+                return
+            fi
+        fi
+        sleep 0.5
+    done
+    warn "No scrcpy playback stream appeared during the audio check. Check scrcpy's audio errors above."
+}
+
 section "Launching scrcpy"
 info "Device: $ADB_DEVICE"
+CHECK_AUDIO=1
+for argument in "$@"; do
+    case "$argument" in
+        --no-audio|--no-audio-playback|--no-playback|-N|--list-*|--help|-h|--version|-v)
+            CHECK_AUDIO=0 ;;
+    esac
+done
+if (( CHECK_AUDIO )); then
+    if command -v pactl >/dev/null 2>&1; then
+        info "Checking laptop-side scrcpy mute after launch (automatic unmute; volume unchanged)"
+        check_scrcpy_audio "$$" &
+    else
+        warn "pactl is unavailable; cannot check or automatically unmute scrcpy audio."
+    fi
+else
+    info "Laptop audio check skipped for the requested scrcpy options"
+fi
 printf '\n'
 exec "$SCRCPY" -s "$ADB_DEVICE" "$@"

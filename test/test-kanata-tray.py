@@ -3,12 +3,16 @@
 import importlib.machinery
 import importlib.util
 import json
+import os
 import pathlib
 import queue
 import socket
 import threading
+import sys
 import unittest
+from unittest.mock import MagicMock, patch
 
+sys.dont_write_bytecode = True
 TRAY_PATH = (
     pathlib.Path(__file__).parent.parent
     / "dotfiles"
@@ -119,6 +123,29 @@ class KanataClientTests(unittest.TestCase):
             self.server.received.get(timeout=2),
             {"RequestCurrentLayerName": {}},
         )
+
+
+class TrayMenuTests(unittest.TestCase):
+    def test_context_menu_has_no_left_click_popup_handler(self):
+        os.environ["QT_QPA_PLATFORM"] = "offscreen"
+        from PySide6.QtWidgets import QApplication
+
+        icon = MagicMock()
+        client = MagicMock()
+        client.events = queue.Queue()
+
+        def inspect_menu():
+            menu = icon.setContextMenu.call_args.args[0]
+            self.assertEqual(menu.actions()[0].text(), "Home Row")
+            icon.activated.connect.assert_not_called()
+            return 0
+
+        with patch.object(tray_module, "KanataClient", return_value=client), \
+                patch("PySide6.QtWidgets.QSystemTrayIcon", return_value=icon), \
+                patch.object(QApplication, "exec", side_effect=inspect_menu):
+            self.assertEqual(tray_module.run_tray(), 0)
+        client.start.assert_called_once()
+        client.stop.assert_called_once()
 
 
 if __name__ == "__main__":

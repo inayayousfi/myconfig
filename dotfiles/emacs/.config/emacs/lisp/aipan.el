@@ -58,6 +58,8 @@ is pasted."
   :group 'aipanel)
 
 (defvar aipanel-owner-function #'aipanel-default-owner)
+(defvar aipanel-source-owner-function #'identity
+  "Function enriching a source attachment from its actual file environment.")
 (defvar aipanel-candidates-function #'aipanel-default-candidates)
 (defvar aipanel-command-function #'aipanel-default-command)
 (defvar aipanel-context-function #'aipanel-default-context)
@@ -81,6 +83,11 @@ Optional environment adapters can replace the Emacs file-handler default.")
 (defvar-local aipanel-hidden nil)
 (defvar-local aipanel-attached-panel-ids nil)
 
+(defun aipanel-buffer-p (buffer)
+  "Return non-nil when BUFFER is an attached agent terminal."
+  (with-current-buffer buffer
+    (and (derived-mode-p 'ghostel-mode) aipanel-owner)))
+
 (defun aipanel-default-owner ()
   "Return an attachment describing the current source buffer."
   (let* ((buffer (current-buffer))
@@ -98,10 +105,11 @@ Optional environment adapters can replace the Emacs file-handler default.")
                          (method (user-error "AIPanel does not support %s remote buffers"
                                              method))
                          (t 'host))))
-    (list :id buffer :name (buffer-name buffer) :source-buffer buffer
+    (funcall aipanel-source-owner-function
+     (list :id buffer :name (buffer-name buffer) :source-buffer buffer
           :directory (file-name-as-directory directory)
           :emacs-directory emacs-directory :location location
-          :destination (or destination "local") :port port)))
+          :destination (or destination "local") :port port))))
 
 (defun aipanel-default-program-probe (programs owner _timeout)
   "Discover PROGRAMS through Emacs in OWNER's file environment."
@@ -192,9 +200,9 @@ Optional environment adapters can replace the Emacs file-handler default.")
               ((buffer-live-p source)))
     (with-current-buffer source
       (when-let* ((file buffer-file-name))
-        (let ((file (if (file-remote-p file) (file-remote-p file 'localname) file)))
+        (let ((directory (or (plist-get owner :emacs-directory) (plist-get owner :directory))))
           (format "%s:L%d:C%d: "
-                  (file-relative-name file (plist-get owner :directory))
+                  (file-relative-name file directory)
                   (line-number-at-pos) (1+ (current-column))))))))
 
 (defun aipanel-default-terminal (name directory program arguments _owner _selection)
@@ -227,7 +235,7 @@ Optional environment adapters can replace the Emacs file-handler default.")
                   aipanel-hidden nil)
       (add-hook 'ghostel-exit-functions #'aipanel-process-exited nil t)
       (add-hook 'kill-buffer-hook #'aipanel-current-buffer-exited nil t))
-    (puthash (plist-get owner :id) (buffer-name buffer) aipanel-sessions)
+    (puthash (plist-get owner :id) buffer aipanel-sessions)
     (when-let* ((source (plist-get owner :source-buffer))
                 ((buffer-live-p source))
                 ((not (eq source buffer))))
@@ -306,6 +314,53 @@ Optional environment adapters can replace the Emacs file-handler default.")
 (defun aipanel-visible-window (buffer)
   (get-buffer-window buffer (selected-frame)))
 
+(defun aipanel-source-window (frame)
+  "Return FRAME's selected main window, or its most recently used main leaf."
+  (let ((selected (frame-selected-window frame)))
+    (if (and (not (window-minibuffer-p selected))
+             (not (window-parameter selected 'window-side)))
+        selected
+      (car (sort (cl-remove-if
+                  (lambda (window) (window-parameter window 'window-side))
+                  (window-list frame 'no-minibuffer))
+                 (lambda (left right) (> (window-use-time left) (window-use-time right))))))))
+
+(defun aipanel-sync-source-visibility ()
+  "Show the running panel beside its selected source buffer, nowhere else."
+  (let ((sources (cl-loop for frame in (frame-list)
+                          when (frame-live-p frame)
+                          collect (window-buffer (aipanel-source-window frame)))))
+    (maphash (lambda (attached panel)
+               (unless (memq attached sources)
+                 (when-let* ((buffer (get-buffer panel)))
+                   (with-current-buffer buffer (setq aipanel-hidden nil)))))
+             aipanel-sessions))
+  (dolist (frame (frame-list))
+    (when (frame-live-p frame)
+       (let* ((main (aipanel-source-window frame))
+             (source (window-buffer main))
+             (name (gethash source aipanel-sessions))
+             (panel (and name (get-buffer name)))
+             (wanted (and panel
+                          (not (buffer-local-value 'aipanel-hidden panel))
+                          (process-live-p (get-buffer-process panel)) panel)))
+        (dolist (window (window-list frame 'no-minibuffer))
+          (when (and (window-parameter window 'window-side)
+                     (buffer-local-value 'aipanel-owner (window-buffer window))
+                     (not (eq (window-buffer window) wanted)))
+            (delete-window window)))
+        (when (and wanted (not (get-buffer-window wanted frame)))
+          (with-selected-frame frame
+            (display-buffer-in-side-window
+             wanted `((side . ,aipanel-side) (slot . 0)
+                      (window-width . ,(max window-min-width
+                                            (floor (* (frame-width) 0.3))))))
+            (with-current-buffer wanted (run-hooks 'aipanel-window-change-hook))))))))
+
+(defun aipanel-follow-source-setup ()
+  "Keep buffer-attached panels beside the selected source."
+  (add-hook 'post-command-hook #'aipanel-sync-source-visibility))
+
 (defun aipanel-close-windows (buffer)
   (dolist (window (get-buffer-window-list buffer nil t))
     (set-window-dedicated-p window nil)
@@ -318,14 +373,14 @@ Optional environment adapters can replace the Emacs file-handler default.")
     (with-current-buffer buffer
       (unless aipanel-cleaned-up
         (setq aipanel-cleaned-up t)
-        (when (equal (gethash (plist-get aipanel-owner :id) aipanel-sessions)
-                      (buffer-name buffer))
+        (when (eq (gethash (plist-get aipanel-owner :id) aipanel-sessions) buffer)
           (remhash (plist-get aipanel-owner :id) aipanel-sessions))
-        (when-let* ((source (plist-get aipanel-owner :source-buffer))
+        (when-let* ((id (plist-get aipanel-owner :id))
+                    (source (plist-get aipanel-owner :source-buffer))
                     ((buffer-live-p source)))
           (with-current-buffer source
             (setq aipanel-attached-panel-ids
-                  (delete (plist-get aipanel-owner :id) aipanel-attached-panel-ids))))
+                  (delete id aipanel-attached-panel-ids))))
         (aipanel-close-windows buffer)
         (run-hooks 'aipanel-buffer-exited-hook)))))
 

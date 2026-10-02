@@ -45,12 +45,12 @@ so the default value alone is not sufficient."
   (condition-case nil
       (let* ((contact (nth 3 (eglot--guess-contact)))
              (program (and (listp contact) (stringp (car contact)) (car contact))))
-        (and program (list program (executable-find program))))
+        (and program (list program (executable-find program t))))
     (error nil)))
 
 (defun myconfig-eglot-server-available-p ()
   (when-let* ((server (myconfig-eglot-server-command)))
-    (executable-find (car server))))
+    (cadr server)))
 
 (defun myconfig-warn-missing-eglot-server ()
   (unless myconfig-eglot-warning-shown

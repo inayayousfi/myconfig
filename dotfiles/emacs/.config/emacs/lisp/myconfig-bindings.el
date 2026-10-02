@@ -18,6 +18,15 @@
 
 (defvar myconfig-leader-map (make-sparse-keymap))
 
+(defun myconfig-multiple-cursors-toggle ()
+  (interactive)
+  (if (bound-and-true-p multiple-cursors-mode)
+      (mc/keyboard-quit)
+    (call-interactively #'mc/edit-lines)))
+
+(defun myconfig-directory-chooser-keymaps ()
+  (when (bound-and-true-p evil-local-mode) (evil-normalize-keymaps)))
+
 (defun myconfig-paste ()
   (interactive)
   (cond
@@ -29,6 +38,11 @@
    (t (call-interactively #'yank))))
 
 (defun myconfig-bindings-setup ()
+  (add-hook 'atelier-directory-chooser-mode-hook #'myconfig-directory-chooser-keymaps)
+  (add-hook 'atelier-file-browser-mode-hook #'myconfig-directory-chooser-keymaps)
+  (evil-define-key 'normal atelier-file-browser-mode-map
+    (kbd "q") #'atelier-file-browser-quit)
+  (evil-make-intercept-map atelier-file-browser-mode-map 'normal t)
   (evil-define-key '(normal visual motion) 'global (kbd "SPC") myconfig-leader-map)
   (evil-define-key '(normal visual operator) 'global (kbd "f") #'avy-goto-char-timer)
   (evil-define-key 'normal 'global (kbd ":") #'evil-ex)
@@ -78,7 +92,7 @@
     (kbd "C-u") #'ignore
     (kbd "C-v") #'ignore)
   (evil-define-key '(normal insert visual motion operator replace emacs) 'global
-    (kbd "C-l") #'atelier-multiple-cursors-toggle)
+    (kbd "C-l") #'myconfig-multiple-cursors-toggle)
   (evil-define-key 'normal atelier-choice-mode-map
     (kbd "j") #'atelier-choice-next
     (kbd "k") #'atelier-choice-previous

@@ -61,8 +61,6 @@
                 atelier-directory-chooser-original-modified (buffer-modified-p))
     (cl-pushnew (current-buffer) atelier-directory-chooser-buffers))
   (atelier-directory-chooser-mode 1)
-  (when (bound-and-true-p evil-local-mode)
-    (evil-normalize-keymaps))
   (setq-local header-line-format
               " Enter open/select   h/H/^ parent   + new directory   q cancel")
   (add-hook 'dired-after-readin-hook #'atelier-directory-chooser-insert nil t)

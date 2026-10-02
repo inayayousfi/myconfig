@@ -3,6 +3,19 @@
 (require 'univers)
 (require 'aipan)
 
+(defun universel-aipanel-source-owner (owner)
+  "Resolve OWNER's source connection, including registered Windows mounts."
+  (let* ((directory (plist-get owner :emacs-directory))
+         (environment (universel-environment nil directory))
+         (transport (plist-get environment :transport)))
+    (setf (plist-get owner :platform) (plist-get environment :platform)
+          (plist-get owner :location) (if (eq transport 'local) 'host transport)
+          (plist-get owner :destination) (or (plist-get environment :destination) "local")
+          (plist-get owner :port) (plist-get environment :port)
+          (plist-get owner :directory)
+          (universel-native-path (plist-get environment :directory) environment))
+    owner))
+
 (defun universel-aipanel-environment (owner &optional selection)
   "Translate AIPanel OWNER and SELECTION into a Universel environment."
   (let* ((location (or (plist-get selection :location) (plist-get owner :location) 'host))
@@ -26,7 +39,8 @@
 
 (defun universel-aipanel-setup ()
   "Supply cross-platform execution without coupling AIPanel to Universel."
-  (setq aipanel-program-probe-function #'universel-aipanel-probe
+  (setq aipanel-source-owner-function #'universel-aipanel-source-owner
+        aipanel-program-probe-function #'universel-aipanel-probe
         aipanel-process-command-function #'universel-aipanel-command))
 
 (provide 'universel-aipanel)

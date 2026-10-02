@@ -1,14 +1,31 @@
 ;;; atelier-persist.el --- Private snapshots and restart recipes -*- lexical-binding: t; -*-
 
 (require 'cl-lib)
-(require 'myconfig-core)
+(require 'atelier-core)
 (require 'atelier)
-(require 'univers)
+
+(defvar atelier-job-start-function nil
+  "Function starting a saved job.
+Arguments are name, directory, program, arguments, workspace, shell, agent
+metadata and entry type.  It returns the new live buffer.")
+(defvar atelier-job-process-id-function
+  (lambda (buffer)
+    (when-let* ((process (get-buffer-process buffer))) (process-id process)))
+  "Function called with a buffer to identify its actual child process.")
+(defvar atelier-process-observation-function #'ignore
+  "No-argument function reporting whether process observation is supported.")
+(defvar atelier-process-table-function #'ignore
+  "No-argument function returning the host's process records, or nil.")
+(defvar atelier-foreground-process-function #'ignore
+  "Function called with child ID, process records and direct-command flag.
+Return the foreground process record, or nil.")
+(defvar atelier-process-runtime-function #'ignore
+  "Function called with an observed process record to return its age in seconds.")
 
 (defconst atelier-persist-state-file
-  (expand-file-name "workbench-state.el" myconfig-state-directory))
+  (expand-file-name "workbench-state.el" atelier-state-directory))
 (defconst atelier-persist-restore-journal-file
-  (expand-file-name "restore-journal.el" myconfig-state-directory))
+  (expand-file-name "restore-journal.el" atelier-state-directory))
 (defvar atelier-persist-timer nil)
 (defvar atelier-persist-restoring nil)
 (defvar atelier-persist-pruned-state nil)
@@ -31,19 +48,23 @@
 (defun atelier-job-foreground (job table)
   (when-let* ((buffer (get-buffer (plist-get job :buffer)))
               (process (get-buffer-process buffer))
-               (pid (with-current-buffer buffer
-                      (or (and (boundp 'ghostel--pid) ghostel--pid)
-                          (process-id process)))))
-    (universel-foreground-process pid table (plist-get job :direct-command))))
+              (pid (funcall atelier-job-process-id-function buffer)))
+    (funcall atelier-foreground-process-function pid table (plist-get job :direct-command))))
+
+(defun atelier-job-fallback-recipe (job directory)
+  "Retain a direct launch when JOB has no shell to fall back to."
+  (unless (eq (plist-get job :policy) 'never)
+    (or (atelier-shell-restart-recipe (plist-get job :shell) directory)
+        (and (plist-get job :direct-command) (copy-tree (plist-get job :recipe))))))
 
 (defun atelier-job-recipe (job foreground directory)
   (let ((policy (plist-get job :policy))
         (program (file-name-nondirectory (plist-get foreground :executable)))
-        (fallback (atelier-shell-restart-recipe (plist-get job :shell) directory)))
+        (fallback (atelier-job-fallback-recipe job directory)))
     (cond
      ((eq policy 'never) nil)
      ((and (eq policy 'auto)
-            (< (universel-process-runtime foreground (universel-host-environment)) 5)) fallback)
+             (< (funcall atelier-process-runtime-function foreground) 5)) fallback)
      ((and (eq policy 'auto) (member program atelier-process-denylist)) fallback)
      (t (list :executable (plist-get foreground :executable)
               :argv (copy-sequence (plist-get foreground :argv))
@@ -51,9 +72,13 @@
               :shell (copy-tree (plist-get job :shell)))))))
 
 (defun atelier-observe-jobs ()
-  (when (universel-process-observation-p (universel-host-environment))
+  "Observe actual processes in published records, never in a prepared copy."
+  (atelier-operation-live-event #'atelier--observe-jobs))
+
+(defun atelier--observe-jobs ()
+  (when (funcall atelier-process-observation-function)
     (condition-case error
-        (let ((table (universel-process-table (universel-host-environment))) changed)
+        (let ((table (funcall atelier-process-table-function)) changed)
           (dolist (workspace atelier-workspaces)
             (dolist (entry (atelier-workspace-job-entries workspace))
               (when-let* ((buffer (atelier-entry-live-buffer entry)))
@@ -62,17 +87,15 @@
                        (foreground (atelier-job-foreground job table))
                        (recipe (if foreground
                                    (atelier-job-recipe job foreground directory)
-                                 (unless (eq (plist-get job :policy) 'never)
-                                   (atelier-shell-restart-recipe
-                                    (plist-get job :shell) directory)))))
+                                 (atelier-job-fallback-recipe job directory))))
                   (unless (equal recipe (plist-get job :recipe))
                     (setf (plist-get job :recipe) recipe)
                     (setq changed t))))))
           (when changed (atelier-persist-now)))
-      (error (myconfig-log "Foreground job observation failed: %s" error)))))
+      (error (atelier-log "Foreground job observation failed: %s" error)))))
 
 (defun atelier-live-process-state ()
-  (let ((table (universel-process-table (universel-host-environment))) state)
+  (let ((table (funcall atelier-process-table-function)) state)
     (dolist (workspace atelier-workspaces)
       (dolist (entry (atelier-workspace-job-entries workspace))
         (let* ((job (atelier-entry-job entry))
@@ -114,17 +137,33 @@
     (atelier-workspace-stop-jobs workspace)))
 
 (defun atelier-job-process-exited (buffer)
+  "Apply a process exit to live records and invalidate affected preparation."
+  (atelier-operation-live-event
+   (lambda ()
+     (unless atelier-operation-owned-effect
+       (dolist (operation atelier-operation-active)
+         (when (or (memq buffer (atelier-operation-acquired-buffers operation))
+                   (when-let* ((owner (atelier-find-job-for-buffer (buffer-name buffer))))
+                     (or (memq :all (atelier-operation-ids operation))
+                         (member (atelier-workspace-id (car owner)) (atelier-operation-ids operation)))))
+           (setf (atelier-operation-invalid operation) t))))
+     (atelier--job-process-exited buffer))))
+
+(defun atelier--job-process-exited (buffer)
   (when-let* ((owner (atelier-find-job-for-buffer (buffer-name buffer))))
     (let ((workspace (car owner))
           (entry (nth 2 owner)))
       (unless atelier-preserve-job-recipe
         (atelier-entry-remove workspace entry t))
-      (myconfig-log "Job in %s exited: %s"
+      (atelier-log "Job in %s exited: %s"
                     (plist-get workspace :name) (buffer-name buffer)))
     (atelier-notify-change)
     (atelier-persist-schedule)))
 
-(defun atelier-set-job-policy ()
+(atelier-define-operation atelier-set-job-policy ()
+    (list (atelier-workspace-id
+           (car (or (atelier-find-job-for-buffer (buffer-name))
+                    (user-error "This buffer is not a workbench job"))))) nil
   (interactive)
   (let* ((owner (or (atelier-find-job-for-buffer (buffer-name))
                     (user-error "This buffer is not a workbench job")))
@@ -133,17 +172,19 @@
          (policy (intern (downcase choice))))
     (setf (plist-get job :policy) policy)
     (when (eq policy 'never) (setf (plist-get job :recipe) nil))
-    (atelier-observe-jobs)
+    (atelier-operation-after #'atelier-observe-jobs)
     (message "Restart policy for %s: %s" (buffer-name) choice)))
 
 (defun atelier-build-restart-plan (workspace)
-  (cl-loop for entry in (atelier-workspace-job-entries workspace)
-           for job = (atelier-entry-job entry)
-           for recipe = (plist-get job :recipe)
-           when (plist-get recipe :executable)
-           collect (list :workspace workspace :entry entry :job job
-                         :recipe (copy-tree recipe)
-                         :buffer (plist-get job :buffer))))
+  (let (seen plan)
+    (dolist (entry (atelier-workspace-job-entries workspace))
+      (let* ((job (atelier-entry-job entry))
+             (recipe (plist-get job :recipe)))
+        (when (and (plist-get recipe :executable) (not (memq job seen)))
+          (push job seen)
+          (push (list :workspace workspace :entry entry :job job
+                      :recipe (copy-tree recipe) :buffer (plist-get job :buffer)) plan))))
+    (nreverse plan)))
 
 (defun atelier-restart-entry-valid-p (entry)
   (let ((workspace (plist-get entry :workspace))
@@ -166,11 +207,13 @@
     (error "A saved split or job changed before restarting saved jobs")))
 
 (defun atelier-restart-saved-jobs (&optional workspace)
-  (when (fboundp 'myconfig-terminal-buffer)
+  (when atelier-job-start-function
     (let ((workspace (or workspace (atelier-current-workspace))))
       (when workspace
         (let ((plan (atelier-build-restart-plan workspace)) failed)
-          (atelier-workspace-stop-jobs workspace)
+           (let ((atelier-operation-closing-immediately t)
+                 (atelier-operation-owned-effect t))
+             (atelier-workspace-stop-jobs workspace))
           (atelier-validate-restart-plan plan)
           (dolist (entry plan)
             (unless (atelier-restart-entry-valid-p entry)
@@ -187,30 +230,30 @@
                                 (equal executable (plist-get shell :executable))))
                            (name saved-name)
                            (atelier-job-owner-entry (plist-get entry :entry))
-                            (buffer (myconfig-terminal-buffer
+                            (buffer (funcall atelier-job-start-function
                                      name (plist-get recipe :directory) executable arguments workspace
                                      (and shell-restart shell)
                                      (plist-get job :agent)
-                                     (plist-get (plist-get entry :entry) :type))))
+                                      (atelier-entry-value (plist-get entry :entry) :type))))
                       (setf (plist-get job :buffer) (buffer-name buffer))
                       (when-let* ((agent (plist-get job :agent)))
-                        (run-hook-with-args 'atelier-agent-restored-functions
+                         (atelier-operation-notify 'atelier-agent-restored-functions
                                            buffer agent workspace))
-                    (myconfig-log "Accepted restart of %s in workspace %s"
+                    (atelier-log "Accepted restart of %s in workspace %s"
                                   (file-name-nondirectory executable)
                                   (plist-get workspace :name)))
                 (error
                  (push (plist-get entry :entry) failed)
-                 (myconfig-log "Job restart failed for %s in workspace %s: %s"
+                 (atelier-log "Job restart failed for %s in workspace %s: %s"
                                (file-name-nondirectory executable)
                                (plist-get workspace :name) error)))))
-          (dolist (entry failed)
-            (atelier-entry-remove workspace entry t))
-          (when failed (atelier-persist-record-pruning)))))))
+           (when failed
+             (atelier-prune-workspace-contents workspace)))))))
 
 (defun atelier-snapshot-data ()
   (atelier-ensure-detached-workspace)
-  (unless (or atelier-persist-restoring atelier-navigator-window-configurations)
+  (unless (or atelier-persist-restoring atelier-navigator-window-configurations
+              atelier-operation-active)
     (atelier-capture-current-workspace))
   (list :version 10
         :generation (or atelier-snapshot-generation (atelier-new-generation))
@@ -230,7 +273,14 @@
 
 (defun atelier-data-topology (data)
   (list :current-workspace-id (plist-get data :current-workspace-id)
-        :workspaces (mapcar #'atelier-workspace-topology (plist-get data :workspaces))))
+         :workspaces (mapcar #'atelier-workspace-topology (plist-get data :workspaces))))
+
+(defun atelier-data-restorable-state (data)
+  "Compare every saved record, excluding format version and generation."
+  (let ((state (copy-tree data)))
+    (cl-remf state :version)
+    (cl-remf state :generation)
+    state))
 
 (defun atelier-affected-workspaces (left right)
   (let* ((left-workspaces (plist-get left :workspaces))
@@ -703,8 +753,6 @@ Keep entries referenced by an agent attachment independent so their IDs survive.
           (error "Invalid workspace definition"))
         (when (member name names) (error "Duplicate workspace name: %s" name))
         (push name names)
-        (when (and (equal destination "local") (not (file-directory-p path)))
-          (error "Workspace root is missing: %s" path))
         (let ((top-level (atelier-workspace-top-level-entries workspace))
               entry-ids)
           (when (> (cl-count-if (lambda (entry) (plist-get entry :displayed))
@@ -849,39 +897,19 @@ Keep entries referenced by an agent attachment independent so their IDs survive.
       normalized)))
 
 (defun atelier-prune-unrestorable-saved-entries (workspace)
-  "Discard saved entries with no local source or restart recipe."
-  (let ((atelier-model-workspace workspace))
-    (dolist (entry (copy-sequence (atelier-workspace-entries workspace)))
-      (let* ((job (atelier-entry-job entry))
-             (file (atelier-entry-value entry :file workspace))
-             (directory (atelier-entry-value entry :directory workspace))
-             (kind (atelier-entry-value entry :kind workspace)))
-        (when (and (not (atelier-entry-live-buffer entry))
-                   (or (and (eq kind 'terminal) (not job))
-                       (and job
-                            (let* ((recipe (plist-get job :recipe))
-                                   (executable (plist-get recipe :executable))
-                                   (job-directory (plist-get recipe :directory)))
-                              (or (eq (plist-get workspace :status) 'running)
-                                  (not executable)
-                                  (and job-directory (not (file-remote-p job-directory))
-                                       (not (file-directory-p job-directory)))
-                                  (and (file-name-absolute-p executable)
-                                       (not (file-remote-p executable))
-                                       (not (file-executable-p executable))))))
-                       (and file (not (file-remote-p file))
-                            (not (file-readable-p file)))
-                       (and (eq kind 'directory) directory
-                            (not (file-remote-p directory))
-                            (not (file-directory-p directory)))))
-          (atelier-entry-remove workspace entry t)
-          (atelier-persist-record-pruning))))))
+  "Prune unrestorable contents, retaining each view with surviving contents."
+  (atelier-prune-workspace-contents workspace))
 
-(defun atelier-apply-state (data)
+(atelier-define-operation atelier-apply-state (data) (list :all) nil
+  "Publish saved records without requiring their selected machine to be online."
   (setq atelier-workspaces
-        (mapcar #'atelier-workspace-runtime-copy (plist-get data :workspaces))
-        atelier-remembered-ssh-destinations (copy-sequence (plist-get data :ssh-destinations))
-        atelier-snapshot-generation (plist-get data :generation))
+        (mapcar #'atelier-workspace-runtime-copy (plist-get data :workspaces)))
+  (let ((destinations (copy-sequence (plist-get data :ssh-destinations)))
+        (generation (plist-get data :generation)))
+    (atelier-operation-after
+     (lambda ()
+       (setq atelier-remembered-ssh-destinations destinations
+             atelier-snapshot-generation generation))))
   (atelier-ensure-detached-workspace)
   (atelier-select-workspace
    (atelier-workspace-by-id (plist-get data :current-workspace-id)))
@@ -896,22 +924,27 @@ Keep entries referenced by an agent attachment independent so their IDs survive.
                 (atelier-shell-restart-recipe
                  (plist-get job :shell) (plist-get job :directory))))
         (unless (or (plist-get job :recipe) (eq (plist-get job :policy) 'never))
-          (myconfig-log "Terminal entry %s has no usable restart recipe"
+          (atelier-log "Terminal entry %s has no usable restart recipe"
                         (atelier-entry-value entry :name)))))
     (atelier-prune-unrestorable-saved-entries workspace))
-  (atelier-persist-open-saved-state)
-  (run-hooks 'atelier-after-restore-hook))
+  (when atelier-defer-job-restart
+    (atelier-set-workspace-status (atelier-current-workspace) 'running)))
 
 (defun atelier-persist-now ()
+  "Save only published records, never a preparation's private copies."
+  (interactive)
+  (atelier-operation-live-event #'atelier--persist-now))
+
+(defun atelier--persist-now ()
   (interactive)
   (unless atelier-persist-restoring
     (condition-case error
         (progn
           (run-hooks 'atelier-before-save-hook)
           (setq atelier-snapshot-generation (atelier-new-generation))
-          (myconfig-write-data-atomically atelier-persist-state-file (atelier-snapshot-data))
-          (run-hooks 'atelier-after-save-hook))
-      (error (myconfig-log "Snapshot failed: %s" error)))))
+          (atelier-write-data-atomically atelier-persist-state-file (atelier-snapshot-data))
+           (atelier-operation-notify 'atelier-after-save-hook))
+      (error (atelier-log "Snapshot failed: %s" error)))))
 
 (defun atelier-persist-record-pruning ()
   "Write failed-entry removal back to the snapshot after restoration."
@@ -920,18 +953,22 @@ Keep entries referenced by an agent attachment independent so their IDs survive.
     (atelier-persist-schedule)))
 
 (defun atelier-persist-schedule ()
-  (unless atelier-persist-restoring
+  (if atelier-operation-current
+      (atelier-operation-notify 'atelier-change-hook)
+    (unless atelier-persist-restoring
     (when atelier-persist-timer (cancel-timer atelier-persist-timer))
-    (setq atelier-persist-timer (run-with-idle-timer 0.5 nil #'atelier-persist-now))))
+      (setq atelier-persist-timer (run-with-idle-timer 0.5 nil #'atelier-persist-now)))))
 
 (defun atelier-persist-load ()
   (condition-case error
-      (when-let* ((data (myconfig-read-data atelier-persist-state-file)))
-        (setq data (atelier-validate-state data))
-        (atelier-apply-state data)
-        t)
+      (when-let* ((data (atelier-read-data atelier-persist-state-file)))
+         (setq data (atelier-validate-state data))
+         (atelier-apply-state data)
+         (atelier-persist-open-saved-state)
+         (atelier-operation-notify 'atelier-after-restore-hook)
+         t)
     (error
-     (myconfig-log "Stored state rejected: %s" error)
+     (atelier-log "Stored state rejected: %s" error)
      nil)))
 
 (defun atelier-persist-open-saved-state ()
@@ -939,32 +976,35 @@ Keep entries referenced by an agent attachment independent so their IDs survive.
     (let ((workspace (or (atelier-current-workspace) (car atelier-workspaces))))
       (when workspace
         (atelier-select-workspace workspace)
-        (atelier-set-workspace-status workspace 'running)
-        (unless atelier-defer-job-restart
-          (atelier-restart-saved-jobs workspace)
-          (when (display-graphic-p (selected-frame))
-            (atelier-restore-workspace workspace)))))))
+         (condition-case error
+             (atelier-open-workspace workspace)
+           ((error quit)
+            (atelier-log "Workspace %s remains stopped: %s"
+                         (plist-get workspace :name) (error-message-string error))
+            (delete-other-windows)
+            (set-window-buffer (selected-window)
+                               (atelier-unavailable-workspace-buffer workspace))))))))
 
 (defun atelier-restore-journal-recover ()
-  (when-let* ((journal (myconfig-read-data atelier-persist-restore-journal-file))
+  (when-let* ((journal (atelier-read-data atelier-persist-restore-journal-file))
               (original (plist-get journal :original)))
     (setq original (atelier-validate-state original))
-    (myconfig-write-data-atomically atelier-persist-state-file original)
+    (atelier-write-data-atomically atelier-persist-state-file original)
     (delete-file atelier-persist-restore-journal-file)
-    (myconfig-log "Recovered the state that existed before an interrupted restore")))
+    (atelier-log "Recovered the state that existed before an interrupted restore")))
 
-(defun atelier-restore-snapshot ()
+(atelier-define-operation atelier-restore-snapshot () (list :all) nil
   (interactive)
-  (let* ((saved (atelier-validate-state (or (myconfig-read-data atelier-persist-state-file)
+  (let* ((saved (atelier-validate-state (or (atelier-read-data atelier-persist-state-file)
                                               (user-error "No saved workbench state"))))
          (live (atelier-snapshot-data))
-         (expected (atelier-data-topology live))
-         (wanted (atelier-data-topology saved))
+         (expected (atelier-data-restorable-state live))
+         (wanted (atelier-data-restorable-state saved))
          (affected (atelier-affected-workspaces expected wanted))
          (expected-processes (atelier-live-process-state))
          (saved-processes (atelier-saved-process-state saved))
          (replacements (atelier-process-replacements expected-processes saved-processes)))
-    (when (equal expected wanted) (user-error "Live and saved topology already match"))
+    (when (equal expected wanted) (user-error "Live and saved state already match"))
     (unless (yes-or-no-p
              (format "Replace live state for workspace%s %s? "
                      (if (= (length affected) 1) "" "s")
@@ -987,34 +1027,51 @@ Keep entries referenced by an agent attachment independent so their IDs survive.
             "? "))
         (atelier-persist-now)
         (user-error "Saved the unchanged live state")))
-    (unless (equal expected (atelier-data-topology (atelier-snapshot-data)))
+    (unless (equal expected (atelier-data-restorable-state (atelier-snapshot-data)))
       (user-error "Restore cancelled because live topology changed"))
     (unless (equal expected-processes (atelier-live-process-state))
       (user-error "Restore cancelled because a live job changed"))
-    (let ((token (atelier-new-generation))
-          (atelier-persist-restoring t)
-          (atelier-defer-job-restart t))
-      (myconfig-write-data-atomically
+     (let ((atelier-approved-buffer-closes
+            (append
+             (mapcar #'atelier-prepare-buffer-close
+                     (delete-dups
+                      (cl-loop for workspace in atelier-workspaces append
+                               (mapcar #'atelier-entry-live-buffer
+                                       (atelier-workspace-job-entries workspace)))))
+             atelier-approved-buffer-closes))
+           (token (atelier-new-generation))
+           (atelier-persist-restoring t)
+           (atelier-defer-job-restart t))
+       (atelier-validate-buffer-closes)
+      (unless (equal expected (atelier-data-restorable-state (atelier-snapshot-data)))
+         (user-error "Restore cancelled because live topology changed during close questions"))
+       (unless (equal expected-processes (atelier-live-process-state))
+         (user-error "Restore cancelled because a live job changed during close questions"))
+       (atelier-write-data-atomically
        atelier-persist-restore-journal-file (list :token token :original live :replacement saved))
       (condition-case error
           (progn
-            (unless (equal expected (atelier-data-topology (atelier-snapshot-data)))
+            (unless (equal expected (atelier-data-restorable-state (atelier-snapshot-data)))
               (error "Live topology changed before replacement"))
             (unless (equal expected-processes (atelier-live-process-state))
               (error "A live job changed before replacement"))
-            (atelier-stop-all-live-jobs)
+            (let ((atelier-operation-closing-immediately t)
+                  (atelier-operation-owned-effect t))
+              (atelier-stop-all-live-jobs))
             (atelier-apply-state saved)
             (let ((atelier-restart-topology-guard
                    (atelier-data-topology (atelier-snapshot-data))))
               (atelier-restart-saved-jobs))
-            (when (display-graphic-p (selected-frame))
-              (atelier-restore-workspace (atelier-current-workspace)))
-            (let ((journal (myconfig-read-data atelier-persist-restore-journal-file)))
-              (when (equal token (plist-get journal :token))
-                (delete-file atelier-persist-restore-journal-file)))
-            (let ((atelier-persist-restoring nil))
-              (atelier-persist-now))
-            (message "Restored workbench state"))
+             (when (display-graphic-p (selected-frame))
+               (atelier-restore-workspace (atelier-current-workspace)))
+             (atelier-operation-notify 'atelier-after-restore-hook)
+            (atelier-operation-after
+             (lambda ()
+               (let ((journal (atelier-read-data atelier-persist-restore-journal-file)))
+                 (when (equal token (plist-get journal :token))
+                   (delete-file atelier-persist-restore-journal-file)))
+               (let ((atelier-persist-restoring nil)) (atelier-persist-now))
+               (message "Restored workbench state"))))
         (error
           (atelier-apply-state live)
           (let ((atelier-restart-topology-guard
@@ -1022,24 +1079,30 @@ Keep entries referenced by an agent attachment independent so their IDs survive.
             (atelier-restart-saved-jobs))
           (when (display-graphic-p (selected-frame))
             (atelier-restore-workspace (atelier-current-workspace)))
-         (myconfig-log "Restore failed; original live state recovered: %s" error)
+         (atelier-log "Restore failed; original live state recovered: %s" error)
          (signal (car error) (cdr error)))))))
 
+(defvar atelier-persist-initialized-p nil)
+
 (defun atelier-persist-setup ()
-  (setq atelier-persist-pruned-state nil)
-  (let ((atelier-persist-restoring t))
-    (condition-case error
-        (atelier-restore-journal-recover)
-      (error (myconfig-log "Restore journal recovery failed: %s" error)))
-    (atelier-persist-load)
-    (dolist (workspace atelier-workspaces)
-      (atelier-coalesce-unplaced-files workspace)))
-  (add-hook 'atelier-change-hook #'atelier-persist-schedule)
-  (add-hook 'kill-emacs-hook #'atelier-persist-now)
-  (when atelier-persist-pruned-state
+  "Load saved state and install persistence once per Emacs process."
+  (unless atelier-persist-initialized-p
     (setq atelier-persist-pruned-state nil)
-    (atelier-persist-now))
-  (setq atelier-job-observer-timer (run-with-timer 5 5 #'atelier-observe-jobs)))
+    (let ((atelier-persist-restoring t))
+      (condition-case error
+          (atelier-restore-journal-recover)
+        (error (atelier-log "Restore journal recovery failed: %s" error)))
+      (atelier-persist-load)
+      (dolist (workspace atelier-workspaces)
+        (atelier-coalesce-unplaced-files workspace)))
+    (add-hook 'atelier-change-hook #'atelier-persist-schedule)
+    (add-hook 'kill-emacs-hook #'atelier-persist-now)
+    (when atelier-persist-pruned-state
+      (setq atelier-persist-pruned-state nil)
+      (atelier-persist-now))
+    (when (timerp atelier-job-observer-timer) (cancel-timer atelier-job-observer-timer))
+    (setq atelier-job-observer-timer (run-with-timer 5 5 #'atelier-observe-jobs)
+          atelier-persist-initialized-p t)))
 
 (provide 'atelier-persist)
 ;;; atelier-persist.el ends here

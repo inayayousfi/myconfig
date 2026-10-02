@@ -22,7 +22,6 @@
 (defvar atelier-choice-result nil)
 (defvar atelier-navigator-attach-source nil)
 (defvar atelier-inhibit-buffer-ownership nil)
-(defvar atelier-evil-mode-line-anchor nil)
 (defvar atelier-directory-chooser-mode nil)
 (defvar atelier-internal-buffers (make-hash-table :test #'eq :weakness 'key))
 (defconst atelier-navigator-buffer "*Atelier*")
@@ -33,8 +32,9 @@
 (defvar atelier-entry-types
   '((file :buffer-name "file" :buffer-p atelier-file-entry-buffer-p)
     (dired :buffer-name "dired" :buffer-p atelier-dired-entry-buffer-p)
-    (aipanel :buffer-name "aipanel" :buffer-p atelier-aipanel-entry-buffer-p)
-    (terminal :buffer-name "terminal" :buffer-p atelier-terminal-entry-buffer-p))
+    ;; Labels remain readable for saved jobs even without their runtime adapter.
+    (aipanel :buffer-name "aipanel")
+    (terminal :buffer-name "terminal"))
   "Registered workspace entry types and their shared behavior.")
 (defvar-local atelier-navigator-first-position nil)
 (defvar-local atelier-directory-chooser-original-header nil)
@@ -233,6 +233,24 @@ Transfer disposable buffers from legacy entry/content keys before dropping them.
     (remhash (atelier-content-cache-key workspace id)
              atelier-content-live-buffers)))
 
+(defun atelier-entry-prune-contents (workspace entry predicate)
+  "Remove contents matching PREDICATE, dropping ENTRY only when it is empty.
+PREDICATE receives each content record.  Other views retain shared records."
+  (let* ((contents (atelier-entry-stack entry workspace))
+         (removed (cl-remove-if-not predicate contents))
+         (ids (mapcar (lambda (content) (plist-get content :id)) removed))
+         (kept (cl-remove-if (lambda (id) (member id ids))
+                             (plist-get entry :content-ids))))
+    (when removed
+      (if kept
+          (atelier-plist-set! entry :content-ids kept)
+        (atelier-entry-remove workspace entry t))
+      (dolist (id ids)
+        (unless (cl-some (lambda (other) (member id (plist-get other :content-ids)))
+                         (atelier-workspace-entries workspace))
+          (atelier-workspace-drop-content workspace id))))
+    (and removed t)))
+
 (defun atelier-entry-push-content (entry content &optional buffer)
   "Put CONTENT first in ENTRY's stack; jobs cannot be stacked."
   (when (or (atelier-layout-entry-p entry) (atelier-entry-job entry)
@@ -348,6 +366,16 @@ Unlike `plist-put', this always preserves PLIST's cons identity."
   "Return ordinary workspaces, excluding the reserved Detached workspace."
   (cl-remove-if #'atelier-detached-workspace-p atelier-workspaces))
 
+(defun atelier-workspace-successor (workspace &optional first)
+  "Choose another workspace; FIRST uses registry order rather than running first."
+  (let ((others (cl-remove-if
+                 (lambda (candidate)
+                   (equal (atelier-workspace-id candidate) (atelier-workspace-id workspace)))
+                 atelier-workspaces)))
+    (or (and (not first)
+             (cl-find-if (lambda (candidate) (eq (atelier-workspace-status candidate) 'running)) others))
+        (car others))))
+
 (defun atelier-ensure-detached-workspace ()
   "Return the canonical reserved Detached workspace, creating it if needed."
   (let ((workspace (atelier-detached-workspace)))
@@ -382,7 +410,10 @@ Unlike `plist-put', this always preserves PLIST's cons identity."
 (defun atelier-current-workspace-id (&optional frame)
   "Return the workspace ID selected by FRAME.
 Frames without an explicit selection belong to the reserved Detached workspace."
-  (or (frame-parameter (or frame (selected-frame)) 'atelier-workspace-id)
+  (or (and (bound-and-true-p atelier-operation-current)
+           (alist-get (or frame (selected-frame))
+                      (atelier-operation-frames atelier-operation-current)))
+      (frame-parameter (or frame (selected-frame)) 'atelier-workspace-id)
       atelier-detached-workspace-id))
 
 (defun atelier-current-workspace (&optional frame)
@@ -407,8 +438,11 @@ context.  A frame points at a workspace; buffers carry no workspace owner."
   "Make WORKSPACE the context of FRAME and return WORKSPACE.
 Nil selects the reserved Detached workspace."
   (setq workspace (or workspace (atelier-ensure-detached-workspace)))
-  (set-frame-parameter (or frame (selected-frame)) 'atelier-workspace-id
-                       (atelier-workspace-id workspace))
+  (if (bound-and-true-p atelier-operation-current)
+      (atelier-operation-select-frame (atelier-workspace-id workspace)
+                                      (or frame (selected-frame)))
+    (set-frame-parameter (or frame (selected-frame)) 'atelier-workspace-id
+                         (atelier-workspace-id workspace)))
   workspace)
 
 (defun atelier-workspace-status (workspace)
@@ -446,7 +480,7 @@ Nil selects the reserved Detached workspace."
 (defun atelier-workspace-refresh-parent-ids (workspace)
   "Rebuild runtime parent-ID links throughout WORKSPACE's entry trees."
   (cl-labels ((visit (entry parent-id)
-                (setf (plist-get entry :parent-id) parent-id)
+                 (atelier-plist-set! entry :parent-id parent-id)
                 (dolist (child (atelier-entry-children entry))
                   (visit child (plist-get entry :id)))))
     (dolist (root (atelier-workspace-top-level-entries workspace)
@@ -543,6 +577,10 @@ separate entry kind."
 
 (defun atelier-entry-set-live-buffer (entry buffer)
   "Cache BUFFER by content ID, deferring isolated entries until given an owner."
+  (when (and (bound-and-true-p atelier-operation-current)
+             (buffer-live-p buffer)
+             (not (memq buffer (atelier-operation-buffers atelier-operation-current))))
+    (atelier-operation-track-buffer buffer))
   (let* ((workspace (or atelier-model-workspace (gethash entry atelier-entry-owners)
                           (atelier-entry-workspace entry)))
          (_ (when workspace (atelier-entry-ensure-content entry workspace)))
@@ -600,8 +638,8 @@ separate entry kind."
     (atelier-workspace-refresh-parent-ids workspace)
     (atelier-workspace-index-entries workspace)
     (unless no-notify
-      (run-hook-with-args 'atelier-entry-added-hook workspace entry)
-      (run-hooks 'atelier-change-hook)))
+      (atelier-operation-notify 'atelier-entry-added-hook workspace entry)
+      (atelier-operation-notify 'atelier-change-hook)))
   entry)
 
 (defun atelier-entry-with-display-state (entry displayed)
@@ -642,14 +680,57 @@ separate entry kind."
                          (atelier-workspace-entries workspace))
           (atelier-workspace-drop-content workspace content-id)))))
   (unless atelier-inhibit-entry-removed-hook
-    (run-hook-with-args 'atelier-entry-removed-hook workspace entry))
+    (atelier-operation-notify 'atelier-entry-removed-hook workspace entry))
   (unless no-notify
-    (run-hooks 'atelier-change-hook))
+    (atelier-operation-notify 'atelier-change-hook))
   entry)
 
+(defun atelier-check-entry-move (entry old-workspace new-workspace)
+  "Reject a move leaving shared content behind, without changing either owner."
+  (unless (eq old-workspace new-workspace)
+    (let* ((leaves (atelier-entry-leaves entry))
+           (remaining (cl-set-difference (atelier-workspace-entries old-workspace)
+                                         leaves :test
+                                         (lambda (left right)
+                                           (equal (plist-get left :id) (plist-get right :id))))))
+      (dolist (leaf leaves)
+        (dolist (id (plist-get leaf :content-ids))
+          (let ((buffer (gethash (atelier-content-cache-key old-workspace id)
+                                 atelier-content-live-buffers)))
+            (when (cl-some
+                   (lambda (other)
+                     (cl-some
+                      (lambda (other-id)
+                        (or (equal id other-id)
+                            (and (buffer-live-p buffer)
+                                 (eq buffer (gethash (atelier-content-cache-key old-workspace other-id)
+                                                     atelier-content-live-buffers)))))
+                      (plist-get other :content-ids)))
+                   remaining)
+              (user-error
+               "Cannot move or detach this view from %s to %s: buffer %s is still used by another view in %s. Sharing a buffer across workspaces is blocked for now. Close the other views showing or retaining this buffer, then retry. Nothing was moved"
+               (plist-get old-workspace :name) (plist-get new-workspace :name)
+               (if (buffer-live-p buffer) (buffer-name buffer)
+                 (or (plist-get (atelier-workspace-content old-workspace id) :name) id))
+               (plist-get old-workspace :name)))))))))
+
 (defun atelier-entry-move (entry old-workspace new-workspace)
+  "Prepare a checked move using stable workspace and entry IDs."
+  (let ((old-id (atelier-workspace-id old-workspace))
+        (new-id (atelier-workspace-id new-workspace))
+        (entry-id (plist-get entry :id)))
+    (atelier-operation-call
+     'move-entry (delete-dups (list old-id new-id))
+     (lambda ()
+       (let* ((old (atelier-operation-workspace old-id))
+              (new (atelier-operation-workspace new-id))
+              (entry (atelier-operation-entry old entry-id)))
+         (atelier--entry-move entry old new))) t)))
+
+(defun atelier--entry-move (entry old-workspace new-workspace)
   "Move ENTRY and its content records to NEW-WORKSPACE atomically."
   (unless (eq old-workspace new-workspace)
+    (atelier-check-entry-move entry old-workspace new-workspace)
     (let ((moved (make-hash-table :test #'equal)) buffers replacements)
       ;; Copy while the old IDs still belong to ENTRY.  Removal must see those
       ;; IDs so it can drop unreferenced old records and cache entries.
@@ -678,8 +759,8 @@ separate entry kind."
       (dolist (pair buffers)
         (puthash (atelier-content-cache-key new-workspace (car pair))
                  (cdr pair) atelier-content-live-buffers)))
-    (run-hook-with-args 'atelier-entry-moved-hook entry old-workspace new-workspace)
-    (run-hooks 'atelier-change-hook))
+    (atelier-operation-notify 'atelier-entry-moved-hook entry old-workspace new-workspace)
+    (atelier-operation-notify 'atelier-change-hook))
   entry)
 
 (defun atelier-entry-job (entry)

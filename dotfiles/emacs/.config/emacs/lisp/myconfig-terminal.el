@@ -15,8 +15,7 @@
   "Key sequence that returns a Ghostel terminal to Evil normal state."
   :type 'key-sequence
   :group 'myconfig)
-(require 'atelier)
-(require 'univers)
+(require 'ghostel-atelier)
 
 (defun myconfig-terminal-buffer-name (name)
   (let ((name (or name "terminal")))
@@ -24,66 +23,11 @@
         name
       (format "*%s*" (string-trim name "*" "*")))))
 
-(defun myconfig-terminal-exec-buffer (name directory program args &optional identity)
-  "Run PROGRAM in a regular Ghostel buffer without Atelier job ownership."
-  (let ((buffer (generate-new-buffer (generate-new-buffer-name
-                                      (myconfig-terminal-buffer-name name)))))
-    (condition-case error
-        (progn
-          (with-current-buffer buffer
-            (setq-local default-directory directory))
-          (ghostel-exec buffer program args identity)
-          (with-current-buffer buffer
-            ;; Ghostel resets input mode after its mode hook when executing.
-            (myconfig-terminal-enter-input)
-            (when-let* ((process (get-buffer-process buffer)))
-              (set-process-query-on-exit-flag process nil)))
-          buffer)
-      (error
-       (when (buffer-live-p buffer) (kill-buffer buffer))
-       (signal (car error) (cdr error))))))
-
-(defun myconfig-terminal-buffer
-    (&optional name directory command args owner-workspace shell agent type explicit)
-  (let* ((desired-directory (or directory (atelier-workspace-directory)))
-         (default-directory desired-directory)
-         (program (or command (plist-get shell :executable) (universel-default-shell)))
-         (name (if (and owner-workspace type)
-                   (atelier-entry-buffer-name type owner-workspace)
-                 (myconfig-terminal-buffer-name name)))
-         buffer)
-    (condition-case error
-        (setq buffer
-              (if command
-                  (myconfig-terminal-exec-buffer name desired-directory program args)
-                (let ((ghostel-shell (cons program args)))
-                  (ghostel-create name))))
-      (error (signal (car error) (cdr error))))
-    (with-current-buffer buffer
-       (setq-local default-directory desired-directory
-                    myconfig-terminal-command (cons program args)
-                   kill-buffer-query-functions
-                   (remq #'process-kill-buffer-query-function kill-buffer-query-functions))
-       (remhash buffer atelier-internal-buffers)
-      (when-let* ((process (get-buffer-process buffer)))
-        (set-process-query-on-exit-flag process nil))
-      (add-hook 'ghostel-exit-functions #'myconfig-terminal-process-exited nil t))
-    (let ((atelier-job-owner-workspace owner-workspace)
-          (shell (or shell (unless command
-                              (list :executable program :login (member "-l" args))))))
-      (atelier-register-job-buffer
-       buffer shell desired-directory
-       (when (and command (null shell)) (cons program args)) nil agent type explicit))
-    buffer))
-
-(defun myconfig-terminal-process-exited (buffer _event)
-  (when (fboundp 'atelier-job-process-exited)
-    (atelier-job-process-exited buffer)))
-
-(defun myconfig-terminal ()
+(atelier-define-operation myconfig-terminal ()
+    (list (atelier-current-workspace-id)) nil
   (interactive)
   (when (window-parameter nil 'window-side)
-    (select-window (window-main-window)))
+    (select-window (atelier-main-window)))
   (let* ((workspace (atelier-current-workspace))
          (in-terminal (derived-mode-p 'ghostel-mode))
           (existing (and workspace (not in-terminal)
@@ -91,7 +35,7 @@
           (launch (unless existing (funcall atelier-terminal-command-function workspace)))
          (name (atelier-entry-buffer-name 'terminal workspace))
          (buffer (or existing
-                     (myconfig-terminal-buffer
+                     (ghostel-atelier-buffer
                       (if in-terminal
                           (generate-new-buffer-name (myconfig-terminal-buffer-name name))
                         name)
@@ -105,13 +49,15 @@
                          nil 'terminal in-terminal))))
     (switch-to-buffer buffer)))
 
-(defun myconfig-terminal-split-right ()
+(atelier-define-operation myconfig-terminal-split-right ()
+    (list (atelier-current-workspace-id)) nil
   (interactive)
   (let ((window (split-window-right)))
     (select-window window)
     (myconfig-terminal)))
 
-(defun myconfig-terminal-split-below ()
+(atelier-define-operation myconfig-terminal-split-below ()
+    (list (atelier-current-workspace-id)) nil
   (interactive)
   (let ((window (split-window-below)))
     (select-window window)
@@ -146,10 +92,18 @@
 
 (defun myconfig-terminal-display-setup ()
   (setq buffer-read-only nil)
+  (add-hook 'evil-local-mode-hook #'myconfig-terminal-keep-input nil t)
   (add-hook 'post-command-hook #'myconfig-terminal-keep-writable nil t)
   (display-line-numbers-mode -1)
   (hl-line-mode -1)
   (myconfig-terminal-enter-input))
+
+(defun myconfig-terminal-keep-input ()
+  "Do not let automatic Evil activation take input from a char-mode terminal."
+  (when (and (derived-mode-p 'ghostel-mode)
+             (eq ghostel--input-mode 'char)
+             (bound-and-true-p evil-local-mode))
+    (myconfig-terminal-enter-input)))
 
 (defun myconfig-terminal-keep-writable ()
   (when (derived-mode-p 'ghostel-mode)
@@ -186,6 +140,8 @@
                 #'myconfig-terminal-escape)))
 
 (defun myconfig-terminal-setup ()
+  (setq ghostel-atelier-buffer-activate-function #'myconfig-terminal-activate)
+  (add-hook 'ghostel-atelier-buffer-started-hook #'myconfig-terminal-enter-input)
   (setq ghostel-kill-buffer-on-exit t
         ghostel-query-before-killing nil
         ghostel-term "xterm-256color"
@@ -204,7 +160,17 @@
     (kbd "i") #'myconfig-terminal-enter-input
     (kbd "a") #'myconfig-terminal-enter-input
     (kbd "I") #'myconfig-terminal-enter-input
-    (kbd "A") #'myconfig-terminal-enter-input))
+     (kbd "A") #'myconfig-terminal-enter-input))
+
+(defun myconfig-aipanel-terminal (name directory program arguments _owner _selection)
+  (ghostel-atelier-exec-buffer name directory program arguments '((kind . aipanel))))
+
+(defun myconfig-aipanel-activate ()
+  (myconfig-terminal-activate (current-buffer)))
+
+(defun myconfig-aipanel-setup ()
+  (setq aipanel-terminal-function #'myconfig-aipanel-terminal)
+  (add-hook 'aipanel-window-change-hook #'myconfig-aipanel-activate))
 
 (provide 'myconfig-terminal)
 ;;; myconfig-terminal.el ends here

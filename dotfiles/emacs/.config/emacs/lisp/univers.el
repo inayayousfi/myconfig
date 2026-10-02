@@ -232,7 +232,7 @@ The result contains :program, :arguments, and the local launch :directory."
               (if (universel-platform-p 'windows environment)
                   (format "powershell.exe -NoLogo -NoProfile -EncodedCommand %s"
                           (universel--powershell-encoded
-                           (format "Set-Location -LiteralPath %s; & %s %s"
+                           (format "$ErrorActionPreference = 'Stop'; Set-Location -LiteralPath %s -ErrorAction Stop; & %s %s"
                                    (universel-quote-argument directory 'windows)
                                    (universel-quote-argument program 'windows)
                                    (mapconcat (lambda (arg) (universel-quote-argument arg 'windows))
@@ -251,9 +251,10 @@ The result contains :program, :arguments, and the local launch :directory."
 (defun universel-shell-command (directory &optional platform)
   "Return the existing interactive terminal launch for DIRECTORY on PLATFORM.
 Local launches carry :shell and leave :program nil for a terminal package's
-normal shell creation.  Arguments intentionally retain the existing policy."
+ normal shell creation.  Remote launches honor the supplied directory and port."
   (let* ((environment (universel-environment platform directory))
-         (destination (plist-get environment :destination)))
+          (destination (plist-get environment :destination))
+          (port (plist-get environment :port)))
     (pcase (plist-get environment :transport)
       ('local (list :program nil :shell (universel-default-shell environment)
                     :arguments '("-l") :directory directory))
@@ -261,12 +262,15 @@ normal shell creation.  Arguments intentionally retain the existing policy."
       ('ssh
        (list :program "ssh" :directory (universel-home-directory)
              :arguments
-             (if (universel-platform-p 'windows environment)
+             (append (when port (list "-p" (format "%s" port)))
+              (if (universel-platform-p 'windows environment)
                  (list destination
                        (format "powershell.exe -NoLogo -NoExit -Command \"Set-Location -LiteralPath %s\""
                                (universel-quote-argument
                                 (universel-native-path directory 'windows) 'windows)))
-               (list destination))))
+               (list "-t" destination
+                     (format "cd -- %s && exec \"${SHELL:-/bin/sh}\" -l"
+                             (universel-quote-argument (plist-get environment :directory) 'posix)))))))
       (_ (error "Unsupported terminal environment: %S" environment)))))
 
 (defun universel-find-programs (programs timeout &optional platform)
@@ -321,6 +325,9 @@ Return :programs and, for WSL discovery, :distribution."
 (defun universel-mount-key (environment)
   "Return the sharing key for ENVIRONMENT's remote filesystem."
   (concat (plist-get environment :destination) "\0"
+         (if (and (plist-get environment :port)
+                  (not (equal (format "%s" (plist-get environment :port)) "22")))
+             (format "port=%s\0" (plist-get environment :port)) "")
           (or (plist-get environment :mount-root) "/C:/")))
 
 (defun universel-mount-point (environment state-directory)
@@ -345,7 +352,19 @@ Return :programs and, for WSL discovery, :distribution."
                                      (or (plist-get environment :mount-root) "/C:/")))))))
 
 (defun universel--mounted-p (directory)
-  (zerop (process-file "mountpoint" nil nil nil "--quiet" directory)))
+  (let ((default-directory (universel-home-directory)))
+    (zerop (process-file "mountpoint" nil nil nil "--quiet" directory))))
+
+(defun universel-files-connected-p (environment state-directory)
+  "Whether ENVIRONMENT already owns a usable Windows file connection.
+This query never opens a connection.  Non-mounted transports are not owned by
+Universel's file-connection lifecycle and return nil."
+  (and state-directory
+       (eq (plist-get environment :transport) 'ssh)
+       (universel-platform-p 'windows environment)
+       (when-let* ((process (gethash (universel-mount-key environment) universel--mounts)))
+         (and (process-live-p process)
+              (universel--mounted-p (universel-mount-point environment state-directory))))))
 
 (defun universel--mount-sentinel (process event)
   (unless (process-live-p process)
@@ -370,8 +389,11 @@ Return :programs and, for WSL discovery, :distribution."
       (let* ((buffer (get-buffer-create (format "*windows-mount:%s*" destination)))
              (process (make-process
                        :name (format "windows-mount:%s" destination) :buffer buffer
-                       :command (list "sshfs" "-f" source mount-point "-o"
-                                      "BatchMode=yes,ConnectTimeout=10,ServerAliveInterval=5,ServerAliveCountMax=2,auto_unmount,idmap=user")
+                       :command (append (list "sshfs" "-f")
+                                        (when (plist-get environment :port)
+                                          (list "-p" (format "%s" (plist-get environment :port))))
+                                        (list source mount-point "-o"
+                                              "BatchMode=yes,ConnectTimeout=10,ServerAliveInterval=5,ServerAliveCountMax=2,auto_unmount,idmap=user"))
                        :connection-type 'pipe :noquery t :sentinel #'universel--mount-sentinel))
              (deadline (+ (float-time) 10)))
         (process-put process 'universel-mount-key key)
@@ -403,7 +425,9 @@ STATE-DIRECTORY is required for the existing SSHFS Windows connection."
              (unless state-directory (error "A mount state directory is required"))
              (expand-file-name (file-relative-name (file-name-as-directory directory) root)
                                (universel--ensure-mount environment state-directory)))
-         (format "/ssh:%s:%s" destination (file-name-as-directory directory))))
+         (format "/ssh:%s%s:%s" destination
+                 (if (plist-get environment :port) (format "#%s" (plist-get environment :port)) "")
+                 (file-name-as-directory directory))))
       (_ (error "Unsupported file environment: %S" environment)))))
 
 (defun universel-file-path (path &optional platform state-directory)
@@ -429,14 +453,17 @@ STATE-DIRECTORY is required for the existing SSHFS Windows connection."
   "Release ENVIRONMENT's mounted files below STATE-DIRECTORY."
   (when (and (eq (plist-get environment :transport) 'ssh)
              (universel-platform-p 'windows environment))
-    (let* ((key (universel-mount-key environment))
+    (let* ((default-directory (universel-home-directory))
+           (key (universel-mount-key environment))
            (process (gethash key universel--mounts))
            (mount-point (universel-mount-point environment state-directory)))
+      (when (universel--mounted-p mount-point)
+        (unless (and (zerop (process-file "fusermount3" nil nil nil "--unmount" mount-point))
+                     (not (universel--mounted-p mount-point)))
+          (user-error "Windows SFTP unmount failed for %s" mount-point)))
       (when (and process (process-live-p process))
         (process-put process 'universel-intentional-stop t)
         (delete-process process))
-      (when (universel--mounted-p mount-point)
-        (process-file "fusermount3" nil nil nil "--unmount" mount-point))
       (remhash key universel--mounts)
       (when (and (file-directory-p mount-point)
                  (null (directory-files mount-point nil directory-files-no-dot-files-regexp)))

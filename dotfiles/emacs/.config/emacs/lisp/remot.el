@@ -352,8 +352,9 @@ Its return value is passed unchanged to `remot-initialize-frame-function'."
                   (progn
                     (remot-start-terminal)
                     (websocket-send-text websocket "{\"type\":\"authenticated\"}"))
-                (error
-                 (setq remot-websocket nil)
+                 (error
+                  (remot-stop-terminal)
+                  (setq remot-websocket nil)
                  (websocket-close websocket)
                  (remot--log "Terminal start failed: %s"
                              (error-message-string error)))))
@@ -477,6 +478,9 @@ Its return value is passed unchanged to `remot-initialize-frame-function'."
                            (frame-list))))
     (kill-emacs)))
 
+(defvar remot-http-server nil
+  "The HTTP listener acquired by Remot, or nil when it owns none.")
+
 (defun remot-stop ()
   "Stop all browser terminal listeners and clients."
   (remot-disconnect-controller)
@@ -484,8 +488,10 @@ Its return value is passed unchanged to `remot-initialize-frame-function'."
   (when (process-live-p remot-websocket-server)
     (websocket-server-close remot-websocket-server))
   (setq remot-websocket-server nil)
-  (when (httpd-running-p)
+  (when (and remot-http-server (eq remot-http-server httpd--server)
+             (httpd-running-p))
     (httpd-stop))
+  (setq remot-http-server nil)
   (when (advice-member-p #'remot--http-dispatch 'httpd/)
     (advice-remove 'httpd/ #'remot--http-dispatch))
   (setq remot-started-p nil))
@@ -504,28 +510,50 @@ This does not expose the browser terminal or bypass its password."
   (unless remot-password-record
     (user-error "Set a browser terminal password first"))
   (unless remot-started-p
-    (remot-start-local-server)
-    (setq httpd-host "0.0.0.0"
-          httpd-port remot-http-port
-          httpd-root nil
-          httpd-serve-files nil
-          httpd-listings nil
-          httpd-log-buffer nil)
-    (unless (advice-member-p #'remot--http-dispatch 'httpd/)
-      (advice-add 'httpd/ :around #'remot--http-dispatch))
-    (httpd-start)
-    (setq remot-websocket-server
-          (websocket-server
-           remot-websocket-port
-           :host "0.0.0.0"
-           :protocol (list remot-protocol)
-           :on-open #'remot-websocket-open
-           :on-message #'remot-websocket-message
-           :on-close #'remot-websocket-close))
-    (setq remot-started-p t)
-    (remot--log "Listening on LAN ports %d and %d"
-                remot-http-port
-                remot-websocket-port)))
+    (when (httpd-running-p)
+      (user-error "Cannot start Remot: an HTTP server is already running"))
+    (let* ((settings (mapcar (lambda (symbol) (cons symbol (symbol-value symbol)))
+                            '(httpd-host httpd-port httpd-root httpd-serve-files
+                              httpd-listings httpd-log-buffer)))
+           (previous-server-process server-process)
+           (had-dispatch (advice-member-p #'remot--http-dispatch 'httpd/)))
+      (condition-case error
+          (progn
+            (remot-start-local-server)
+            (setq httpd-host "0.0.0.0"
+                  httpd-port remot-http-port
+                  httpd-root nil
+                  httpd-serve-files nil
+                  httpd-listings nil
+                  httpd-log-buffer nil)
+            (unless had-dispatch
+              (advice-add 'httpd/ :around #'remot--http-dispatch))
+            (httpd-start)
+            (setq remot-http-server httpd--server)
+            (setq remot-websocket-server
+                  (websocket-server
+                   remot-websocket-port
+                   :host "0.0.0.0"
+                   :protocol (list remot-protocol)
+                   :on-open #'remot-websocket-open
+                   :on-message #'remot-websocket-message
+                   :on-close #'remot-websocket-close))
+            (setq remot-started-p t)
+            (remot--log "Listening on LAN ports %d and %d"
+                        remot-http-port remot-websocket-port))
+        (error
+         (when (process-live-p remot-websocket-server)
+           (websocket-server-close remot-websocket-server))
+         (setq remot-websocket-server nil remot-started-p nil)
+          (when (httpd-running-p) (httpd-stop))
+          (setq remot-http-server nil)
+         (unless had-dispatch (advice-remove 'httpd/ #'remot--http-dispatch))
+         (dolist (setting settings) (set (car setting) (cdr setting)))
+         (when (and (not (eq server-process previous-server-process))
+                    (process-live-p server-process))
+           (delete-process server-process)
+           (setq server-process previous-server-process))
+         (signal (car error) (cdr error)))))))
 
 (defun remot-setup ()
   "Configure Remot for the current graphical GNU/Linux Emacs process."

@@ -59,13 +59,14 @@ so the default value alone is not sufficient."
            (program (car server)))
       (display-warning
        'myconfig
-       (format "No language server found for %s%s. Install it with M-x mason."
+       (format "No language server found for %s%s. Install it with M-x mason-manager"
                major-mode
                (if program (format " (expected command: %s)" program) ""))
        :warning))))
 
 (defun myconfig-eglot-ensure-if-server-available ()
-  (when buffer-file-name
+  (when (and buffer-file-name
+             (not (derived-mode-p 'emacs-lisp-mode 'lisp-mode)))
     (if (myconfig-eglot-server-available-p)
         (eglot-ensure)
       (myconfig-warn-missing-eglot-server))))

@@ -3326,6 +3326,32 @@
         (should (equal (myconfig-eglot-server-available-p) "available-server"))
         (should (equal calls (list (list "language-server" t directory))))))))
 
+(ert-deftest myconfig-eglot-lisp-modes-keep-native-support-without-a-server ()
+  (dolist (mode '(emacs-lisp-mode lisp-mode))
+    (with-temp-buffer
+      (setq buffer-file-name (if (eq mode 'emacs-lisp-mode) "/tmp/test.el" "/tmp/test.lisp"))
+      (let ((prog-mode-hook '(myconfig-eglot-ensure-if-server-available)))
+        (cl-letf (((symbol-function 'myconfig-eglot-server-available-p)
+                   (lambda () (ert-fail "Lisp buffer checked for a server")))
+                  ((symbol-function 'eglot-ensure)
+                   (lambda () (ert-fail "Lisp buffer started a server")))
+                  ((symbol-function 'myconfig-warn-missing-eglot-server)
+                   (lambda () (ert-fail "Lisp buffer warned about a server"))))
+          (funcall mode)
+          (should (eq major-mode mode))
+          (should (functionp indent-line-function)))))))
+
+(ert-deftest myconfig-eglot-other-language-starts-available-server ()
+  (with-temp-buffer
+    (setq buffer-file-name "/tmp/test.py")
+    (let ((prog-mode-hook '(myconfig-eglot-ensure-if-server-available)) started)
+      (cl-letf (((symbol-function 'myconfig-eglot-server-available-p) (lambda () t))
+                ((symbol-function 'eglot-ensure) (lambda () (setq started t)))
+                ((symbol-function 'myconfig-warn-missing-eglot-server)
+                 (lambda () (ert-fail "Available server reported missing"))))
+        (python-mode)
+        (should started)))))
+
 (ert-deftest myconfig-eglot-missing-remote-server-does-not-start ()
   (let ((default-directory "/ssh:alice@host:/project/")
         (buffer-file-name "/ssh:alice@host:/project/file.c") warned)

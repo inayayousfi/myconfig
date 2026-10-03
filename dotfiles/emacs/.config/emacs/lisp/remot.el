@@ -556,19 +556,20 @@ This does not expose the browser terminal or bypass its password."
          (signal (car error) (cdr error)))))))
 
 (defun remot-setup ()
-  "Configure Remot for the current graphical GNU/Linux Emacs process."
-  (when (and (eq system-type 'gnu/linux) (display-graphic-p))
-    (remot-start-local-server)
-    (setq remot-password-record
-          (remot-read-password-record))
-    (add-hook 'server-after-make-frame-hook
-              #'remot-initialize-frame)
+  "Configure Remot and graphical-window shutdown on GNU/Linux."
+  (when (eq system-type 'gnu/linux)
     (add-hook 'delete-frame-functions
               #'remot-last-graphical-frame-closing t)
-    (add-hook 'kill-emacs-hook #'remot-stop)
-    (if remot-password-record
-        (remot-start)
-      (remot--log "Disabled; run M-x remot-set-password"))))
+    (when (display-graphic-p)
+      (remot-start-local-server)
+      (setq remot-password-record
+            (remot-read-password-record))
+      (add-hook 'server-after-make-frame-hook
+                #'remot-initialize-frame)
+      (add-hook 'kill-emacs-hook #'remot-stop)
+      (if remot-password-record
+          (remot-start)
+        (remot--log "Disabled; run M-x remot-set-password")))))
 
 ;; Embedded browser assets.  ghostty-web 0.4.0 is MIT-licensed.
 ;; index.html SHA-256: b8c924ad5417883a4b75675955c8ba0f7771d8929f7b9ffd26195187f3e55308

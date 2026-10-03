@@ -191,7 +191,7 @@ Return the foreground process record, or nil.")
         (job (plist-get entry :job))
         (workspace-entry (plist-get entry :entry)))
     (and (memq workspace atelier-workspaces)
-          (memq workspace-entry (atelier-workspace-entries workspace))
+           (atelier-workspace-content workspace (plist-get workspace-entry :content-id))
          (equal (plist-get job :buffer) (plist-get entry :buffer))
          (equal (plist-get job :recipe) (plist-get entry :recipe))
          (not (when-let* ((buffer (get-buffer (plist-get entry :buffer)))
@@ -210,7 +210,7 @@ Return the foreground process record, or nil.")
   (when atelier-job-start-function
     (let ((workspace (or workspace (atelier-current-workspace))))
       (when workspace
-        (let ((plan (atelier-build-restart-plan workspace)) failed)
+        (let ((plan (atelier-build-restart-plan workspace)))
            (let ((atelier-operation-closing-immediately t)
                  (atelier-operation-owned-effect t))
              (atelier-workspace-stop-jobs workspace))
@@ -235,6 +235,8 @@ Return the foreground process record, or nil.")
                                      (and shell-restart shell)
                                      (plist-get job :agent)
                                       (atelier-entry-value (plist-get entry :entry) :type))))
+                       (unless (buffer-live-p buffer)
+                         (error "Job startup returned no live buffer"))
                       (setf (plist-get job :buffer) (buffer-name buffer))
                       (when-let* ((agent (plist-get job :agent)))
                          (atelier-operation-notify 'atelier-agent-restored-functions
@@ -243,19 +245,16 @@ Return the foreground process record, or nil.")
                                   (file-name-nondirectory executable)
                                   (plist-get workspace :name)))
                 (error
-                 (push (plist-get entry :entry) failed)
-                 (atelier-log "Job restart failed for %s in workspace %s: %s"
-                               (file-name-nondirectory executable)
-                               (plist-get workspace :name) error)))))
-           (when failed
-             (atelier-prune-workspace-contents workspace)))))))
+                 (atelier-forget-failed-content
+                  workspace (plist-get (plist-get entry :entry) :content-id)
+                  (error-message-string error)))))))))))
 
 (defun atelier-snapshot-data ()
   (atelier-ensure-detached-workspace)
   (unless (or atelier-persist-restoring atelier-navigator-window-configurations
               atelier-operation-active)
     (atelier-capture-current-workspace))
-  (list :version 10
+  (list :version 12
         :generation (or atelier-snapshot-generation (atelier-new-generation))
         :current-workspace-id (atelier-current-workspace-id)
         :ssh-destinations atelier-remembered-ssh-destinations
@@ -632,11 +631,37 @@ Keep entries referenced by an agent attachment independent so their IDs survive.
         (atelier-plist-set! workspace :contents (nreverse contents))))
     copy))
 
+(defun atelier-migrate-data-v11 (data)
+  "Move v10 view-local lists into workspace type stacks, retaining selections.
+All content records already belong to the workspace; only view references change."
+  (let ((copy (copy-tree data)))
+    (setf (plist-get copy :version) 11)
+    (dolist (workspace (plist-get copy :workspaces))
+      (dolist (entry (plist-get workspace :entries))
+        (unless (eq (plist-get entry :kind) 'layout)
+          (atelier-plist-set! entry :content-id (car (plist-get entry :content-ids)))
+          (cl-remf entry :content-ids))))
+    copy))
+
+(defun atelier-migrate-data-v12 (data)
+  "Give workspace type stacks stable identities and explicit fixed membership."
+  (let ((copy (copy-tree data)))
+    (setf (plist-get copy :version) 12)
+    (dolist (workspace (plist-get copy :workspaces))
+      (atelier-workspace-ensure-stacks workspace)
+      (dolist (entry (plist-get workspace :entries))
+        (unless (eq (plist-get entry :kind) 'layout)
+          (when-let* ((content (atelier-workspace-content workspace (plist-get entry :content-id))))
+            (atelier-plist-set! entry :stack-id (plist-get content :stack-id))))))
+    copy))
+
 (defun atelier-migrate-state (data)
   (pcase (plist-get data :version)
-    (10 data)
-    (9 (atelier-migrate-data-v10 data))
-    (8 (atelier-migrate-data-v10 (atelier-migrate-data-v9 data)))
+    (12 data)
+    (11 (atelier-migrate-data-v12 data))
+    (10 (atelier-migrate-state (atelier-migrate-data-v11 data)))
+    (9 (atelier-migrate-state (atelier-migrate-data-v10 data)))
+    (8 (atelier-migrate-state (atelier-migrate-data-v10 (atelier-migrate-data-v9 data))))
     (7 (atelier-migrate-state (atelier-migrate-data-v8 data)))
     (6 (atelier-migrate-state (atelier-migrate-data-v7 data)))
     (5
@@ -768,7 +793,10 @@ Keep entries referenced by an agent attachment independent so their IDs survive.
                        (type (unless (atelier-layout-entry-p entry)
                                (atelier-entry-value entry :type workspace))))
                   (unless (and (stringp entry-id) (not (string-empty-p entry-id))
-                               (symbolp kind) kind)
+                                (or (and (symbolp kind) kind)
+                                    (plist-get entry :unassigned)
+                                    (and (plist-get entry :stack-id)
+                                         (not (plist-get entry :content-id)))))
                     (error "Invalid entry record in workspace %s" name))
                   (when (member entry-id entry-ids)
                     (error "Duplicate entry ID in workspace %s" name))
@@ -814,10 +842,11 @@ Keep entries referenced by an agent attachment independent so their IDs survive.
     data))
 
 (defun atelier-validate-content-ownership (data)
-  "Reject missing, duplicate, orphaned or inline content in v10 workspaces."
+  "Validate workspace-owned content and each view's selected-content reference."
+  (atelier-validate-stack-identities (plist-get data :workspaces))
   (dolist (workspace (plist-get data :workspaces))
-    (let ((records (make-hash-table :test #'equal))
-          (used (make-hash-table :test #'equal)))
+    (atelier-validate-workspace-stacks workspace)
+    (let ((records (make-hash-table :test #'equal)))
       (unless (listp (plist-get workspace :contents))
         (error "Invalid workspace contents"))
       (dolist (content (plist-get workspace :contents))
@@ -839,41 +868,25 @@ Keep entries referenced by an agent attachment independent so their IDs survive.
       (cl-labels ((check (entry)
                     (if (atelier-layout-entry-p entry)
                         (progn
-                          (when (plist-get entry :content-ids)
-                            (error "Layout has content IDs"))
+                          (when (plist-get entry :content-id)
+                            (error "Layout has selected content"))
                           (mapc #'check (atelier-entry-children entry)))
-                      (let ((ids (plist-get entry :content-ids)))
-                        (unless (and (consp ids) (cl-every #'stringp ids)
-                                     (= (length ids)
-                                        (length (delete-dups (copy-sequence ids)))))
-                          (error "Invalid content IDs on entry %S"
-                                 (plist-get entry :id)))
+                      (let ((id (plist-get entry :content-id)))
+                        (unless (or (plist-get entry :unassigned)
+                                    (and (not id) (plist-get entry :stack-id))
+                                    (and (stringp id) (gethash id records)))
+                          (error "Invalid selected content on entry %S"
+                                  (plist-get entry :id)))
                         (dolist (key (append atelier-content-properties
-                                             '(:content-id :stack)))
+                                             '(:content-ids :stack)))
                           (when (plist-member entry key)
-                            (error "Inline content property %S" key)))
-                        (when (and (cdr ids)
-                                   (cl-some (lambda (id)
-                                              (let ((content (atelier-workspace-content
-                                                              workspace id)))
-                                                (or (plist-get content :job)
-                                                    (memq (plist-get content :type)
-                                                          '(terminal aipanel)))))
-                                            ids))
-                          (error "Job content cannot be stacked"))
-                        (dolist (id ids)
-                          (unless (gethash id records)
-                            (error "Missing content %S" id))
-                          (puthash id t used))))))
-        (mapc #'check (plist-get workspace :entries)))
-      (maphash (lambda (id _)
-                 (unless (gethash id used) (error "Orphan content %S" id)))
-               records))))
+                            (error "Inline content property %S" key)))))))
+        (mapc #'check (plist-get workspace :entries))))))
 
 (defun atelier-validate-state (data)
-  "Validate flat v10 state by rebuilding its runtime entry trees."
+  "Validate flat state with workspace stacks and independent view selections."
   (setq data (atelier-migrate-state data))
-  (unless (and (listp data) (equal (plist-get data :version) 10)
+  (unless (and (listp data) (equal (plist-get data :version) 12)
                (listp (plist-get data :workspaces)))
     (error "Invalid flat state header"))
   (let ((runtime (copy-tree data)))
@@ -1092,9 +1105,7 @@ Keep entries referenced by an agent attachment independent so their IDs survive.
       (condition-case error
           (atelier-restore-journal-recover)
         (error (atelier-log "Restore journal recovery failed: %s" error)))
-      (atelier-persist-load)
-      (dolist (workspace atelier-workspaces)
-        (atelier-coalesce-unplaced-files workspace)))
+      (atelier-persist-load))
     (add-hook 'atelier-change-hook #'atelier-persist-schedule)
     (add-hook 'kill-emacs-hook #'atelier-persist-now)
     (when atelier-persist-pruned-state

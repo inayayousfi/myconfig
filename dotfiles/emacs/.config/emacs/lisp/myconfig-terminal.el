@@ -47,21 +47,19 @@
                            (list :executable (plist-get launch :shell)
                                  :login (member "-l" (plist-get launch :arguments))))
                          nil 'terminal in-terminal))))
-    (switch-to-buffer buffer)))
+    (atelier-show-buffer buffer workspace)))
 
 (atelier-define-operation myconfig-terminal-split-right ()
     (list (atelier-current-workspace-id)) nil
   (interactive)
-  (let ((window (split-window-right)))
-    (select-window window)
-    (myconfig-terminal)))
+  (atelier-split-right)
+  (myconfig-terminal))
 
 (atelier-define-operation myconfig-terminal-split-below ()
     (list (atelier-current-workspace-id)) nil
   (interactive)
-  (let ((window (split-window-below)))
-    (select-window window)
-    (myconfig-terminal)))
+  (atelier-split-below)
+  (myconfig-terminal))
 
 (defun myconfig-normal-state ()
   "Cancel active input and return the current editor view to normal state."

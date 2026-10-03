@@ -15,9 +15,10 @@
 (defun atelier-xref-follow (command)
   "Run Xref COMMAND and stack a visited file in the originating file entry."
   (let* ((workspace (atelier-current-workspace))
-         (entry (and workspace (atelier-current-entry (current-buffer) workspace)))
-          (source (and (atelier-stackable-entry-p entry 'file)
-                       (cons (atelier-workspace-id workspace) (plist-get entry :id))))
+          (entry (and workspace
+                      (atelier-buffer-registerable-p (current-buffer) workspace)
+                      (atelier-show-buffer (current-buffer) workspace)))
+           (source (and entry (cons (atelier-workspace-id workspace) (plist-get entry :id))))
          (result (let ((atelier-inhibit-buffer-ownership (and source t)))
                    (call-interactively command))))
     (when source

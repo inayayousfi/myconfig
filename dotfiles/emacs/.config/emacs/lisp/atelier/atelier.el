@@ -217,8 +217,11 @@ Return a nonempty list; when MULTIPLE is nil, return exactly one path.")
                (_ nil))))))
 
 (defun atelier-workspace-entry-for-buffer (workspace buffer)
-  (cl-find-if (lambda (entry) (atelier-entry-matches-buffer-p entry buffer))
-              (atelier-workspace-entries workspace)))
+  (or (cl-find-if (lambda (entry) (atelier-entry-matches-buffer-p entry buffer))
+                 (atelier-workspace-view-entries workspace))
+      (cl-loop for content in (plist-get workspace :contents)
+               when (atelier-entry-matches-buffer-p (atelier-content-reference workspace content) buffer)
+               return (atelier-content-reference workspace content))))
 
 (defun atelier-workspace-for-buffer (&optional buffer frame)
   "Return BUFFER's workspace in FRAME, or nil when it is not an entry there.
@@ -271,8 +274,10 @@ workspace record is authoritative; BUFFER receives no ownership metadata."
           added)
       (unless entry
         (setq added t)
-        (setq entry (list :id (atelier-new-entry-id) :job nil))
-        (setq entry (atelier-entry-add workspace entry t)))
+        (let ((id (atelier-workspace-store-content
+                   workspace (list :type type :kind (atelier-buffer-entry-kind buffer)))))
+          (setq entry (atelier-content-reference workspace
+                                                 (atelier-workspace-content workspace id)))))
       (atelier-update-entry-from-buffer entry buffer type)
       (when (and added (not no-notify))
         (atelier-operation-notify 'atelier-entry-added-hook workspace entry)
@@ -285,30 +290,33 @@ workspace record is authoritative; BUFFER receives no ownership metadata."
 
 (defun atelier-capture-buffer (buffer &optional window workspace)
   (setq workspace (or workspace (atelier-current-workspace)))
-  (if-let* ((window (and (window-live-p window) window))
-            (id (window-parameter window 'atelier-unavailable-entry))
-            (entry (atelier-entry-by-id workspace id))
-            (_ (eq buffer (get-buffer (atelier-unavailable-entry-buffer-name workspace entry)))))
-      (progn
-        (setf (plist-get entry :selected) (eq window (selected-window)))
-        (atelier-plist-clear! entry :displayed)
-        (push id atelier-capture-used-entry-ids)
-        entry)
+  (if-let* ((id (and (window-live-p window) (window-parameter window 'atelier-view-id)))
+             (view (atelier-entry-by-id workspace id))
+             (_ (and (or (plist-get view :unassigned)
+                         (and (plist-get view :stack-id) (not (plist-get view :content-id))))
+                     (not (atelier-buffer-registerable-p buffer workspace)))))
+      (progn (push id atelier-capture-used-entry-ids) view)
     (let ((type (atelier-buffer-entry-type buffer)))
     (when-let* ((_ (atelier-buffer-registerable-p buffer workspace))
                 (entry
                  (if atelier-capturing-layout-p
-                     (or (cl-find-if
+                      (or (let* ((id (and (window-live-p window)
+                                         (window-parameter window 'atelier-view-id)))
+                                 (view (and id (atelier-entry-by-id workspace id))))
+                            (when (and view (not (plist-get view :content-reference))
+                                       (not (member id atelier-capture-used-entry-ids)))
+                              (let ((content (atelier-register-buffer buffer workspace t type)))
+                                (atelier-entry-activate-content view (plist-get content :content-id)))
+                              view))
+                          (cl-find-if
                           (lambda (candidate)
                             (and (not (member (plist-get candidate :id)
                                               atelier-capture-used-entry-ids))
                                  (atelier-entry-matches-buffer-p candidate buffer)))
-                          (atelier-workspace-entries workspace))
-                          (let* ((shared (atelier-workspace-entry-for-buffer workspace buffer))
-                                 (entry (if shared
-                                            (list :id (atelier-new-entry-id)
-                                                  :content-ids (list (car (plist-get shared :content-ids))))
-                                          (list :id (atelier-new-entry-id) :job nil))))
+                           (atelier-workspace-view-entries workspace))
+                           (let* ((shared (atelier-register-buffer buffer workspace t type))
+                                  (entry (list :id (atelier-new-entry-id)
+                                               :content-id (plist-get shared :content-id))))
                            (atelier-entry-add workspace entry t)))
                    (atelier-register-buffer buffer workspace t type))))
       (with-current-buffer buffer
@@ -319,6 +327,8 @@ workspace record is authoritative; BUFFER receives no ownership metadata."
                                                (eq window (selected-window))))
         (atelier-plist-clear! entry :displayed))
       (push (plist-get entry :id) atelier-capture-used-entry-ids)
+      (when (window-live-p window)
+        (set-window-parameter window 'atelier-view-id (plist-get entry :id)))
       entry))))
 
 (defun atelier-window-tree-span (tree orientation)
@@ -389,7 +399,7 @@ workspace record is authoritative; BUFFER receives no ownership metadata."
                               (push entry layouts))))
                 (mapc #'collect (atelier-workspace-top-level-entries workspace)))
               (nreverse layouts)))
-           (old-leaves (copy-sequence (atelier-workspace-entries workspace)))
+            (old-leaves (copy-sequence (atelier-workspace-view-entries workspace)))
            (tree (car (window-tree (selected-frame))))
            (displayed (atelier-capture-window-tree tree workspace))
            (unplaced
@@ -456,7 +466,9 @@ current buffer; this does not create or remove workspace entries."
               (workspace (atelier-current-workspace frame)))
     (dolist (window (window-list frame 'no-minibuffer))
       (unless (window-parameter window 'window-side)
-        (atelier-register-buffer (window-buffer window) workspace)))))
+        (with-selected-window window
+          (when (atelier-buffer-registerable-p (window-buffer window) workspace)
+            (atelier-show-buffer (window-buffer window) workspace window)))))))
 
 (atelier-define-operation atelier-refresh-current-buffer-entries ()
     (delete-dups (mapcar (lambda (pair) (atelier-workspace-id (car pair)))
@@ -484,41 +496,17 @@ current buffer; this does not create or remove workspace entries."
 
 (defun atelier--current-buffer-killed ()
   "Update entry runtime state when the current buffer is killed natively."
-  (let ((pairs (atelier-entries-for-buffer (current-buffer)))
-        (current-workspace (atelier-current-workspace))
-        changed)
-    (dolist (pair pairs)
-      (let ((workspace (car pair))
-            (entry (nth 1 pair)))
-        (atelier-entry-set-live-buffer entry nil)
-        (when (and (not atelier-preserve-job-recipe)
-                   (or (eq workspace current-workspace)
-                       (eq (atelier-entry-value entry :kind) 'transient)))
-          (if (cdr (atelier-entry-stack entry))
-              (progn
-                (atelier-entry-pop-content entry)
-                (when-let* ((previous (or (atelier-entry-live-buffer entry)
-                                         (atelier-restore-buffer entry workspace))))
-                  (when (eq workspace current-workspace)
-                    (dolist (window (atelier-main-windows))
-                      (when (eq (window-buffer window) (current-buffer))
-                        (set-window-buffer window previous))))))
-            (atelier-entry-remove workspace entry t))
-          (setq changed t))))
+  (let (changed)
     (dolist (workspace atelier-workspaces)
-      (dolist (entry (atelier-workspace-entries workspace))
-        (dolist (content (cdr (atelier-entry-stack entry)))
-          (let ((key (atelier-content-cache-key workspace (plist-get content :id))))
-            (when (eq (gethash key atelier-content-live-buffers)
-                      (current-buffer))
-              (remhash key atelier-content-live-buffers)
-              (unless (plist-get content :persistent)
-                (atelier-plist-set! entry :content-ids
-                                   (delete (plist-get content :id) (copy-sequence (plist-get entry :content-ids))))
-                (unless (cl-some (lambda (other) (member (plist-get content :id) (plist-get other :content-ids)))
-                                 (atelier-workspace-entries workspace))
-                  (atelier-workspace-drop-content workspace (plist-get content :id))))
-              (setq changed t))))))
+      (dolist (content (copy-sequence (plist-get workspace :contents)))
+        (let ((key (atelier-content-cache-key workspace (plist-get content :id))))
+          (when (eq (gethash key atelier-content-live-buffers) (current-buffer))
+            (remhash key atelier-content-live-buffers)
+            (unless (or atelier-preserve-job-recipe
+                        (and (not (eq workspace (atelier-current-workspace)))
+                             (plist-get content :persistent)))
+              (atelier-workspace-drop-content workspace (plist-get content :id)))
+            (setq changed t)))))
     (when changed (atelier-notify-change))))
 
 (defun atelier-empty-workspace-buffer (workspace)
@@ -540,8 +528,7 @@ current buffer; this does not create or remove workspace entries."
       (cl-find-if
        (lambda (buffer)
          (and (buffer-live-p buffer) (funcall predicate buffer workspace)))
-       (delq nil (mapcar #'atelier-entry-live-buffer
-                         (atelier-workspace-entries workspace)))))))
+        (atelier-workspace-live-content-buffers workspace)))))
 
 (defun atelier-buffer-visits-file-p (buffer file)
   (when-let* ((visited (buffer-local-value 'buffer-file-name buffer)))
@@ -571,13 +558,6 @@ current buffer; this does not create or remove workspace entries."
        (lambda (buffer _workspace)
          (atelier-buffer-visits-file-p buffer file))
        workspace)
-      (cl-loop for entry in (atelier-workspace-entries workspace)
-               thereis (cl-loop for content in (cdr (atelier-entry-stack entry))
-                                for buffer = (gethash (atelier-content-cache-key workspace (plist-get content :id))
-                                                      atelier-content-live-buffers)
-                                when (and (buffer-live-p buffer)
-                                          (atelier-buffer-visits-file-p buffer file))
-                                return buffer))
       (cl-find-if
        (lambda (buffer)
          (and (atelier-buffer-visits-file-p buffer file)
@@ -588,88 +568,36 @@ current buffer; this does not create or remove workspace entries."
           (atelier-create-file-buffer file)
         (find-file-noselect file))))
 
-(defun atelier-entry-attached-panel-p (entry)
-  "Return non-nil if a live or saved panel refers to ENTRY's identity."
-  ;; Saved attachments are historical Atelier records, not live panel state.
-  (cl-some (lambda (workspace)
-                 (cl-some
-                  (lambda (job-entry)
-                    (equal (plist-get entry :id)
-                           (plist-get (plist-get (plist-get (atelier-entry-job job-entry)
-                                                           :agent) :attachment)
-                                      :entry-id)))
-                  (atelier-workspace-job-entries workspace)))
-                atelier-workspaces))
-
-(defun atelier-coalesce-unplaced-files (workspace)
-  "Fold duplicate unplaced file entries into one file stack in WORKSPACE.
-Displayed split views and entries with attached panels keep their IDs."
-  (let* ((files (cl-remove-if-not
-                 (lambda (entry) (eq (atelier-entry-value entry :type workspace) 'file))
-                 (atelier-workspace-entries workspace)))
-         (target (cl-find-if
-                  (lambda (entry)
-                    (and (memq entry files)
-                         (not (atelier-entry-attached-panel-p entry))))
-                  (append (atelier-workspace-displayed-entries workspace) files))))
-    (when target
-      (dolist (entry files)
-        (when (and (not (eq target entry))
-                   (memq entry (atelier-workspace-top-level-entries workspace))
-                   (not (plist-get entry :displayed))
-                   (not (atelier-entry-attached-panel-p entry)))
-          (atelier-entry-absorb-unplaced workspace target entry))))
-    workspace))
-
-(defun atelier-stackable-entry-p (entry type)
-  "Return non-nil when ENTRY can accept ordinary content of TYPE."
-  (and entry (not (atelier-entry-job entry))
-       (not (memq type '(terminal aipanel)))
-       (eq (atelier-entry-value entry :type) type)
-       (not (atelier-entry-attached-panel-p entry))))
-
 (atelier-define-operation atelier-push-buffer (buffer &optional workspace type preferred-entry)
     (list (atelier-workspace-id (or workspace (atelier-current-workspace))))
     ((workspace (atelier-operation-workspace (or workspace (atelier-current-workspace))))
      (preferred-entry (and preferred-entry (atelier-operation-entry workspace preferred-entry))))
-  "Place BUFFER in WORKSPACE's stack of TYPE, retaining its entry view.
-Explicit split views and entries with attached panels retain their identity.
-When PREFERRED-ENTRY is stackable, use it instead of another file entry."
-  (setq workspace (or workspace (atelier-current-workspace))
-        type (or type (atelier-buffer-entry-type buffer)))
-  (unless (and workspace (atelier-buffer-registerable-p buffer workspace))
-    (user-error "Buffer cannot be owned by this workspace"))
-  (when (and (eq type 'file) (not preferred-entry))
-    (atelier-coalesce-unplaced-files workspace))
-  (let* ((owned (cl-find-if
-                 (lambda (candidate)
-                   (or (eq buffer (atelier-entry-live-buffer candidate))
-                       (atelier-entry-inactive-buffer-p candidate buffer)))
-                 (atelier-workspace-entries workspace)))
-         (current (and (eq workspace (atelier-current-workspace))
-                       (atelier-current-entry (window-buffer (selected-window)) workspace)))
-         (entry (or owned
-                    (and (atelier-stackable-entry-p preferred-entry type)
-                         (memq preferred-entry (atelier-workspace-entries workspace))
-                         preferred-entry)
-                    (and (atelier-stackable-entry-p current type) current)
-                    (cl-find-if (lambda (candidate)
-                                  (atelier-stackable-entry-p candidate type))
-                                (append (atelier-workspace-displayed-entries workspace)
-                                        (atelier-workspace-entries workspace))))))
-    (cond
-     ((not entry) (atelier-register-buffer buffer workspace nil type))
-     ((eq buffer (atelier-entry-live-buffer entry))
-      (atelier-update-entry-from-buffer entry buffer type))
-     (t
-      (when-let* ((previous (atelier-entry-live-buffer entry)))
-        (atelier-update-entry-from-buffer entry previous))
-      (unless (atelier-entry-activate-buffer entry buffer)
-        (atelier-entry-push-content
-         entry (list :id (atelier-content-new-id) :type type) buffer)
-        (atelier-update-entry-from-buffer entry buffer type))
-      (atelier-notify-change)
-      entry))))
+  "Register BUFFER in WORKSPACE's TYPE stack and optionally select it in a view."
+  (let ((reference (atelier-register-buffer buffer workspace nil type)))
+    (unless reference (user-error "Buffer cannot be owned by this workspace"))
+    (when preferred-entry
+      (atelier-entry-activate-content preferred-entry (plist-get reference :content-id)))
+    reference))
+
+(atelier-define-operation atelier-show-buffer (buffer &optional workspace window type)
+    (list (atelier-workspace-id (or workspace (atelier-current-workspace))))
+    ((workspace (atelier-operation-workspace (or workspace (atelier-current-workspace)))))
+  "Display BUFFER in WINDOW, retaining that view's identity and other views."
+  (let* ((window (or window (selected-window)))
+         (reference (atelier-push-buffer buffer workspace type))
+         (id (window-parameter window 'atelier-view-id))
+         (view (and id (atelier-entry-by-id workspace id))))
+    (unless (and view (not (plist-get view :content-reference)))
+      (setq view (atelier-entry-add
+                  workspace (list :id (atelier-new-entry-id)
+                                  :content-id (plist-get reference :content-id)) t)))
+    (atelier-entry-activate-content view (plist-get reference :content-id))
+    (set-window-parameter window 'atelier-view-id (plist-get view :id))
+    (set-window-buffer window buffer)
+    (when (eq window (selected-window)) (set-buffer buffer))
+    (atelier-activate-buffer buffer)
+    (atelier-notify-change)
+    view))
 
 (atelier-define-operation atelier-open-file (file &optional workspace)
     (list (atelier-workspace-id (or workspace (atelier-current-workspace))))
@@ -677,8 +605,7 @@ When PREFERRED-ENTRY is stackable, use it instead of another file entry."
   "Open FILE in WORKSPACE, stacking it in the current entry when possible."
   (setq workspace (or workspace (atelier-current-workspace)))
   (let ((buffer (atelier-file-buffer file workspace)))
-    (atelier-push-buffer buffer workspace 'file)
-    (switch-to-buffer buffer)
+    (atelier-show-buffer buffer workspace nil 'file)
     buffer))
 
 (defun atelier-path-confirmed-missing-p (path)
@@ -719,14 +646,32 @@ Permission, connection and editor setup failures do not prove a record dead."
 (defun atelier-prune-workspace-contents (workspace &optional connected)
   "Prune only confirmed dead contents and empty views in WORKSPACE."
   (let ((atelier-model-workspace workspace) changed)
-    (dolist (entry (copy-sequence (atelier-workspace-entries workspace)))
-      (when (atelier-entry-prune-contents
-             workspace entry
-             (lambda (content) (atelier-content-unrestorable-p workspace content connected)))
+    (atelier-workspace-entries workspace)
+    (dolist (content (copy-sequence (plist-get workspace :contents)))
+      (when (atelier-content-unrestorable-p workspace content connected)
+        (atelier-forget-failed-content
+         workspace (plist-get content :id) "Saved file, directory, program or buffer is no longer available")
         (setq changed t)))
-    (when (and changed (fboundp 'atelier-persist-record-pruning))
-      (atelier-persist-record-pruning))
     changed))
+
+(defun atelier-forget-failed-content (workspace content-id reason)
+  "Remove failed CONTENT-ID and every reference, reporting REASON."
+  (when-let* ((content (atelier-workspace-content workspace content-id)))
+    (let ((label (or (plist-get content :file) (plist-get content :name)
+                     (plist-get content :directory) content-id))
+          (stack-id (plist-get content :stack-id)))
+      (atelier-workspace-drop-content workspace content-id)
+      (when-let* ((stack (atelier-workspace-stack-record workspace stack-id))
+                  (_ (not (plist-get stack :content-ids))))
+        (dolist (view (copy-sequence (atelier-workspace-view-entries workspace)))
+          (when (equal stack-id (plist-get view :stack-id))
+            (atelier-entry-remove workspace view t)))
+        (atelier-plist-set! workspace :stacks (remq stack (plist-get workspace :stacks))))
+      (when (fboundp 'atelier-persist-record-pruning)
+        (atelier-persist-record-pruning))
+      (atelier-notify-change)
+      (atelier-log "Removed unrestorable content %s: %s" label reason)))
+  nil)
 
 (defun atelier-restore-entry-content (entry workspace content-id)
   "Prepare CONTENT-ID's restoration and publish selection only on success."
@@ -738,7 +683,6 @@ Permission, connection and editor setup failures do not prove a record dead."
        (let* ((workspace (atelier-operation-workspace workspace-id))
               (entry (atelier-operation-entry workspace entry-id))
               (buffer (atelier--restore-entry-content entry workspace content-id)))
-         (unless (buffer-live-p buffer) (user-error "Content could not be restored"))
          buffer)) t
      (lambda ()
        (let ((workspace (atelier-operation-workspace workspace-id)))
@@ -746,27 +690,33 @@ Permission, connection and editor setup failures do not prove a record dead."
                                         workspace content-id))))))
 
 (defun atelier--restore-entry-content (entry workspace content-id)
-  "Restore CONTENT-ID, committing its selection only on success."
+  "Restore CONTENT-ID, removing every reference when restoration fails."
   (atelier-entry-stack entry workspace)
-  (unless (member content-id (plist-get entry :content-ids))
+  (unless (member content-id (atelier-entry-content-ids entry workspace))
     (user-error "Content no longer belongs to this entry"))
-  (let ((previous (copy-sequence (plist-get entry :content-ids))) buffer)
+  (let ((previous (plist-get entry :content-id)) buffer)
     (unwind-protect
         (progn
           (atelier-entry-activate-content entry content-id)
-          (setq buffer (atelier-restore-buffer entry workspace))
+          (setq buffer (condition-case error
+                           (atelier-restore-buffer entry workspace)
+                         (error
+                          (atelier-forget-failed-content
+                           workspace content-id (error-message-string error)))))
+          (unless (buffer-live-p buffer)
+            (atelier-forget-failed-content
+             workspace content-id "Restoration returned no live buffer")
+            (when (atelier-workspace-content workspace previous)
+              (atelier-plist-set! entry :content-id previous))
+            (setq previous (plist-get entry :content-id)))
           buffer)
       (unless (buffer-live-p buffer)
-        (atelier-plist-set! entry :content-ids previous)))))
+        (atelier-plist-set! entry :content-id previous)))))
 
 (defun atelier-restore-entry-buffer (entry workspace)
-  "Restore the first usable content of ENTRY, retaining uncertain failures."
-  (cl-loop for id in (copy-sequence (plist-get entry :content-ids))
+  "Restore the first usable content of ENTRY, removing failed contents."
+  (cl-loop for id in (atelier-entry-content-ids entry)
            thereis (atelier--restore-entry-content entry workspace id)))
-
-(defun atelier-unavailable-entry-buffer-name (workspace entry)
-  (format " *Atelier unavailable:%s:%s*" (atelier-workspace-id workspace)
-           (plist-get entry :id)))
 
 (defvar-local atelier-unavailable-workspace-id nil
   "Workspace whose saved layout must not be replaced by this internal notice.")
@@ -785,70 +735,111 @@ Permission, connection and editor setup failures do not prove a record dead."
       (atelier-mark-internal-buffer))
     buffer))
 
-(defun atelier-unavailable-entry-buffer (workspace entry)
-  "Return an internal notice for a view whose saved contents remain retryable."
-  (let ((buffer (atelier-operation-track-buffer
-                 (get-buffer-create (atelier-unavailable-entry-buffer-name workspace entry)))))
+(defun atelier-display-entry-buffer (entry workspace window &optional buffer)
+  "Display BUFFER, removing ENTRY if it has no usable content."
+  (if (or (plist-get entry :unassigned) (not (plist-get entry :stack-id)))
+      (atelier-close-unassigned-view workspace entry window)
+    (let ((buffer (or buffer
+                      (and (not (atelier-entry-stack entry))
+                           (atelier-empty-view-buffer workspace entry))
+                      (atelier-entry-live-buffer entry))))
+      (set-window-parameter window 'atelier-view-id (plist-get entry :id))
+      (set-window-parameter window 'atelier-unavailable-entry nil)
+      (unless (buffer-live-p buffer)
+        (atelier-entry-remove workspace entry)
+        (when (fboundp 'atelier-persist-record-pruning)
+          (atelier-persist-record-pruning)))
+      (set-window-buffer window (if (buffer-live-p buffer) buffer
+                                 (atelier-empty-workspace-buffer workspace))))))
+
+(defun atelier-close-unassigned-view (workspace view window &optional excluded-stack-id)
+  "Remove VIEW and its split without closing any stack or buffer.
+For the final split, show another stack or switch to another workspace."
+  (atelier-entry-remove workspace view t)
+  (set-window-parameter window 'atelier-view-id nil)
+  (set-window-parameter window 'atelier-unavailable-entry nil)
+  (if (> (length (atelier-main-windows (window-frame window))) 1)
+      (delete-window window)
+    (let ((replacement
+           (cl-loop for entry in (atelier-workspace-replacement-entries workspace)
+                    unless (equal excluded-stack-id (plist-get entry :stack-id))
+                    thereis (or (atelier-entry-live-buffer entry)
+                                (atelier-restore-entry-buffer entry workspace)))))
+      (if replacement
+          (atelier-show-buffer replacement workspace window)
+        ;; Clear the old display so capture cannot recreate the removed view.
+        (set-window-buffer window (atelier-empty-workspace-buffer workspace))
+        (when-let* ((next (atelier-workspace-successor workspace)))
+          (atelier-switch-workspace (plist-get next :name)))))))
+
+(defun atelier-empty-view-buffer (workspace view)
+  "Return the internal notice for VIEW without creating managed content."
+  (let ((buffer (get-buffer-create
+                 (format "%s%s/%s*" atelier-empty-buffer-prefix
+                         (atelier-workspace-id workspace) (plist-get view :id)))))
     (with-current-buffer buffer
       (let ((inhibit-read-only t))
         (erase-buffer)
-        (insert "This view is temporarily unavailable.\n\n"
-                "Its saved contents are retained. Retry opening the workspace or select another content in the navigator.\n")
+        (insert "Assigned stack is empty.\n")
         (special-mode))
       (atelier-mark-internal-buffer))
     buffer))
 
-(defun atelier-display-entry-buffer (entry workspace window &optional buffer)
-  "Display BUFFER or ENTRY's unavailable notice without claiming notice content."
-  (let ((buffer (or buffer (atelier-entry-live-buffer entry))))
-    (set-window-parameter window 'atelier-unavailable-entry
-                          (unless (buffer-live-p buffer) (plist-get entry :id)))
-    (set-window-buffer window (or buffer (atelier-unavailable-entry-buffer workspace entry)))))
-
 (defun atelier-restore-buffer (entry &optional workspace)
-  "Restore basic ENTRY in WORKSPACE and return its live buffer."
+  "Restore ENTRY, or forget its failed content and report the reason."
   (let* ((workspace (or workspace (atelier-current-workspace)))
          (file (atelier-entry-value entry :file))
          (name (atelier-entry-value entry :name))
-         (directory (atelier-entry-value entry :directory)))
-    (condition-case error
-        (let ((buffer (or (atelier-entry-live-buffer entry)
-                          (cond
-                           ((eq (atelier-entry-value entry :kind) 'terminal) nil)
-                            (file (when (file-readable-p file)
-                                   (atelier-file-buffer file workspace)))
-                           ((eq (atelier-entry-value entry :kind) 'directory)
-                            (when (and directory (file-directory-p directory))
-                              (atelier-new-dired-buffer directory t workspace)))
-                           ((eq (atelier-entry-value entry :kind) 'scratch)
-                             (let ((buffer (atelier-operation-track-buffer
-                                            (generate-new-buffer (or name "*scratch*")))))
-                              (with-current-buffer buffer
-                                (funcall initial-major-mode)
-                                (insert (or (atelier-entry-value entry :contents) "")))
-                              buffer))
-                           ((and name (get-buffer name)) (get-buffer name))
-                           ((eq (atelier-entry-value entry :kind) 'transient) nil)
-                           (t nil)))))
-          (when buffer
-            (with-current-buffer buffer
-              (cond
-               ((and directory (file-directory-p directory))
-                (setq default-directory directory))
-               ((and directory (not (file-remote-p directory)))
-                (setq default-directory (atelier-workspace-directory))
-                (atelier-log "Missing split directory %s; using workspace root %s"
-                              directory default-directory)))
-              (goto-char (min (point-max)
-                              (max (point-min)
-                                   (or (atelier-entry-value entry :point) 1)))))
-             (atelier-entry-set-live-buffer entry buffer)
-             (atelier-operation-notify 'atelier-entry-restored-hook workspace entry buffer))
-          buffer)
-      (error
-       (atelier-operation-notify 'atelier-entry-restore-failed-hook workspace entry error)
-       (atelier-log "Could not restore %s: %s" (or file name) error)
-       nil))))
+         (directory (atelier-entry-value entry :directory))
+         (content-id (plist-get entry :content-id))
+         failure
+         (buffer
+          (condition-case error
+              (let ((buffer
+                     (or (atelier-entry-live-buffer entry)
+                         (cond
+                          ((eq (atelier-entry-value entry :kind) 'terminal)
+                           (setq failure "No live terminal could be restored") nil)
+                          (file
+                           (if (file-readable-p file)
+                               (atelier-file-buffer file workspace)
+                             (setq failure "File is missing or unreadable") nil))
+                          ((eq (atelier-entry-value entry :kind) 'directory)
+                           (if (and directory (file-directory-p directory))
+                               (atelier-new-dired-buffer directory nil workspace)
+                             (setq failure "Directory is missing or inaccessible") nil))
+                          ((eq (atelier-entry-value entry :kind) 'scratch)
+                           (let ((buffer (atelier-operation-track-buffer
+                                          (generate-new-buffer (or name "*scratch*")))))
+                             (with-current-buffer buffer
+                               (funcall initial-major-mode)
+                               (insert (or (atelier-entry-value entry :contents) "")))
+                             buffer))
+                          ((and name (get-buffer name)) (get-buffer name))
+                          (t nil)))))
+                (when (buffer-live-p buffer)
+                  (with-current-buffer buffer
+                    (cond
+                     ((and directory (file-directory-p directory))
+                      (setq default-directory directory))
+                     ((and directory (not (file-remote-p directory)))
+                      (setq default-directory (atelier-workspace-directory))
+                      (atelier-log "Missing split directory %s; using workspace root %s"
+                                   directory default-directory)))
+                    (goto-char (min (point-max)
+                                    (max (point-min)
+                                         (or (atelier-entry-value entry :point) 1)))))
+                  (atelier-entry-set-live-buffer entry buffer)
+                  (atelier-operation-notify 'atelier-entry-restored-hook workspace entry buffer))
+                buffer)
+            (error
+             (atelier-operation-notify 'atelier-entry-restore-failed-hook workspace entry error)
+             (setq failure (error-message-string error))
+             nil))))
+    (if (buffer-live-p buffer)
+        buffer
+      (atelier-forget-failed-content
+       workspace content-id (or failure "No saved content could be restored")))))
 
 (defun atelier-new-dired-buffer (directory &optional force-new workspace)
   (setq directory (file-name-as-directory (expand-file-name directory))
@@ -933,13 +924,14 @@ When EXPLICIT is non-nil, permit another Dired entry of the same type."
         (_ (error "Layout entry %s is not binary" (plist-get entry :id))))
     (let ((buffer (atelier-entry-live-buffer entry)))
       (atelier-display-entry-buffer entry workspace window buffer)
-      (when (buffer-live-p buffer)
+      (when (and (window-live-p window) (buffer-live-p buffer))
         (set-window-point
          window (min (with-current-buffer buffer (point-max))
                      (max 1 (or (atelier-entry-value entry :point) 1))))
         (when-let* ((start (atelier-entry-value entry :start)))
           (set-window-start window start t)))
-      (when (plist-get entry :selected) (select-window window)))))
+      (when (and (window-live-p window) (plist-get entry :selected))
+        (select-window window)))))
 
 (atelier-define-operation atelier-restore-workspace (workspace)
     (list (atelier-workspace-id workspace))
@@ -949,8 +941,9 @@ When EXPLICIT is non-nil, permit another Dired entry of the same type."
     (unless (file-directory-p default-directory)
       (user-error "Workspace root is unavailable: %s" default-directory))
     (atelier-prune-workspace-contents workspace t)
-    (dolist (entry (atelier-workspace-entries workspace))
-      (when-let* ((buffer (atelier-restore-entry-buffer entry workspace)))
+    (dolist (entry (copy-sequence (atelier-workspace-entries workspace)))
+      (when-let* ((_ (atelier-entry-by-id workspace (plist-get entry :id)))
+                  (buffer (atelier-restore-entry-buffer entry workspace)))
         (push buffer restored-buffers)))
     (delete-other-windows)
     (if-let* ((entry (atelier-workspace-displayed-entry workspace)))
@@ -1348,9 +1341,13 @@ prepared operation, so cancellation or failure publishes no partial additions."
   "Return BUFFER's entry in WORKSPACE.
 BUFFER defaults to the current buffer and WORKSPACE to the current frame's
 workspace."
-  (atelier-workspace-entry-for-buffer
-   (or workspace (atelier-current-workspace))
-   (or buffer (current-buffer))))
+  (let* ((workspace (or workspace (atelier-current-workspace)))
+         (buffer (or buffer (current-buffer)))
+         (view (when-let* ((id (window-parameter nil 'atelier-view-id)))
+                 (atelier-entry-by-id workspace id))))
+    (if (and view (or (eq buffer (atelier-entry-live-buffer view))
+                     (and (not (plist-get view :content-id)) (eq buffer (window-buffer))))) view
+      (atelier-workspace-entry-for-buffer workspace buffer))))
 
 (atelier-define-operation atelier-open-entry (entry &optional workspace)
     (delete-dups (list (atelier-current-workspace-id)
@@ -1381,11 +1378,10 @@ Interactively, choose an entry from the current workspace."
   (if-let* ((buffer (or (atelier-entry-live-buffer entry)
                         (atelier-restore-buffer entry workspace))))
       (progn
-        (switch-to-buffer buffer)
+        (atelier-show-buffer buffer workspace)
         (atelier-activate-buffer buffer)
         buffer)
-    (user-error "Could not restore entry %s" (or (atelier-entry-value entry :name)
-                                                 (plist-get entry :id)))))
+    nil))
 
 (atelier-define-operation atelier-move-current-entry (workspace-name)
     (list (atelier-current-workspace-id)
@@ -1649,34 +1645,30 @@ INACTIVE-ONLY rechecks the timeout when an automatic request was queued."
 (atelier-define-operation atelier-split-right ()
     (list (atelier-current-workspace-id)) nil
   (interactive)
-  (let* ((workspace (atelier-current-workspace))
-         (directory default-directory)
-         (window (split-window-right)))
-    (condition-case error
-        (let ((buffer (atelier-new-dired-buffer directory t workspace)))
-          (atelier-register-dired-buffer buffer workspace t)
-          (set-window-buffer window buffer)
-          (select-window window)
-          (atelier-notify-change))
-      (error
-       (when (window-live-p window) (delete-window window))
-       (signal (car error) (cdr error))))))
+  (atelier-split-view 'right))
 
-(defvar atelier-file-browser-window-configurations nil
-  "Saved window configurations while the workspace file browser is shown.")
+(defun atelier-split-view (side)
+  "Create a view on SIDE, displaying the current content without creating any."
+  (atelier-capture-current-workspace)
+  (let ((buffer (window-buffer))
+        (window (split-window nil nil side)))
+    (set-window-parameter window 'atelier-view-id nil)
+    (select-window window)
+    (when (atelier-buffer-registerable-p buffer (atelier-current-workspace))
+      (atelier-show-buffer buffer nil window))
+    (atelier-capture-current-workspace)
+    (atelier-notify-change)
+    window))
 
 (defun atelier-file-browser ()
   (interactive)
   (when (window-parameter nil 'window-side)
     (select-window (atelier-main-window)))
   (let* ((frame (selected-frame))
-         (saved (assq frame atelier-file-browser-window-configurations))
          (workspace (atelier-current-workspace))
-         (in-dired (derived-mode-p 'dired-mode))
          (directory (unless (derived-mode-p 'atelier-navigator-mode)
                       default-directory))
-         (existing (and (not in-dired)
-                        (atelier-workspace-buffer-by-type workspace 'dired))))
+         (existing (atelier-workspace-buffer-by-type workspace 'dired)))
     (when (assq frame atelier-navigator-window-configurations)
       (atelier-navigator-quit))
     (setq directory (if (and directory (file-directory-p directory))
@@ -1684,40 +1676,8 @@ INACTIVE-ONLY rechecks the timeout when an automatic request was queued."
                       (if (file-directory-p default-directory)
                           default-directory
                         (atelier-workspace-directory))))
-    (let* ((explicit in-dired)
-           (buffer (cond
-                   (in-dired (atelier-new-dired-buffer directory t workspace))
-                   (existing existing)
-                   (t (atelier-new-dired-buffer directory nil workspace)))))
-      (unless existing
-        (atelier-register-dired-buffer buffer workspace explicit))
-      (unless saved
-        (push (cons frame (current-window-configuration frame))
-              atelier-file-browser-window-configurations))
-      (delete-other-windows)
-      (with-current-buffer buffer (atelier-file-browser-mode 1))
-      (switch-to-buffer buffer))))
-
-(defun atelier-file-browser-quit ()
-  "Restore the frame layout that was active before opening the file browser."
-  (interactive)
-  (let* ((frame (selected-frame))
-         (configuration (alist-get frame atelier-file-browser-window-configurations
-                                   nil nil #'eq)))
-    (if (not configuration)
-        (quit-window)
-      (atelier-file-browser-mode -1)
-      (setq atelier-file-browser-window-configurations
-            (assq-delete-all frame atelier-file-browser-window-configurations))
-      (set-window-configuration configuration)
-      (atelier-clean-window-buffer-history))))
-
-(define-minor-mode atelier-file-browser-mode
-  "Use Atelier's saved-layout exit only in its file browser buffers."
-  :lighter nil
-  :keymap (let ((map (make-sparse-keymap)))
-            (define-key map (kbd "q") #'atelier-file-browser-quit)
-            map))
+    (atelier-show-buffer (or existing (atelier-new-dired-buffer directory nil workspace))
+                         workspace)))
 
 (defun atelier-dired-create (name)
   "Create a file named NAME, or a directory if NAME ends in a slash.
@@ -1797,18 +1757,7 @@ On entry, stay near the same listing row; on return, select TARGET."
 (atelier-define-operation atelier-split-below ()
     (list (atelier-current-workspace-id)) nil
   (interactive)
-  (let* ((workspace (atelier-current-workspace))
-         (directory default-directory)
-         (window (split-window-below)))
-    (condition-case error
-        (let ((buffer (atelier-new-dired-buffer directory t workspace)))
-          (atelier-register-dired-buffer buffer workspace t)
-          (set-window-buffer window buffer)
-          (select-window window)
-          (atelier-notify-change))
-      (error
-       (when (window-live-p window) (delete-window window))
-       (signal (car error) (cdr error))))))
+  (atelier-split-view 'below))
 
 (atelier-define-operation atelier-close-split ()
     (list (atelier-current-workspace-id)) nil

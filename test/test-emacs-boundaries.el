@@ -110,7 +110,7 @@
           (atelier-close-entry workspace entry)
           (should (= questions 1))
           (should-not (buffer-live-p buffer))
-          (should-not (atelier-workspace-entries workspace)))
+          (should-not (plist-get workspace :contents)))
       (when (buffer-live-p buffer) (kill-buffer buffer)))))
 
 (ert-deftest atelier-display-activation-is-an-explicit-integration-event ()
@@ -346,7 +346,7 @@
               (should (= (atelier-clear-all-buffers t) 1)))
             (should (= questions (if without-asking 0 1)))
             (should-not (buffer-live-p buffer))
-            (should-not (atelier-workspace-entries workspace)))
+            (should-not (plist-get workspace :contents)))
         (when (buffer-live-p buffer) (kill-buffer buffer))))))
 
 (ert-deftest atelier-shared-view-move-is-rejected-before-changing-state ()
@@ -360,30 +360,27 @@
            (atelier-entry-moved-hook (list (lambda (&rest _) (ert-fail "Unexpected move hook"))))
            (atelier-change-hook (list (lambda () (ert-fail "Unexpected state change")))))
       (unwind-protect
-          (let* ((entry (atelier-register-buffer buffer one t))
-                 (shared-id (car (plist-get entry :content-ids)))
+          (let* ((reference (atelier-register-buffer buffer one t))
+                 (shared-id (plist-get reference :content-id))
+                 (entry (atelier-entry-add one (list :id "moving" :content-id shared-id) t))
                  (other-id (when (eq case 'inactive)
                              (atelier-workspace-store-content one '(:kind scratch :name "other"))))
-                 (mirror (list :id "mirror" :content-ids
-                               (if other-id (list other-id shared-id) (list shared-id)))))
+                 (mirror (list :id "mirror" :content-id (or other-id shared-id))))
             (atelier-entry-add one mirror t)
             (when (eq case 'stopped)
               (remhash (atelier-content-cache-key one shared-id) atelier-content-live-buffers))
             (let ((before (copy-tree atelier-workspaces))
                   (cache (copy-hash-table atelier-content-live-buffers)))
               (let ((failure (should-error (atelier-entry-move entry one two) :type 'user-error)))
-                (should (string-match-p "Cannot move or detach this view from Workspace A to Workspace B"
+                (should (string-match-p "Detach this stack from every view in Workspace A first"
                                         (error-message-string failure)))
-                (should (string-match-p "Sharing a buffer across workspaces is blocked for now"
-                                        (error-message-string failure)))
-                (should (string-match-p "Close the other views" (error-message-string failure)))
-                (should (string-match-p "Nothing was moved" (error-message-string failure))))
+                (should (string-match-p "nothing was moved" (error-message-string failure))))
               (should (equal atelier-workspaces before))
               (should (= (hash-table-count cache) (hash-table-count atelier-content-live-buffers)))
               (maphash (lambda (key value) (should (eq value (gethash key atelier-content-live-buffers)))) cache)))
         (when (buffer-live-p buffer) (kill-buffer buffer))))))
 
-(ert-deftest atelier-move-all-shared-views-together-remains-allowed ()
+(ert-deftest atelier-moving-layout-does-not-bypass-stack-unassignment ()
   (let* ((buffer (generate-new-buffer "atelier-shared-root-buffer"))
          (one (list :id "one" :name "one" :entries nil))
          (two (list :id "two" :name "two" :entries nil))
@@ -391,19 +388,21 @@
          (atelier-content-live-buffers (make-hash-table :test #'equal))
          (atelier-entry-owners (make-hash-table :test #'eq)))
     (unwind-protect
-        (let* ((entry (atelier-register-buffer buffer one t))
-               (mirror (list :id "mirror" :content-ids (copy-sequence (plist-get entry :content-ids))))
+        (let* ((reference (atelier-register-buffer buffer one t))
+               (entry (atelier-entry-add one (list :id "first" :content-id
+                                                   (plist-get reference :content-id)) t))
+               (mirror (list :id "mirror" :content-id (plist-get entry :content-id)))
                (root (list :id "root" :kind 'layout :orientation 'horizontal
                            :children (list entry mirror))))
           (atelier-entry-add one mirror t)
           (setf (plist-get one :entries) (list root))
-          (setq root (atelier-entry-move root one two))
-          (setq entry (atelier-entry-by-id two (plist-get entry :id))
-                mirror (atelier-entry-by-id two "mirror"))
-          (should-not (atelier-workspace-entries one))
+          (let ((before (copy-tree atelier-workspaces)))
+            (should-error (atelier-entry-move root one two) :type 'user-error)
+            (should (equal before atelier-workspaces)))
+          (should-not (atelier-workspace-entries two))
           (should (eq (atelier-entry-live-buffer entry) buffer))
           (should (eq (atelier-entry-live-buffer mirror) buffer))
-          (should (eq (atelier-entry-workspace entry) two)))
+          (should (eq (atelier-entry-workspace entry) one)))
       (when (buffer-live-p buffer) (kill-buffer buffer)))))
 
 (ert-deftest atelier-shared-view-detach-rejects-before-leaving-navigator ()
@@ -415,11 +414,13 @@
          (atelier-entry-owners (make-hash-table :test #'eq))
          (atelier-navigator-attach-source 'retained))
     (unwind-protect
-        (let* ((entry (atelier-register-buffer buffer one t))
-               (mirror (list :id "mirror" :content-ids (copy-sequence (plist-get entry :content-ids)))))
+        (let* ((reference (atelier-register-buffer buffer one t))
+               (entry (atelier-entry-add one (list :id "first" :content-id
+                                                   (plist-get reference :content-id)) t))
+               (mirror (list :id "mirror" :content-id (plist-get entry :content-id))))
           (atelier-entry-add one mirror t)
           (cl-letf (((symbol-function 'atelier-navigator-target)
-                     (lambda () (list 'workspace-buffer "Workspace A" 0 (plist-get entry :id))))
+                     (lambda () (list 'workspace-owned-buffer "Workspace A" (plist-get reference :id))))
                     ((symbol-function 'atelier-navigator-quit)
                      (lambda () (ert-fail "A rejected detach must leave the navigator open"))))
             (should-error (atelier-navigator-detach) :type 'user-error))
@@ -646,8 +647,12 @@
          (target (list :id "id-target" :name "target" :destination "local" :path directory
                        :status 'stopped :entries (list root)
                        :contents
-                       (mapcar (lambda (pair) (list :id (car pair) :kind 'file :type 'file
-                                                   :file (cdr pair) :persistent t))
+                       (mapcar (lambda (pair)
+                                 (if (equal (car pair) "dead")
+                                     (list :id "dead" :kind 'directory :type 'dired
+                                           :directory (cdr pair) :persistent t)
+                                   (list :id (car pair) :kind 'file :type 'file
+                                         :file (cdr pair) :persistent t)))
                                (list (cons "dead" (expand-file-name "gone.txt" directory))
                                      (cons "one" one) (cons "two" two) (cons "tail" tail-file)))))
          (atelier-workspaces (list old target))
@@ -843,7 +848,7 @@
                               (:id "two" :kind scratch :persistent t :contents "second"))))
            (usable (list :id "startup-usable" :name "usable" :status 'running
                          :destination "local" :path temporary-file-directory :entries nil))
-           (saved (list :version 10 :generation "saved-generation"
+           (saved (list :version 11 :generation "saved-generation"
                         :current-workspace-id "startup-blocked"
                         :workspaces (mapcar #'atelier-workspace-flat-copy (list saved-workspace usable))))
            (atelier-workspaces (list (list :id "fresh" :name "fresh" :entries nil)))

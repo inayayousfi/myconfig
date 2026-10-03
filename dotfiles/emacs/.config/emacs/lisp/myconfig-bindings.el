@@ -45,10 +45,6 @@
   (evil-define-key '(normal insert visual motion operator replace emacs) 'global
     myconfig-terminal-escape-key #'myconfig-normal-state)
   (add-hook 'atelier-directory-chooser-mode-hook #'myconfig-directory-chooser-keymaps)
-  (add-hook 'atelier-file-browser-mode-hook #'myconfig-directory-chooser-keymaps)
-  (evil-define-key 'normal atelier-file-browser-mode-map
-    (kbd "q") #'atelier-file-browser-quit)
-  (evil-make-intercept-map atelier-file-browser-mode-map 'normal t)
   (evil-define-key '(normal visual motion) 'global (kbd "SPC") myconfig-leader-map)
   (evil-define-key '(normal visual operator) 'global (kbd "f") #'avy-goto-char-timer)
   (evil-define-key 'normal 'global (kbd ":") #'evil-ex)

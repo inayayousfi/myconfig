@@ -121,9 +121,32 @@
   (hl-line-mode -1)
   (display-line-numbers-mode 1))
 
-(defun atelier-navigator-header-button (label command help)
+(defun atelier-navigator-header-shortcuts (command &optional other-command)
+  "Describe active keyboard bindings for COMMAND and OTHER-COMMAND."
+  (let ((maps (current-active-maps t))
+        keys)
+    (dolist (action (delq nil (list command other-command)))
+      (dolist (key (where-is-internal action maps nil nil t))
+        ;; A higher-priority map or command remapping can hide a binding.
+        (when (and (not (cl-some
+                         (lambda (event)
+                           ;; Evil stores auxiliary maps under synthetic
+                           ;; STATE-state prefixes, not keyboard events.
+                           (or (mouse-event-p event)
+                               (and (symbolp event)
+                                    (string-suffix-p "-state" (symbol-name event)))))
+                         key))
+                   (eq (key-binding key t) action))
+          (push (key-description key) keys))))
+    (if keys
+        (string-join (delete-dups (nreverse keys)) "/")
+      "unbound")))
+
+(defun atelier-navigator-header-button (label command help &optional other-command)
   (let ((button (atelier-clickable-label
-                 (format "[%s]" label) command nil 'font-lock-keyword-face help)))
+                 (format "[%s %s]" label
+                         (atelier-navigator-header-shortcuts command other-command))
+                 command nil 'font-lock-keyword-face help)))
     (remove-text-properties 0 (length button) '(mouse-face nil) button)
     (concat " " button)))
 
@@ -139,11 +162,12 @@
                                            "Select the previous item")
           (atelier-navigator-header-button "Next" #'atelier-navigator-next
                                            "Select the next item")
-          (atelier-navigator-header-button "Stack h/l" #'atelier-navigator-stack-next
-                                            "Select another content on this row")
-          (atelier-navigator-header-button "Fold o" #'atelier-navigator-toggle-fold
+          (atelier-navigator-header-button "Stack" #'atelier-navigator-stack-next
+                                             "Select another content on this row"
+                                             #'atelier-navigator-stack-previous)
+          (atelier-navigator-header-button "Fold" #'atelier-navigator-toggle-fold
                                            "Fold or expand without opening")
-          (atelier-navigator-header-button "Stop s" #'atelier-navigator-stop-workspace
+          (atelier-navigator-header-button "Stop" #'atelier-navigator-stop-workspace
                                            "Stop the selected workspace's processes")
           (atelier-navigator-header-button "Open" #'atelier-navigator-open
                                            "Open the selected item")

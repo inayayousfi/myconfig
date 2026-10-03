@@ -1767,7 +1767,7 @@
 (ert-deftest atelier-navigator-header-controls-are-clickable ()
   (let* ((atelier-navigator-attach-source nil)
          (header (apply #'concat (atelier-navigator-header)))
-         (position (string-match (regexp-quote "[Open]") header))
+         (position (string-match (regexp-quote "[Open ") header))
          (map (and position (get-text-property position 'keymap header))))
     (should position)
     (should (keymapp map))
@@ -2465,11 +2465,47 @@
 
 (ert-deftest atelier-navigator-header-has-clicks-without-hover-color ()
   (let* ((button (atelier-navigator-header-button "Open" #'atelier-navigator-open "Open"))
-         (position (string-match "\\[Open\\]" button)))
+         (position (string-match "\\[Open " button)))
     (should position)
     (should-not (get-text-property position 'mouse-face button))
     (should (lookup-key (get-text-property position 'keymap button)
                         [header-line mouse-1]))))
+
+(ert-deftest atelier-navigator-header-shows-all-assigned-shortcuts ()
+  (with-temp-buffer
+    (atelier-navigator-mode)
+    (let ((header (substring-no-properties
+                   (apply #'concat (atelier-navigator-header)))))
+      (dolist (pair '(("Prev" "k" "<up>") ("Next" "j" "<down>")
+                      ("Stack" "h" "l") ("Fold" "o") ("Stop" "s")
+                      ("Open" "RET") ("Attach" "a") ("Detach" "d")
+                      ("Close" "x") ("Rename" "r" "R") ("Quit" "q")))
+        (should (string-match (concat "\\[" (car pair) " \\([^]]+\\)\\]") header))
+        (let ((keys (split-string (match-string 1 header) "/")))
+          (dolist (key (cdr pair)) (should (member key keys)))))
+      (let ((atelier-navigator-attach-source t))
+        (setq header (substring-no-properties
+                      (apply #'concat (atelier-navigator-header))))
+        (should (string-match-p "\\[Choose RET\\]" header))
+        (should (string-match-p "\\[Cancel q\\]" header))))))
+
+(ert-deftest atelier-navigator-header-follows-active-overrides-and-unbound-actions ()
+  (with-temp-buffer
+    (atelier-navigator-mode)
+    (let ((overriding-local-map (copy-keymap atelier-navigator-mode-map)))
+      (define-key overriding-local-map (kbd "o") #'ignore)
+      (define-key overriding-local-map (kbd "z") #'atelier-navigator-toggle-fold)
+      (define-key overriding-local-map [normal-state] (make-sparse-keymap))
+      (define-key overriding-local-map [normal-state z] #'atelier-navigator-toggle-fold)
+      (define-key overriding-local-map [mouse-3] #'atelier-navigator-toggle-fold)
+      (define-key overriding-local-map (kbd "s") #'ignore)
+      (let ((header (substring-no-properties
+                     (apply #'concat (atelier-navigator-header)))))
+        (should (string-match-p "\\[Fold z\\]" header))
+        (should (string-match-p "\\[Stop unbound\\]" header)))
+      (define-key overriding-local-map [remap atelier-navigator-toggle-fold] #'ignore)
+      (should (equal (atelier-navigator-header-shortcuts #'atelier-navigator-toggle-fold)
+                     "unbound")))))
 
 (ert-deftest atelier-navigator-stack-keys-activate-and-cycle-contents ()
   (let* ((entry (list :id "stacked" :kind 'file :type 'file :name "current.txt"

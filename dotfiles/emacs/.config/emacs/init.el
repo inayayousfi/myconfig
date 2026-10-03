@@ -103,6 +103,11 @@
 
 (package-activate 'evil-ghostel t)
 
+(require 'myconfig-compilation)
+(myconfig-compilation-setup
+ (expand-file-name "lisp" myconfig-config-directory)
+ myconfig-cache-directory)
+
 ;; Initialize Mason before packages which use it are loaded.
 (require 'mason)
 (defun myconfig-mason-utf8-command (command)

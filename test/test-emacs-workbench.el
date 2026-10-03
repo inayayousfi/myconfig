@@ -201,7 +201,7 @@
       (dolist (key '("ESC" "<escape>" "C-c" "C-u" "C-S-q"
                      "C-=" "M-a" "M-RET" "<f13>"))
         (should (eq (key-binding (kbd key)) #'ghostel--send-event)))
-      (should (eq (key-binding (kbd "M-x")) #'myconfig-terminal-escape))
+      (should (eq (key-binding (kbd "M-x")) #'myconfig-normal-state))
       (should (eq (key-binding (kbd "C-S-v")) #'myconfig-paste)))))
 
 (ert-deftest myconfig-terminal-mode-line-shows-char-input ()

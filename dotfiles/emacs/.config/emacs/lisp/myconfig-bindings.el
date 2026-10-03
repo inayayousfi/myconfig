@@ -11,6 +11,8 @@
 (declare-function myconfig-search "myconfig-editing")
 (declare-function consult-mark "consult")
 (declare-function myconfig-terminal "myconfig-terminal")
+(declare-function myconfig-normal-state "myconfig-terminal")
+(defvar myconfig-terminal-escape-key)
 (declare-function myconfig-toggle-auto-format-save "myconfig-editing")
 (declare-function atelier-set-job-policy "atelier-persist")
 (declare-function dape "dape")
@@ -39,6 +41,9 @@
    (t (call-interactively #'yank))))
 
 (defun myconfig-bindings-setup ()
+  (global-set-key myconfig-terminal-escape-key #'myconfig-normal-state)
+  (evil-define-key '(normal insert visual motion operator replace emacs) 'global
+    myconfig-terminal-escape-key #'myconfig-normal-state)
   (add-hook 'atelier-directory-chooser-mode-hook #'myconfig-directory-chooser-keymaps)
   (add-hook 'atelier-file-browser-mode-hook #'myconfig-directory-chooser-keymaps)
   (evil-define-key 'normal atelier-file-browser-mode-map

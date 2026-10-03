@@ -12,7 +12,7 @@
 (require 'evil-ghostel)
 
 (defcustom myconfig-terminal-escape-key (kbd "M-x")
-  "Key sequence that returns a Ghostel terminal to Evil normal state."
+  "Shared key sequence that returns editor views to Evil normal state."
   :type 'key-sequence
   :group 'myconfig)
 (require 'ghostel-atelier)
@@ -62,6 +62,19 @@
   (let ((window (split-window-below)))
     (select-window window)
     (myconfig-terminal)))
+
+(defun myconfig-normal-state ()
+  "Cancel active input and return the current editor view to normal state."
+  (interactive)
+  (cond
+   ((minibufferp)
+    (when-let* ((window (minibuffer-selected-window)))
+      (with-selected-window window
+        (myconfig-normal-state)))
+    (abort-recursive-edit))
+   ((derived-mode-p 'ghostel-mode)
+    (myconfig-terminal-escape))
+   (t (evil-force-normal-state))))
 
 (defun myconfig-terminal-escape ()
   (interactive)
@@ -137,7 +150,7 @@
     (define-key ghostel-char-mode-map (kbd "ESC") #'ghostel--send-event)
     (define-key ghostel-char-mode-map (kbd "C-S-v") #'myconfig-paste)
     (define-key ghostel-char-mode-map myconfig-terminal-escape-key
-                #'myconfig-terminal-escape)))
+                #'myconfig-normal-state)))
 
 (defun myconfig-terminal-setup ()
   (setq ghostel-atelier-buffer-activate-function #'myconfig-terminal-activate)
@@ -153,9 +166,9 @@
                       (default-value 'kill-buffer-query-functions)))
   (evil-set-initial-state 'ghostel-mode 'normal)
   (add-hook 'ghostel-mode-hook #'myconfig-terminal-display-setup)
-  (define-key ghostel-mode-map myconfig-terminal-escape-key #'myconfig-terminal-escape)
+  (define-key ghostel-mode-map myconfig-terminal-escape-key #'myconfig-normal-state)
   (myconfig-terminal-configure-char-keys)
-  (define-key evil-ghostel-mode-map myconfig-terminal-escape-key #'myconfig-terminal-escape)
+  (define-key evil-ghostel-mode-map myconfig-terminal-escape-key #'myconfig-normal-state)
   (evil-define-key 'normal evil-ghostel-mode-map
     (kbd "i") #'myconfig-terminal-enter-input
     (kbd "a") #'myconfig-terminal-enter-input

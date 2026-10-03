@@ -39,7 +39,6 @@
 (defvar-local atelier-navigator-first-position nil)
 (defvar-local atelier-directory-chooser-original-header nil)
 (defvar-local atelier-directory-chooser-header-was-local nil)
-(defvar-local atelier-directory-chooser-original-modified nil)
 (defvar atelier-change-hook nil
   "Hook run after a completed mutation of Atelier's public state.")
 (defvar atelier-before-switch-workspace-hook nil

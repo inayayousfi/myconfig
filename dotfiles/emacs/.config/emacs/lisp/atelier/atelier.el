@@ -34,6 +34,28 @@
 It must not open a connection; nil means absence cannot be checked locally.")
 (defvar atelier-extra-destinations nil
   "Additional destinations supplied by an optional environment adapter.")
+(defvar atelier-read-directories-function #'atelier-default-read-directories
+  "Function called with DIRECTORY and MULTIPLE to choose directory paths.
+Return a nonempty list; when MULTIPLE is nil, return exactly one path.")
+(defvar atelier-directory-target-function #'atelier-default-directory-target
+  "Function mapping an Emacs directory to (DESTINATION PATH PLATFORM MOUNT-ROOT).")
+
+(defun atelier-default-read-directories (directory _multiple)
+  "Choose one directory using ordinary Emacs completion."
+  (list (read-directory-name "Workspace directory: " directory nil t)))
+
+(defun atelier-default-directory-target (directory)
+  "Describe DIRECTORY using standard local, SSH, or WSL file handling."
+  (let ((prefix (file-remote-p directory))
+        (method (file-remote-p directory 'method)))
+    (if prefix
+        (progn
+          (unless (member method '("ssh" "wsl"))
+            (user-error "Unsupported workspace connection method: %s" method))
+          (list (substring prefix (+ 2 (length method)) -1)
+                (file-remote-p directory 'localname)
+                (if (equal method "wsl") 'wsl 'posix) nil))
+      (list "local" (expand-file-name directory) nil nil))))
 
 (defun atelier-default-directory (workspace)
   "Resolve WORKSPACE with standard Emacs local and remote file handling."
@@ -1134,7 +1156,8 @@ When EXPLICIT is non-nil, permit another Dired entry of the same type."
                                     files))))))))
     (delete-dups (nreverse aliases))))
 
-(defun atelier-read-workspace-target ()
+(defun atelier-read-workspace-target (&optional multiple)
+  "Choose a connection and directory, or directory targets when MULTIPLE."
   (let* ((destinations (delete-dups
                         (append '("local")
                                 atelier-extra-destinations
@@ -1163,23 +1186,28 @@ When EXPLICIT is non-nil, permit another Dired entry of the same type."
                         :mount-root mount-root :path (if (eq platform 'wsl) "/" mount-root))))
          (remote-prefix (cond ((eq platform 'wsl) (format "/wsl:%s:" destination))
                               ((eq platform 'posix) (format "/ssh:%s:" destination))))
-         (directory (atelier-read-directory-with-dired
-                     (cond ((eq platform 'wsl) remote-prefix)
-                            (probe (funcall atelier-directory-function probe))
-                           (remote-prefix remote-prefix)
-                            (t (expand-file-name "~/"))))))
-    (unless (file-directory-p directory)
-      (when (yes-or-no-p (format "Create %s? " directory)) (make-directory directory t)))
-    (unless (file-directory-p directory) (user-error "Directory does not exist: %s" directory))
+         (directories (funcall atelier-read-directories-function
+                      (cond ((eq platform 'wsl) remote-prefix)
+                             (probe (funcall atelier-directory-function probe))
+                            (remote-prefix remote-prefix)
+                             (t (expand-file-name "~/"))) multiple))
+         targets)
+    (unless directories (user-error "Choose a directory"))
+    (when (and (not multiple) (cdr directories))
+      (user-error "Choose exactly one directory to edit a workspace"))
+    (dolist (directory directories)
+      (unless (file-directory-p directory)
+        (user-error "Directory does not exist: %s" directory))
+      (push (list destination
+                  (cond ((eq platform 'wsl) (file-remote-p directory 'localname))
+                        (probe (funcall atelier-target-directory-function probe directory))
+                        (remote-prefix (file-remote-p directory 'localname))
+                        (t directory))
+                  platform mount-root) targets))
     (when remote-prefix
        (atelier-operation-after
         (lambda () (cl-pushnew destination atelier-remembered-ssh-destinations :test #'equal))))
-    (list destination
-          (cond ((eq platform 'wsl) (file-remote-p directory 'localname))
-                (probe (funcall atelier-target-directory-function probe directory))
-                (remote-prefix (file-remote-p directory 'localname))
-                (t directory))
-          platform mount-root)))
+    (if multiple (nreverse targets) (car targets))))
 
 (atelier-define-operation atelier-edit-workspace ()
     (list (atelier-current-workspace-id)) nil
@@ -1205,28 +1233,45 @@ When EXPLICIT is non-nil, permit another Dired entry of the same type."
 (atelier-define-operation atelier-create-workspace ()
     (list (atelier-current-workspace-id)) nil
   (interactive)
-  (pcase-let* ((`(,destination ,path ,platform ,mount-root) (atelier-read-workspace-target))
-               (suggested-name
-                (atelier-safe-name (file-name-nondirectory (directory-file-name path))))
-               (suggestion (if (string-empty-p suggested-name) "home" suggested-name))
-               (name (read-string "Workspace name: " suggestion)))
-    (when (string-empty-p name) (user-error "Workspace name cannot be empty"))
-    (when (atelier-workspace-get name) (user-error "Workspace already exists: %s" name))
-    (let ((workspace (list :id (atelier-new-workspace-id)
-                           :name name :destination destination :path path
-                           :platform platform :mount-root mount-root
-                           :created (float-time) :status 'running
-                           :entries nil)))
-      (atelier-capture-current-workspace)
-      (setq atelier-workspaces (append atelier-workspaces (list workspace)))
-      (atelier-operation-notify 'atelier-workspace-created-hook workspace)
-      (atelier-select-workspace workspace)
-      (delete-other-windows)
-      (let ((buffer (atelier-new-dired-buffer (atelier-workspace-directory workspace)
-                                              t workspace)))
-        (atelier-register-dired-buffer buffer workspace t)
-        (switch-to-buffer buffer))
-      (atelier-notify-change))))
+  (atelier-create-workspace-targets (atelier-read-workspace-target t)))
+
+(atelier-define-operation atelier-add-workspaces (directories)
+    (list (atelier-current-workspace-id)) nil
+  "Add workspaces from Emacs DIRECTORY paths, independently of a file interface.
+Ask for each name and select the last workspace.  The entire addition is one
+prepared operation, so cancellation or failure publishes no partial additions."
+  (unless directories (user-error "Choose a directory"))
+  (dolist (directory directories)
+    (unless (file-directory-p directory)
+      (user-error "Not a directory: %s" directory)))
+  (atelier-create-workspace-targets
+   (mapcar atelier-directory-target-function (delete-dups (copy-sequence directories)))))
+
+(defun atelier-create-workspace-targets (targets)
+  "Prepare TARGETS within the caller's workspace operation."
+  (atelier-capture-current-workspace)
+  (dolist (target targets)
+    (pcase-let* ((`(,destination ,path ,platform ,mount-root) target)
+                 (suggested-name
+                  (atelier-safe-name (file-name-nondirectory (directory-file-name path))))
+                 (suggestion (if (string-empty-p suggested-name) "home" suggested-name))
+                 (name (read-string "Workspace name: " suggestion)))
+      (when (string-empty-p name) (user-error "Workspace name cannot be empty"))
+      (when (atelier-workspace-get name) (user-error "Workspace already exists: %s" name))
+      (let ((workspace (list :id (atelier-new-workspace-id)
+                             :name name :destination destination :path path
+                             :platform platform :mount-root mount-root
+                             :created (float-time) :status 'running
+                             :entries nil)))
+        (setq atelier-workspaces (append atelier-workspaces (list workspace)))
+        (atelier-operation-notify 'atelier-workspace-created-hook workspace)
+        (atelier-select-workspace workspace)
+        (delete-other-windows)
+        (let ((buffer (atelier-new-dired-buffer (atelier-workspace-directory workspace)
+                                                t workspace)))
+          (atelier-register-dired-buffer buffer workspace t)
+          (switch-to-buffer buffer))
+        (atelier-notify-change)))))
 
 (defun atelier-unique-workspace-name (root)
   (let* ((base (or (atelier-safe-name
@@ -1692,12 +1737,10 @@ Create it relative to the current Dired directory and refresh the listing."
 
 (defun atelier-dired-open ()
   (interactive)
-  (if atelier-directory-chooser-mode
-      (atelier-directory-chooser-enter)
-    (let ((file (dired-get-file-for-visit)))
-      (if (file-directory-p file)
-          (atelier-dired-change-directory file)
-        (atelier-open-file file)))))
+  (let ((file (dired-get-file-for-visit)))
+    (if (file-directory-p file)
+        (atelier-dired-change-directory file)
+      (atelier-open-file file))))
 
 (atelier-define-operation atelier-dired-change-directory (directory &optional target)
     (delete-dups (mapcar (lambda (pair) (atelier-workspace-id (car pair)))

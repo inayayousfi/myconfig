@@ -123,6 +123,8 @@
 (require 'myconfig-core)
 (require 'myconfig-ui)
 (require 'atelier)
+(require 'dired-atelier)
+(dired-atelier-setup)
 (setq atelier-state-directory myconfig-runtime-state-directory
       atelier-close-without-asking t
       atelier-workspace-inactive-timeout myconfig-workspace-inactive-timeout)

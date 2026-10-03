@@ -3,6 +3,7 @@
 (require 'evil)
 (require 'multiple-cursors)
 (require 'atelier)
+(require 'dired-atelier)
 (require 'eglot)
 
 (declare-function avy-goto-char-timer "avy")
@@ -51,6 +52,20 @@
   (evil-set-initial-state 'atelier-navigator-mode 'normal)
   (evil-set-initial-state 'atelier-choice-mode 'normal)
   (evil-set-initial-state 'dired-mode 'normal)
+  (define-key dired-mode-map (kbd "W") #'atelier-dired-flag-workspace)
+  (define-key dired-mode-map (kbd "x") #'atelier-dired-execute-flags)
+  (dolist (binding '(("RET" . atelier-directory-chooser-enter)
+                     ("<return>" . atelier-directory-chooser-enter)
+                     ("l" . atelier-directory-chooser-enter)
+                     ("h" . atelier-directory-chooser-up-directory)
+                     ("H" . atelier-directory-chooser-up-directory)
+                     ("^" . atelier-directory-chooser-up-directory)
+                     ("W" . atelier-dired-flag-workspace)
+                     ("x" . atelier-dired-execute-flags)
+                     ("q" . abort-recursive-edit)))
+    (define-key atelier-directory-chooser-mode-map (kbd (car binding)) (cdr binding)))
+  (define-key atelier-directory-chooser-mode-map [mouse-1] #'atelier-directory-chooser-mouse-enter)
+  (define-key atelier-directory-chooser-mode-map [mouse-2] #'atelier-directory-chooser-mouse-enter)
   (evil-define-key 'normal dired-mode-map
     (kbd "SPC") myconfig-leader-map
     (kbd "RET") #'atelier-dired-open
@@ -58,6 +73,8 @@
     (kbd "l") #'atelier-dired-open
     (kbd "h") #'atelier-dired-up-directory
     (kbd "n") #'atelier-dired-create
+    (kbd "W") #'atelier-dired-flag-workspace
+    (kbd "x") #'atelier-dired-execute-flags
     [mouse-1] #'atelier-dired-mouse-open
     [mouse-2] #'atelier-dired-mouse-open)
   (evil-define-key 'normal eglot-mode-map
@@ -66,10 +83,15 @@
   (evil-define-key 'normal atelier-directory-chooser-mode-map
     (kbd "RET") #'atelier-directory-chooser-enter
     (kbd "<return>") #'atelier-directory-chooser-enter
+    (kbd "l") #'atelier-directory-chooser-enter
     (kbd "h") #'atelier-directory-chooser-up-directory
     (kbd "H") #'atelier-directory-chooser-up-directory
     (kbd "^") #'atelier-directory-chooser-up-directory
-    (kbd "q") #'abort-recursive-edit)
+    (kbd "W") #'atelier-dired-flag-workspace
+    (kbd "x") #'atelier-dired-execute-flags
+    (kbd "q") #'abort-recursive-edit
+    [mouse-1] #'atelier-directory-chooser-mouse-enter
+    [mouse-2] #'atelier-directory-chooser-mouse-enter)
   (evil-make-intercept-map atelier-directory-chooser-mode-map 'normal t)
   (global-set-key (kbd "C-S-v") #'myconfig-paste)
   (global-set-key (kbd "C-=") #'text-scale-increase)

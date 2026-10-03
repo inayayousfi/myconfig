@@ -10,7 +10,7 @@
 (require 'atelier-persist)
 
 (ert-deftest atelier-loads-without-application-or-integration-packages ()
-  (dolist (feature '(myconfig-core ghostel evil aipan univers remot))
+  (dolist (feature '(myconfig-core ghostel evil aipan univers remot dired-atelier))
     (should-not (featurep feature)))
   (should-not atelier-close-without-asking)
   (should-not atelier-job-start-function))
@@ -709,8 +709,10 @@
     (unwind-protect
         (save-window-excursion
           (atelier-select-workspace old)
-          (cl-letf (((symbol-function 'atelier-read-workspace-target)
-                     (lambda () (list "local" temporary-file-directory 'local nil)))
+           (cl-letf (((symbol-function 'atelier-read-workspace-target)
+                      (lambda (&optional multiple)
+                        (let ((target (list "local" temporary-file-directory 'local nil)))
+                          (if multiple (list target) target))))
                     ((symbol-function 'read-string) (lambda (&rest _) "created")))
             (atelier-create-workspace))
           (let* ((workspace (atelier-workspace-get "created"))

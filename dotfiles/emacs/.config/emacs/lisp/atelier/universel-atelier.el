@@ -81,7 +81,17 @@
     (cl-loop for workspace in atelier-workspaces
              for environment = (universel-atelier-environment workspace)
              thereis (universel-mounted-environment
-                      directory environment universel-atelier-state-directory))))
+                       directory environment universel-atelier-state-directory))))
+
+(defun universel-atelier-directory-target (directory)
+  "Convert DIRECTORY to an Atelier target, retaining mounted Windows ownership."
+  (if-let* ((environment (universel-atelier-detect-directory directory)))
+      (list (concat (plist-get environment :destination)
+                    (when-let* ((port (plist-get environment :port)))
+                      (format "#%s" port)))
+            (plist-get environment :directory) 'windows
+            (plist-get environment :mount-root))
+    (atelier-default-directory-target directory)))
 
 (defun universel-atelier-setup (state-directory)
   "Connect Atelier to Universel, storing mounts below STATE-DIRECTORY."
@@ -89,6 +99,7 @@
         atelier-directory-function #'universel-atelier-directory
         atelier-execution-directory-function #'universel-atelier-execution-directory
         atelier-target-directory-function #'universel-atelier-target-directory
+        atelier-directory-target-function #'universel-atelier-directory-target
         atelier-terminal-command-function #'universel-atelier-terminal-command
         atelier-release-function #'universel-atelier-release
         atelier-local-path-p-function #'universel-atelier-local-path-p

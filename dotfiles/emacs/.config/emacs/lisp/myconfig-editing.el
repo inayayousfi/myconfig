@@ -170,8 +170,8 @@ so the default value alone is not sufficient."
             (move-overlay overlay eol eol)
             (overlay-put overlay 'myconfig-flyover-eob-text rendered)
             (add-hook 'post-command-hook #'myconfig-flyover-refresh-eob nil t)))))
-      (when (overlay-get overlay 'myconfig-flyover-eob-text)
-        (myconfig-flyover-refresh-eob))))
+    (when (overlay-get overlay 'myconfig-flyover-eob-text)
+      (myconfig-flyover-refresh-eob))))
 
 (defun myconfig-compile ()
   (interactive)
@@ -224,7 +224,7 @@ so the default value alone is not sufficient."
       (list :name (if (eq program 'rg) "Text (rg)" "Text (grep)")
             :narrow ?t :category 'consult-grep
             :async (consult--process-collection
-                    builder :transform (consult--grep-format builder) :file-handler t)
+                       builder :transform (consult--grep-format builder) :file-handler t)
             :state #'consult--grep-state
             :action (lambda (candidate)
                       (consult--jump (consult--grep-position candidate))))
@@ -359,7 +359,7 @@ so the default value alone is not sufficient."
   (use-package consult
     :config (setq consult-preview-key 'any
                   consult-buffer-list-function #'atelier-buffer-list
-                   consult-ripgrep-args myconfig-search-ripgrep-args))
+                  consult-ripgrep-args myconfig-search-ripgrep-args))
   (use-package corfu
     :config
     (setq corfu-auto t corfu-auto-delay 0.1 corfu-auto-prefix 1

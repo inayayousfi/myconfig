@@ -398,6 +398,8 @@ so the default value alone is not sufficient."
   (use-package mason :demand t)
   (use-package dape)
   (use-package diff-hl
+    :demand t
+    :hook (dired-mode . diff-hl-dired-mode)
     :config
     (global-diff-hl-mode 1)
     (diff-hl-flydiff-mode 1)

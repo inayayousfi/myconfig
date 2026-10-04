@@ -405,6 +405,8 @@ retired_backups=("$HOME"/dotfiles.backup.*/nvim/.config/nvim/init.lua)
 module_dotfiles
 [ "$(readlink -f "$HOME/.local/bin")" = "$(readlink -f "$HOME")/.local/bin" ] \
     || myconfig_fail "Arch WSL folded ~/.local/bin into a deployed package"
+[ "$(readlink -f "$HOME/.claude")" = "$(readlink -f "$HOME")/.claude" ] \
+    || myconfig_fail "Arch WSL folded ~/.claude into a deployed package"
 [ -x "$HOME/.local/bin/claude-config-helper" ] \
     && [ "$(readlink -f "$HOME/.local/bin/claude-config-helper")" = "$HOME/dotfiles/ai/.local/bin/claude-config-helper" ] \
     || myconfig_fail "Arch WSL did not link claude-config-helper from the ai package"

@@ -177,9 +177,9 @@ module_dotfiles() {
 
     backup_dotfile_conflicts "$dotfiles_dir" "${packages[@]}"
 
-    # A real directory keeps Stow from folding ~/.local/bin into one package,
-    # where programs installed later would land inside the deployed tree.
-    mkdir -p "$HOME/.local/bin"
+    # Real directories keep Stow from folding these into one package, where
+    # programs and Claude data written later would land inside the deployed tree.
+    mkdir -p "$HOME/.local/bin" "$HOME/.claude"
     for package in "${packages[@]}"; do
         stow --dir "$dotfiles_dir" --target "$HOME" --restow "$package"
     done

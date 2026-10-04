@@ -102,8 +102,19 @@ if has codex; then
 fi
 
 if has claude; then
-    alias cco='IS_DEMO=1 claude --dangerously-skip-permissions'
-    alias ccor='claude remote-control --permission-mode bypassPermissions'
+    unalias cco ccor 2>/dev/null
+    function cco {
+        "$HOME/.local/bin/claude-config-helper" trust || return
+        IS_DEMO=1 claude --dangerously-skip-permissions "$@"
+    }
+    function ccor {
+        if [[ "${PWD:A}" == "${HOME:A}" ]]; then
+            print -u2 -- "ccor: Claude cannot save trust for your home directory. Enter a project directory first."
+            return 1
+        fi
+        "$HOME/.local/bin/claude-config-helper" trust || return
+        claude remote-control --permission-mode bypassPermissions "$@"
+    }
 fi
 
 if has systemctl; then

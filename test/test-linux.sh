@@ -403,6 +403,11 @@ retired_backups=("$HOME"/dotfiles.backup.*/nvim/.config/nvim/init.lua)
 [ "${#retired_backups[@]}" -eq 1 ] \
     || myconfig_fail "Arch WSL migration did not back up its retired Neovim package"
 module_dotfiles
+[ "$(readlink -f "$HOME/.local/bin")" = "$(readlink -f "$HOME")/.local/bin" ] \
+    || myconfig_fail "Arch WSL folded ~/.local/bin into a deployed package"
+[ -x "$HOME/.local/bin/claude-config-helper" ] \
+    && [ "$(readlink -f "$HOME/.local/bin/claude-config-helper")" = "$HOME/dotfiles/ai/.local/bin/claude-config-helper" ] \
+    || myconfig_fail "Arch WSL did not link claude-config-helper from the ai package"
 
 mapfile -t profile_packages < <(dotfile_packages_for_profile)
 for package in "${profile_packages[@]}"; do
@@ -414,6 +419,11 @@ shopt -s nullglob
 profile_conflict_backups=("$HOME"/.dotfiles-conflicts.backup.*)
 [ "${#profile_conflict_backups[@]}" -eq 0 ] \
     || myconfig_fail "profile rerun treated managed dotfiles as conflicts"
+
+"$REPO_ROOT/dotfiles/ai/.local/bin/claude-config-helper" check \
+    "$REPO_ROOT/dotfiles/ai/.claude/settings.json" \
+    "$REPO_ROOT/dotfiles/ai/.config/claude-config-helper/mcp-servers.json" \
+    || myconfig_fail "Tracked Claude configuration contains personal data"
 
 zsh -n "$REPO_ROOT/dotfiles/zsh/.zshrc"
 zsh -n "$REPO_ROOT/dotfiles/zsh/.oh-my-zsh/custom/plugins/inaya/inaya.plugin.zsh"

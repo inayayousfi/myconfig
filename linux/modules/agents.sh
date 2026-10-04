@@ -131,6 +131,7 @@ This file describes the capabilities installed for the $platform.
 - **Repository tools**: Git, GitHub CLI, and GNU Stow.
 - **Terminal tools**: Yazi, ripgrep, jq, and btop.
 - **Agent browser tools**: Playwright MCP. Claude Code and Pi are installed separately.
+- **Claude configuration**: \`claude-config-helper\` trusts projects, lists or clears saved approvals, applies the MCP servers listed in \`~/.config/claude-config-helper/mcp-servers.json\`, and checks files for tokens, email addresses and home paths.
 - **Remote access**: OpenSSH server and Tailscale service with optional login during setup.
 EOF
 
@@ -165,6 +166,10 @@ module_agents_configure() {
     fi
     link_agent_config
     configure_fx_playwright_mcp
+    [ -x "$HOME/.local/bin/claude-config-helper" ] \
+        || myconfig_fail "claude-config-helper was not stowed as an executable"
+    "$HOME/.local/bin/claude-config-helper" mcp apply \
+        || myconfig_fail "Could not apply Claude MCP servers"
 
     if [ "$MYCONFIG_PROFILE" = cachyos ]; then
         require_command ydotool

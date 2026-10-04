@@ -235,7 +235,9 @@ function Remove-AIConfig {
     $ruleFiles = @(
         (Join-Path $env:USERPROFILE ".agents\AGENTS.md"),
         (Join-Path $env:USERPROFILE ".claude\CLAUDE.md"),
-        (Join-Path $env:USERPROFILE ".config\opencode\AGENTS.md")
+        (Join-Path $env:USERPROFILE ".config\opencode\AGENTS.md"),
+        (Join-Path $env:USERPROFILE ".local\bin\claude-config-helper"),
+        (Join-Path $env:USERPROFILE ".config\claude-config-helper\mcp-servers.json")
     )
     $skillRoots = @(
         (Join-Path $env:USERPROFILE ".agents\skills"),
@@ -405,6 +407,7 @@ function Remove-WingetPackages {
         "oschwartz10612.Poppler"
         "sxyazi.yazi"
         "Python.PythonInstallManager"
+        "Python.Python.3.13"
         "JanDeDobbeleer.OhMyPosh"
         "wez.wezterm"
         "Anthropic.ClaudeCode"

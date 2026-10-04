@@ -443,6 +443,16 @@ function Install-AIConfig {
     Copy-DotfileSafe -Source (Join-Path $claudeSource "CLAUDE.md") -Destination (Join-Path $claudeDest "CLAUDE.md")
     Copy-DotfileSafe -Source (Join-Path $claudeSource "settings.json") -Destination (Join-Path $claudeDest "settings.json")
 
+    $helper = Join-Path $env:USERPROFILE ".local\bin\claude-config-helper"
+    Copy-DotfileSafe -Source (Join-Path $SharedDotfilesDir "ai\.local\bin\claude-config-helper") -Destination $helper
+    Copy-DotfileSafe -Source (Join-Path $SharedDotfilesDir "ai\.config\claude-config-helper\mcp-servers.json") -Destination (Join-Path $env:USERPROFILE ".config\claude-config-helper\mcp-servers.json")
+    if ((Get-Command py -ErrorAction SilentlyContinue) -and (Get-Command claude -ErrorAction SilentlyContinue)) {
+        & py -3 $helper mcp apply
+        if ($LASTEXITCODE -ne 0) { Write-Log "Claude MCP servers were not applied" -Level 'ERROR' }
+    } else {
+        Write-Log "Python or Claude Code not found; run claude-config-helper mcp apply later" -Level 'WARNING'
+    }
+
     Write-Log "AI config installed" -Level 'OK'
 }
 

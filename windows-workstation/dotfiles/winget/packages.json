@@ -30,6 +30,9 @@
         },
         {
           "PackageIdentifier": "GnuWin32.UnZip"
+        },
+        {
+          "PackageIdentifier": "Python.Python.3.13"
         }
       ],
       "SourceDetails": {

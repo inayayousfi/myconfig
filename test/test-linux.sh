@@ -695,8 +695,7 @@ for cursor in default crosshair help no-drop up-arrow person location size_hor s
     cmp -s "$cursor_theme_root/cursors/$cursor" "$cursor_build_dir/$cursor" \
         || myconfig_fail "Black & Pink Crosshair $cursor does not match its SVG source"
 done
-python3 - "$cursor_theme_root/cursors/default" "$cursor_theme_root/cursors/crosshair" <<'PY' \
-    || myconfig_fail "Black & Pink Crosshair contours or centers are incorrect"
+python3 - "$cursor_theme_root/cursors/default" "$cursor_theme_root/cursors/crosshair" <<'PY' || myconfig_fail "Black & Pink Crosshair contours or centers are incorrect"
 import pathlib
 import struct
 import sys
@@ -728,8 +727,7 @@ for index, (normal, precision) in enumerate(zip(images['default'], images['cross
     else:
         assert normal == precision
 PY
-python3 - "$cursor_theme_root/cursors" <<'PY' \
-    || myconfig_fail "Black & Pink resize arrows or shared cross are incorrect"
+python3 - "$cursor_theme_root/cursors" <<'PY' || myconfig_fail "Black & Pink resize arrows or shared cross are incorrect"
 import pathlib
 import struct
 import sys

@@ -194,20 +194,21 @@ for AUDIO_SCENARIO in muted unmuted delayed missing unrelated query-fail set-fai
     : >"$TEST_ROOT/calls"
     bash "$TEST_ROOT/phone" >"$TEST_ROOT/output" 2>&1
     case "$AUDIO_SCENARIO" in
-        muted|delayed)
+        muted | delayed)
             grep -q 'scrcpy audio is muted on the laptop' "$TEST_ROOT/output"
             grep -q 'scrcpy audio unmuted; volume unchanged' "$TEST_ROOT/output"
             [[ "$(grep -c '^pactl set-sink-input-mute 71 0$' "$TEST_ROOT/calls")" == 1 ]]
             ;;
         unmuted) grep -q 'scrcpy audio is not muted' "$TEST_ROOT/output" ;;
-        missing|unrelated) grep -q 'No scrcpy playback stream appeared' "$TEST_ROOT/output" ;;
+        missing | unrelated) grep -q 'No scrcpy playback stream appeared' "$TEST_ROOT/output" ;;
         query-fail) grep -q 'Could not inspect scrcpy audio' "$TEST_ROOT/output" ;;
         set-fail) grep -q 'Could not unmute scrcpy audio' "$TEST_ROOT/output" ;;
     esac
     if grep -qE '^pactl set-sink-input-mute (72|73)' "$TEST_ROOT/calls"; then exit 1; fi
     case "$AUDIO_SCENARIO" in
-        unmuted|missing|unrelated|query-fail)
-            if grep -q '^pactl set-' "$TEST_ROOT/calls"; then exit 1; fi ;;
+        unmuted | missing | unrelated | query-fail)
+            if grep -q '^pactl set-' "$TEST_ROOT/calls"; then exit 1; fi
+            ;;
     esac
     printf 'PASS: audio %s\n' "$AUDIO_SCENARIO"
 done

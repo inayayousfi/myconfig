@@ -7,6 +7,7 @@ import struct
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
+import zlib
 
 
 ROOT = pathlib.Path(__file__).resolve().parent
@@ -14,6 +15,50 @@ SVG = "http://www.w3.org/2000/svg"
 GROUPS = {group.get("id"): group for group in ET.parse(ROOT / "artwork.svg").getroot()}
 IMAGE = 0xFFFD0002
 OUTPUT = ROOT / "cursors"
+
+
+def png_rgba(png):
+    """Decode resvg's 40 by 40, 8-bit RGBA, non-interlaced PNG without external tools."""
+    if png[:8] != b"\x89PNG\r\n\x1a\n":
+        raise ValueError("renderer did not return a PNG image")
+    position, header, data = 8, None, b""
+    while position < len(png):
+        length, kind = struct.unpack(">I4s", png[position:position + 8])
+        body = png[position + 8:position + 8 + length]
+        position += length + 12
+        if kind == b"IHDR":
+            header = struct.unpack(">IIBBBBB", body)
+        elif kind == b"IDAT":
+            data += body
+    if header != (40, 40, 8, 6, 0, 0, 0):
+        raise ValueError("renderer did not return a 40 by 40 RGBA image")
+    raw = zlib.decompress(data)
+    stride = 40 * 4
+    previous = bytearray(stride)
+    rows = []
+    for y in range(40):
+        start = y * (stride + 1)
+        kind, line = raw[start], bytearray(raw[start + 1:start + 1 + stride])
+        for i in range(stride):
+            left = line[i - 4] if i >= 4 else 0
+            up = previous[i]
+            corner = previous[i - 4] if i >= 4 else 0
+            if kind == 1:
+                line[i] = (line[i] + left) & 255
+            elif kind == 2:
+                line[i] = (line[i] + up) & 255
+            elif kind == 3:
+                line[i] = (line[i] + (left + up) // 2) & 255
+            elif kind == 4:
+                estimate = left + up - corner
+                distances = (abs(estimate - left), abs(estimate - up), abs(estimate - corner))
+                nearest = left if distances[0] <= distances[1] and distances[0] <= distances[2] else up if distances[1] <= distances[2] else corner
+                line[i] = (line[i] + nearest) & 255
+            elif kind:
+                raise ValueError(f"unsupported PNG filter {kind}")
+        rows.append(bytes(line))
+        previous = line
+    return b"".join(rows)
 
 
 def render(parts):
@@ -32,10 +77,9 @@ def render(parts):
         # Copy through serialization so the source tree is never modified.
         wrapper.append(ET.fromstring(ET.tostring(GROUPS[name])))
     svg = ET.tostring(root)
-    png = subprocess.run(["rsvg-convert", "-w", "40", "-h", "40"], input=svg, stdout=subprocess.PIPE, check=True).stdout
-    rgba = subprocess.run(["magick", "png:-", "-depth", "8", "rgba:-"], input=png, stdout=subprocess.PIPE, check=True).stdout
-    if len(rgba) != 40 * 40 * 4:
-        raise ValueError("renderer did not return a 40 by 40 RGBA image")
+    png = subprocess.run(["resvg", "--resources-dir", str(ROOT), "-w", "40", "-h", "40", "-", "-c"],
+                         input=svg, stdout=subprocess.PIPE, check=True).stdout
+    rgba = png_rgba(png)
     # XCursor stores straight-alpha ARGB32 pixels in little-endian byte order.
     pixels = bytearray(channel for i in range(0, len(rgba), 4) for channel in (rgba[i + 2], rgba[i + 1], rgba[i], rgba[i + 3]))
     if normal:

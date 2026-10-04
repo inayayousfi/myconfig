@@ -77,6 +77,8 @@ MYCONFIG_PROFILE=cachyos
     || myconfig_fail "CachyOS stable kernel package did not resolve"
 [ "$(resolve_package cachyos_zsh_config)" = official:cachyos-zsh-config ] \
     || myconfig_fail "CachyOS Zsh configuration package did not resolve"
+[ "$(resolve_package vim)" = official:vim ] \
+    || myconfig_fail "CachyOS Vim removal package did not resolve"
 [ "$(resolve_package fish)" = official:fish ] \
     || myconfig_fail "Fish package did not resolve"
 [ "$(resolve_package cachyos_fish_config)" = official:cachyos-fish-config ] \
@@ -106,8 +108,74 @@ cachyos_actions="$({
     }
     module_cachyos
 })"
-[ "$cachyos_actions" = $'[myconfig][cachyos] Configuring CachyOS stable kernel tools\ninstall:cachyos_kernel_manager linux_cachyos\nremove:konsole alacritty cachyos_hello cachyos_zsh_config vim fish cachyos_fish_config fish_autopair fish_pure_prompt fisher' ] \
+[ "$cachyos_actions" = $'[myconfig][cachyos] Configuring CachyOS stable kernel tools\ninstall:cachyos_kernel_manager linux_cachyos noto_fonts_cjk\nremove:konsole alacritty cachyos_hello cachyos_zsh_config vim fish cachyos_fish_config fish_autopair fish_pure_prompt fisher firefox firefox_i18n_fr meslo_font cachyos_emerald_kde_theme cachyos_iridescent_kde cachyos_nord_kde_theme kate micro cachyos_micro_settings nano nano_syntax_highlighting meld glances duf tealdeer filelight pavucontrol kcalc shelly cachyos_packageinstaller expac cachyos_wallpapers hwdetect qtscrcpy' ] \
     || myconfig_fail "CachyOS module did not configure the stable kernel tools and removals"
+
+source "$REPO_ROOT/linux/modules/cli.sh"
+source "$REPO_ROOT/linux/modules/terminal-tools.sh"
+source "$REPO_ROOT/linux/modules/runtimes.sh"
+removed_packages=(
+    firefox firefox-i18n-fr ttf-meslo-nerd
+    cachyos-emerald-kde-theme-git cachyos-iridescent-kde cachyos-nord-kde-theme-git
+    kate micro cachyos-micro-settings nano nano-syntax-highlighting meld
+    glances duf tealdeer eza filelight pavucontrol kcalc shelly
+    cachyos-packageinstaller expac cachyos-wallpapers fd hwdetect fzf bat
+    hunk-bin neovim lazygit tmux qtscrcpy zoxide
+)
+retired_cli_packages=(fd fzf zoxide eza bat hunk-bin neovim lazygit tmux)
+
+for cleanup_profile in cachyos arch-wsl; do
+    profile_actions="$(
+        MYCONFIG_PROFILE="$cleanup_profile"
+        adapter_supports_source() { return 0; }
+        adapter_install_specs() { printf 'install:%s\n' "$@"; }
+        adapter_remove_specs() { printf 'remove:%s\n' "$@"; }
+        rustup() { :; }
+        # Exercise the real profile and package modules without running services,
+        # deploying dotfiles, or installing anything on the host.
+        for unrelated_module in ssh zsh ghostty axidev_osk tailscale \
+            agents_packages dotfiles android_phone emacs cursor_theme refind \
+            kanata kde_plasma_validate kde_plasma kanata_kde handy pipewire \
+            docker agents_configure authentication; do
+            eval "module_${unrelated_module}() { :; }"
+        done
+        write_environment_inventory() { :; }
+        source "$REPO_ROOT/linux/modules/base.sh"
+        source "$REPO_ROOT/linux/profiles/$cleanup_profile.sh"
+        run_profile
+    )"
+    profile_removed_packages=("${retired_cli_packages[@]}")
+    if [ "$cleanup_profile" = cachyos ]; then
+        profile_removed_packages=("${removed_packages[@]}")
+    fi
+    for package in "${profile_removed_packages[@]}"; do
+        grep -Eq "^remove:(official|aur):${package}$" <<<"$profile_actions" \
+            || myconfig_fail "$cleanup_profile did not request removal of $package"
+    done
+    for package in "${removed_packages[@]}"; do
+        if [ "$cleanup_profile" = arch-wsl ] \
+            && [[ " ${retired_cli_packages[*]} " != *" $package "* ]] \
+            && grep -Eq "^remove:(official|aur):${package}$" <<<"$profile_actions"; then
+            myconfig_fail "Arch WSL requested CachyOS-specific removal of $package"
+        fi
+        if grep -Eq "^install:(official|aur):${package}$" <<<"$profile_actions"; then
+            myconfig_fail "$cleanup_profile still requested installation of $package"
+        fi
+    done
+    for package in ripgrep jq fastfetch btop tokei jdk-openjdk maven; do
+        grep -Fxq "install:official:$package" <<<"$profile_actions" \
+            || myconfig_fail "$cleanup_profile omitted retained package $package"
+    done
+    if [ "$cleanup_profile" = cachyos ]; then
+        grep -Fxq 'install:official:noto-fonts-cjk' <<<"$profile_actions" \
+            || myconfig_fail "CachyOS omitted multilingual fonts"
+    elif grep -Fxq 'install:official:noto-fonts-cjk' <<<"$profile_actions"; then
+        myconfig_fail "Arch WSL still requested CachyOS-only fonts"
+    fi
+    if grep -Fxq 'remove:official:noto-fonts-cjk' <<<"$profile_actions"; then
+        myconfig_fail "$cleanup_profile still requested removal of multilingual fonts"
+    fi
+done
 
 source "$REPO_ROOT/linux/modules/base.sh"
 base_actions="$({
@@ -290,6 +358,33 @@ printf 'Write-Host "ok"\r\n' >"$powershell_source/ai/windows.ps1"
 cp "$powershell_source/ai/windows.ps1" "$powershell_staging/ai/windows.ps1"
 validate_staged_dotfiles "$powershell_source" "$powershell_staging" ai
 
+(
+    HOME="$TEST_HOME/ghostty-profile-home"
+    MYCONFIG_PROFILE=cachyos
+    MYCONFIG_DOTFILES_SOURCE="$REPO_ROOT/dotfiles"
+    mkdir -p "$HOME/.config/ghostty"
+    touch "$HOME/.config/ghostty/config.ghostty"
+
+    module_dotfiles
+    ghostty_config="$HOME/.config/ghostty/config"
+    ghostty_deployed="$HOME/dotfiles/ghostty/.config/ghostty/config"
+    [ -L "$ghostty_config" ] \
+        && [ "$(readlink -f "$ghostty_config")" = "$ghostty_deployed" ] \
+        || myconfig_fail "CachyOS did not link the Ghostty configuration into its deployed package"
+    cmp "$REPO_ROOT/dotfiles/ghostty/.config/ghostty/config" "$ghostty_config" \
+        || myconfig_fail "CachyOS did not deploy the saved Ghostty configuration"
+    [ -f "$HOME/.config/ghostty/config.ghostty" ] \
+        && [ ! -s "$HOME/.config/ghostty/config.ghostty" ] \
+        || myconfig_fail "Ghostty deployment changed the existing empty config.ghostty"
+
+    module_dotfiles
+    [ -L "$ghostty_config" ] \
+        && [ "$(readlink -f "$ghostty_config")" = "$ghostty_deployed" ] \
+        || myconfig_fail "CachyOS rerun retired the active Ghostty configuration"
+    cmp "$REPO_ROOT/dotfiles/ghostty/.config/ghostty/config" "$ghostty_config" \
+        || myconfig_fail "CachyOS rerun changed the Ghostty configuration"
+)
+
 profile_home="$TEST_HOME/profile-home"
 HOME="$profile_home"
 MYCONFIG_PROFILE=arch-wsl
@@ -308,6 +403,13 @@ retired_backups=("$HOME"/dotfiles.backup.*/nvim/.config/nvim/init.lua)
 [ "${#retired_backups[@]}" -eq 1 ] \
     || myconfig_fail "Arch WSL migration did not back up its retired Neovim package"
 module_dotfiles
+[ "$(readlink -f "$HOME/.local/bin")" = "$(readlink -f "$HOME")/.local/bin" ] \
+    || myconfig_fail "Arch WSL folded ~/.local/bin into a deployed package"
+[ "$(readlink -f "$HOME/.claude")" = "$(readlink -f "$HOME")/.claude" ] \
+    || myconfig_fail "Arch WSL folded ~/.claude into a deployed package"
+[ -x "$HOME/.local/bin/claude-config-helper" ] \
+    && [ "$(readlink -f "$HOME/.local/bin/claude-config-helper")" = "$HOME/dotfiles/ai/.local/bin/claude-config-helper" ] \
+    || myconfig_fail "Arch WSL did not link claude-config-helper from the ai package"
 
 mapfile -t profile_packages < <(dotfile_packages_for_profile)
 for package in "${profile_packages[@]}"; do
@@ -320,9 +422,52 @@ profile_conflict_backups=("$HOME"/.dotfiles-conflicts.backup.*)
 [ "${#profile_conflict_backups[@]}" -eq 0 ] \
     || myconfig_fail "profile rerun treated managed dotfiles as conflicts"
 
+"$REPO_ROOT/dotfiles/ai/.local/bin/claude-config-helper" check \
+    "$REPO_ROOT/dotfiles/ai/.claude/settings.json" \
+    "$REPO_ROOT/dotfiles/ai/.config/claude-config-helper/mcp-servers.json" \
+    || myconfig_fail "Tracked Claude configuration contains personal data"
+
 zsh -n "$REPO_ROOT/dotfiles/zsh/.zshrc"
 zsh -n "$REPO_ROOT/dotfiles/zsh/.oh-my-zsh/custom/plugins/inaya/inaya.plugin.zsh"
 zsh -n "$REPO_ROOT/dotfiles/zsh/.oh-my-zsh/custom/themes/blacknpink.zsh-theme"
+
+for editor_case in emacs vim vi; do
+    HOME="$TEST_HOME/editor-$editor_case" MYCONFIG_EDITOR_CASE="$editor_case" \
+        zsh -f -c '
+        # Simulate command availability, including a retired editor, without
+        # launching programs or using the host shell configuration.
+        command() {
+            if [[ "$1" = -v ]]; then
+                case "$2" in
+                    emacs) [[ "$MYCONFIG_EDITOR_CASE" = emacs ]] ;;
+                    vim) [[ "$MYCONFIG_EDITOR_CASE" = vim ]] ;;
+                    nvim) return 0 ;;
+                    *) return 1 ;;
+                esac
+            else
+                builtin command "$@"
+            fi
+        }
+        uname() { print Linux; }
+        go() { print "$HOME/go"; }
+        bun() { print "$HOME/.bun/bin"; }
+        if [[ "$MYCONFIG_EDITOR_CASE" = emacs ]]; then
+            unset WSL_DISTRO_NAME
+        else
+            export WSL_DISTRO_NAME=Arch
+        fi
+        source "$1" || exit 1
+        [[ "$EDITOR" = "$MYCONFIG_EDITOR_CASE" && "$VISUAL" = "$MYCONFIG_EDITOR_CASE" ]] \
+            || exit 1
+        if [[ "$MYCONFIG_EDITOR_CASE" = emacs ]]; then
+            (( ! $+aliases[vim] )) && [[ "${aliases[vi]}" = emacs && "${aliases[v]}" = emacs ]] \
+                || exit 1
+        else
+            (( ! $+aliases[vim] && ! $+aliases[vi] && ! $+aliases[v] )) || exit 1
+        fi
+        ' editor-selection "$REPO_ROOT/dotfiles/zsh/.oh-my-zsh/custom/plugins/inaya/inaya.plugin.zsh" \
+        || myconfig_fail "shell did not select the $editor_case editor without retired-tool aliases"
+done
 
 python - "$REPO_ROOT/dotfiles/emacs/.config/emacs/lisp/remot.el" <<'PY' || myconfig_fail "Pinned embedded ghostty-web 0.4.0 assets changed"
 import base64
@@ -385,133 +530,6 @@ PY
     if module_emacs >/dev/null 2>&1; then
         myconfig_fail "Emacs module accepted a non-CachyOS profile"
     fi
-)
-
-(
-    HOME="$TEST_HOME/tmux-module-home"
-    MYCONFIG_PROFILE=cachyos
-    mkdir -p "$HOME/.config/tmux/tmux-atelier"
-    printf 'stale\n' >"$HOME/.config/tmux/tmux-atelier/stale"
-
-    package_log="$TEST_HOME/tmux-packages.log"
-    removal_log="$TEST_HOME/tmux-removals.log"
-    installer_log="$TEST_HOME/tmux-installer.log"
-    install_package_ids() {
-        printf '%s\n' "$@" >>"$package_log"
-    }
-    remove_package_ids() {
-        printf '%s\n' "$@" >>"$removal_log"
-    }
-    export installer_log
-    curl() {
-        printf '%s\n' "$*" >"$installer_log"
-        printf '%s\n' \
-            '#!/usr/bin/env bash' \
-            'set -eu' \
-            'test "$1" = --install-dir' \
-            'destination=$2' \
-            'rm -rf "$destination"' \
-            'mkdir -p "$destination/bin"' \
-            'printf "#!/usr/bin/env bash\\n" >"$destination/tmux-atelier.tmux"' \
-            'printf "#!/usr/bin/env bash\\n" >"$destination/bin/tmux-atelier"' \
-            'chmod +x "$destination/bin/tmux-atelier"'
-    }
-
-    source "$REPO_ROOT/linux/modules/tmux.sh"
-    module_tmux
-
-    [ ! -e "$TMUX_ATELIER_DIR/stale" ] \
-        || myconfig_fail "tmux module preserved stale managed files"
-    grep -Fxq tmux "$package_log" \
-        || myconfig_fail "tmux module did not install tmux"
-    grep -Fxq wl_clipboard "$package_log" \
-        || myconfig_fail "CachyOS tmux module did not install wl-clipboard"
-    grep -Fxq herdr "$removal_log" \
-        || myconfig_fail "tmux module did not retire the legacy Herdr package"
-    grep -Fq 'https://raw.githubusercontent.com/inayayousfi/tmux-atelier/main/install.sh' "$installer_log" \
-        || myconfig_fail "tmux module did not fetch the official installer"
-
-    : >"$package_log"
-    MYCONFIG_PROFILE=arch-wsl
-    module_tmux
-    [ "$(cat "$package_log")" = tmux ] \
-        || myconfig_fail "Arch WSL tmux module installed unexpected packages"
-
-    printf 'working\n' >"$TMUX_ATELIER_DIR/working"
-    curl() {
-        return 1
-    }
-    if module_tmux >/dev/null 2>&1; then
-        myconfig_fail "tmux module accepted a failed release installation"
-    fi
-    [ "$(cat "$TMUX_ATELIER_DIR/working")" = working ] \
-        || myconfig_fail "failed tmux-atelier refresh removed the working installation"
-)
-
-clipboard="$REPO_ROOT/dotfiles/old/tmux/.local/bin/myconfig-tmux-clipboard"
-clipboard_bin="$TEST_HOME/clipboard-bin"
-clipboard_log="$TEST_HOME/clipboard.log"
-mkdir -p "$clipboard_bin"
-cat >"$clipboard_bin/wl-copy" <<'EOF'
-#!/usr/bin/env bash
-cat >"$CLIPBOARD_LOG"
-EOF
-cat >"$clipboard_bin/wl-paste" <<'EOF'
-#!/usr/bin/env bash
-printf 'wayland clipboard'
-EOF
-cat >"$clipboard_bin/clip.exe" <<'EOF'
-#!/usr/bin/env bash
-cat >"$CLIPBOARD_LOG"
-EOF
-cat >"$clipboard_bin/powershell.exe" <<'EOF'
-#!/usr/bin/env bash
-printf 'windows clipboard'
-EOF
-chmod +x "$clipboard_bin"/*
-
-export CLIPBOARD_LOG="$clipboard_log"
-printf 'wayland copy' | WAYLAND_DISPLAY=wayland-0 PATH="$clipboard_bin:$PATH" "$clipboard" copy
-[ "$(cat "$clipboard_log")" = 'wayland copy' ] \
-    || myconfig_fail "Wayland clipboard copy did not receive tmux selection"
-[ "$(WAYLAND_DISPLAY=wayland-0 PATH="$clipboard_bin:$PATH" "$clipboard" paste)" = 'wayland clipboard' ] \
-    || myconfig_fail "Wayland clipboard paste did not return host content"
-
-printf 'windows copy' | WSL_DISTRO_NAME=Arch PATH="$clipboard_bin:$PATH" "$clipboard" copy
-[ "$(cat "$clipboard_log")" = 'windows copy' ] \
-    || myconfig_fail "WSL clipboard copy did not receive tmux selection"
-[ "$(WSL_DISTRO_NAME=Arch PATH="$clipboard_bin:$PATH" "$clipboard" paste)" = 'windows clipboard' ] \
-    || myconfig_fail "WSL clipboard paste did not return host content"
-
-(
-    tmux_home="$TEST_HOME/tmux-config-home"
-    tmux_socket="myconfig-test-$$"
-    mkdir -p "$tmux_home/.config/tmux/tmux-atelier"
-    cat >"$tmux_home/.config/tmux/tmux-atelier/tmux-atelier.tmux" <<'EOF'
-#!/usr/bin/env bash
-tab_style="$(tmux show-options -gqv @atelier_tab_style)"
-active_style="$(tmux show-options -gqv @atelier_tab_active_style)"
-tmux set-option -g 'status-format[0]' \
-    "#[align=left]#{W:#[range=window|#{window_index} $tab_style] #I #W #[norange default]│,#[range=window|#{window_index} $active_style] #I #W #[norange default]│}"
-EOF
-    chmod +x "$tmux_home/.config/tmux/tmux-atelier/tmux-atelier.tmux"
-    trap 'tmux -L "$tmux_socket" kill-server >/dev/null 2>&1 || true' EXIT
-
-    HOME="$tmux_home" tmux -L "$tmux_socket" \
-        -f "$REPO_ROOT/dotfiles/old/tmux/.config/tmux/tmux.conf" \
-        new-session -d -s validation
-    [ "$(tmux -L "$tmux_socket" show-options -gv @atelier_workspace_active_style)" = \
-        'fg=#000000#,bg=#ff4ead#,bold' ] \
-        || myconfig_fail "tmux config did not apply the active Black & Pink style"
-    expanded_tabs="$(tmux -L "$tmux_socket" display-message -p '#{E:status-format[0]}')"
-    [[ "$expanded_tabs" == *'#[range=window|0 fg=#000000,bg=#ff4ead,bold]'* ]] \
-        || myconfig_fail "tmux config produced a malformed expanded tab format"
-    tmux -L "$tmux_socket" list-keys -T copy-mode-vi \
-        | grep -Fq 'myconfig-tmux-clipboard copy' \
-        || myconfig_fail "tmux config did not bind host clipboard copy"
-    tmux -L "$tmux_socket" list-keys -T prefix \
-        | grep -Fq 'myconfig-tmux-clipboard' \
-        || myconfig_fail "tmux config did not bind host clipboard paste"
 )
 
 source "$REPO_ROOT/linux/modules/axidev-osk.sh"
@@ -679,8 +697,7 @@ for cursor in default crosshair help no-drop up-arrow person location size_hor s
     cmp -s "$cursor_theme_root/cursors/$cursor" "$cursor_build_dir/$cursor" \
         || myconfig_fail "Black & Pink Crosshair $cursor does not match its SVG source"
 done
-python3 - "$cursor_theme_root/cursors/default" "$cursor_theme_root/cursors/crosshair" <<'PY' \
-    || myconfig_fail "Black & Pink Crosshair contours or centers are incorrect"
+python3 - "$cursor_theme_root/cursors/default" "$cursor_theme_root/cursors/crosshair" <<'PY' || myconfig_fail "Black & Pink Crosshair contours or centers are incorrect"
 import pathlib
 import struct
 import sys
@@ -712,8 +729,7 @@ for index, (normal, precision) in enumerate(zip(images['default'], images['cross
     else:
         assert normal == precision
 PY
-python3 - "$cursor_theme_root/cursors" <<'PY' \
-    || myconfig_fail "Black & Pink resize arrows or shared cross are incorrect"
+python3 - "$cursor_theme_root/cursors" <<'PY' || myconfig_fail "Black & Pink resize arrows or shared cross are incorrect"
 import pathlib
 import struct
 import sys
@@ -1399,8 +1415,8 @@ ubuntu_profile="$(
     || myconfig_fail "CachyOS profile still includes Neovim"
 [[ "$cachyos_profile" != *module_tmux* ]] \
     || myconfig_fail "CachyOS profile still includes tmux"
-[[ "$cachyos_profile" != *module_ghostty* ]] \
-    || myconfig_fail "CachyOS profile still includes Ghostty"
+[[ "$cachyos_profile" == *module_ghostty* ]] \
+    || myconfig_fail "CachyOS profile does not include Ghostty"
 [[ "$cachyos_profile" == *module_kde_plasma* ]] \
     || myconfig_fail "CachyOS profile does not include KDE Plasma configuration"
 [[ "$cachyos_profile" == *module_cursor_theme* ]] \
@@ -1421,8 +1437,8 @@ ubuntu_profile="$(
     || myconfig_fail "Arch WSL profile still includes tmux"
 [[ "$arch_wsl_profile" != *module_emacs* ]] \
     || myconfig_fail "Arch WSL profile includes Emacs"
-[[ "$arch_wsl_profile" == *module_neovim* ]] \
-    || myconfig_fail "Arch WSL profile lost its fallback Neovim binary"
+[[ "$arch_wsl_profile" != *module_neovim* ]] \
+    || myconfig_fail "Arch WSL profile still includes Neovim"
 [[ "$arch_wsl_profile" != *module_kde_plasma* ]] \
     || myconfig_fail "Arch WSL profile includes KDE Plasma configuration"
 [[ "$arch_wsl_profile" != *module_cursor_theme* ]] \
@@ -1464,6 +1480,21 @@ if module_axidev_osk >/dev/null 2>&1; then
 fi
 
 source "$REPO_ROOT/linux/modules/agents.sh"
+(
+    HOME="$TEST_HOME/agent-package-requests"
+    MYCONFIG_PROFILE=arch-wsl
+    mkdir -p "$HOME/.bun/install/global/node_modules/.bin"
+    printf '#!/bin/sh\nexit 0\n' >"$HOME/.bun/install/global/node_modules/.bin/playwright"
+    chmod +x "$HOME/.bun/install/global/node_modules/.bin/playwright"
+    install_package_ids() { printf '%s\n' "$@" >>"$HOME/requests"; }
+    bun() { :; }
+    module_agents_packages
+    if grep -Exq 'opencode|fx_agent' "$HOME/requests"; then
+        myconfig_fail "Agent module still installs OpenCode or FX"
+    fi
+    grep -Fxq lsof "$HOME/requests" && grep -Fxq wsl_ssh_agent "$HOME/requests" \
+        || myconfig_fail "Agent module lost its remaining platform dependencies"
+)
 agents_packages_source="$(declare -f module_agents_packages)"
 [[ "$agents_packages_source" == *'packages+=(ydotool)'* ]] \
     || myconfig_fail "CachyOS agent module does not request ydotool"
@@ -1484,6 +1515,8 @@ link_agent_config
     || myconfig_fail "OpenCode AGENTS bridge does not use the live absolute target"
 [[ "$(readlink "$HOME/.fx/AGENTS.md")" == "$HOME/.agents/AGENTS.md" ]] \
     || myconfig_fail "fx AGENTS bridge does not use the live absolute target"
+[[ "$(readlink -f "$HOME/.pi/agent/AGENTS.md")" == "$(readlink -f "$HOME/.agents/AGENTS.md")" ]] \
+    || myconfig_fail "Pi does not receive the shared global instructions"
 cat >"$HOME/.fx/mcp.json" <<'EOF'
 {
   "mcp": {
@@ -1511,6 +1544,8 @@ mkdir -p "$inventory_home"
 HOME="$inventory_home"
 MYCONFIG_PROFILE=cachyos
 write_environment_inventory
+grep -Fxq -- '- **Terminal tools**: Yazi, ripgrep, jq, and btop.' "$HOME/environment.md" \
+    || myconfig_fail "CachyOS inventory still advertises removed terminal tools"
 grep -Fq 'http://HOSTNAME.local:18080' "$HOME/environment.md" \
     || myconfig_fail "CachyOS inventory omitted the Emacs workbench"
 grep -Fq 'Axidev OSK with desktop and login-screen startup' "$HOME/environment.md" \
@@ -1524,10 +1559,18 @@ grep -Fq 'Handy offline push-to-talk dictation on Ctrl+Space' "$HOME/environment
 grep -Fq 'ydotool with a persistent user service' "$HOME/environment.md" \
     || myconfig_fail "CachyOS inventory omitted ydotool"
 
+printf 'Curated inventory\n' >"$HOME/environment.md"
+write_environment_inventory
+[ "$(cat "$HOME/environment.md")" = 'Curated inventory' ] \
+    || myconfig_fail "Inventory generation overwrote an existing environment.md"
+
+rm "$HOME/environment.md"
 MYCONFIG_PROFILE=arch-wsl
 write_environment_inventory
-grep -Fq 'Unconfigured Neovim is retained as the shell editor' "$HOME/environment.md" \
-    || myconfig_fail "Arch WSL inventory omitted its fallback editor policy"
+grep -Fxq -- '- **Terminal tools**: Yazi, ripgrep, jq, and btop.' "$HOME/environment.md" \
+    || myconfig_fail "Arch WSL inventory still advertises removed terminal tools"
+grep -Fq 'This profile does not install an editor.' "$HOME/environment.md" \
+    || myconfig_fail "Arch WSL inventory still advertises an installed editor"
 if grep -Fq 'Axidev OSK' "$HOME/environment.md"; then
     myconfig_fail "Arch WSL inventory included Axidev OSK"
 fi

@@ -16,7 +16,7 @@ Run this after completing the CachyOS graphical installer:
 curl -fsSL https://raw.githubusercontent.com/inayayousfi/myconfig/main/bootstrap.sh | bash -s -- cachyos
 ```
 
-The CachyOS profile requires KDE Plasma 6.7 through 6.x and configures a Black & Pink clock island and application dock on every display. It installs a normal-process native Wayland Emacs workbench whose restorable workspaces contain splits, native buffers, terminals, Git review, and workspace-owned AIPanel coding-agent processes; closing the final frame stops the process and reopening starts fresh recorded jobs. The profile also restores the Fedora-era Black & Pink rEFInd theme, installs Axidev OSK, Kanata with an independent KDE tray, and Handy offline dictation with either-side `Ctrl+Shift` push-to-talk. Log out and back in so new input-device group memberships apply, then restart the selected login manager or reboot to activate login-screen startup.
+The CachyOS profile requires KDE Plasma 6.7 through 6.x and configures a Black & Pink clock island and application dock on every display. It installs a normal-process native Wayland Emacs workbench with restorable workspaces for splits, native buffers, terminals, and Git review. AIPanel coding-agent processes run in side windows attached to source buffers, outside saved workspace jobs. Closing the final frame stops Emacs, and reopening starts fresh recorded workspace jobs. The profile also restores the Fedora-era Black & Pink rEFInd theme, installs Axidev OSK, Kanata with an independent KDE tray, and Handy offline dictation with either-side `Ctrl+Shift` push-to-talk. Log out and back in so new input-device group memberships apply, then restart the selected login manager or reboot to activate login-screen startup.
 
 The final authentication step offers GitHub and Tailscale login. Declining either prompt prints the command for later.
 
@@ -40,7 +40,7 @@ If your environment blocks piping remote content into `iex`, fall back to:
 powershell -NoProfile -ExecutionPolicy Bypass -Command "& { $p = Join-Path $env:TEMP 'bootstrap.ps1'; Invoke-WebRequest 'https://raw.githubusercontent.com/inayayousfi/myconfig/main/bootstrap.ps1' -OutFile $p; Unblock-File $p; & $p }"
 ```
 
-After the first install, the bootstrap flow imports a self-signed code-signing certificate and sets PowerShell's `ExecutionPolicy` to `RemoteSigned` for the current user. Re-running `windows-workstation/install.ps1`, `nvim`, or the PowerShell profile script directly afterward no longer needs `-Bypass`, since those scripts are signed as part of each release.
+After the first install, the bootstrap flow imports a self-signed code-signing certificate and sets PowerShell's `ExecutionPolicy` to `RemoteSigned` for the current user. Re-running `windows-workstation/install.ps1` or the PowerShell profile script directly afterward no longer needs `-Bypass`, since those scripts are signed as part of each release.
 
 ### Interactive Mode (Auto-detect or Choose)
 
@@ -67,7 +67,6 @@ The [CachyOS VM harness](vm/README.md) installs the Desktop ISO interactively, p
 - **Repeatable**: Safe to rerun, with timestamped backups before replacement
 - **Modular**: Shared dotfiles with platform-specific additions
 - **Automated**: Installs all dependencies and tools
-- **Documented**: Full specifications in [SPECS.md](SPECS.md)
 - **Backed Up**: Automatically backs up existing configurations
 
 ## Uninstalling
@@ -78,10 +77,6 @@ Available uninstall scripts:
 ./ubuntu-server/uninstall.sh  # Ubuntu Server
 ./windows-workstation/uninstall.ps1  # Windows Workstation
 ```
-
-## Documentation
-
-See [SPECS.md](SPECS.md) for complete configuration specifications and details about all installed components.
 
 ## Requirements
 

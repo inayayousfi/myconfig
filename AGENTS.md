@@ -4,7 +4,7 @@
 
 This repository builds configuration environments for CachyOS, Arch WSL, Ubuntu Server, and Windows Workstation. The repository is the source of truth. Inspect the source here before changing a deployed configuration.
 
-The detailed specification is in `SPECS.md`. `README.md` gives the supported entry points and bootstrap commands. Read the relevant sections of those files when a task depends on a component's documented behavior.
+`README.md` gives the supported entry points and bootstrap commands.
 
 ## Source and deployed state
 
@@ -38,7 +38,7 @@ The top-level areas have different jobs:
 
 Linux profiles currently select these dotfile packages:
 
-- CachyOS: `zsh`, `yazi`, `ai`, `kanata`, `kanata-kde`, `handy`, `kde-plasma`, `emacs`, `phone`, and `pipewire`.
+- CachyOS: `zsh`, `yazi`, `ai`, `ghostty`, `kanata`, `kanata-kde`, `handy`, `kde-plasma`, `emacs`, `phone`, and `pipewire`.
 
 - Arch WSL: `zsh`, `yazi`, and `ai`.
 
@@ -63,6 +63,8 @@ After a Linux source change, inspect both the repository path and the deployed p
 ## Agent configuration
 
 The `ai` package owns the shared agent source, Claude configuration, and OpenCode configuration. On Linux, Stow deploys it through `~/.agents/`, `~/.claude/`, and `~/.config/opencode/`. OpenCode also needs the generated link at `~/.config/opencode/AGENTS.md`, which points to `~/.agents/AGENTS.md`.
+
+The `ai` package also ships `claude-config-helper`, a Python command shared by Linux and Windows. It trusts projects, lists or clears Claude's saved approvals, applies the MCP servers listed in `dotfiles/ai/.config/claude-config-helper/mcp-servers.json` through Claude's own commands, and checks tracked files for tokens, email addresses and home paths. Only trust and approval changes edit `~/.claude.json` directly.
 
 The installer creates the OpenCode link during the agent configuration step. Do not add another stored `AGENTS.md` under the OpenCode configuration. The only instruction source is `dotfiles/ai/.agents/AGENTS.md`.
 

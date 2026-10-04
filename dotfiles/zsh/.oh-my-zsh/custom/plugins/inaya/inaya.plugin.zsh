@@ -40,9 +40,6 @@ export VI_MODE_SET_CURSOR=true
 if $IS_LINUX && [ -z "$WSL_DISTRO_NAME" ] && has emacs; then
     export EDITOR="emacs"
     export VISUAL="emacs"
-elif has nvim; then
-    export EDITOR="nvim"
-    export VISUAL="nvim"
 elif has vim; then
     export EDITOR="vim"
     export VISUAL="vim"
@@ -77,17 +74,10 @@ alias gcb='git fetch --prune && git branch -vv | grep ": gone]" | awk "{print \$
 
 alias please='sudo'
 
-unalias gd 2>/dev/null || true
-
 # Tool aliases
 if [ "$EDITOR" = emacs ]; then
-    alias vim='emacs'
     alias vi='emacs'
     alias v='emacs'
-elif has nvim; then
-    alias vim='nvim'
-    alias vi='nvim'
-    alias v='nvim'
 fi
 
 if has bun; then
@@ -112,8 +102,19 @@ if has codex; then
 fi
 
 if has claude; then
-    alias cco='IS_DEMO=1 claude --dangerously-skip-permissions'
-    alias ccor='claude remote-control --permission-mode bypassPermissions'
+    unalias cco ccor 2>/dev/null
+    function cco {
+        "$HOME/.local/bin/claude-config-helper" trust || return
+        IS_DEMO=1 claude --dangerously-skip-permissions "$@"
+    }
+    function ccor {
+        if [[ "${PWD:A}" == "${HOME:A}" ]]; then
+            print -u2 -- "ccor: Claude cannot save trust for your home directory. Enter a project directory first."
+            return 1
+        fi
+        "$HOME/.local/bin/claude-config-helper" trust || return
+        claude remote-control --permission-mode bypassPermissions "$@"
+    }
 fi
 
 if has systemctl; then
@@ -172,8 +173,6 @@ if $IS_MACOS; then
             echo "Updating Claude Code..."
             claude update
             echo "Claude Code updated."
-        else
-            echo "claude not found, skipping Claude Code update."
         fi
     }
 
@@ -207,15 +206,10 @@ elif $IS_LINUX; then
             flatpak uninstall --unused -y || true
             echo "Flatpak apps updated."
             echo ""
-        else
-            echo "Flatpak not found, skipping Flatpak updates."
-            echo ""
         fi
 
         if command -v bun &>/dev/null; then
             if command -v paru &>/dev/null; then
-                echo "Bun is managed by paru/pacman; skipping 'bun upgrade' (already updated above)."
-                echo ""
             else
                 echo "Upgrading Bun runtime..."
                 bun upgrade
@@ -243,9 +237,6 @@ elif $IS_LINUX; then
             echo "Updating Claude Code..."
             claude update
             echo "Claude Code updated."
-            echo ""
-        else
-            echo "claude not found, skipping Claude Code update."
             echo ""
         fi
 

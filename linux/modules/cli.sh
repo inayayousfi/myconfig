@@ -2,6 +2,7 @@
 
 module_cli() {
     myconfig_log "Installing command-line tools"
+    remove_package_ids fd fzf zoxide eza bat hunk neovim lazygit tmux
     install_package_ids \
-        ripgrep fd fzf zoxide eza bat jq fastfetch btop tokei github_cli
+        ripgrep jq fastfetch btop tokei github_cli
 }

@@ -3,7 +3,7 @@
 module_agents_packages() {
     myconfig_log "Installing agent tools and browser dependencies"
     local packages=(
-        opencode fx_agent lsof at_spi2_core libxcomposite libxdamage libxrandr libxkbcommon
+        lsof at_spi2_core libxcomposite libxdamage libxrandr libxkbcommon
     )
 
     if [ "$MYCONFIG_PROFILE" = cachyos ]; then
@@ -73,7 +73,7 @@ link_agent_config() {
     [ -d "$skills_dir" ] || myconfig_fail "agent skills were not stowed"
     [ -f "$HOME/.agents/AGENTS.md" ] || myconfig_fail "global AGENTS.md was not stowed"
 
-    mkdir -p "$HOME/.claude/skills" "$HOME/.config/opencode" "$HOME/.fx"
+    mkdir -p "$HOME/.claude/skills" "$HOME/.config/opencode" "$HOME/.fx" "$HOME/.pi/agent"
 
     local linked_skill linked_target skill_dir skill opencode_agents fx_agents
     for linked_skill in "$HOME/.claude/skills"/*; do
@@ -105,9 +105,19 @@ link_agent_config() {
     [ -L "$fx_agents" ] \
         && [ "$(readlink "$fx_agents")" = "$HOME/.agents/AGENTS.md" ] \
         || myconfig_fail "fx AGENTS bridge was not created"
+
+    ln -sfnT "$HOME/.agents/AGENTS.md" "$HOME/.pi/agent/AGENTS.md"
+    [ "$(readlink -f "$HOME/.pi/agent/AGENTS.md")" = "$(readlink -f "$HOME/.agents/AGENTS.md")" ] \
+        || myconfig_fail "Pi AGENTS bridge was not created"
 }
 
 write_environment_inventory() {
+    # Agents maintain an existing inventory; only a new machine gets the template.
+    if [ -e "$HOME/environment.md" ]; then
+        myconfig_log "Keeping the existing environment inventory"
+        return 0
+    fi
+
     local platform
     case "$MYCONFIG_PROFILE" in
         cachyos) platform="CachyOS development workstation" ;;
@@ -125,8 +135,9 @@ This file describes the capabilities installed for the $platform.
 - **Shell**: Zsh with Oh My Zsh and the shared Black & Pink configuration.
 - **Runtimes**: Rust, Go, Bun, Node.js, Python, Java, LLVM, Make, and CMake.
 - **Repository tools**: Git, GitHub CLI, and GNU Stow.
-- **Terminal tools**: Yazi, ripgrep, fd, fzf, zoxide, eza, bat, jq, and btop.
-- **Agent tools**: OpenCode and Playwright MCP.
+- **Terminal tools**: Yazi, ripgrep, jq, and btop.
+- **Agent browser tools**: Playwright MCP. Claude Code and Pi are installed separately.
+- **Claude configuration**: \`claude-config-helper\` trusts projects, lists or clears saved approvals, applies the MCP servers listed in \`~/.config/claude-config-helper/mcp-servers.json\`, and checks files for tokens, email addresses and home paths.
 - **Remote access**: OpenSSH server and Tailscale service with optional login during setup.
 EOF
 
@@ -141,7 +152,7 @@ EOF
 EOF
     elif [ "$MYCONFIG_PROFILE" = arch-wsl ]; then
         cat >>"$HOME/environment.md" <<'EOF'
-- **Editor**: Unconfigured Neovim is retained as the shell editor; shared Neovim, tmux, Lazygit, and Hunk dotfiles are retired.
+- **Editor**: This profile does not install an editor. The shell uses an available Vim or Vi fallback; Neovim, tmux, Lazygit, and Hunk are removed.
 EOF
     fi
 
@@ -156,9 +167,15 @@ module_agents_configure() {
     export BUN_INSTALL="$HOME/.bun"
     export PATH="$HOME/.local/bin:$BUN_INSTALL/bin:$PATH"
 
-    opencode debug config >/dev/null
+    if command -v opencode >/dev/null 2>&1; then
+        opencode debug config >/dev/null
+    fi
     link_agent_config
     configure_fx_playwright_mcp
+    [ -x "$HOME/.local/bin/claude-config-helper" ] \
+        || myconfig_fail "claude-config-helper was not stowed as an executable"
+    "$HOME/.local/bin/claude-config-helper" mcp apply \
+        || myconfig_fail "Could not apply Claude MCP servers"
 
     if [ "$MYCONFIG_PROFILE" = cachyos ]; then
         require_command ydotool

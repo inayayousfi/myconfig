@@ -31,7 +31,9 @@
    `(cursor ((t (:background ,pink))))
    `(fringe ((t (:background ,black :foreground ,disabled))))
    `(region ((t (:background "#2a0016" :extend t))))
-   `(highlight ((t (:background ,raised))))
+    `(highlight ((t (:background ,raised))))
+    `(atelier-navigator-hover ((t (:background ,pink :foreground ,black :weight bold))))
+    `(atelier-navigator-current ((t (:background ,pink :weight bold :extend t))))
    `(hl-line ((t (:background ,raised :extend t))))
    `(minibuffer-prompt ((t (:foreground ,pink :weight bold))))
    `(link ((t (:foreground ,pink :underline t))))
@@ -115,7 +117,42 @@
   (setq blink-cursor-blinks 0
         ring-bell-function #'ignore
         use-dialog-box nil
-        visible-bell nil))
+        visible-bell nil)
+  (myconfig-mode-line-setup))
+
+(defun myconfig-mode-line-state ()
+  "Show terminal input state or the active Evil state, but not both."
+  (or (myconfig-terminal-mode-line-state) evil-mode-line-tag))
+
+(defun myconfig-mode-line-status ()
+  (cond (buffer-read-only "  RO") ((buffer-modified-p) "  *") (t "")))
+
+(defun myconfig-mode-line-position ()
+  (format "Ln %d  Col %d" (line-number-at-pos) (1+ (current-column))))
+
+(defun myconfig-mode-line-buffer-name ()
+  (atelier-clickable-label (format "%-12s" (buffer-name)) #'atelier-navigator
+                           nil 'mode-line-buffer-id
+                           "Open workbench navigator (SPC w)"))
+
+(defun myconfig-mode-line-setup ()
+  (setq evil-normal-state-tag (propertize " NORMAL " 'face 'myconfig-mode-line-state)
+        evil-insert-state-tag (propertize " INSERT " 'face 'myconfig-mode-line-state)
+        evil-visual-state-tag (propertize " VISUAL " 'face 'myconfig-mode-line-state)
+        evil-replace-state-tag (propertize " REPLACE " 'face 'myconfig-mode-line-state)
+        evil-operator-state-tag (propertize " OPERATOR " 'face 'myconfig-mode-line-state)
+        evil-motion-state-tag (propertize " MOTION " 'face 'myconfig-mode-line-state)
+        evil-emacs-state-tag (propertize " EMACS " 'face 'myconfig-mode-line-state)
+        evil-mode-line-format nil)
+  (setq-default mode-line-format
+                '("%e" (:eval (myconfig-mode-line-state))
+                  "  " (:eval (myconfig-mode-line-buffer-name))
+                  (:eval (myconfig-mode-line-status))
+                  mode-line-format-right-align
+                  (:eval (format "%s  " (if-let* ((workspace (atelier-current-workspace)))
+                                            (plist-get workspace :name)
+                                          "No workspace")))
+                  (:eval (myconfig-mode-line-position)) "  ")))
 
 (defun myconfig-frame-title ()
   (if (fboundp 'atelier-title)

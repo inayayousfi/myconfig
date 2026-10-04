@@ -1,0 +1,7 @@
+{
+  "playwright": {
+    "type": "stdio",
+    "command": "{home}/.bun/bin/playwright-mcp",
+    "args": ["--headless"]
+  }
+}

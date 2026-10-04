@@ -22,7 +22,6 @@
 (defvar atelier-choice-result nil)
 (defvar atelier-navigator-attach-source nil)
 (defvar atelier-inhibit-buffer-ownership nil)
-(defvar atelier-evil-mode-line-anchor nil)
 (defvar atelier-directory-chooser-mode nil)
 (defvar atelier-internal-buffers (make-hash-table :test #'eq :weakness 'key))
 (defconst atelier-navigator-buffer "*Atelier*")
@@ -33,13 +32,14 @@
 (defvar atelier-entry-types
   '((file :buffer-name "file" :buffer-p atelier-file-entry-buffer-p)
     (dired :buffer-name "dired" :buffer-p atelier-dired-entry-buffer-p)
-    (aipanel :buffer-name "aipanel" :buffer-p atelier-aipanel-entry-buffer-p)
-    (terminal :buffer-name "terminal" :buffer-p atelier-terminal-entry-buffer-p))
+    ;; Labels remain readable for saved jobs even without their runtime adapter.
+    (aipanel :buffer-name "aipanel")
+    (terminal :buffer-name "terminal")
+    (buffer :buffer-name "buffer"))
   "Registered workspace entry types and their shared behavior.")
 (defvar-local atelier-navigator-first-position nil)
 (defvar-local atelier-directory-chooser-original-header nil)
 (defvar-local atelier-directory-chooser-header-was-local nil)
-(defvar-local atelier-directory-chooser-original-modified nil)
 (defvar atelier-change-hook nil
   "Hook run after a completed mutation of Atelier's public state.")
 (defvar atelier-before-switch-workspace-hook nil
@@ -77,8 +77,9 @@
 ;; values identify workspace references, not buffers, so distinct entries may
 ;; reference the same live buffer.  Buffers carry no Atelier ownership
 ;; metadata.
-;; Content records belong to workspaces.  Leaves contain only ordered IDs and
-;; layout metadata; a content ID may be shared by several views in one workspace.
+;; A workspace owns stacks with stable identities and fixed content membership.
+;; Views select a stack and one of its contents independently.  The :contents
+;; list is the workspace's content-record index, not a second membership list.
 ;; The cache is disposable and keyed by (workspace-id . content-id).
 (defvar atelier-content-live-buffers (make-hash-table :test #'equal))
 (defvar atelier-model-workspace nil
@@ -117,7 +118,11 @@
 (defun atelier-entry-ensure-content (entry workspace)
   "Move an inline leaf and its inactive stack into WORKSPACE's content records.
 Transfer disposable buffers from legacy entry/content keys before dropping them."
-  (unless (atelier-layout-entry-p entry)
+  (unless (or (atelier-layout-entry-p entry)
+              (plist-get entry :stack-reference)
+              (plist-get entry :unassigned)
+              (and (or (plist-get entry :stack-id) (plist-get entry :content-id))
+                   (not (plist-get entry :kind))))
     (let* ((entry-id (plist-get entry :id))
            (stack (plist-get entry :stack))
            (new-ids nil))
@@ -155,10 +160,128 @@ Transfer disposable buffers from legacy entry/content keys before dropping them.
                      atelier-content-live-buffers))
           (remhash (cons entry-id old-id) atelier-content-live-buffers)))
       (when new-ids
+        (setq new-ids (nreverse new-ids))
+        (atelier-plist-set! workspace :contents
+                            (append (mapcar (lambda (id) (atelier-workspace-content workspace id)) new-ids)
+                                    (cl-remove-if (lambda (content)
+                                                    (member (plist-get content :id) new-ids))
+                                                  (plist-get workspace :contents))))
         (atelier-plist-set! entry :content-ids
-                           (append (plist-get entry :content-ids) (nreverse new-ids))))
-      (atelier-plist-remove! entry :stack)))
+                            (append (plist-get entry :content-ids) new-ids))
+        (dolist (stack (plist-get workspace :stacks))
+          (atelier-plist-set! stack :content-ids
+                              (cl-loop for content in (plist-get workspace :contents)
+                                       when (equal (plist-get content :stack-id) (plist-get stack :id))
+                                       collect (plist-get content :id)))))
+      (atelier-plist-remove! entry :stack)
+      (unless (plist-get entry :content-id)
+        (atelier-plist-set! entry :content-id (car (plist-get entry :content-ids))))
+      (atelier-plist-remove! entry :content-ids)))
+  (atelier-workspace-ensure-stacks workspace)
+  (when-let* ((content (atelier-workspace-content workspace (plist-get entry :content-id))))
+    (atelier-plist-set! entry :stack-id (plist-get content :stack-id)))
+  (puthash entry workspace atelier-entry-owners)
   entry)
+
+(defun atelier-content-default-type (content)
+  "Classify legacy untyped content; BUFFER is the ordinary fallback type."
+  (or (plist-get content :type)
+      (pcase (plist-get content :kind)
+        ('file 'file) ('directory 'dired) ('terminal 'terminal) (_ 'buffer))))
+
+(defun atelier-workspace-stack-record (workspace stack-id)
+  "Return WORKSPACE's stack with STACK-ID."
+  (cl-find stack-id (plist-get workspace :stacks) :key (lambda (stack) (plist-get stack :id))
+           :test #'equal))
+
+(defun atelier-workspace-ensure-stacks (workspace)
+  "Normalize legacy workspace contents into explicit typed stacks once."
+  (unless (plist-member workspace :stacks)
+    (atelier-plist-set! workspace :stacks nil)
+    (dolist (content (plist-get workspace :contents))
+      (let* ((type (atelier-content-default-type content))
+             (stack (or (cl-find type (plist-get workspace :stacks)
+                                 :key (lambda (item) (plist-get item :type)))
+                        (let ((new (list :id (atelier-new-entry-id) :type type :content-ids nil)))
+                          (atelier-plist-set! workspace :stacks
+                                              (append (plist-get workspace :stacks) (list new)))
+                          new))))
+        (atelier-plist-set! content :type type)
+        (atelier-plist-set! content :stack-id (plist-get stack :id))
+        (atelier-plist-set! stack :content-ids
+                            (append (plist-get stack :content-ids) (list (plist-get content :id)))))))
+  workspace)
+
+(defun atelier-workspace-stack (workspace type)
+  "Return WORKSPACE's content records of TYPE, newest first."
+  (atelier-workspace-ensure-stacks workspace)
+  (when-let* ((stack (cl-find (or type 'buffer) (plist-get workspace :stacks)
+                            :key (lambda (item) (plist-get item :type)))))
+    (mapcar (lambda (id) (atelier-workspace-content workspace id))
+            (plist-get stack :content-ids))))
+
+(defun atelier-validate-workspace-stacks (workspace)
+  "Enforce typed stacks, exclusive buffer membership and valid view assignments."
+  (let (stack-ids types members)
+    (dolist (stack (plist-get workspace :stacks))
+      (let ((id (plist-get stack :id)) (type (plist-get stack :type)))
+        (unless (and (stringp id) (not (string-empty-p id)) (not (member id stack-ids))
+                     type (assq type atelier-entry-types))
+          (error "Invalid stack identity or type"))
+        (when (and (not (atelier-detached-workspace-p workspace)) (memq type types))
+          (error "Workspace has more than one stack of type %s" type))
+        (push id stack-ids)
+        (push type types)
+        (dolist (content-id (plist-get stack :content-ids))
+          (let ((content (atelier-workspace-content workspace content-id)))
+            (unless (and content (not (member content-id members))
+                         (eq type (plist-get content :type))
+                         (equal id (plist-get content :stack-id)))
+              (error "Invalid or duplicate buffer membership in stack %s" id))
+            (push content-id members)))))
+    (dolist (content (plist-get workspace :contents))
+      (unless (member (plist-get content :id) members)
+        (error "Buffer %s has no stack" (plist-get content :id))))
+    (dolist (view (atelier-workspace-view-entries workspace))
+      (if (plist-get view :unassigned)
+          (when (or (plist-get view :stack-id) (plist-get view :content-id))
+            (error "Unassigned view still references a stack or buffer"))
+        (let ((stack (atelier-workspace-stack-record workspace (plist-get view :stack-id))))
+          (unless (and stack (if (plist-get stack :content-ids)
+                                (member (plist-get view :content-id) (plist-get stack :content-ids))
+                              (not (plist-get view :content-id))))
+            (error "View selects a buffer outside its assigned stack")))))
+    t))
+
+(defun atelier-content-reference (workspace content)
+  "Return a transient handle for workspace CONTENT, not a stored view."
+  (let ((entry (list :id (plist-get content :id) :content-id (plist-get content :id)
+                     :stack-id (plist-get content :stack-id) :content-reference t)))
+    (puthash entry workspace atelier-entry-owners)
+    entry))
+
+(defun atelier-validate-stack-identities (workspaces)
+  "Require each stack identity to have exactly one owner or Detached location."
+  (let ((seen (make-hash-table :test #'equal)))
+    (dolist (workspace workspaces)
+      (dolist (stack (plist-get workspace :stacks))
+        (let ((id (plist-get stack :id)))
+          (when (gethash id seen) (error "Stack %s has more than one owner" id))
+          (puthash id t seen))))
+    t))
+
+(defun atelier-stack-reference (workspace stack)
+  "Return a navigator handle for STACK, including an empty stack."
+  (let ((entry (list :id (plist-get stack :id) :stack-id (plist-get stack :id)
+                     :content-id (car (plist-get stack :content-ids))
+                     :content-reference t :stack-reference t)))
+    (puthash entry workspace atelier-entry-owners)
+    entry))
+
+(defun atelier-entry-content-ids (entry &optional workspace)
+  "Return ENTRY's selected content followed by its workspace stack."
+  (mapcar (lambda (content) (plist-get content :id))
+          (atelier-entry-stack entry workspace)))
 
 (defun atelier-workspace-content (workspace id)
   (cl-find id (plist-get workspace :contents)
@@ -169,12 +292,18 @@ Transfer disposable buffers from legacy entry/content keys before dropping them.
   (unless (atelier-layout-entry-p entry)
     (let ((workspace (or workspace (atelier-entry-owner entry))))
       (atelier-entry-ensure-content entry workspace)
-      (atelier-workspace-content workspace (car (plist-get entry :content-ids))))))
+      (atelier-workspace-content workspace (plist-get entry :content-id)))))
 
 (defun atelier-entry-value (entry property &optional workspace)
   "Read PROPERTY from ENTRY's active content (layout properties stay on ENTRY)."
-  (plist-get (if (atelier-layout-entry-p entry) entry
-               (atelier-entry-content entry workspace)) property))
+  (or (plist-get (if (atelier-layout-entry-p entry) entry
+                    (atelier-entry-content entry workspace)) property)
+      (when (plist-get entry :stack-reference)
+        (let ((stack (atelier-workspace-stack-record (or workspace (atelier-entry-owner entry))
+                                                     (plist-get entry :stack-id))))
+          (pcase property
+            (:type (plist-get stack :type))
+            (:name (format "%s stack (empty)" (plist-get stack :type))))))))
 
 (defun atelier-entry-set-value (entry property value &optional workspace)
   "Set PROPERTY on ENTRY's active content, preserving record identity."
@@ -182,16 +311,20 @@ Transfer disposable buffers from legacy entry/content keys before dropping them.
     (error "Not a content property: %S" property))
   (let ((content (atelier-entry-content entry workspace)))
     (unless content (error "Entry has no active content"))
+    (when (and (eq property :type) (not (eq value (plist-get content :type))))
+      (error "Buffer stack type cannot change"))
     (atelier-plist-set! content property value)))
 
 (defun atelier-entry-stack (entry &optional workspace)
-  "Return ENTRY's ordered content records, active first; records are mutable."
+  "Return the workspace stack selected by ENTRY, its selected content first."
   (unless (atelier-layout-entry-p entry)
     (let ((workspace (or workspace (atelier-entry-owner entry))))
       (atelier-entry-ensure-content entry workspace)
-      (mapcar (lambda (id) (or (atelier-workspace-content workspace id)
-                               (error "Missing content %s" id)))
-              (plist-get entry :content-ids)))))
+      (when-let* ((active (atelier-entry-content entry workspace)))
+        (let ((stack (atelier-workspace-stack-record workspace (plist-get entry :stack-id))))
+          (cons active (cl-loop for id in (plist-get stack :content-ids)
+                               for content = (atelier-workspace-content workspace id)
+                               unless (eq active content) collect content)))))))
 
 (defun atelier-content-new-id ()
   (format "content-%s" (atelier-new-entry-id)))
@@ -201,6 +334,7 @@ Transfer disposable buffers from legacy entry/content keys before dropping them.
 
 (defun atelier-workspace-store-content (workspace content)
   "Store CONTENT in WORKSPACE, returning its ID; copy on ID collision."
+  (atelier-workspace-ensure-stacks workspace)
   (let* ((copy (copy-tree content))
          (id (or (plist-get copy :id) (plist-get copy :content-id)
                  (atelier-content-new-id))))
@@ -208,98 +342,144 @@ Transfer disposable buffers from legacy entry/content keys before dropping them.
       (setq id (atelier-content-new-id)))
     (cl-remf copy :content-id)
     (atelier-plist-set! copy :id id)
+    (let* ((type (atelier-content-default-type copy))
+           (stack (or (atelier-workspace-stack-record workspace (plist-get copy :stack-id))
+                      (cl-find type (plist-get workspace :stacks)
+                               :key (lambda (item) (plist-get item :type)))
+                      (let ((new (list :id (atelier-new-entry-id) :type type :content-ids nil)))
+                        (atelier-plist-set! workspace :stacks
+                                            (cons new (plist-get workspace :stacks)))
+                        new))))
+      (unless (eq type (plist-get stack :type)) (error "Content type differs from stack type"))
+      (atelier-plist-set! copy :type type)
+      (atelier-plist-set! copy :stack-id (plist-get stack :id))
+      (atelier-plist-set! stack :content-ids (cons id (plist-get stack :content-ids))))
     (atelier-plist-set! workspace :contents
-                       (append (plist-get workspace :contents) (list copy)))
+                        (cons copy (plist-get workspace :contents)))
     id))
 
 (defun atelier-entry-replace-content (entry content)
   "Replace ENTRY's active content in its owning workspace."
   (let* ((workspace (atelier-entry-owner entry))
-         (old (car (plist-get entry :content-ids)))
+          (old (plist-get entry :content-id))
          (id (atelier-workspace-store-content workspace content)))
-    (atelier-plist-set! entry :content-ids
-                       (cons id (cdr (plist-get entry :content-ids))))
-    (unless (cl-some (lambda (leaf) (member old (plist-get leaf :content-ids)))
-                     (atelier-workspace-entries workspace))
+    (atelier-plist-set! entry :content-id id)
+    (atelier-plist-set! entry :stack-id (plist-get (atelier-workspace-content workspace id) :stack-id))
+    (unless (cl-some (lambda (leaf) (equal old (plist-get leaf :content-id)))
+                      (atelier-workspace-view-entries workspace))
       (atelier-workspace-drop-content workspace old))
     entry))
 
+(defun atelier-workspace-prune-empty-stacks (workspace)
+  "Delete empty stacks and their views from WORKSPACE."
+  (let* ((empty (cl-remove-if (lambda (stack) (plist-get stack :content-ids))
+                              (plist-get workspace :stacks)))
+         (ids (mapcar (lambda (stack) (plist-get stack :id)) empty))
+         (atelier-inhibit-entry-removed-hook t))
+    (when empty
+      (dolist (view (copy-sequence (atelier-workspace-view-entries workspace)))
+        (when (member (plist-get view :stack-id) ids)
+          (atelier-entry-remove workspace view t)))
+      (atelier-plist-set! workspace :stacks
+                          (cl-set-difference (plist-get workspace :stacks) empty :test #'eq))))
+  workspace)
+
 (defun atelier-workspace-drop-content (workspace id)
   (when id
+    (when-let* ((content (atelier-workspace-content workspace id))
+                (stack (atelier-workspace-stack-record workspace (plist-get content :stack-id))))
+      (atelier-plist-set! stack :content-ids (delete id (copy-sequence (plist-get stack :content-ids)))))
+    (let* ((content (atelier-workspace-content workspace id))
+           (replacement (cl-find-if
+                         (lambda (other)
+                           (and (not (equal id (plist-get other :id)))
+                                 (equal (plist-get content :stack-id) (plist-get other :stack-id))))
+                         (plist-get workspace :contents))))
+      (dolist (view (copy-sequence (atelier-workspace-view-entries workspace)))
+        (when (equal id (plist-get view :content-id))
+          (if replacement
+              (atelier-plist-set! view :content-id (plist-get replacement :id))
+            (atelier-entry-remove workspace view t)))))
     (atelier-plist-set! workspace :contents
                        (cl-remove id (plist-get workspace :contents)
                                   :key (lambda (content) (plist-get content :id))
                                   :test #'equal))
     (remhash (atelier-content-cache-key workspace id)
-             atelier-content-live-buffers)))
+             atelier-content-live-buffers)
+    (atelier-workspace-prune-empty-stacks workspace)))
+
+(defun atelier-entry-prune-contents (workspace entry predicate)
+  "Remove contents matching PREDICATE, dropping ENTRY only when it is empty.
+PREDICATE receives each content record.  Other views retain shared records."
+  (let* ((contents (atelier-entry-stack entry workspace))
+         (removed (cl-remove-if-not predicate contents))
+          (ids (mapcar (lambda (content) (plist-get content :id)) removed)))
+    (when removed
+      (dolist (id ids)
+        (atelier-workspace-drop-content workspace id)))
+    (and removed t)))
 
 (defun atelier-entry-push-content (entry content &optional buffer)
-  "Put CONTENT first in ENTRY's stack; jobs cannot be stacked."
-  (when (or (atelier-layout-entry-p entry) (atelier-entry-job entry)
-            (plist-get content :job)
-            (memq (atelier-entry-value entry :type) '(terminal aipanel))
-            (memq (plist-get content :type) '(terminal aipanel)))
-    (error "Only ordinary content may be stacked; jobs own their entry"))
-  (when (and (plist-member content :type)
-             (not (eq (atelier-entry-value entry :type) (plist-get content :type))))
-    (error "A content stack may contain only one entry type"))
+  "Add CONTENT to its workspace type stack and select it in ENTRY."
+  (when (atelier-layout-entry-p entry) (error "A layout cannot select content"))
   (let* ((workspace (atelier-entry-owner entry))
          (id (atelier-workspace-store-content workspace content)))
-    (atelier-plist-set! entry :content-ids (cons id (plist-get entry :content-ids)))
+    (atelier-plist-set! entry :content-id id)
+    (atelier-plist-set! entry :stack-id (plist-get (atelier-workspace-content workspace id) :stack-id))
     (atelier-entry-set-live-buffer entry buffer)
     entry))
 
-(defun atelier-entry-absorb-unplaced (workspace target source)
-  "Move SOURCE's content IDs into TARGET without discarding live buffers.
-SOURCE must be an unplaced root of the same ordinary type.  Callers must
-keep entries referenced by external attachments separate."
-  (unless (and (not (eq source target))
-               (memq source (atelier-workspace-top-level-entries workspace))
-               (not (plist-get source :displayed))
-               (not (atelier-entry-job source))
-               (not (atelier-entry-job target))
-               (eq (atelier-entry-value source :type workspace)
-                   (atelier-entry-value target :type workspace))
-               (not (memq (atelier-entry-value source :type workspace)
-                          '(terminal aipanel))))
-    (error "Cannot absorb this workspace entry"))
-  (atelier-entry-stack source workspace)
-  (atelier-entry-stack target workspace)
-  (atelier-plist-set! target :content-ids
-                     (append (plist-get target :content-ids)
-                             (cl-remove-if
-                              (lambda (id) (member id (plist-get target :content-ids)))
-                              (plist-get source :content-ids))))
-  (atelier-entry-remove workspace source t)
-  target)
-
 (defun atelier-entry-activate-content (entry content-id)
-  "Rotate ENTRY so CONTENT-ID becomes active without changing its view identity."
-  (let* ((ids (plist-get entry :content-ids))
-         (index (cl-position content-id ids :test #'equal)))
-    (when (and index (> index 0))
-      (atelier-plist-set! entry :content-ids
-                         (append (nthcdr index ids) (cl-subseq ids 0 index)))
-      entry)))
+  "Select CONTENT-ID in ENTRY without changing another view or stack order."
+  (unless (atelier-workspace-content (atelier-entry-owner entry) content-id)
+    (error "Missing content %s" content-id))
+  (atelier-plist-set! entry :content-id content-id)
+  (atelier-plist-remove! entry :unassigned)
+  (atelier-plist-set! entry :stack-id
+                      (plist-get (atelier-workspace-content (atelier-entry-owner entry) content-id) :stack-id))
+  entry)
+
+(defun atelier-view-unassign-stack (workspace view)
+  "Detach VIEW from its stack without changing that stack or any buffer."
+  (unless (memq view (atelier-workspace-view-entries workspace))
+    (user-error "Select a view to unassign its stack"))
+  (atelier-plist-remove! view :stack-id)
+  (atelier-plist-remove! view :content-id)
+  (atelier-plist-set! view :unassigned t)
+  view)
+
+(defun atelier-view-assign-stack (workspace view stack-id &optional content-id)
+  "Assign WORKSPACE's STACK-ID to VIEW without moving or creating any buffer."
+  (let* ((stack (or (atelier-workspace-stack-record workspace stack-id)
+                    (user-error "Stack no longer exists")))
+         (selected (or content-id (car (plist-get stack :content-ids)))))
+    (unless (or (and (not selected) (not (plist-get stack :content-ids)))
+                (member selected (plist-get stack :content-ids)))
+      (user-error "Buffer is not a member of this stack"))
+    (atelier-plist-remove! view :unassigned)
+    (atelier-plist-set! view :stack-id stack-id)
+    (atelier-plist-set! view :content-id selected)
+    view))
 
 (defun atelier-entry-activate-buffer (entry buffer)
   "Activate ENTRY's content corresponding to BUFFER, if inactive."
   (let ((workspace (atelier-entry-owner entry)))
-    (cl-loop for id in (cdr (plist-get entry :content-ids))
+    (cl-loop for id in (atelier-entry-content-ids entry workspace)
              when (eq buffer (gethash (atelier-content-cache-key workspace id)
                                       atelier-content-live-buffers))
              return (atelier-entry-activate-content entry id))))
 
 (defun atelier-entry-pop-content (entry)
   "Remove active content and reveal the next one; return removed record."
-  (when (cdr (plist-get entry :content-ids))
+  (when (cdr (atelier-entry-stack entry))
     (let* ((workspace (atelier-entry-owner entry))
            (removed (atelier-entry-content entry workspace))
-           (id (car (plist-get entry :content-ids))))
-      (atelier-plist-set! entry :content-ids (cdr (plist-get entry :content-ids)))
-      (unless (cl-some (lambda (leaf) (member id (plist-get leaf :content-ids)))
-                       (atelier-workspace-entries workspace))
-        (atelier-workspace-drop-content workspace id))
+            (id (plist-get entry :content-id)))
+      (atelier-workspace-drop-content workspace id)
+      (when (plist-get entry :content-reference)
+        (atelier-plist-set! entry :content-id
+                            (plist-get (car (atelier-workspace-stack workspace
+                                                                   (plist-get removed :type))) :id)))
       removed)))
 
 (defun atelier-plist-set! (plist property value)
@@ -348,6 +528,16 @@ Unlike `plist-put', this always preserves PLIST's cons identity."
   "Return ordinary workspaces, excluding the reserved Detached workspace."
   (cl-remove-if #'atelier-detached-workspace-p atelier-workspaces))
 
+(defun atelier-workspace-successor (workspace &optional first)
+  "Choose another workspace; FIRST uses registry order rather than running first."
+  (let ((others (cl-remove-if
+                 (lambda (candidate)
+                   (equal (atelier-workspace-id candidate) (atelier-workspace-id workspace)))
+                 atelier-workspaces)))
+    (or (and (not first)
+             (cl-find-if (lambda (candidate) (eq (atelier-workspace-status candidate) 'running)) others))
+        (car others))))
+
 (defun atelier-ensure-detached-workspace ()
   "Return the canonical reserved Detached workspace, creating it if needed."
   (let ((workspace (atelier-detached-workspace)))
@@ -382,7 +572,10 @@ Unlike `plist-put', this always preserves PLIST's cons identity."
 (defun atelier-current-workspace-id (&optional frame)
   "Return the workspace ID selected by FRAME.
 Frames without an explicit selection belong to the reserved Detached workspace."
-  (or (frame-parameter (or frame (selected-frame)) 'atelier-workspace-id)
+  (or (and (bound-and-true-p atelier-operation-current)
+           (alist-get (or frame (selected-frame))
+                      (atelier-operation-frames atelier-operation-current)))
+      (frame-parameter (or frame (selected-frame)) 'atelier-workspace-id)
       atelier-detached-workspace-id))
 
 (defun atelier-current-workspace (&optional frame)
@@ -407,8 +600,11 @@ context.  A frame points at a workspace; buffers carry no workspace owner."
   "Make WORKSPACE the context of FRAME and return WORKSPACE.
 Nil selects the reserved Detached workspace."
   (setq workspace (or workspace (atelier-ensure-detached-workspace)))
-  (set-frame-parameter (or frame (selected-frame)) 'atelier-workspace-id
-                       (atelier-workspace-id workspace))
+  (if (bound-and-true-p atelier-operation-current)
+      (atelier-operation-select-frame (atelier-workspace-id workspace)
+                                      (or frame (selected-frame)))
+    (set-frame-parameter (or frame (selected-frame)) 'atelier-workspace-id
+                         (atelier-workspace-id workspace)))
   workspace)
 
 (defun atelier-workspace-status (workspace)
@@ -438,15 +634,25 @@ Nil selects the reserved Detached workspace."
   "Return the entries directly owned by WORKSPACE."
   (plist-get workspace :entries))
 
-(defun atelier-workspace-entries (workspace)
-  "Return all basic entries recursively owned by WORKSPACE."
+(defun atelier-workspace-view-entries (workspace)
+  "Return WORKSPACE's stored views, including undisplayed views."
   (cl-mapcan #'atelier-entry-leaves
-             (atelier-workspace-top-level-entries workspace)))
+              (atelier-workspace-top-level-entries workspace)))
+
+(defun atelier-workspace-entries (workspace)
+  "Return views and one reference for each otherwise undisplayed type stack."
+  (let* ((views (atelier-workspace-view-entries workspace))
+         (_ (dolist (view views) (atelier-entry-ensure-content view workspace)))
+         (assigned (mapcar (lambda (view) (plist-get view :stack-id)) views)))
+    (append views
+            (cl-loop for stack in (plist-get workspace :stacks)
+                     unless (member (plist-get stack :id) assigned)
+                     collect (atelier-stack-reference workspace stack)))))
 
 (defun atelier-workspace-refresh-parent-ids (workspace)
   "Rebuild runtime parent-ID links throughout WORKSPACE's entry trees."
   (cl-labels ((visit (entry parent-id)
-                (setf (plist-get entry :parent-id) parent-id)
+                 (atelier-plist-set! entry :parent-id parent-id)
                 (dolist (child (atelier-entry-children entry))
                   (visit child (plist-get entry :id)))))
     (dolist (root (atelier-workspace-top-level-entries workspace)
@@ -484,9 +690,10 @@ BUFFER-P receives a live buffer and identifies automatic registrations of TYPE."
 
 (defun atelier-workspace-buffer-by-type (workspace type)
   "Return the newest live buffer of TYPE in WORKSPACE."
-  (cl-loop for entry in (reverse (atelier-workspace-entries workspace))
-           when (eq (atelier-entry-value entry :type workspace) type)
-           thereis (atelier-entry-live-buffer entry)))
+  (cl-loop for content in (atelier-workspace-stack workspace type)
+           for buffer = (gethash (atelier-content-cache-key workspace (plist-get content :id))
+                                atelier-content-live-buffers)
+           when (buffer-live-p buffer) return buffer))
 
 (defun atelier-workspace-displayed-entry (workspace)
   "Return WORKSPACE's top-level entry that describes its visible layout."
@@ -506,8 +713,12 @@ BUFFER-P receives a live buffer and identifies automatic registrations of TYPE."
              thereis (atelier-entry-find child id))))
 
 (defun atelier-entry-by-id (workspace id)
-  (cl-loop for entry in (atelier-workspace-top-level-entries workspace)
-           thereis (atelier-entry-find entry id)))
+  (or (cl-loop for entry in (atelier-workspace-top-level-entries workspace)
+               thereis (atelier-entry-find entry id))
+      (when-let* ((stack (atelier-workspace-stack-record workspace id)))
+        (atelier-stack-reference workspace stack))
+      (when-let* ((content (atelier-workspace-content workspace id)))
+        (atelier-content-reference workspace content))))
 
 (defun atelier-workspace-entry-root (workspace entry-or-id)
   "Return the root under WORKSPACE that contains ENTRY-OR-ID.
@@ -534,7 +745,7 @@ separate entry kind."
     (let* ((workspace (or atelier-model-workspace (gethash entry atelier-entry-owners)
                           (atelier-entry-workspace entry)))
            (_ (when workspace (atelier-entry-ensure-content entry workspace)))
-           (id (car (plist-get entry :content-ids)))
+          (id (plist-get entry :content-id))
            (buffer (gethash (if workspace
                                 (atelier-content-cache-key workspace id)
                               (cons :unowned (plist-get entry :id)))
@@ -543,10 +754,14 @@ separate entry kind."
 
 (defun atelier-entry-set-live-buffer (entry buffer)
   "Cache BUFFER by content ID, deferring isolated entries until given an owner."
+  (when (and (bound-and-true-p atelier-operation-current)
+             (buffer-live-p buffer)
+             (not (memq buffer (atelier-operation-buffers atelier-operation-current))))
+    (atelier-operation-track-buffer buffer))
   (let* ((workspace (or atelier-model-workspace (gethash entry atelier-entry-owners)
                           (atelier-entry-workspace entry)))
          (_ (when workspace (atelier-entry-ensure-content entry workspace)))
-         (id (car (plist-get entry :content-ids)))
+          (id (plist-get entry :content-id))
          (key (if workspace
                   (progn (unless id (error "Entry has no active content ID"))
                          (atelier-content-cache-key workspace id))
@@ -556,7 +771,7 @@ separate entry kind."
       (unless (and workspace
                    (cl-some (lambda (other)
                               (and (not (eq other entry))
-                                   (member id (plist-get other :content-ids))))
+                                    (equal id (plist-get other :content-id))))
                             (atelier-workspace-entries workspace)))
         (remhash key atelier-content-live-buffers)))
     buffer))
@@ -567,15 +782,15 @@ separate entry kind."
     (cl-some (lambda (id)
                (eq buffer (gethash (atelier-content-cache-key workspace id)
                                    atelier-content-live-buffers)))
-             (cdr (plist-get entry :content-ids)))))
+              (cdr (atelier-entry-content-ids entry workspace)))))
 
 (defun atelier-buffer-referenced-p (buffer)
-  "Return non-nil when any entry still owns BUFFER, active or inactive."
+  "Return non-nil when any workspace stack owns BUFFER."
   (cl-some (lambda (workspace)
-             (cl-some (lambda (entry)
-                        (or (eq buffer (atelier-entry-live-buffer entry))
-                            (atelier-entry-inactive-buffer-p entry buffer)))
-                      (atelier-workspace-entries workspace)))
+              (cl-some (lambda (content)
+                         (eq buffer (gethash (atelier-content-cache-key workspace (plist-get content :id))
+                                            atelier-content-live-buffers)))
+                       (plist-get workspace :contents)))
            atelier-workspaces))
 
 (defun atelier-entries-for-buffer (buffer)
@@ -600,8 +815,8 @@ separate entry kind."
     (atelier-workspace-refresh-parent-ids workspace)
     (atelier-workspace-index-entries workspace)
     (unless no-notify
-      (run-hook-with-args 'atelier-entry-added-hook workspace entry)
-      (run-hooks 'atelier-change-hook)))
+      (atelier-operation-notify 'atelier-entry-added-hook workspace entry)
+      (atelier-operation-notify 'atelier-change-hook)))
   entry)
 
 (defun atelier-entry-with-display-state (entry displayed)
@@ -627,7 +842,7 @@ separate entry kind."
            tree))))))
 
 (defun atelier-entry-remove (workspace entry &optional no-notify)
-  "Remove ENTRY from WORKSPACE's recursive ownership tree."
+  "Remove a view, or close content when ENTRY is a workspace content reference."
   (let ((id (plist-get entry :id)))
     (atelier-plist-set!
      workspace :entries
@@ -635,51 +850,71 @@ separate entry kind."
            (mapcar (lambda (tree) (atelier-entry-remove-from-tree tree id))
                    (atelier-workspace-top-level-entries workspace))))
     (atelier-workspace-refresh-parent-ids workspace)
-    (dolist (leaf (atelier-entry-leaves entry))
-      (dolist (content-id (plist-get leaf :content-ids))
-        (unless (cl-some (lambda (remaining)
-                           (member content-id (plist-get remaining :content-ids)))
-                         (atelier-workspace-entries workspace))
-          (atelier-workspace-drop-content workspace content-id)))))
+    (when (plist-get entry :content-reference)
+      (atelier-workspace-drop-content workspace (plist-get entry :content-id))))
   (unless atelier-inhibit-entry-removed-hook
-    (run-hook-with-args 'atelier-entry-removed-hook workspace entry))
+    (atelier-operation-notify 'atelier-entry-removed-hook workspace entry))
   (unless no-notify
-    (run-hooks 'atelier-change-hook))
+    (atelier-operation-notify 'atelier-change-hook))
   entry)
 
-(defun atelier-entry-move (entry old-workspace new-workspace)
-  "Move ENTRY and its content records to NEW-WORKSPACE atomically."
+(defun atelier-check-entry-move (entry old-workspace new-workspace)
+  "Require an unassigned whole stack and an available destination type slot."
   (unless (eq old-workspace new-workspace)
-    (let ((moved (make-hash-table :test #'equal)) buffers replacements)
-      ;; Copy while the old IDs still belong to ENTRY.  Removal must see those
-      ;; IDs so it can drop unreferenced old records and cache entries.
-      (dolist (leaf (atelier-entry-leaves entry))
-        (atelier-entry-ensure-content leaf old-workspace)
-        (let (new-ids)
-          (dolist (id (plist-get leaf :content-ids))
-            (let* ((content (atelier-workspace-content old-workspace id))
-                   (buffer (gethash (atelier-content-cache-key old-workspace id)
-                                    atelier-content-live-buffers))
-                   (new-id (or (gethash id moved)
-                               (let ((created (atelier-workspace-store-content
-                                               new-workspace content)))
-                                 (puthash id created moved)
-                                 created))))
-              (push new-id new-ids)
-              (when (buffer-live-p buffer) (push (cons new-id buffer) buffers))))
-          (push (cons leaf (nreverse new-ids)) replacements)))
-      (let ((atelier-inhibit-entry-removed-hook t))
-        (atelier-entry-remove old-workspace entry t))
-      (dolist (pair replacements)
-        (atelier-plist-set! (car pair) :content-ids (cdr pair)))
-      (atelier-plist-clear! entry :displayed)
-      (atelier-plist-clear! entry :selected)
-      (atelier-entry-add new-workspace entry t)
-      (dolist (pair buffers)
-        (puthash (atelier-content-cache-key new-workspace (car pair))
-                 (cdr pair) atelier-content-live-buffers)))
-    (run-hook-with-args 'atelier-entry-moved-hook entry old-workspace new-workspace)
-    (run-hooks 'atelier-change-hook))
+    (atelier-workspace-entries old-workspace)
+    (atelier-workspace-ensure-stacks new-workspace)
+    (let* ((stack-id (plist-get entry :stack-id))
+           (stack (atelier-workspace-stack-record old-workspace stack-id)))
+      (unless stack (user-error "Stack no longer exists"))
+      (when (cl-some (lambda (view) (equal stack-id (plist-get view :stack-id)))
+                     (atelier-workspace-view-entries old-workspace))
+        (user-error "Detach this stack from every view in %s first; nothing was moved"
+                    (plist-get old-workspace :name)))
+      (unless (or (atelier-detached-workspace-p old-workspace)
+                  (atelier-detached-workspace-p new-workspace))
+        (user-error "Detach this stack from its workspace before attaching it elsewhere"))
+      (when (and (not (atelier-detached-workspace-p new-workspace))
+                 (cl-find (plist-get stack :type) (plist-get new-workspace :stacks)
+                          :key (lambda (other) (plist-get other :type))))
+        (user-error "Workspace %s already owns a %s stack; buffers cannot move between stacks"
+                    (plist-get new-workspace :name) (plist-get stack :type))))))
+
+(defun atelier-entry-move (entry old-workspace new-workspace)
+  "Prepare a checked move using stable workspace and entry IDs."
+  (let ((old-id (atelier-workspace-id old-workspace))
+        (new-id (atelier-workspace-id new-workspace))
+        (entry-id (plist-get entry :id)))
+    (atelier-operation-call
+     'move-entry (delete-dups (list old-id new-id))
+     (lambda ()
+       (let* ((old (atelier-operation-workspace old-id))
+              (new (atelier-operation-workspace new-id))
+              (entry (atelier-operation-entry old entry-id)))
+         (atelier--entry-move entry old new))) t)))
+
+(defun atelier--entry-move (entry old-workspace new-workspace)
+  "Transfer ENTRY's entire unassigned stack, retaining every stable identity."
+  (unless (eq old-workspace new-workspace)
+    (atelier-check-entry-move entry old-workspace new-workspace)
+    (let* ((stack (atelier-workspace-stack-record old-workspace (plist-get entry :stack-id)))
+           (ids (plist-get stack :content-ids))
+           (contents (mapcar (lambda (id) (atelier-workspace-content old-workspace id)) ids)))
+      (when (cl-some (lambda (id) (atelier-workspace-content new-workspace id)) ids)
+        (user-error "Destination contains a duplicate buffer identity"))
+      (atelier-plist-set! old-workspace :stacks (remq stack (plist-get old-workspace :stacks)))
+      (atelier-plist-set! old-workspace :contents
+                          (cl-set-difference (plist-get old-workspace :contents) contents :test #'eq))
+      (atelier-plist-set! new-workspace :stacks (cons stack (plist-get new-workspace :stacks)))
+      (atelier-plist-set! new-workspace :contents (append contents (plist-get new-workspace :contents)))
+      (dolist (id ids)
+        (let* ((key (atelier-content-cache-key old-workspace id))
+               (buffer (gethash key atelier-content-live-buffers)))
+          (remhash key atelier-content-live-buffers)
+          (when (buffer-live-p buffer)
+            (puthash (atelier-content-cache-key new-workspace id) buffer atelier-content-live-buffers))))
+      (puthash entry new-workspace atelier-entry-owners))
+    (atelier-operation-notify 'atelier-entry-moved-hook entry old-workspace new-workspace)
+    (atelier-operation-notify 'atelier-change-hook))
   entry)
 
 (defun atelier-entry-job (entry)
@@ -687,8 +922,10 @@ separate entry kind."
   (atelier-entry-value entry :job))
 
 (defun atelier-workspace-job-entries (workspace)
-  "Return terminal entries in WORKSPACE which carry restart jobs."
-  (cl-remove-if-not #'atelier-entry-job (atelier-workspace-entries workspace)))
+  "Return one reference per restart job, independent of visible selection."
+  (cl-loop for content in (plist-get workspace :contents)
+           when (plist-get content :job)
+           collect (atelier-content-reference workspace content)))
 
 (defun atelier-content-persistent-copy (workspace content)
   "Snapshot CONTENT, including live scratch changes."
@@ -716,12 +953,11 @@ separate entry kind."
           (0 nil)
           (1 (atelier-entry-with-display-state (car children) displayed))
           (_ (setf (plist-get copy :children) children) copy)))
-    (let ((ids (cl-loop for content in (atelier-entry-stack entry)
-                        when (plist-get content :persistent)
-                        collect (plist-get content :id))))
-      (when ids
+    (let ((content (atelier-entry-content entry)))
+      (when (or (plist-get entry :unassigned)
+                (and (plist-get entry :stack-id) (not content))
+                (plist-get content :persistent))
         (let ((copy (copy-tree entry)))
-          (atelier-plist-set! copy :content-ids ids)
           copy)))))
 
 (defun atelier-entry-flatten (entry parent-id records)
@@ -749,18 +985,25 @@ separate entry kind."
                                       (atelier-workspace-top-level-entries workspace)))
                   (copy-tree (atelier-workspace-top-level-entries workspace))))
          (records (list nil)))
+    (setf (plist-get copy :entries) roots)
+    (atelier-plist-set! copy :contents
+                        (cl-loop for content in (plist-get workspace :contents)
+                                 when (or (not persistent-only) (plist-get content :persistent))
+                                 collect (if persistent-only
+                                             (atelier-content-persistent-copy workspace content)
+                                            (copy-tree content))))
+    (dolist (stack (plist-get copy :stacks))
+      (atelier-plist-set! stack :content-ids
+                          (cl-remove-if-not (lambda (id) (atelier-workspace-content copy id))
+                                            (plist-get stack :content-ids))))
+    ;; Filtering transient contents can empty a stack in the saved copy only.
+    (let ((atelier-model-workspace copy))
+      (atelier-workspace-prune-empty-stacks copy))
+    (setq roots (atelier-workspace-top-level-entries copy))
     (dolist (root roots) (atelier-entry-flatten root nil records))
     (setf (plist-get copy :entries) (nreverse (car records))
           (plist-get copy :entry-root-ids)
           (mapcar (lambda (root) (plist-get root :id)) roots))
-    (let ((ids (cl-loop for entry in (plist-get copy :entries)
-                        append (plist-get entry :content-ids))))
-      (atelier-plist-set! copy :contents
-                         (cl-loop for content in (plist-get workspace :contents)
-                                  when (member (plist-get content :id) ids)
-                                  collect (if persistent-only
-                                              (atelier-content-persistent-copy workspace content)
-                                            (copy-tree content)))))
     (cl-remf copy :layout)
     (cl-remf copy :state)
     copy))
@@ -807,6 +1050,7 @@ separate entry kind."
     (unless (= (hash-table-count visited) (hash-table-count by-id))
       (error "Flat workspace contains unreachable entries"))
     (cl-remf copy :entry-root-ids)
+    (atelier-workspace-prune-empty-stacks copy)
     (atelier-workspace-index-entries copy)))
 
 (provide 'atelier-model)

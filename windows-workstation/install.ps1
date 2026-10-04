@@ -54,11 +54,13 @@ function Copy-DotfileSafe {
     param(
         [string]$Source,
         [string]$Destination,
-        [switch]$Recurse
+        [switch]$Recurse,
+        [switch]$Required
     )
 
     if (-not (Test-Path $Source)) {
         Write-Log "Source not found: $Source" -Level 'WARNING'
+        if ($Required) { throw "Required source not found: $Source" }
         return
     }
 
@@ -70,6 +72,7 @@ function Copy-DotfileSafe {
 
     if ([string]::IsNullOrWhiteSpace($destDir)) {
         Write-Log "Destination directory could not be determined for $Destination" -Level 'ERROR'
+        if ($Required) { throw "Required destination directory could not be determined: $Destination" }
         return
     }
 
@@ -77,6 +80,7 @@ function Copy-DotfileSafe {
         New-Item -ItemType Directory -Path $destDir -Force -ErrorAction Stop | Out-Null
     } catch {
         Write-Log "Failed to create destination directory ${destDir}: $($_.Exception.Message)" -Level 'ERROR'
+        if ($Required) { throw }
         return
     }
 
@@ -89,6 +93,7 @@ function Copy-DotfileSafe {
         Write-Log "Copied $Source -> $Destination" -Level 'OK'
     } catch {
         Write-Log "Failed to copy $Source -> ${Destination}: $($_.Exception.Message)" -Level 'ERROR'
+        if ($Required) { throw }
     }
 }
 
@@ -323,25 +328,22 @@ function Install-EmacsConfig {
     $source = Join-Path $SharedDotfilesDir "emacs\.config\emacs"
     $emacsCommand = Get-Command emacs.exe -ErrorAction SilentlyContinue
     if (-not $emacsCommand) {
-        Write-Log "Emacs executable was not found after package installation" -Level 'ERROR'
-        return
+        throw "Emacs executable was not found after package installation"
     }
 
     $emacsHome = (& $emacsCommand.Source --batch -Q --eval '(princ (expand-file-name "~/"))' | Out-String).Trim()
     if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($emacsHome)) {
-        Write-Log "Could not resolve Emacs home directory with Emacs itself" -Level 'ERROR'
-        return
+        throw "Could not resolve Emacs home directory with Emacs itself"
     }
 
     $destination = Join-Path $emacsHome ".config\emacs"
     $loader = Join-Path $emacsHome ".emacs"
 
     if (-not (Test-Path $source)) {
-        Write-Log "Emacs configuration source not found: $source" -Level 'ERROR'
-        return
+        throw "Emacs configuration source not found: $source"
     }
 
-    Copy-DotfileSafe -Source $source -Destination $destination -Recurse
+    Copy-DotfileSafe -Source $source -Destination $destination -Recurse -Required
 
     if (-not (Test-Path $loader)) {
         $initPath = (Join-Path $destination "init.el").Replace('\', '/')
@@ -349,7 +351,7 @@ function Install-EmacsConfig {
         Set-Content -LiteralPath $loader -Value @(
             "(load-file `"$earlyInitPath`")"
             "(load-file `"$initPath`")"
-        ) -Encoding utf8NoBOM
+        ) -Encoding utf8NoBOM -ErrorAction Stop
         Write-Log "Installed Emacs startup loader at $loader" -Level 'OK'
     } else {
         Write-Log "Existing Emacs startup file preserved: $loader" -Level 'WARNING'
@@ -440,6 +442,16 @@ function Install-AIConfig {
     # One line, importing the neutral file. Claude Code does not read AGENTS.md.
     Copy-DotfileSafe -Source (Join-Path $claudeSource "CLAUDE.md") -Destination (Join-Path $claudeDest "CLAUDE.md")
     Copy-DotfileSafe -Source (Join-Path $claudeSource "settings.json") -Destination (Join-Path $claudeDest "settings.json")
+
+    $helper = Join-Path $env:USERPROFILE ".local\bin\claude-config-helper"
+    Copy-DotfileSafe -Source (Join-Path $SharedDotfilesDir "ai\.local\bin\claude-config-helper") -Destination $helper
+    Copy-DotfileSafe -Source (Join-Path $SharedDotfilesDir "ai\.config\claude-config-helper\mcp-servers.json") -Destination (Join-Path $env:USERPROFILE ".config\claude-config-helper\mcp-servers.json")
+    if ((Get-Command py -ErrorAction SilentlyContinue) -and (Get-Command claude -ErrorAction SilentlyContinue)) {
+        & py -3 $helper mcp apply
+        if ($LASTEXITCODE -ne 0) { Write-Log "Claude MCP servers were not applied" -Level 'ERROR' }
+    } else {
+        Write-Log "Python or Claude Code not found; run claude-config-helper mcp apply later" -Level 'WARNING'
+    }
 
     Write-Log "AI config installed" -Level 'OK'
 }

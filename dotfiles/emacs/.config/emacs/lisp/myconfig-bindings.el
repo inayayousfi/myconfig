@@ -3,6 +3,7 @@
 (require 'evil)
 (require 'multiple-cursors)
 (require 'atelier)
+(require 'dired-atelier)
 (require 'eglot)
 
 (declare-function avy-goto-char-timer "avy")
@@ -10,6 +11,8 @@
 (declare-function myconfig-search "myconfig-editing")
 (declare-function consult-mark "consult")
 (declare-function myconfig-terminal "myconfig-terminal")
+(declare-function myconfig-normal-state "myconfig-terminal")
+(defvar myconfig-terminal-escape-key)
 (declare-function myconfig-toggle-auto-format-save "myconfig-editing")
 (declare-function atelier-set-job-policy "atelier-persist")
 (declare-function dape "dape")
@@ -17,6 +20,15 @@
 (declare-function myconfig-compile "myconfig-editing")
 
 (defvar myconfig-leader-map (make-sparse-keymap))
+
+(defun myconfig-multiple-cursors-toggle ()
+  (interactive)
+  (if (bound-and-true-p multiple-cursors-mode)
+      (mc/keyboard-quit)
+    (call-interactively #'mc/edit-lines)))
+
+(defun myconfig-directory-chooser-keymaps ()
+  (when (bound-and-true-p evil-local-mode) (evil-normalize-keymaps)))
 
 (defun myconfig-paste ()
   (interactive)
@@ -29,6 +41,10 @@
    (t (call-interactively #'yank))))
 
 (defun myconfig-bindings-setup ()
+  (global-set-key myconfig-terminal-escape-key #'myconfig-normal-state)
+  (evil-define-key '(normal insert visual motion operator replace emacs) 'global
+    myconfig-terminal-escape-key #'myconfig-normal-state)
+  (add-hook 'atelier-directory-chooser-mode-hook #'myconfig-directory-chooser-keymaps)
   (evil-define-key '(normal visual motion) 'global (kbd "SPC") myconfig-leader-map)
   (evil-define-key '(normal visual operator) 'global (kbd "f") #'avy-goto-char-timer)
   (evil-define-key 'normal 'global (kbd ":") #'evil-ex)
@@ -37,6 +53,20 @@
   (evil-set-initial-state 'atelier-navigator-mode 'normal)
   (evil-set-initial-state 'atelier-choice-mode 'normal)
   (evil-set-initial-state 'dired-mode 'normal)
+  (define-key dired-mode-map (kbd "W") #'atelier-dired-flag-workspace)
+  (define-key dired-mode-map (kbd "x") #'atelier-dired-execute-flags)
+  (dolist (binding '(("RET" . atelier-directory-chooser-enter)
+                     ("<return>" . atelier-directory-chooser-enter)
+                     ("l" . atelier-directory-chooser-enter)
+                     ("h" . atelier-directory-chooser-up-directory)
+                     ("H" . atelier-directory-chooser-up-directory)
+                     ("^" . atelier-directory-chooser-up-directory)
+                     ("W" . atelier-dired-flag-workspace)
+                     ("x" . atelier-dired-execute-flags)
+                     ("q" . abort-recursive-edit)))
+    (define-key atelier-directory-chooser-mode-map (kbd (car binding)) (cdr binding)))
+  (define-key atelier-directory-chooser-mode-map [mouse-1] #'atelier-directory-chooser-mouse-enter)
+  (define-key atelier-directory-chooser-mode-map [mouse-2] #'atelier-directory-chooser-mouse-enter)
   (evil-define-key 'normal dired-mode-map
     (kbd "SPC") myconfig-leader-map
     (kbd "RET") #'atelier-dired-open
@@ -44,6 +74,8 @@
     (kbd "l") #'atelier-dired-open
     (kbd "h") #'atelier-dired-up-directory
     (kbd "n") #'atelier-dired-create
+    (kbd "W") #'atelier-dired-flag-workspace
+    (kbd "x") #'atelier-dired-execute-flags
     [mouse-1] #'atelier-dired-mouse-open
     [mouse-2] #'atelier-dired-mouse-open)
   (evil-define-key 'normal eglot-mode-map
@@ -52,10 +84,15 @@
   (evil-define-key 'normal atelier-directory-chooser-mode-map
     (kbd "RET") #'atelier-directory-chooser-enter
     (kbd "<return>") #'atelier-directory-chooser-enter
+    (kbd "l") #'atelier-directory-chooser-enter
     (kbd "h") #'atelier-directory-chooser-up-directory
     (kbd "H") #'atelier-directory-chooser-up-directory
     (kbd "^") #'atelier-directory-chooser-up-directory
-    (kbd "q") #'abort-recursive-edit)
+    (kbd "W") #'atelier-dired-flag-workspace
+    (kbd "x") #'atelier-dired-execute-flags
+    (kbd "q") #'abort-recursive-edit
+    [mouse-1] #'atelier-directory-chooser-mouse-enter
+    [mouse-2] #'atelier-directory-chooser-mouse-enter)
   (evil-make-intercept-map atelier-directory-chooser-mode-map 'normal t)
   (global-set-key (kbd "C-S-v") #'myconfig-paste)
   (global-set-key (kbd "C-=") #'text-scale-increase)
@@ -78,7 +115,7 @@
     (kbd "C-u") #'ignore
     (kbd "C-v") #'ignore)
   (evil-define-key '(normal insert visual motion operator replace emacs) 'global
-    (kbd "C-l") #'atelier-multiple-cursors-toggle)
+    (kbd "C-l") #'myconfig-multiple-cursors-toggle)
   (evil-define-key 'normal atelier-choice-mode-map
     (kbd "j") #'atelier-choice-next
     (kbd "k") #'atelier-choice-previous
@@ -94,6 +131,8 @@
     (kbd "<down>") #'atelier-navigator-next
     (kbd "<up>") #'atelier-navigator-previous
     (kbd "RET") #'atelier-navigator-open
+    (kbd "o") #'atelier-navigator-toggle-fold
+    (kbd "s") #'atelier-navigator-stop-workspace
     (kbd "a") #'atelier-navigator-attach
     (kbd "d") #'atelier-navigator-detach
     (kbd "f") #'isearch-forward

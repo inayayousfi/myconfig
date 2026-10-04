@@ -129,7 +129,7 @@ jobs:
           }
 
           retry sudo apt-get update
-          retry sudo apt-get install -y desktop-file-utils emacs-nox imagemagick lua5.4 rsync stow tmux zsh
+          retry sudo apt-get install -y desktop-file-utils emacs-nox imagemagick lua5.4 rsync stow zsh
           retry cargo install resvg --version 0.48.1 --locked
 
       - name: Test Rust workspace
@@ -141,10 +141,36 @@ jobs:
       - name: Test Linux installers
         run: ./test/test-linux.sh
 
+      - name: Test Claude configuration helper
+        run: python3 test/test-claude-config-helper.py
+
+      - name: Install Emacs test packages
+        run: |
+          retry() {
+            for attempt in 1 2 3; do
+              "$@" && return
+              (( attempt < 3 )) || return 1
+              sleep $((attempt * 10))
+            done
+          }
+
+          packages="$RUNNER_TEMP/emacs-test-packages"
+          # The workbench search tests exercise the real consult package.
+          retry emacs -Q --batch --eval "(progn
+            (setq package-user-dir \"$packages\"
+                  package-archives '((\"gnu\" . \"https://elpa.gnu.org/packages/\"))
+                  package-check-signature nil)
+            (package-initialize)
+            (package-refresh-contents)
+            (package-install 'consult))"
+          load_path="$(find "$packages" -mindepth 1 -maxdepth 1 -type d ! -name archives -printf '%p:')"
+          printf 'EMACSLOADPATH=%s\n' "$load_path" >>"$GITHUB_ENV"
+
       - name: Test Emacs workbench state
         run: |
           emacs -Q --batch --load test/test-universel.el
           emacs -Q --batch --load test/test-emacs-workbench.el
+          emacs -Q --batch --load test/test-emacs-workspace-stacks.el
 
       - name: Test CachyOS VM installer
         run: ./vm/test-cachyos.sh

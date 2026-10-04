@@ -6,7 +6,6 @@ run_profile() {
     module_cli
     module_runtimes
     module_zsh
-    module_neovim
     module_terminal_tools
     module_tailscale
     module_agents_packages

@@ -24,6 +24,32 @@ register_package cachyos_hello official:cachyos-hello
 register_package cachyos_kernel_manager official:cachyos-kernel-manager
 register_package linux_cachyos official:linux-cachyos
 register_package cachyos_zsh_config official:cachyos-zsh-config
+register_package firefox official:firefox
+register_package firefox_i18n_fr official:firefox-i18n-fr
+register_package meslo_font official:ttf-meslo-nerd
+register_package noto_fonts_cjk official:noto-fonts-cjk
+register_package cachyos_emerald_kde_theme official:cachyos-emerald-kde-theme-git
+register_package cachyos_iridescent_kde official:cachyos-iridescent-kde
+register_package cachyos_nord_kde_theme official:cachyos-nord-kde-theme-git
+register_package kate official:kate
+register_package micro official:micro
+register_package cachyos_micro_settings official:cachyos-micro-settings
+register_package nano official:nano
+register_package vim official:vim
+register_package nano_syntax_highlighting official:nano-syntax-highlighting
+register_package meld official:meld
+register_package glances official:glances
+register_package duf official:duf
+register_package tealdeer official:tealdeer
+register_package filelight official:filelight
+register_package pavucontrol official:pavucontrol
+register_package kcalc official:kcalc
+register_package shelly official:shelly
+register_package cachyos_packageinstaller official:cachyos-packageinstaller
+register_package expac official:expac
+register_package cachyos_wallpapers official:cachyos-wallpapers
+register_package hwdetect official:hwdetect
+register_package qtscrcpy official:qtscrcpy
 
 register_package ripgrep official:ripgrep
 register_package fd official:fd ubuntu-server=official:fd-find
@@ -77,10 +103,6 @@ register_package lazygit official:lazygit
 
 register_package tmux official:tmux
 register_package wl_clipboard official:wl-clipboard
-# Legacy mapping used to remove installations managed before tmux replaced Herdr.
-register_package herdr aur:herdr-bin
-register_package opencode official:opencode
-register_package fx_agent aur:fx-agent-bin
 register_package ydotool official:ydotool
 register_package kanata aur:kanata-bin
 register_package handy aur:handy-bin

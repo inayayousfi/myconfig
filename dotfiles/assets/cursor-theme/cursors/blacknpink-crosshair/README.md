@@ -6,6 +6,6 @@ After editing the SVG, rebuild the cursor files with:
 
     python3 build.py
 
-The build needs Python 3, `rsvg-convert`, and ImageMagick's `magick` command. To check the output without replacing the stored cursor files, run `python3 build.py --output-dir /path/to/empty/directory`. The animated cursors keep their frame counts and timing in `build.py`; cursor names and aliases remain under `cursors/`.
+The build needs Python 3 and `resvg`. CI pins resvg 0.48.1, so rebuild the stored cursors with that version to keep them identical to the test build. To check the output without replacing the stored cursor files, run `python3 build.py --output-dir /path/to/empty/directory`. The animated cursors keep their frame counts and timing in `build.py`; cursor names and aliases remain under `cursors/`.
 
 The theme takes its crosshair idea and pink palette from the Crosshair Cursors set by AarogyaGaming. The original set is public domain: <http://www.rw-designer.com/cursor-set/crosshar>.

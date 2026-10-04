@@ -1,0 +1,268 @@
+#!/usr/bin/env python3
+"""Manage Claude Code project trust, saved approvals and MCP servers."""
+
+import argparse
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+
+SERVER_LIST = Path.home() / ".config" / "claude-config-helper" / "mcp-servers.json"
+
+SECRET_VALUE = re.compile(
+    r"sk-ant-|ghp_|github_pat_|xox[abp]-|AKIA[0-9A-Z]{16}|Bearer\s+\S|eyJ[\w-]{10,}\.[\w-]{10,}"
+)
+EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
+HOME_PATH = re.compile(r"/home/[^/\s\"]+|/Users/[^/\s\"]+|[A-Za-z]:(\\\\|\\|/)Users(\\\\|\\|/)[^\\/\s\"]+")
+SECRET_KEY = re.compile(r"token|secret|password|passwd|api[_-]?key|authorization", re.IGNORECASE)
+
+
+class HelperError(Exception):
+    pass
+
+
+def state_path():
+    configured = os.environ.get("CLAUDE_CONFIG_DIR")
+    legacy = (Path(configured) if configured else Path.home() / ".claude") / ".config.json"
+    if legacy.exists():
+        return legacy
+    return (Path(configured) if configured else Path.home()) / ".claude.json"
+
+
+def read_state(path):
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+
+
+def project_key(path):
+    return path.as_posix() if os.name == "nt" else str(path)
+
+
+def replace_atomically(target, data):
+    descriptor, name = tempfile.mkstemp(dir=target.parent, prefix=target.name + ".")
+    temporary = Path(name)
+    try:
+        with os.fdopen(descriptor, "wb") as output:
+            output.write(data)
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary, target)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+
+
+def edit_state(change):
+    """Apply CHANGE under Claude's own lock; keep the previous state as one backup."""
+    config = state_path()
+    config.parent.mkdir(parents=True, exist_ok=True)
+    # Claude uses proper-lockfile's directory lock at this exact location.
+    lock = Path(str(config) + ".lock")
+    deadline = time.monotonic() + 5
+    while True:
+        try:
+            lock.mkdir(mode=0o700)
+            break
+        except FileExistsError:
+            if time.monotonic() >= deadline:
+                raise HelperError(f"Claude's state is busy: {lock}; try again")
+            time.sleep(0.05)
+    try:
+        state = read_state(config)
+        if not change(state):
+            return
+        if config.exists():
+            replace_atomically(config.with_name(config.name + ".before-config-helper"), config.read_bytes())
+        replace_atomically(config, (json.dumps(state, indent=2) + "\n").encode("utf-8"))
+    finally:
+        lock.rmdir()
+
+
+def git(directory, *arguments):
+    if not shutil.which("git"):
+        return None
+    result = subprocess.run(["git", *arguments], cwd=directory, text=True, capture_output=True)
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def workspace(directory):
+    directory = directory.resolve()
+    # Claude keeps home trust for one session only; never trust the whole home tree.
+    if directory == Path.home().resolve():
+        return None
+    root = git(directory, "rev-parse", "--show-toplevel")
+    if root is None:
+        return directory
+    common = git(directory, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    # Linked worktrees share the main checkout's trust, not their own folder.
+    if common is not None:
+        common = Path(common).resolve()
+        if common.name == ".git" and common.is_dir():
+            return common.parent
+    return Path(root).resolve()
+
+
+def trust(arguments):
+    project = workspace(Path(arguments.directory))
+    if project is None:
+        return 0
+    key = project_key(project)
+
+    def change(state):
+        entry = state.setdefault("projects", {}).setdefault(key, {})
+        if entry.get("hasTrustDialogAccepted") is True:
+            return False
+        entry["hasTrustDialogAccepted"] = True
+        return True
+
+    edit_state(change)
+    return 0
+
+
+def approvals_list(arguments):
+    projects = read_state(state_path()).get("projects", {})
+    if arguments.directory:
+        key = project_key(Path(arguments.directory).resolve())
+        projects = {key: projects.get(key, {})}
+    for key, entry in sorted(projects.items()):
+        tools = entry.get("allowedTools") or []
+        print(key)
+        for tool in tools:
+            print(f"  {tool}")
+        if not tools:
+            print("  (no saved approvals)")
+    return 0
+
+
+def approvals_clear(arguments):
+    key = project_key(Path(arguments.directory).resolve())
+    cleared = []
+
+    def change(state):
+        entry = state.get("projects", {}).get(key)
+        if not entry or not entry.get("allowedTools"):
+            return False
+        cleared.extend(entry["allowedTools"])
+        entry["allowedTools"] = []
+        return True
+
+    edit_state(change)
+    print(f"Cleared {len(cleared)} saved approvals for {key}." if cleared else f"No saved approvals for {key}.")
+    return 0
+
+
+def expand(value):
+    if isinstance(value, str):
+        return value.replace("{home}", str(Path.home()))
+    if isinstance(value, list):
+        return [expand(item) for item in value]
+    if isinstance(value, dict):
+        return {key: expand(item) for key, item in value.items()}
+    return value
+
+
+def run_claude(claude, *arguments):
+    result = subprocess.run([claude, *arguments], text=True, capture_output=True)
+    if result.returncode:
+        raise HelperError(f"claude {' '.join(arguments[:3])} failed: {result.stderr.strip() or result.stdout.strip()}")
+
+
+def mcp_apply(arguments):
+    claude = shutil.which("claude")
+    if not claude:
+        print("Claude Code is not installed; MCP servers were not applied.", file=sys.stderr)
+        return 0
+    servers = json.loads(Path(arguments.list).read_text(encoding="utf-8"))
+    current = read_state(state_path()).get("mcpServers", {})
+    for name, server in servers.items():
+        server = expand(server)
+        command = server.get("command")
+        if command and not shutil.which(command):
+            print(f"Skipped MCP server {name}: {command} was not found.", file=sys.stderr)
+            continue
+        existing = current.get(name)
+        if existing and all(existing.get(key) == value for key, value in server.items()):
+            continue
+        if existing:
+            run_claude(claude, "mcp", "remove", "--scope", "user", name)
+        run_claude(claude, "mcp", "add-json", "--scope", "user", name, json.dumps(server))
+        print(f"Configured MCP server {name}.")
+    return 0
+
+
+def findings(text):
+    found = []
+    for pattern, reason in ((SECRET_VALUE, "token"), (EMAIL, "email address"), (HOME_PATH, "home path")):
+        found.extend((reason, match.group(0)) for match in pattern.finditer(text))
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return found
+
+    def walk(value):
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if SECRET_KEY.search(key) and isinstance(item, str) and item:
+                    found.append(("secret field", key))
+                walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+
+    walk(data)
+    return found
+
+
+def check(arguments):
+    status = 0
+    for name in arguments.files:
+        for reason, excerpt in findings(Path(name).read_text(encoding="utf-8")):
+            print(f"{name}: {reason}: {excerpt[:8]}…")
+            status = 1
+    return status
+
+
+def parser():
+    root = argparse.ArgumentParser(prog="claude-config-helper", description=__doc__)
+    commands = root.add_subparsers(required=True, metavar="command")
+
+    command = commands.add_parser("trust", help="trust the project that contains DIRECTORY")
+    command.add_argument("directory", nargs="?", default=".")
+    command.set_defaults(run=trust)
+
+    approvals = commands.add_parser("approvals", help="list or clear saved tool approvals")
+    actions = approvals.add_subparsers(required=True, metavar="action")
+    command = actions.add_parser("list", help="list saved approvals for DIRECTORY or every project")
+    command.add_argument("directory", nargs="?")
+    command.set_defaults(run=approvals_list)
+    command = actions.add_parser("clear", help="clear saved approvals for DIRECTORY")
+    command.add_argument("directory")
+    command.set_defaults(run=approvals_clear)
+
+    mcp = commands.add_parser("mcp", help="manage user MCP servers")
+    actions = mcp.add_subparsers(required=True, metavar="action")
+    command = actions.add_parser("apply", help="add or update the listed MCP servers")
+    command.add_argument("--list", default=str(SERVER_LIST))
+    command.set_defaults(run=mcp_apply)
+
+    command = commands.add_parser("check", help="report tokens, email addresses and home paths in FILES")
+    command.add_argument("files", nargs="+")
+    command.set_defaults(run=check)
+    return root
+
+
+def main():
+    arguments = parser().parse_args()
+    try:
+        return arguments.run(arguments)
+    except (OSError, ValueError, TypeError, AttributeError, HelperError, subprocess.SubprocessError) as error:
+        print(f"claude-config-helper: {error}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

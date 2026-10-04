@@ -9,6 +9,7 @@ run_profile() {
     module_runtimes
     module_zsh
     module_terminal_tools
+    module_ghostty
     module_axidev_osk
     module_tailscale
     module_agents_packages

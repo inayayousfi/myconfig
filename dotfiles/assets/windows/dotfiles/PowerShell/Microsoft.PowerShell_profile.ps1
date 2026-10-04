@@ -121,6 +121,10 @@ function cco {
     Invoke-WslZshCommand "cco $args"
 }
 
+function claude-config-helper {
+    py -3 (Join-Path $HOME ".local\bin\claude-config-helper") @args
+}
+
 Set-Alias which gcm
 
 # =========================

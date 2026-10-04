@@ -1,12 +1,125 @@
 #!/usr/bin/env python3
 
 from pathlib import Path
+import hashlib
+import json
+import shlex
 import subprocess
 import sys
 
 CONFIG = Path.home() / ".config/wireplumber/wireplumber.conf.d/60-mono-playback.conf"
 DISABLED = CONFIG.with_name(CONFIG.name + ".disabled")
 ICON = Path(__file__).with_name("myconfig-mono.svg")
+SWAP_PREFIX = "myconfig_swap_"
+
+
+class AudioRouting:
+    def command(self, *args):
+        result = subprocess.run(
+            ["pactl", *args], capture_output=True, text=True, timeout=5, check=False
+        )
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip() or "Audio command failed")
+        return result.stdout.strip()
+
+    def listing(self, kind):
+        return json.loads(self.command("--format=json", "list", kind))
+
+    def corrections(self):
+        corrections = {}
+        for line in self.command("list", "short", "modules").splitlines():
+            fields = line.split("\t")
+            if len(fields) < 3 or fields[1] != "module-remap-sink":
+                continue
+            args = dict(
+                arg.split("=", 1) for arg in shlex.split(fields[2]) if "=" in arg
+            )
+            master, name = args.get("master"), args.get("sink_name", "")
+            if master and name == self.swap_name(master):
+                corrections[master] = (fields[0], name)
+        return corrections
+
+    @staticmethod
+    def swap_name(master):
+        return SWAP_PREFIX + hashlib.sha256(master.encode()).hexdigest()[:16]
+
+    def devices(self):
+        return [
+            sink for sink in self.listing("sinks")
+            if not sink["name"].startswith(SWAP_PREFIX)
+            and sink["channel_map"] == "front-left,front-right"
+        ]
+
+    @staticmethod
+    def label(sink):
+        description = sink.get("description")
+        if description and description != "(null)":
+            return description
+        props = sink.get("properties", {})
+        return props.get("device.description") or props.get("node.nick") or sink["name"]
+
+    def move_playback(self, source, target):
+        sinks = {sink["name"]: sink["index"] for sink in self.listing("sinks")}
+        if source not in sinks or target not in sinks:
+            raise RuntimeError("The selected audio output disconnected")
+        for stream in self.listing("sink-inputs"):
+            # Never move the remap module's own connection into itself.
+            props = stream.get("properties", {})
+            internal = props.get("node.name", "").startswith("output." + SWAP_PREFIX)
+            if stream["sink"] != sinks[source] or internal:
+                continue
+            try:
+                self.command("move-sink-input", str(stream["index"]), target)
+            except RuntimeError:
+                # A playback stream can end between listing and moving it.
+                remaining = self.listing("sink-inputs")
+                if any(item["index"] == stream["index"] for item in remaining):
+                    raise
+
+    def enable(self, master):
+        if master in self.corrections():
+            return
+        if master not in {sink["name"] for sink in self.devices()}:
+            raise RuntimeError("Select a connected stereo output")
+        name = self.swap_name(master)
+        previous_default = self.command("get-default-sink")
+        self.command(
+            "load-module", "module-remap-sink", f"sink_name={name}",
+            f"master={json.dumps(master)}", "channels=2",
+            "channel_map=front-left,front-right",
+            "master_channel_map=front-right,front-left", "remix=no",
+            "sink_properties=device.description=Swapped_left_right",
+        )
+        try:
+            if previous_default == master:
+                self.command("set-default-sink", name)
+            self.move_playback(master, name)
+        except (OSError, RuntimeError, subprocess.TimeoutExpired, ValueError):
+            self.disable(master)
+            raise
+
+    def disable(self, master):
+        correction = self.corrections().get(master)
+        if not correction:
+            return
+        module, name = correction
+        connected = master in {sink["name"] for sink in self.listing("sinks")}
+        if connected:
+            if self.command("get-default-sink") == name:
+                self.command("set-default-sink", master)
+            if name in {sink["name"] for sink in self.listing("sinks")}:
+                self.move_playback(name, master)
+        self.command("unload-module", module)
+
+    def maintain(self):
+        sinks = {sink["name"] for sink in self.listing("sinks")}
+        for master, (_, name) in self.corrections().items():
+            if master not in sinks:
+                self.disable(master)
+            elif name in sinks:
+                if self.command("get-default-sink") == master:
+                    self.command("set-default-sink", name)
+                self.move_playback(master, name)
 
 
 def restart_wireplumber():
@@ -20,7 +133,8 @@ def restart_wireplumber():
 
 
 def run_tray():
-    from PySide6.QtGui import QAction, QIcon
+    from PySide6.QtCore import QTimer
+    from PySide6.QtGui import QAction, QActionGroup, QIcon
     from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
     app = QApplication(sys.argv)
@@ -28,23 +142,102 @@ def run_tray():
     app.setQuitOnLastWindowClosed(False)
 
     tray = QSystemTrayIcon(QIcon(str(ICON)), app)
-    tray.setToolTip("PipeWire: mono playback")
+    tray.setToolTip("Audio settings")
     menu = QMenu()
-    mono = QAction("Mono playback", menu)
+    mono = QAction("Mono playback (all outputs)", menu)
     mono.setCheckable(True)
     menu.addAction(mono)
+    devices_menu = menu.addMenu("Device for channel correction")
+    swap = QAction("Swap left/right", menu)
+    swap.setCheckable(True)
+    menu.addAction(swap)
     menu.addSeparator()
     quit_action = QAction("Quit", menu)
     menu.addAction(quit_action)
+    routing = AudioRouting()
+    selected = None
+    device_group = QActionGroup(devices_menu)
+    device_group.setExclusive(True)
+    last_error = None
+
+    def show_error(error):
+        nonlocal last_error
+        message = str(error)
+        if message != last_error:
+            tray.showMessage("Audio settings", message)
+        last_error = message
+
+    def select_device(name):
+        nonlocal selected
+        selected = name
+        refresh()
 
     def enabled():
         return CONFIG.exists()
 
     def refresh():
+        nonlocal selected, last_error
         active = enabled()
+        mono.blockSignals(True)
         mono.setChecked(active)
-        tray.setToolTip(f"PipeWire: {'mono' if active else 'stereo'} playback")
+        mono.blockSignals(False)
+        try:
+            devices = routing.devices()
+            corrections = routing.corrections()
+            names = {sink["name"] for sink in devices}
+            if selected not in names:
+                default = routing.command("get-default-sink")
+                selected = next(
+                    (master for master, (_, name) in corrections.items() if name == default),
+                    default,
+                )
+                if selected not in names:
+                    selected = devices[0]["name"] if devices else None
+            for action in device_group.actions():
+                device_group.removeAction(action)
+            devices_menu.clear()
+            for sink in devices:
+                name = sink["name"]
+                action = devices_menu.addAction(routing.label(sink))
+                action.setCheckable(True)
+                action.setChecked(name == selected)
+                device_group.addAction(action)
+                action.triggered.connect(lambda checked, target=name: select_device(target))
+            if not devices:
+                devices_menu.addAction("No stereo outputs connected").setEnabled(False)
+            swap.setEnabled(selected is not None)
+            swap.blockSignals(True)
+            swap.setChecked(selected in corrections)
+            swap.blockSignals(False)
+            label = next(
+                (routing.label(sink) for sink in devices if sink["name"] == selected),
+                "No stereo output",
+            )
+            state = "on" if selected in corrections else "off"
+            tray.setToolTip(
+                f"Audio settings: {'mono' if active else 'stereo'}\n{label}: swap {state}"
+            )
+            last_error = None
+        except (OSError, RuntimeError, subprocess.TimeoutExpired, ValueError) as error:
+            swap.setEnabled(False)
+            show_error(error)
         tray.show()
+
+    def toggle_swap(checked):
+        try:
+            if checked:
+                routing.enable(selected)
+            else:
+                routing.disable(selected)
+        except (OSError, RuntimeError, subprocess.TimeoutExpired, ValueError) as error:
+            show_error(error)
+        refresh()
+
+    def maintain():
+        try:
+            routing.maintain()
+        except (OSError, RuntimeError, subprocess.TimeoutExpired, ValueError) as error:
+            show_error(error)
 
     def toggle(checked):
         try:
@@ -59,7 +252,7 @@ def run_tray():
             if result.returncode != 0:
                 raise RuntimeError(result.stderr.strip() or "WirePlumber restart failed")
             refresh()
-        except (OSError, RuntimeError) as error:
+        except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
             mono.blockSignals(True)
             mono.setChecked(enabled())
             mono.blockSignals(False)
@@ -78,9 +271,15 @@ def run_tray():
         )
 
     mono.triggered.connect(toggle)
+    swap.triggered.connect(toggle_swap)
+    menu.aboutToShow.connect(refresh)
     quit_action.triggered.connect(quit_tray)
     tray.setContextMenu(menu)
     refresh()
+    timer = QTimer(app)
+    timer.setInterval(3000)
+    timer.timeout.connect(maintain)
+    timer.start()
     return app.exec()
 
 

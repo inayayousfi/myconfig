@@ -13,9 +13,45 @@
                               (file-name-directory (or load-file-name buffer-file-name)))))
   (add-to-list 'load-path lisp)
   (add-to-list 'load-path (expand-file-name "atelier" lisp))
-  (dolist (file '("atelier/atelier.el" "myconfig-terminal.el"
-                  "aipan.el" "aipanel-workbench.el"))
+  (dolist (file '("atelier/atelier.el" "atelier/ghostel-atelier.el" "myconfig-terminal.el"
+                  "aipan.el" "atelier/aipanel-atelier.el"))
     (load (expand-file-name file lisp) nil t)))
+
+(setq ghostel-atelier-buffer-started-hook '(myconfig-terminal-enter-input))
+(myconfig-aipanel-setup)
+
+(ert-deftest aipanel-ordinary-discovers-and-builds-pi-launch ()
+  (let ((directory (make-temp-file "aipanel-pi-" t)))
+    (unwind-protect
+        (let* ((program (expand-file-name "pi" directory))
+               (exec-path (list directory))
+               (owner (list :location 'host :directory directory
+                            :emacs-directory directory)))
+          (with-temp-file program (insert "#!/bin/sh\nexit 0\n"))
+          (set-file-modes program #o700)
+          (let* ((candidates (aipanel-default-candidates owner))
+                 (selection (cdar candidates)))
+            (should (= (length candidates) 1))
+            (should (eq (plist-get (plist-get selection :agent) :id) 'pi))
+            (dolist (mini '(nil t))
+              (should (equal (aipanel-default-command owner selection mini)
+                             (list :program "pi" :arguments nil
+                                   :directory directory))))))
+      (delete-directory directory t))))
+
+(ert-deftest myconfig-terminal-automatic-evil-activation-preserves-char-input ()
+  (with-temp-buffer
+    (setq major-mode 'ghostel-mode)
+    (setq-local ghostel--input-mode 'char)
+    (let ((disabled 0))
+      (cl-letf (((symbol-function 'myconfig-terminal-enter-input)
+                 (lambda () (cl-incf disabled))))
+        (set (make-local-variable 'evil-local-mode) t)
+        (myconfig-terminal-keep-input)
+        (should (= disabled 1))
+        (setq ghostel--input-mode 'emacs)
+        (myconfig-terminal-keep-input)
+        (should (= disabled 1))))))
 
 (ert-deftest aipanel-ordinary-atelier-exclusion-has-a-public-lifecycle ()
   (let ((atelier-internal-buffers (make-hash-table :test #'eq)))
@@ -28,19 +64,20 @@
         (atelier-set-buffer-excluded nil)
         (should (atelier-buffer-ownable-p (current-buffer) workspace))))))
 
-(ert-deftest aipanel-ordinary-owner-follows-buffer-and-workspace-environment ()
+(ert-deftest aipanel-ordinary-owner-follows-source-not-selected-workspace ()
   (with-temp-buffer
-    (setq default-directory "/tmp/project/")
+    (setq default-directory "/ssh:alice@host#2222:/home/work/")
     (let ((source (current-buffer))
           (workspace '(:id "work" :platform wsl :destination "Ubuntu")))
       (cl-letf (((symbol-function 'atelier-current-workspace) (lambda (&rest _) workspace))
                 (atelier-execution-directory-function
                  (lambda (_workspace directory) (concat "/mnt" directory))))
-        (let ((owner (aipanel-workbench-owner)))
+        (let ((owner (aipanel-atelier-owner)))
           (should (eq (plist-get owner :id) source))
           (should (eq (plist-get owner :source-buffer) source))
-          (should (equal (plist-get owner :directory) "/mnt/tmp/project/"))
-          (should (eq (plist-get owner :location) 'wsl)))))))
+          (should (equal (plist-get owner :directory) "/home/work/"))
+          (should (eq (plist-get owner :location) 'ssh))
+          (should (equal (plist-get owner :destination) "alice@host")))))))
 
 (ert-deftest aipanel-ordinary-terminal-has-no-atelier-job-or-entry ()
   (let ((source (generate-new-buffer " *panel-source*"))
@@ -51,8 +88,8 @@
         panel)
     (unwind-protect
         (progn
-          (aipanel-workbench-setup)
-          (should (memq #'aipanel-workbench-activate-terminal
+          (aipanel-atelier-setup)
+          (should (memq #'myconfig-aipanel-activate
                         aipanel-window-change-hook))
           (with-current-buffer source
             (setq default-directory "/tmp/")
@@ -84,7 +121,7 @@
                             source))
                 (should (gethash panel atelier-internal-buffers))
                 (should-not (atelier-buffer-ownable-p panel '(:id "work")))
-                (should (eq (gethash source aipanel-sessions) (buffer-name panel)))
+                (should (eq (gethash source aipanel-sessions) panel))
                 (with-current-buffer panel (aipanel-cleanup-buffer panel))
                 (should-not (gethash panel atelier-internal-buffers))
                 (should-not (gethash source aipanel-sessions))))))
@@ -157,7 +194,7 @@
                  (lambda (_value) (setq evil-local-mode nil)))
                 ((symbol-function 'ghostel-char-mode)
                  (lambda () (use-local-map ghostel-char-mode-map))))
-        (aipanel-workbench-activate-terminal)
+        (myconfig-aipanel-activate)
         (should-not evil-local-mode)
         (should (eq (key-binding (kbd "C-p")) #'ghostel--send-event))
         (should (eq (key-binding (kbd "C-x")) #'ghostel--send-event))))))
@@ -181,18 +218,80 @@
               (let ((side (aipanel-display-buffer panel
                                                   (max window-min-width
                                                        (floor (* (frame-width) 0.3))))))
-                (aipanel-workbench-sync-visibility)
+                (aipanel-sync-source-visibility)
                 (should (window-live-p side))
                 (select-window (window-main-window))
                 (switch-to-buffer other)
-                (aipanel-workbench-sync-visibility)
+                (aipanel-sync-source-visibility)
                 (should-not (window-live-p side))
                 (should (buffer-live-p panel))
                 (switch-to-buffer source)
-                (aipanel-workbench-sync-visibility)
+                (aipanel-sync-source-visibility)
                 (should (get-buffer-window panel)))))
         (dolist (buffer (list source other panel))
           (when (buffer-live-p buffer) (kill-buffer buffer)))))))
+
+(ert-deftest aipanel-ordinary-selected-panel-stays-visible-beside-multiple-splits ()
+  (save-window-excursion
+    (let ((source (generate-new-buffer " *panel-split-source*"))
+          (other (generate-new-buffer " *panel-split-other*"))
+          (panel (generate-new-buffer " *panel-split-terminal*"))
+          (aipanel-sessions (make-hash-table :test #'eq))
+          (aipanel-window-change-hook nil))
+      (unwind-protect
+          (progn
+            (delete-other-windows)
+            (switch-to-buffer other)
+            (let ((source-window (split-window-below)))
+              (select-window source-window)
+              (switch-to-buffer source)
+              (with-current-buffer panel
+                (setq-local aipanel-owner (list :source-buffer source)))
+              (puthash source (buffer-name panel) aipanel-sessions)
+              (cl-letf (((symbol-function 'get-buffer-process)
+                         (lambda (buffer) (and (eq buffer panel) 'agent-process)))
+                        ((symbol-function 'process-live-p)
+                         (lambda (process) (eq process 'agent-process))))
+                (let ((side (aipanel-display-buffer panel 24)))
+                  (should (eq (selected-window) side))
+                  (should-not (window-live-p (window-main-window)))
+                  (should (eq (aipanel-source-window (selected-frame)) source-window))
+                  (should (eq (atelier-main-window) source-window))
+                  (aipanel-sync-source-visibility)
+                  (should (window-live-p side))
+                  (should (eq (window-buffer side) panel))
+                  (should (= (length (atelier-main-windows)) 2))))))
+        (dolist (buffer (list source other panel))
+          (when (buffer-live-p buffer) (kill-buffer buffer)))))))
+
+(ert-deftest atelier-side-window-commands-return-to-last-selected-main-split ()
+  (dolist (command '(myconfig-terminal atelier-file-browser))
+    (save-window-excursion
+      (let ((source (generate-new-buffer " *side-command-source*"))
+            (panel (generate-new-buffer " *side-command-panel*"))
+            (target (generate-new-buffer " *side-command-target*"))
+            (atelier-file-browser-window-configurations nil)
+            (atelier-navigator-window-configurations nil))
+        (unwind-protect
+            (progn
+              (delete-other-windows)
+              (let ((main (split-window-below)))
+                (select-window main)
+                (switch-to-buffer source)
+                (let ((side (display-buffer-in-side-window panel '((side . right)))))
+                  (select-window side)
+                  (cl-letf (((symbol-function 'atelier-current-workspace)
+                             (lambda (&rest _) '(:id "side" :name "side")))
+                            ((symbol-function 'atelier-workspace-buffer-by-type)
+                             (lambda (&rest _) target)))
+                    (funcall command))
+                  (should (eq (selected-window) main))
+                  (should (eq (window-buffer main) target))
+                  (if (eq command 'atelier-file-browser)
+                      (should-not (window-live-p side))
+                    (should (eq (window-buffer side) panel))))))
+          (dolist (buffer (list source panel target))
+            (when (buffer-live-p buffer) (kill-buffer buffer))))))))
 
 (ert-deftest aipanel-ordinary-ghostel-keys-pass-through ()
   (let ((ghostel-char-mode-map (make-sparse-keymap)))

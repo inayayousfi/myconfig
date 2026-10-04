@@ -45,12 +45,12 @@ so the default value alone is not sufficient."
   (condition-case nil
       (let* ((contact (nth 3 (eglot--guess-contact)))
              (program (and (listp contact) (stringp (car contact)) (car contact))))
-        (and program (list program (executable-find program))))
+        (and program (list program (executable-find program t))))
     (error nil)))
 
 (defun myconfig-eglot-server-available-p ()
   (when-let* ((server (myconfig-eglot-server-command)))
-    (executable-find (car server))))
+    (cadr server)))
 
 (defun myconfig-warn-missing-eglot-server ()
   (unless myconfig-eglot-warning-shown
@@ -59,13 +59,14 @@ so the default value alone is not sufficient."
            (program (car server)))
       (display-warning
        'myconfig
-       (format "No language server found for %s%s. Install it with M-x mason."
+       (format "No language server found for %s%s. Install it with M-x mason-manager"
                major-mode
                (if program (format " (expected command: %s)" program) ""))
        :warning))))
 
 (defun myconfig-eglot-ensure-if-server-available ()
-  (when buffer-file-name
+  (when (and buffer-file-name
+             (not (derived-mode-p 'emacs-lisp-mode 'lisp-mode)))
     (if (myconfig-eglot-server-available-p)
         (eglot-ensure)
       (myconfig-warn-missing-eglot-server))))
@@ -169,8 +170,8 @@ so the default value alone is not sufficient."
             (move-overlay overlay eol eol)
             (overlay-put overlay 'myconfig-flyover-eob-text rendered)
             (add-hook 'post-command-hook #'myconfig-flyover-refresh-eob nil t)))))
-      (when (overlay-get overlay 'myconfig-flyover-eob-text)
-        (myconfig-flyover-refresh-eob))))
+    (when (overlay-get overlay 'myconfig-flyover-eob-text)
+      (myconfig-flyover-refresh-eob))))
 
 (defun myconfig-compile ()
   (interactive)
@@ -223,7 +224,7 @@ so the default value alone is not sufficient."
       (list :name (if (eq program 'rg) "Text (rg)" "Text (grep)")
             :narrow ?t :category 'consult-grep
             :async (consult--process-collection
-                    builder :transform (consult--grep-format builder) :file-handler t)
+                       builder :transform (consult--grep-format builder) :file-handler t)
             :state #'consult--grep-state
             :action (lambda (candidate)
                       (consult--jump (consult--grep-position candidate))))
@@ -358,7 +359,7 @@ so the default value alone is not sufficient."
   (use-package consult
     :config (setq consult-preview-key 'any
                   consult-buffer-list-function #'atelier-buffer-list
-                   consult-ripgrep-args myconfig-search-ripgrep-args))
+                  consult-ripgrep-args myconfig-search-ripgrep-args))
   (use-package corfu
     :config
     (setq corfu-auto t corfu-auto-delay 0.1 corfu-auto-prefix 1
@@ -397,6 +398,8 @@ so the default value alone is not sufficient."
   (use-package mason :demand t)
   (use-package dape)
   (use-package diff-hl
+    :demand t
+    :hook (dired-mode . diff-hl-dired-mode)
     :config
     (global-diff-hl-mode 1)
     (diff-hl-flydiff-mode 1)

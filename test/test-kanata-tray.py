@@ -125,6 +125,7 @@ class KanataClientTests(unittest.TestCase):
         )
 
 
+@unittest.skipUnless(importlib.util.find_spec("PySide6"), "PySide6 is not installed")
 class TrayMenuTests(unittest.TestCase):
     def test_context_menu_has_no_left_click_popup_handler(self):
         os.environ["QT_QPA_PLATFORM"] = "offscreen"

@@ -3,7 +3,7 @@
 module_agents_packages() {
     myconfig_log "Installing agent tools and browser dependencies"
     local packages=(
-        opencode fx_agent lsof at_spi2_core libxcomposite libxdamage libxrandr libxkbcommon
+        lsof at_spi2_core libxcomposite libxdamage libxrandr libxkbcommon
     )
 
     if [ "$MYCONFIG_PROFILE" = cachyos ]; then
@@ -73,7 +73,7 @@ link_agent_config() {
     [ -d "$skills_dir" ] || myconfig_fail "agent skills were not stowed"
     [ -f "$HOME/.agents/AGENTS.md" ] || myconfig_fail "global AGENTS.md was not stowed"
 
-    mkdir -p "$HOME/.claude/skills" "$HOME/.config/opencode" "$HOME/.fx"
+    mkdir -p "$HOME/.claude/skills" "$HOME/.config/opencode" "$HOME/.fx" "$HOME/.pi/agent"
 
     local linked_skill linked_target skill_dir skill opencode_agents fx_agents
     for linked_skill in "$HOME/.claude/skills"/*; do
@@ -105,6 +105,10 @@ link_agent_config() {
     [ -L "$fx_agents" ] \
         && [ "$(readlink "$fx_agents")" = "$HOME/.agents/AGENTS.md" ] \
         || myconfig_fail "fx AGENTS bridge was not created"
+
+    ln -sfnT "$HOME/.agents/AGENTS.md" "$HOME/.pi/agent/AGENTS.md"
+    [ "$(readlink -f "$HOME/.pi/agent/AGENTS.md")" = "$(readlink -f "$HOME/.agents/AGENTS.md")" ] \
+        || myconfig_fail "Pi AGENTS bridge was not created"
 }
 
 write_environment_inventory() {
@@ -126,7 +130,7 @@ This file describes the capabilities installed for the $platform.
 - **Runtimes**: Rust, Go, Bun, Node.js, Python, Java, LLVM, Make, and CMake.
 - **Repository tools**: Git, GitHub CLI, and GNU Stow.
 - **Terminal tools**: Yazi, ripgrep, fd, fzf, zoxide, eza, bat, jq, and btop.
-- **Agent tools**: OpenCode and Playwright MCP.
+- **Agent browser tools**: Playwright MCP. Claude Code and Pi are installed separately.
 - **Remote access**: OpenSSH server and Tailscale service with optional login during setup.
 EOF
 
@@ -156,7 +160,9 @@ module_agents_configure() {
     export BUN_INSTALL="$HOME/.bun"
     export PATH="$HOME/.local/bin:$BUN_INSTALL/bin:$PATH"
 
-    opencode debug config >/dev/null
+    if command -v opencode >/dev/null 2>&1; then
+        opencode debug config >/dev/null
+    fi
     link_agent_config
     configure_fx_playwright_mcp
 

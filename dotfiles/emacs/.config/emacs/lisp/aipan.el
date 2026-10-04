@@ -28,6 +28,8 @@
      :project-argument t :ready-delay 1.5)
     (:id claude :name "Claude Code" :program "claude"
      :arguments nil :ready-delay 1.5)
+    (:id pi :name "Pi" :program "pi"
+     :arguments nil :ready-delay 1.5)
     (:id codex :name "Codex" :program "codex"
      :arguments nil :ready-delay 1.5)
     (:id fx :name "fx" :program "fx"

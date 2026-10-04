@@ -1464,6 +1464,21 @@ if module_axidev_osk >/dev/null 2>&1; then
 fi
 
 source "$REPO_ROOT/linux/modules/agents.sh"
+(
+    HOME="$TEST_HOME/agent-package-requests"
+    MYCONFIG_PROFILE=arch-wsl
+    mkdir -p "$HOME/.bun/install/global/node_modules/.bin"
+    printf '#!/bin/sh\nexit 0\n' >"$HOME/.bun/install/global/node_modules/.bin/playwright"
+    chmod +x "$HOME/.bun/install/global/node_modules/.bin/playwright"
+    install_package_ids() { printf '%s\n' "$@" >>"$HOME/requests"; }
+    bun() { :; }
+    module_agents_packages
+    if grep -Exq 'opencode|fx_agent' "$HOME/requests"; then
+        myconfig_fail "Agent module still installs OpenCode or FX"
+    fi
+    grep -Fxq lsof "$HOME/requests" && grep -Fxq wsl_ssh_agent "$HOME/requests" \
+        || myconfig_fail "Agent module lost its remaining platform dependencies"
+)
 agents_packages_source="$(declare -f module_agents_packages)"
 [[ "$agents_packages_source" == *'packages+=(ydotool)'* ]] \
     || myconfig_fail "CachyOS agent module does not request ydotool"
@@ -1484,6 +1499,8 @@ link_agent_config
     || myconfig_fail "OpenCode AGENTS bridge does not use the live absolute target"
 [[ "$(readlink "$HOME/.fx/AGENTS.md")" == "$HOME/.agents/AGENTS.md" ]] \
     || myconfig_fail "fx AGENTS bridge does not use the live absolute target"
+[[ "$(readlink -f "$HOME/.pi/agent/AGENTS.md")" == "$(readlink -f "$HOME/.agents/AGENTS.md")" ]] \
+    || myconfig_fail "Pi does not receive the shared global instructions"
 cat >"$HOME/.fx/mcp.json" <<'EOF'
 {
   "mcp": {

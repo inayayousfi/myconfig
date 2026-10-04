@@ -20,6 +20,25 @@
 (setq ghostel-atelier-buffer-started-hook '(myconfig-terminal-enter-input))
 (myconfig-aipanel-setup)
 
+(ert-deftest aipanel-ordinary-discovers-and-builds-pi-launch ()
+  (let ((directory (make-temp-file "aipanel-pi-" t)))
+    (unwind-protect
+        (let* ((program (expand-file-name "pi" directory))
+               (exec-path (list directory))
+               (owner (list :location 'host :directory directory
+                            :emacs-directory directory)))
+          (with-temp-file program (insert "#!/bin/sh\nexit 0\n"))
+          (set-file-modes program #o700)
+          (let* ((candidates (aipanel-default-candidates owner))
+                 (selection (cdar candidates)))
+            (should (= (length candidates) 1))
+            (should (eq (plist-get (plist-get selection :agent) :id) 'pi))
+            (dolist (mini '(nil t))
+              (should (equal (aipanel-default-command owner selection mini)
+                             (list :program "pi" :arguments nil
+                                   :directory directory))))))
+      (delete-directory directory t))))
+
 (ert-deftest myconfig-terminal-automatic-evil-activation-preserves-char-input ()
   (with-temp-buffer
     (setq major-mode 'ghostel-mode)

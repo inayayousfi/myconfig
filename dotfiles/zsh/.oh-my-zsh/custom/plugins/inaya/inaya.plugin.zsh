@@ -40,9 +40,6 @@ export VI_MODE_SET_CURSOR=true
 if $IS_LINUX && [ -z "$WSL_DISTRO_NAME" ] && has emacs; then
     export EDITOR="emacs"
     export VISUAL="emacs"
-elif has nvim; then
-    export EDITOR="nvim"
-    export VISUAL="nvim"
 elif has vim; then
     export EDITOR="vim"
     export VISUAL="vim"
@@ -81,13 +78,8 @@ unalias gd 2>/dev/null || true
 
 # Tool aliases
 if [ "$EDITOR" = emacs ]; then
-    alias vim='emacs'
     alias vi='emacs'
     alias v='emacs'
-elif has nvim; then
-    alias vim='nvim'
-    alias vi='nvim'
-    alias v='nvim'
 fi
 
 if has bun; then

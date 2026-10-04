@@ -129,7 +129,7 @@ jobs:
           }
 
           retry sudo apt-get update
-          retry sudo apt-get install -y desktop-file-utils emacs-nox imagemagick lua5.4 rsync stow tmux zsh
+          retry sudo apt-get install -y desktop-file-utils emacs-nox imagemagick lua5.4 rsync stow zsh
           retry cargo install resvg --version 0.48.1 --locked
 
       - name: Test Linux installers

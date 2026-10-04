@@ -40,7 +40,7 @@ If your environment blocks piping remote content into `iex`, fall back to:
 powershell -NoProfile -ExecutionPolicy Bypass -Command "& { $p = Join-Path $env:TEMP 'bootstrap.ps1'; Invoke-WebRequest 'https://raw.githubusercontent.com/inayayousfi/myconfig/main/bootstrap.ps1' -OutFile $p; Unblock-File $p; & $p }"
 ```
 
-After the first install, the bootstrap flow imports a self-signed code-signing certificate and sets PowerShell's `ExecutionPolicy` to `RemoteSigned` for the current user. Re-running `windows-workstation/install.ps1`, `nvim`, or the PowerShell profile script directly afterward no longer needs `-Bypass`, since those scripts are signed as part of each release.
+After the first install, the bootstrap flow imports a self-signed code-signing certificate and sets PowerShell's `ExecutionPolicy` to `RemoteSigned` for the current user. Re-running `windows-workstation/install.ps1` or the PowerShell profile script directly afterward no longer needs `-Bypass`, since those scripts are signed as part of each release.
 
 ### Interactive Mode (Auto-detect or Choose)
 

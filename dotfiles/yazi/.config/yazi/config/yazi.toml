@@ -1,2 +1,2 @@
 [opener]
-edit = [{ run = "nvim %s", block = true, desc = "nvim", for = "unix" }]
+edit = [{ run = "$EDITOR %s", block = true, desc = "Edit", for = "unix" }]

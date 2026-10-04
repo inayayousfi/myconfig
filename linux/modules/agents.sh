@@ -129,7 +129,7 @@ This file describes the capabilities installed for the $platform.
 - **Shell**: Zsh with Oh My Zsh and the shared Black & Pink configuration.
 - **Runtimes**: Rust, Go, Bun, Node.js, Python, Java, LLVM, Make, and CMake.
 - **Repository tools**: Git, GitHub CLI, and GNU Stow.
-- **Terminal tools**: Yazi, ripgrep, fd, fzf, zoxide, eza, bat, jq, and btop.
+- **Terminal tools**: Yazi, ripgrep, jq, and btop.
 - **Agent browser tools**: Playwright MCP. Claude Code and Pi are installed separately.
 - **Remote access**: OpenSSH server and Tailscale service with optional login during setup.
 EOF
@@ -145,7 +145,7 @@ EOF
 EOF
     elif [ "$MYCONFIG_PROFILE" = arch-wsl ]; then
         cat >>"$HOME/environment.md" <<'EOF'
-- **Editor**: Unconfigured Neovim is retained as the shell editor; shared Neovim, tmux, Lazygit, and Hunk dotfiles are retired.
+- **Editor**: This profile does not install an editor. The shell uses an available Vim or Vi fallback; Neovim, tmux, Lazygit, and Hunk are removed.
 EOF
     fi
 

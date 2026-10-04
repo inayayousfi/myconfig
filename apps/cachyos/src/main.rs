@@ -7,13 +7,13 @@ use myconfig_modules::{
         AxidevOskModule, BaseModule, CachyosAgentsConfigure, CachyosAgentsPackages,
         CachyosAndroidPhone, CachyosAuthentication, CachyosAxidevOsk, CachyosBase, CachyosCli,
         CachyosCursorTheme, CachyosDocker, CachyosDotfiles, CachyosEmacs,
-        CachyosEnvironmentInventory, CachyosHandy, CachyosKanata, CachyosKanataKde,
+        CachyosEnvironmentInventory, CachyosGhostty, CachyosHandy, CachyosKanata, CachyosKanataKde,
         CachyosKdePlasma, CachyosKdePlasmaValidate, CachyosModule, CachyosPipewire, CachyosRefind,
         CachyosRuntimes, CachyosSetup, CachyosSsh, CachyosTailscale, CachyosTerminalTools,
         CachyosZsh, CliModule, CursorThemeModule, DockerModule, DotfilesModule, EmacsModule,
-        EnvironmentInventoryModule, HandyModule, KanataKdeModule, KanataModule, KdePlasmaModule,
-        KdePlasmaValidateModule, PipewireModule, RefindModule, RuntimesModule, SshModule,
-        TailscaleModule, TerminalToolsModule, ZshModule,
+        EnvironmentInventoryModule, GhosttyModule, HandyModule, KanataKdeModule, KanataModule,
+        KdePlasmaModule, KdePlasmaValidateModule, PipewireModule, RefindModule, RuntimesModule,
+        SshModule, TailscaleModule, TerminalToolsModule, ZshModule,
     },
 };
 use myconfig_utils::{LinuxSession, PackageSystem};
@@ -41,6 +41,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     CachyosRuntimes.install(&context)?;
     CachyosZsh.install(&context)?;
     CachyosTerminalTools.install(&context)?;
+    CachyosGhostty.install(&context)?;
     CachyosAxidevOsk.install(&context)?;
     CachyosTailscale.install(&context)?;
     CachyosAgentsPackages.install(&context)?;

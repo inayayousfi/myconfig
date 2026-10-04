@@ -57,6 +57,7 @@ impl WingetPackagesModule for WindowsWingetPackages {
                 Package::PowerToys,
                 Package::EmacsWayland,
                 Package::Unzip,
+                Package::Python,
             ],
         )?;
 
@@ -377,6 +378,9 @@ impl AiConfigModule for WindowsAiConfig {
         let mut agents = false;
         let mut claude_doc = false;
         let mut claude_settings = false;
+        let mut config_helper = false;
+        let mut mcp_servers = false;
+        let helper = home.join(".local/bin/claude-config-helper");
         for file in DOTFILES.ai.files() {
             let path = Path::new(file.path_from_root);
             let destination = if path == Path::new("ai/.agents/AGENTS.md") {
@@ -390,6 +394,12 @@ impl AiConfigModule for WindowsAiConfig {
             } else if path == Path::new("ai/.claude/settings.json") {
                 claude_settings = true;
                 Some(home.join(".claude/settings.json"))
+            } else if path == Path::new("ai/.local/bin/claude-config-helper") {
+                config_helper = true;
+                Some(helper.clone())
+            } else if path == Path::new("ai/.config/claude-config-helper/mcp-servers.json") {
+                mcp_servers = true;
+                Some(home.join(".config/claude-config-helper/mcp-servers.json"))
             } else {
                 None
             };
@@ -405,8 +415,16 @@ impl AiConfigModule for WindowsAiConfig {
                 }
             }
         }
-        if !(agents && claude_doc && claude_settings) {
+        if !(agents && claude_doc && claude_settings && config_helper && mcp_servers) {
             return Err("embedded agent or Claude configuration is incomplete".into());
+        }
+        let sh = context.shell;
+        if find_program(sh, "py").is_ok() && find_program(sh, "claude").is_ok() {
+            if let Err(error) = cmd!(sh, "py -3 {helper} mcp apply").run() {
+                eprintln!("Claude MCP servers were not applied: {error}");
+            }
+        } else {
+            eprintln!("Python or Claude Code not found; run claude-config-helper mcp apply later");
         }
         Ok(())
     }

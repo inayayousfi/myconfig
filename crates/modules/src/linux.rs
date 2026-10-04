@@ -134,7 +134,11 @@ impl CachyosModule for CachyosSetup {
         install_packages(
             context.shell,
             context.package_system,
-            &[Package::CachyosKernelManager, Package::LinuxCachyos],
+            &[
+                Package::CachyosKernelManager,
+                Package::LinuxCachyos,
+                Package::NotoFontsCjk,
+            ],
         )?;
         remove_arch_packages(
             context.shell,
@@ -149,6 +153,30 @@ impl CachyosModule for CachyosSetup {
                 Package::FishAutopair,
                 Package::FishPurePrompt,
                 Package::Fisher,
+                Package::Firefox,
+                Package::FirefoxI18nFr,
+                Package::MesloFont,
+                Package::CachyosEmeraldKdeTheme,
+                Package::CachyosIridescentKde,
+                Package::CachyosNordKdeTheme,
+                Package::Kate,
+                Package::Micro,
+                Package::CachyosMicroSettings,
+                Package::Nano,
+                Package::NanoSyntaxHighlighting,
+                Package::Meld,
+                Package::Glances,
+                Package::Duf,
+                Package::Tealdeer,
+                Package::Filelight,
+                Package::Pavucontrol,
+                Package::Kcalc,
+                Package::Shelly,
+                Package::CachyosPackageinstaller,
+                Package::Expac,
+                Package::CachyosWallpapers,
+                Package::Hwdetect,
+                Package::Qtscrcpy,
             ],
         )?;
         Ok(())
@@ -259,16 +287,25 @@ pub struct ArchWslCli;
 
 fn install_cli(context: &ModuleContext<'_>) -> ModuleResult {
     require_arch(context)?;
-    install_packages(
+    remove_arch_packages(
         context.shell,
-        context.package_system,
         &[
-            Package::Ripgrep,
             Package::Fd,
             Package::Fzf,
             Package::Zoxide,
             Package::Eza,
             Package::Bat,
+            Package::Hunk,
+            Package::Neovim,
+            Package::Lazygit,
+            Package::Tmux,
+        ],
+    )?;
+    install_packages(
+        context.shell,
+        context.package_system,
+        &[
+            Package::Ripgrep,
             Package::Jq,
             Package::Fastfetch,
             Package::Btop,
@@ -429,21 +466,6 @@ fn install_zsh(context: &ModuleContext<'_>) -> ModuleResult {
     }
     Ok(())
 }
-pub trait NeovimModule {
-    fn install(&self, context: &ModuleContext<'_>) -> ModuleResult;
-}
-pub struct ArchWslNeovim;
-impl NeovimModule for ArchWslNeovim {
-    fn install(&self, context: &ModuleContext<'_>) -> ModuleResult {
-        if context.profile != Profile::ArchWsl {
-            return Err("Neovim is selected by Arch WSL only".into());
-        }
-        require_arch(context)?;
-        install_packages(context.shell, context.package_system, &[Package::Neovim])?;
-        Ok(())
-    }
-}
-
 pub trait TerminalToolsModule {
     fn install(&self, context: &ModuleContext<'_>) -> ModuleResult;
 }
@@ -475,6 +497,33 @@ impl TerminalToolsModule for CachyosTerminalTools {
 impl TerminalToolsModule for ArchWslTerminalTools {
     fn install(&self, context: &ModuleContext<'_>) -> ModuleResult {
         install_terminal_tools(context)
+    }
+}
+pub trait GhosttyModule {
+    fn install(&self, context: &ModuleContext<'_>) -> ModuleResult;
+}
+pub struct CachyosGhostty;
+impl GhosttyModule for CachyosGhostty {
+    fn install(&self, context: &ModuleContext<'_>) -> ModuleResult {
+        require_cachyos(context)?;
+        let sh = context.shell;
+        install_packages(sh, context.package_system, &[Package::Ghostty])?;
+        if find_program(sh, "plasmashell").is_ok() && find_program(sh, "kwriteconfig6").is_ok() {
+            let terminal = "/usr/bin/ghostty --gtk-single-instance=true";
+            cmd!(
+                sh,
+                "kwriteconfig6 --file kdeglobals --group General --key TerminalApplication {terminal}"
+            )
+            .run()?;
+            cmd!(
+                sh,
+                "kwriteconfig6 --file kdeglobals --group General --key TerminalService com.mitchellh.ghostty.desktop"
+            )
+            .run()?;
+        } else {
+            println!("KDE Plasma not found; leaving its default terminal unchanged");
+        }
+        Ok(())
     }
 }
 pub trait AxidevOskModule {
@@ -624,8 +673,6 @@ fn install_agents_packages(context: &ModuleContext<'_>) -> ModuleResult {
     require_arch(context)?;
     let sh = context.shell;
     let mut packages = vec![
-        Package::Opencode,
-        Package::FxAgent,
         Package::Lsof,
         Package::AtSpi2Core,
         Package::Libxcomposite,
@@ -695,6 +742,7 @@ impl DotfilesModule for CachyosDotfiles {
                 "zsh",
                 "yazi",
                 "ai",
+                "ghostty",
                 "kanata",
                 "kanata-kde",
                 "handy",
@@ -703,7 +751,7 @@ impl DotfilesModule for CachyosDotfiles {
                 "phone",
                 "pipewire",
             ],
-            &["ghostty", "hunk", "lazygit", "nvim", "tmux", "zed"],
+            &["hunk", "lazygit", "nvim", "tmux", "zed"],
         )
     }
 }
@@ -859,6 +907,10 @@ fn install_selected_dotfiles(
             }
         }
 
+        // Real directories keep Stow from folding these into one package, where
+        // programs and Claude data written later would land inside the deployed tree.
+        fs::create_dir_all(home.join(".local/bin"))?;
+        fs::create_dir_all(home.join(".claude"))?;
         cmd!(
             context.shell,
             "stow --dir {dotfiles} --target {home} --restow {packages...}"
@@ -1910,6 +1962,7 @@ impl PipewireModule for CachyosPipewire {
         )?;
         find_program(sh, "python")?;
         find_program(sh, "systemctl")?;
+        find_program(sh, "pactl")?;
         let tray = context.home.join(".local/bin/myconfig-pipewire-tray");
         require_executable(&tray)?;
         require_file(
@@ -2007,6 +2060,7 @@ fn link_agent_config(home: &Path) -> ModuleResult {
     fs::create_dir_all(&claude_skills)?;
     fs::create_dir_all(home.join(".config/opencode"))?;
     fs::create_dir_all(home.join(".fx"))?;
+    fs::create_dir_all(home.join(".pi/agent"))?;
 
     for entry in fs::read_dir(&claude_skills)? {
         let entry = entry?;
@@ -2035,6 +2089,7 @@ fn link_agent_config(home: &Path) -> ModuleResult {
     for destination in [
         home.join(".config/opencode/AGENTS.md"),
         home.join(".fx/AGENTS.md"),
+        home.join(".pi/agent/AGENTS.md"),
     ] {
         remove_existing_path(&destination)?;
         symlink(&instructions, &destination)?;
@@ -2118,9 +2173,14 @@ fn configure_agents(context: &ModuleContext<'_>) -> ModuleResult {
     )?;
     let _bun = sh.push_env("BUN_INSTALL", &bun);
     let _path = sh.push_env("PATH", path);
-    cmd!(sh, "opencode debug config").ignore_stdout().run()?;
+    if find_program(sh, "opencode").is_ok() {
+        cmd!(sh, "opencode debug config").ignore_stdout().run()?;
+    }
     link_agent_config(context.home)?;
     configure_fx_playwright(context)?;
+    let helper = context.home.join(".local/bin/claude-config-helper");
+    require_executable(&helper)?;
+    cmd!(sh, "{helper} mcp apply").run()?;
     if context.profile == Profile::Cachyos {
         for program in ["ydotool", "systemctl"] {
             find_program(sh, program)?;

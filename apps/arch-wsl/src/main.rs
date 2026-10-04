@@ -5,10 +5,10 @@ use myconfig_modules::{
     linux::{
         AgentsConfigureModule, AgentsPackagesModule, ArchWslAgentsConfigure, ArchWslAgentsPackages,
         ArchWslAuthentication, ArchWslBase, ArchWslCli, ArchWslDotfiles,
-        ArchWslEnvironmentInventory, ArchWslNeovim, ArchWslRuntimes, ArchWslSsh, ArchWslTailscale,
+        ArchWslEnvironmentInventory, ArchWslRuntimes, ArchWslSsh, ArchWslTailscale,
         ArchWslTerminalTools, ArchWslZsh, AuthenticationModule, BaseModule, CliModule,
-        DotfilesModule, EnvironmentInventoryModule, NeovimModule, RuntimesModule, SshModule,
-        TailscaleModule, TerminalToolsModule, ZshModule,
+        DotfilesModule, EnvironmentInventoryModule, RuntimesModule, SshModule, TailscaleModule,
+        TerminalToolsModule, ZshModule,
     },
 };
 use myconfig_utils::{LinuxSession, PackageSystem};
@@ -43,7 +43,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     ArchWslCli.install(&context)?;
     ArchWslRuntimes.install(&context)?;
     ArchWslZsh.install(&context)?;
-    ArchWslNeovim.install(&context)?;
     ArchWslTerminalTools.install(&context)?;
     ArchWslTailscale.install(&context)?;
     ArchWslAgentsPackages.install(&context)?;

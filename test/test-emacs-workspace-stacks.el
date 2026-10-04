@@ -123,7 +123,8 @@
       (should (= (length (plist-get workspace :contents)) 1))
       (atelier-close-current-view)
       (should-not (buffer-live-p buffer))
-      (should-not (plist-get workspace :contents)))))
+      (should-not (plist-get workspace :contents))
+      (should-not (plist-get workspace :stacks)))))
 
 (ert-deftest atelier-workspace-stacks-migration-and-round-trip-retain-hidden-content ()
   (atelier-stacks-test
@@ -350,22 +351,51 @@
         (should-not (atelier-entry-by-id workspace view-id))
         (should (buffer-live-p buffer))))))
 
-(ert-deftest atelier-workspace-stacks-empty-stack-can-be-assigned-and-saved ()
+(ert-deftest atelier-workspace-stacks-last-content-deletes-stack-and-frees-type ()
   (atelier-stacks-test
-    (let* ((buffer (generate-new-buffer "*scratch empty-stack*"))
-           (reference (atelier-register-buffer buffer workspace))
-           (stack-id (plist-get reference :stack-id)))
-      (atelier-workspace-drop-content workspace (plist-get reference :content-id))
-      (should (atelier-entry-by-id workspace stack-id))
-      (let ((view (atelier-entry-add workspace (list :id "empty-view" :unassigned t) t)))
-        (atelier-view-assign-stack workspace view stack-id)
-        (atelier-display-entry-buffer view workspace (selected-window))
-        (should (with-current-buffer (window-buffer) (string-match-p "Assigned stack is empty" (buffer-string))))
-        (should (atelier-validate-workspace-stacks workspace))
-        (let* ((snapshot (list :version 12 :generation "empty-stack"
-                               :workspaces (list (atelier-workspace-persistent-copy workspace))))
-               (saved (atelier-validate-state snapshot)))
-          (should (equal stack-id (plist-get (car (plist-get (car (plist-get saved :workspaces)) :entries))
-                                             :stack-id))))))))
+    (let* ((one (generate-new-buffer "*scratch first*"))
+           (two (generate-new-buffer "*scratch second*"))
+           (first (atelier-register-buffer one workspace))
+           (second (atelier-register-buffer two workspace))
+           (stack-id (plist-get first :stack-id)))
+      (atelier-close-entry workspace first)
+      (should (atelier-workspace-stack-record workspace stack-id))
+      (should (buffer-live-p two))
+      (atelier-close-entry workspace second)
+      (should-not (atelier-entry-by-id workspace stack-id))
+      (should-not (atelier-workspace-entries workspace))
+      (should-not (plist-get (atelier-workspace-persistent-copy workspace) :stacks))
+      (let* ((detached (atelier-ensure-detached-workspace))
+             (new (atelier-register-buffer (generate-new-buffer "*scratch replacement*") detached)))
+        (atelier-entry-move new detached workspace)
+        (should (= 1 (length (atelier-workspace-stack workspace 'buffer))))))))
+
+(ert-deftest atelier-workspace-stacks-restoration-discards-old-empty-stacks-and-views ()
+  (atelier-stacks-test
+    (let* ((snapshot (list :version 12 :generation "old-empty"
+                           :workspaces
+                           (list (list :id "stacks-test" :name "stacks-test"
+                                       :destination "local" :path root :status 'running
+                                       :stacks '((:id "empty" :type buffer :content-ids nil))
+                                       :contents nil :entry-root-ids '("view")
+                                       :entries '((:id "view" :parent-id nil :stack-id "empty"
+                                                      :content-id nil :displayed t))))))
+           (before (copy-tree snapshot))
+           (saved (atelier-validate-state snapshot))
+           (restored (car (plist-get saved :workspaces))))
+      (should (equal snapshot before))
+      (should-not (plist-get restored :stacks))
+      (should-not (plist-get restored :entries))
+      (should-not (plist-get restored :entry-root-ids)))))
+
+(ert-deftest atelier-workspace-stacks-saving-transient-content-leaves-no-empty-stack ()
+  (atelier-stacks-test
+    (let* ((buffer (generate-new-buffer "transient-stack"))
+           (_ (atelier-register-buffer buffer workspace))
+           (saved (atelier-workspace-persistent-copy workspace)))
+      (should (plist-get workspace :stacks))
+      (should (buffer-live-p buffer))
+      (should-not (plist-get saved :contents))
+      (should-not (plist-get saved :stacks)))))
 
 (ert-run-tests-batch-and-exit)

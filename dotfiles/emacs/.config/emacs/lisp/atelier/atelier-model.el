@@ -370,6 +370,20 @@ Transfer disposable buffers from legacy entry/content keys before dropping them.
       (atelier-workspace-drop-content workspace old))
     entry))
 
+(defun atelier-workspace-prune-empty-stacks (workspace)
+  "Delete empty stacks and their views from WORKSPACE."
+  (let* ((empty (cl-remove-if (lambda (stack) (plist-get stack :content-ids))
+                              (plist-get workspace :stacks)))
+         (ids (mapcar (lambda (stack) (plist-get stack :id)) empty))
+         (atelier-inhibit-entry-removed-hook t))
+    (when empty
+      (dolist (view (copy-sequence (atelier-workspace-view-entries workspace)))
+        (when (member (plist-get view :stack-id) ids)
+          (atelier-entry-remove workspace view t)))
+      (atelier-plist-set! workspace :stacks
+                          (cl-set-difference (plist-get workspace :stacks) empty :test #'eq))))
+  workspace)
+
 (defun atelier-workspace-drop-content (workspace id)
   (when id
     (when-let* ((content (atelier-workspace-content workspace id))
@@ -391,7 +405,8 @@ Transfer disposable buffers from legacy entry/content keys before dropping them.
                                   :key (lambda (content) (plist-get content :id))
                                   :test #'equal))
     (remhash (atelier-content-cache-key workspace id)
-             atelier-content-live-buffers)))
+             atelier-content-live-buffers)
+    (atelier-workspace-prune-empty-stacks workspace)))
 
 (defun atelier-entry-prune-contents (workspace entry predicate)
   "Remove contents matching PREDICATE, dropping ENTRY only when it is empty.
@@ -970,10 +985,7 @@ separate entry kind."
                                       (atelier-workspace-top-level-entries workspace)))
                   (copy-tree (atelier-workspace-top-level-entries workspace))))
          (records (list nil)))
-    (dolist (root roots) (atelier-entry-flatten root nil records))
-    (setf (plist-get copy :entries) (nreverse (car records))
-          (plist-get copy :entry-root-ids)
-          (mapcar (lambda (root) (plist-get root :id)) roots))
+    (setf (plist-get copy :entries) roots)
     (atelier-plist-set! copy :contents
                         (cl-loop for content in (plist-get workspace :contents)
                                  when (or (not persistent-only) (plist-get content :persistent))
@@ -984,6 +996,14 @@ separate entry kind."
       (atelier-plist-set! stack :content-ids
                           (cl-remove-if-not (lambda (id) (atelier-workspace-content copy id))
                                             (plist-get stack :content-ids))))
+    ;; Filtering transient contents can empty a stack in the saved copy only.
+    (let ((atelier-model-workspace copy))
+      (atelier-workspace-prune-empty-stacks copy))
+    (setq roots (atelier-workspace-top-level-entries copy))
+    (dolist (root roots) (atelier-entry-flatten root nil records))
+    (setf (plist-get copy :entries) (nreverse (car records))
+          (plist-get copy :entry-root-ids)
+          (mapcar (lambda (root) (plist-get root :id)) roots))
     (cl-remf copy :layout)
     (cl-remf copy :state)
     copy))
@@ -1030,6 +1050,7 @@ separate entry kind."
     (unless (= (hash-table-count visited) (hash-table-count by-id))
       (error "Flat workspace contains unreachable entries"))
     (cl-remf copy :entry-root-ids)
+    (atelier-workspace-prune-empty-stacks copy)
     (atelier-workspace-index-entries copy)))
 
 (provide 'atelier-model)

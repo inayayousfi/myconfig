@@ -38,7 +38,7 @@ The top-level areas have different jobs:
 
 Linux profiles currently select these dotfile packages:
 
-- CachyOS: `zsh`, `yazi`, `ai`, `kanata`, `kanata-kde`, `handy`, `kde-plasma`, `emacs`, `phone`, and `pipewire`.
+- CachyOS: `zsh`, `yazi`, `ai`, `ghostty`, `kanata`, `kanata-kde`, `handy`, `kde-plasma`, `emacs`, `phone`, and `pipewire`.
 
 - Arch WSL: `zsh`, `yazi`, and `ai`.
 

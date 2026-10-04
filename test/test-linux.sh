@@ -290,6 +290,33 @@ printf 'Write-Host "ok"\r\n' >"$powershell_source/ai/windows.ps1"
 cp "$powershell_source/ai/windows.ps1" "$powershell_staging/ai/windows.ps1"
 validate_staged_dotfiles "$powershell_source" "$powershell_staging" ai
 
+(
+    HOME="$TEST_HOME/ghostty-profile-home"
+    MYCONFIG_PROFILE=cachyos
+    MYCONFIG_DOTFILES_SOURCE="$REPO_ROOT/dotfiles"
+    mkdir -p "$HOME/.config/ghostty"
+    touch "$HOME/.config/ghostty/config.ghostty"
+
+    module_dotfiles
+    ghostty_config="$HOME/.config/ghostty/config"
+    ghostty_deployed="$HOME/dotfiles/ghostty/.config/ghostty/config"
+    [ -L "$ghostty_config" ] \
+        && [ "$(readlink -f "$ghostty_config")" = "$ghostty_deployed" ] \
+        || myconfig_fail "CachyOS did not link the Ghostty configuration into its deployed package"
+    cmp "$REPO_ROOT/dotfiles/ghostty/.config/ghostty/config" "$ghostty_config" \
+        || myconfig_fail "CachyOS did not deploy the saved Ghostty configuration"
+    [ -f "$HOME/.config/ghostty/config.ghostty" ] \
+        && [ ! -s "$HOME/.config/ghostty/config.ghostty" ] \
+        || myconfig_fail "Ghostty deployment changed the existing empty config.ghostty"
+
+    module_dotfiles
+    [ -L "$ghostty_config" ] \
+        && [ "$(readlink -f "$ghostty_config")" = "$ghostty_deployed" ] \
+        || myconfig_fail "CachyOS rerun retired the active Ghostty configuration"
+    cmp "$REPO_ROOT/dotfiles/ghostty/.config/ghostty/config" "$ghostty_config" \
+        || myconfig_fail "CachyOS rerun changed the Ghostty configuration"
+)
+
 profile_home="$TEST_HOME/profile-home"
 HOME="$profile_home"
 MYCONFIG_PROFILE=arch-wsl
@@ -1399,8 +1426,8 @@ ubuntu_profile="$(
     || myconfig_fail "CachyOS profile still includes Neovim"
 [[ "$cachyos_profile" != *module_tmux* ]] \
     || myconfig_fail "CachyOS profile still includes tmux"
-[[ "$cachyos_profile" != *module_ghostty* ]] \
-    || myconfig_fail "CachyOS profile still includes Ghostty"
+[[ "$cachyos_profile" == *module_ghostty* ]] \
+    || myconfig_fail "CachyOS profile does not include Ghostty"
 [[ "$cachyos_profile" == *module_kde_plasma* ]] \
     || myconfig_fail "CachyOS profile does not include KDE Plasma configuration"
 [[ "$cachyos_profile" == *module_cursor_theme* ]] \

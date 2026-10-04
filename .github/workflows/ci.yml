@@ -138,6 +138,28 @@ jobs:
       - name: Test Claude configuration helper
         run: python3 test/test-claude-config-helper.py
 
+      - name: Install Emacs test packages
+        run: |
+          retry() {
+            for attempt in 1 2 3; do
+              "$@" && return
+              (( attempt < 3 )) || return 1
+              sleep $((attempt * 10))
+            done
+          }
+
+          packages="$RUNNER_TEMP/emacs-test-packages"
+          # The workbench search tests exercise the real consult package.
+          retry emacs -Q --batch --eval "(progn
+            (setq package-user-dir \"$packages\"
+                  package-archives '((\"gnu\" . \"https://elpa.gnu.org/packages/\"))
+                  package-check-signature nil)
+            (package-initialize)
+            (package-refresh-contents)
+            (package-install 'consult))"
+          load_path="$(find "$packages" -mindepth 1 -maxdepth 1 -type d ! -name archives -printf '%p:')"
+          printf 'EMACSLOADPATH=%s\n' "$load_path" >>"$GITHUB_ENV"
+
       - name: Test Emacs workbench state
         run: |
           emacs -Q --batch --load test/test-universel.el

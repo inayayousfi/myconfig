@@ -74,8 +74,6 @@ alias gcb='git fetch --prune && git branch -vv | grep ": gone]" | awk "{print \$
 
 alias please='sudo'
 
-unalias gd 2>/dev/null || true
-
 # Tool aliases
 if [ "$EDITOR" = emacs ]; then
     alias vi='emacs'
@@ -164,8 +162,6 @@ if $IS_MACOS; then
             echo "Updating Claude Code..."
             claude update
             echo "Claude Code updated."
-        else
-            echo "claude not found, skipping Claude Code update."
         fi
     }
 
@@ -199,15 +195,10 @@ elif $IS_LINUX; then
             flatpak uninstall --unused -y || true
             echo "Flatpak apps updated."
             echo ""
-        else
-            echo "Flatpak not found, skipping Flatpak updates."
-            echo ""
         fi
 
         if command -v bun &>/dev/null; then
             if command -v paru &>/dev/null; then
-                echo "Bun is managed by paru/pacman; skipping 'bun upgrade' (already updated above)."
-                echo ""
             else
                 echo "Upgrading Bun runtime..."
                 bun upgrade
@@ -235,9 +226,6 @@ elif $IS_LINUX; then
             echo "Updating Claude Code..."
             claude update
             echo "Claude Code updated."
-            echo ""
-        else
-            echo "claude not found, skipping Claude Code update."
             echo ""
         fi
 

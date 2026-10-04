@@ -80,7 +80,6 @@ required_files=(
     "myconfig-main/windows-workstation/install.ps1"
     "myconfig-main/dotfiles"
     "myconfig-main/vm/cachyos.sh"
-    "myconfig-main/SPECS.md"
 )
 
 all_found=true

@@ -67,7 +67,6 @@ The [CachyOS VM harness](vm/README.md) installs the Desktop ISO interactively, p
 - **Repeatable**: Safe to rerun, with timestamped backups before replacement
 - **Modular**: Shared dotfiles with platform-specific additions
 - **Automated**: Installs all dependencies and tools
-- **Documented**: Full specifications in [SPECS.md](SPECS.md)
 - **Backed Up**: Automatically backs up existing configurations
 
 ## Uninstalling
@@ -78,10 +77,6 @@ Available uninstall scripts:
 ./ubuntu-server/uninstall.sh  # Ubuntu Server
 ./windows-workstation/uninstall.ps1  # Windows Workstation
 ```
-
-## Documentation
-
-See [SPECS.md](SPECS.md) for complete configuration specifications and details about all installed components.
 
 ## Requirements
 

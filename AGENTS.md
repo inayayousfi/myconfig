@@ -4,7 +4,7 @@
 
 This repository builds configuration environments for CachyOS, Arch WSL, Ubuntu Server, and Windows Workstation. The repository is the source of truth. Inspect the source here before changing a deployed configuration.
 
-The detailed specification is in `SPECS.md`. `README.md` gives the supported entry points and bootstrap commands. Read the relevant sections of those files when a task depends on a component's documented behavior.
+`README.md` gives the supported entry points and bootstrap commands.
 
 ## Source and deployed state
 

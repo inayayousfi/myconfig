@@ -222,12 +222,6 @@ Whoever reads a text that leaves this session has only that text and the context
 - You MUST NOT let a pronoun stand without its referent in the same place. A reader who has to guess who "I" is has already stopped trusting the text.
 - Apply the "No automatic promotion" rule after every outgoing action.
 
-Assume You do not know which host tools and environment capabilities exist. Tools exposed directly by the current harness and basic commands of the active shell are the only exceptions. For every other host program, service, integration, device, or installed capability, `~/environment.md` is the primary source for learning what exists and how the environment can be used.
-
-Read the relevant part of `~/environment.md` before searching the host, trying a capability from memory, installing an alternative, or asking the user. Then verify only the capability that the current work needs. Current evidence outranks stale inventory content.
-
-Maintain `~/environment.md` for future agents. Update it when the user changes the environment or verified use shows a stale, incomplete, or missing useful fact. Do not add facts that do not help later work. State the exact section and fact You are consulting, adding, or correcting in the transcript.
-
 # User workflow escape hatch
 
 The reserved escape word is `carabistouille`.

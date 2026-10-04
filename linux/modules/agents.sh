@@ -112,6 +112,12 @@ link_agent_config() {
 }
 
 write_environment_inventory() {
+    # Agents maintain an existing inventory; only a new machine gets the template.
+    if [ -e "$HOME/environment.md" ]; then
+        myconfig_log "Keeping the existing environment inventory"
+        return 0
+    fi
+
     local platform
     case "$MYCONFIG_PROFILE" in
         cachyos) platform="CachyOS development workstation" ;;

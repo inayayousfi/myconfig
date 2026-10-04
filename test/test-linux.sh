@@ -1559,6 +1559,12 @@ grep -Fq 'Handy offline push-to-talk dictation on Ctrl+Space' "$HOME/environment
 grep -Fq 'ydotool with a persistent user service' "$HOME/environment.md" \
     || myconfig_fail "CachyOS inventory omitted ydotool"
 
+printf 'Curated inventory\n' >"$HOME/environment.md"
+write_environment_inventory
+[ "$(cat "$HOME/environment.md")" = 'Curated inventory' ] \
+    || myconfig_fail "Inventory generation overwrote an existing environment.md"
+
+rm "$HOME/environment.md"
 MYCONFIG_PROFILE=arch-wsl
 write_environment_inventory
 grep -Fxq -- '- **Terminal tools**: Yazi, ripgrep, jq, and btop.' "$HOME/environment.md" \

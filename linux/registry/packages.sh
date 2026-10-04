@@ -105,8 +105,6 @@ register_package tmux official:tmux
 register_package wl_clipboard official:wl-clipboard
 # Legacy mapping used to remove installations managed before tmux replaced Herdr.
 register_package herdr aur:herdr-bin
-register_package opencode official:opencode
-register_package fx_agent aur:fx-agent-bin
 register_package ydotool official:ydotool
 register_package kanata aur:kanata-bin
 register_package handy aur:handy-bin

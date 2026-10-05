@@ -158,19 +158,198 @@
 (ert-deftest universel-non-linux-process-inspection-does-not-touch-proc ()
   (cl-letf (((symbol-function 'directory-files)
              (lambda (&rest _) (ert-fail "Must not inspect /proc"))))
-    (should-not (universel-process-table '(:platform windows :transport local)))
+    ;; A Windows host answers through its PowerShell helper instead.
+    (let ((table (universel-process-table '(:platform windows :transport local))))
+      (unless (eq system-type 'windows-nt) (should-not table)))
     (should-not (universel-process-table '(:platform posix :transport ssh :destination "server")))))
 
-(ert-deftest universel-foreground-process-selection-preserves-group-rules ()
-  (let* ((shell '(:pid 10 :pgrp 10 :tty 2 :tpgid 20))
-         (foreground '(:pid 20 :ppid 10 :pgrp 20 :tty 2))
-         (child '(:pid 21 :ppid 20 :pgrp 20 :tty 2))
-         (other-terminal '(:pid 30 :ppid 10 :pgrp 20 :tty 3))
-         (table (list shell foreground child other-terminal)))
-    (should (eq (universel-foreground-process 10 table) foreground))
-    (should (eq (universel-foreground-process 10 table t) shell))
-    (should-not (universel-foreground-process 999 table))
-    (should-not (universel-foreground-process 10 (cons '(:pid 22 :ppid 10 :pgrp 20 :tty 2) table)))))
+(ert-deftest universel-process-environment-reads-a-live-process ()
+  (skip-unless (memq system-type '(gnu/linux windows-nt)))
+  (let* ((process-environment (cons "UNIVERSEL_PROBE=seen" process-environment))
+         (output "")
+         ;; Read only after the child has started, not while it is still a copy of Emacs.
+         (process (make-process :name "environment-probe"
+                                :command (if (eq system-type 'windows-nt)
+                                             (list (universel-default-shell (universel-host-environment))
+                                                   "-NoLogo" "-NoProfile" "-Command"
+                                                   "'ready'; Start-Sleep -Seconds 30")
+                                           '("sh" "-c" "echo ready; sleep 30; exit"))
+                                :connection-type 'pipe
+                                :filter (lambda (_ text) (setq output (concat output text)))
+                                :noquery t)))
+    (unwind-protect
+        (progn
+          (while (not (string-match-p "ready" output))
+            (accept-process-output process 5))
+          (should (member "UNIVERSEL_PROBE=seen"
+                          (universel-process-environment (process-id process)
+                                                         (universel-host-environment)))))
+      (delete-process process))))
+
+(ert-deftest universel-windows-fresh-shell-starts-from-emacs-variables ()
+  (skip-unless (eq system-type 'windows-nt))
+  (let* ((process-environment (cons "UNIVERSEL_FRESH=seen" process-environment))
+         (shell (universel-default-shell (universel-host-environment)))
+         (environment (universel-shell-environment
+                       (list :executable shell :login nil) '("IGNORED=start")
+                       (universel-host-environment))))
+    (should (member "UNIVERSEL_FRESH=seen" environment))
+    (should-not (member "IGNORED=start" environment))
+    (should (cl-every (lambda (variable) (string-match-p "\\`[^=\n]+=" variable)) environment))))
+
+(ert-deftest universel-shell-environment-includes-startup-file-exports ()
+  (skip-unless (and (eq system-type 'gnu/linux) (file-executable-p "/bin/sh")))
+  (let ((startup (make-temp-file "universel-shell-startup-")))
+    (unwind-protect
+        (progn
+          (with-temp-file startup (insert "printf banner\nexport FROM_STARTUP=1\n"))
+          (let ((environment (universel-shell-environment
+                              '(:executable "/bin/sh" :login nil)
+                              (list "PATH=/usr/bin:/bin" (concat "ENV=" startup) "KEPT=yes")
+                              (universel-host-environment))))
+            (should (member "FROM_STARTUP=1" environment))
+            (should (member "KEPT=yes" environment))
+            (should-not (cl-find-if (lambda (variable) (string-match-p "banner" variable))
+                                    environment))))
+      (delete-file startup))))
+
+(ert-deftest universel-windows-command-line-splits-like-windows ()
+  (should (equal (universel-windows-split-command-line
+                  "\"C:\\WINDOWS\\system32\\wsl.exe\" -u ziede zsh -ic \"cco \"")
+                 '("C:\\WINDOWS\\system32\\wsl.exe" "-u" "ziede" "zsh" "-ic" "cco ")))
+  (should (equal (universel-windows-split-command-line
+                  "C:\\tools\\a.exe \"a b\" c\\\"d \"e\\\\\" f\\g \"\"")
+                 '("C:\\tools\\a.exe" "a b" "c\"d" "e\\" "f\\g" ""))))
+
+(ert-deftest universel-wsl-share-paths-round-trip ()
+  (let ((environment (universel-environment nil "//wsl.localhost/archlinux/home/ziede/project/")))
+    (should (eq (plist-get environment :transport) 'wsl))
+    (should (equal (plist-get environment :destination) "archlinux"))
+    (should (equal (plist-get environment :directory) "/home/ziede/project/")))
+  (should (equal (plist-get (universel-environment nil "\\\\wsl$\\Ubuntu\\srv") :directory) "/srv"))
+  (let ((workspace '(:platform posix :transport wsl :destination "archlinux" :directory "/home/ziede")))
+    (should (equal (universel-file-directory "/home/ziede" workspace)
+                   "//wsl.localhost/archlinux/home/ziede/"))
+    (should (equal (universel-file-path "//wsl.localhost/archlinux/home/ziede/a.txt" workspace)
+                   "/home/ziede/a.txt"))))
+
+(ert-deftest universel-shell-launch-keeps-the-shell-open-on-each-platform ()
+  (should (equal (universel-shell-launch
+                  '(:executable "C:/Program Files/PowerShell/7/pwsh.exe" :login ("-l")) "C:/work/"
+                  '("C:\\WINDOWS\\system32\\wsl.exe" "-ic" "cco 'x'") '("IS_DEMO=1") nil 'windows)
+                 '(:program "C:/Program Files/PowerShell/7/pwsh.exe" :directory "C:/work/"
+                   :arguments ("-l" "-NoLogo" "-NoExit" "-Command"
+                               "[Environment]::SetEnvironmentVariable('IS_DEMO', '1'); & 'C:\\WINDOWS\\system32\\wsl.exe' '-ic' 'cco ''x'''"))))
+  (should (equal (plist-get (universel-shell-launch
+                             '(:executable "/usr/bin/zsh" :login ("-l")) "/work/"
+                             '("claude" "--x") '("IS_DEMO=1") nil 'linux)
+                            :arguments)
+                 '("-l" "-i" "-c" "env IS_DEMO\\=1 claude --x; exec /usr/bin/zsh -l")))
+  (let ((launch (universel-shell-launch
+                 '(:executable "/usr/sbin/zsh" :login ("-l")) "//wsl.localhost/archlinux/work/"
+                 '("claude") '("IS_DEMO=1") '("UNIVERSEL_TERMINAL=t1")
+                 '(:platform posix :transport wsl :destination "archlinux"))))
+    (should (equal (plist-get launch :program) "wsl.exe"))
+    (should (equal (plist-get launch :arguments)
+                   '("-d" "archlinux" "--cd" "/work/" "--" "env" "UNIVERSEL_TERMINAL=t1"
+                     "/usr/sbin/zsh" "-l" "-i" "-c"
+                     "env IS_DEMO\\=1 claude; exec /usr/sbin/zsh -l")))))
+
+(ert-deftest universel-wsl-terminal-starts-the-login-shell-with-variables ()
+  (let ((universel--wsl-shells (make-hash-table :test #'equal)))
+    (cl-letf (((symbol-function 'universel--wsl-request)
+               (lambda (distribution request)
+                 (should (equal distribution "archlinux"))
+                 (should (equal request "shell"))
+                 "/usr/sbin/zsh\n")))
+      (let ((launch (universel-shell-command
+                     "/home/ziede/" '(:platform posix :transport wsl :destination "archlinux")
+                     '("UNIVERSEL_TERMINAL=t1"))))
+        (should (equal (plist-get launch :shell) "/usr/sbin/zsh"))
+        (should (equal (plist-get (plist-get launch :location) :destination) "archlinux"))
+        (should (equal (plist-get launch :arguments)
+                       '("-d" "archlinux" "--cd" "/home/ziede/" "--" "env" "UNIVERSEL_TERMINAL=t1"
+                         "/usr/sbin/zsh" "-l")))))))
+
+(ert-deftest universel-wsl-primitives-answer-from-a-real-distribution ()
+  (skip-unless (and (eq system-type 'windows-nt) (member "archlinux" (universel-wsl-distributions))))
+  (let* ((environment '(:platform posix :transport wsl :destination "archlinux"))
+         (marker (format "UNIVERSEL_TEST=%06x" (random #xffffff)))
+         (process (make-process :name "wsl-probe"
+                                :command (list "wsl.exe" "-d" "archlinux" "-e" "env" marker
+                                               "sh" "-c" "echo ready; sleep 30; exit")
+                                :connection-type 'pipe :noquery t
+                                :filter (lambda (process text) (process-put process 'output text)))))
+    (unwind-protect
+        (progn
+          (while (not (process-get process 'output)) (accept-process-output process 5))
+          (should (string-prefix-p "/" (universel-default-shell environment)))
+          (let* ((pids (universel-processes-with-variable marker environment))
+                 (record (cl-find-if (lambda (entry)
+                                       (and (memq (plist-get entry :pid) pids)
+                                            (equal (car (plist-get entry :argv)) "sh")))
+                                     (universel-process-table environment))))
+            ;; The shell and its sleep child both carry the variable.
+            (should (= (length pids) 2))
+            (should (equal (plist-get record :argv) '("sh" "-c" "echo ready; sleep 30; exit")))
+            (should (>= (universel-process-runtime record environment) 0))
+            (should (member marker (universel-process-environment (plist-get record :pid)
+                                                                  environment))))
+          ;; /proc/self is itself a link to the reading process.
+          (should (string-match-p "\\`/proc/[0-9]+\\'"
+                                  (universel-real-path "/proc/self/../self/." environment)))
+          (should (member "sh" (plist-get (universel-find-programs '("sh" "no-such-program") 10
+                                                                   environment)
+                                          :programs)))
+          (should (member "UNIVERSEL_START=1"
+                          (universel-shell-environment
+                           (list :executable "/bin/sh" :login nil)
+                           '("PATH=/usr/bin:/bin" "UNIVERSEL_START=1") environment))))
+      (delete-process process)
+      (universel-wsl-stop-helper "archlinux")
+      (should-not (gethash "archlinux" universel--wsl-helpers)))))
+
+(ert-deftest universel-windows-helper-lists-a-child-with-its-arguments ()
+  (skip-unless (eq system-type 'windows-nt))
+  (let* ((shell (universel-default-shell (universel-host-environment)))
+         (process (make-process :name "windows-probe"
+                                :command (list shell "-NoLogo" "-NoProfile" "-Command"
+                                               "Start-Sleep -Seconds 30; 'a b'")
+                                :connection-type 'pipe :noquery t)))
+    (unwind-protect
+        (let* ((table (universel-process-table (universel-host-environment)))
+               (record (cl-find (process-id process) table
+                                :key (lambda (entry) (plist-get entry :pid)))))
+          (should record)
+          (should (equal (last (plist-get record :argv) 2)
+                         '("-Command" "Start-Sleep -Seconds 30; 'a b'")))
+          (should (>= (universel-process-runtime record (universel-host-environment)) 0)))
+      (delete-process process))))
+
+(ert-deftest universel-windows-restart-runs-program-then-keeps-powershell ()
+  (skip-unless (eq system-type 'windows-nt))
+  (let* ((directory (file-name-as-directory (make-temp-file "universel-restart-" t)))
+         (shell (universel-default-shell (universel-host-environment)))
+         (default-directory directory)
+         (input (expand-file-name "input" directory)))
+    (unwind-protect
+        (progn
+          (with-temp-file input
+            (insert "Set-Content -LiteralPath shell -Value continued\nexit\n"))
+          (apply #'call-process shell input nil nil
+                 (plist-get (universel-shell-launch
+                             (list :executable shell :login nil) directory
+                             (list shell "-NoLogo" "-NoProfile" "-Command"
+                                   "Set-Content -LiteralPath program -Value \"a b $env:PROBE\"")
+                             '("PROBE=restored") nil (universel-host-environment))
+                            :arguments))
+          (should (equal (string-trim
+                          (with-temp-buffer
+                            (insert-file-contents (expand-file-name "program" directory))
+                            (buffer-string)))
+                         "a b restored"))
+          (should (file-exists-p (expand-file-name "shell" directory))))
+      (delete-directory directory t))))
 
 (ert-deftest universel-ssh-port-and-directory-survive-shell-and-file-paths ()
   (let* ((environment '(:platform posix :transport ssh :destination "alice@host" :port "2222"))

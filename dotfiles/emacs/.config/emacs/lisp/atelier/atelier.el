@@ -33,7 +33,11 @@
   "Function called with workspace and path to identify local storage.
 It must not open a connection; nil means absence cannot be checked locally.")
 (defvar atelier-extra-destinations nil
-  "Additional destinations supplied by an optional environment adapter.")
+  "Additional machines supplied by an optional environment adapter.
+Each entry is (LABEL :destination DESTINATION :platform PLATFORM).  The value
+may also be a function returning such entries when the choice is offered.")
+(defvar atelier-file-path-function #'identity
+  "Function translating a saved file or directory path before it is restored.")
 (defvar atelier-read-directories-function #'atelier-default-read-directories
   "Function called with DIRECTORY and MULTIPLE to choose directory paths.
 Return a nonempty list; when MULTIPLE is nil, return exactly one path.")
@@ -788,9 +792,11 @@ For the final split, show another stack or switch to another workspace."
 (defun atelier-restore-buffer (entry &optional workspace)
   "Restore ENTRY, or forget its failed content and report the reason."
   (let* ((workspace (or workspace (atelier-current-workspace)))
-         (file (atelier-entry-value entry :file))
+         (file (when-let* ((saved (atelier-entry-value entry :file)))
+                 (funcall atelier-file-path-function saved)))
          (name (atelier-entry-value entry :name))
-         (directory (atelier-entry-value entry :directory))
+         (directory (when-let* ((saved (atelier-entry-value entry :directory)))
+                      (funcall atelier-file-path-function saved)))
          (content-id (plist-get entry :content-id))
          failure
          (buffer
@@ -1151,37 +1157,38 @@ When EXPLICIT is non-nil, permit another Dired entry of the same type."
 
 (defun atelier-read-workspace-target (&optional multiple)
   "Choose a connection and directory, or directory targets when MULTIPLE."
-  (let* ((destinations (delete-dups
+  (let* ((extra (if (functionp atelier-extra-destinations)
+                    (funcall atelier-extra-destinations)
+                  atelier-extra-destinations))
+         (destinations (delete-dups
                         (append '("local")
-                                atelier-extra-destinations
+                                (mapcar #'car extra)
                                 '("Enter SSH destination")
                                 (atelier-ssh-aliases)
                                 (atelier-shell-history-ssh-destinations)
                                 atelier-remembered-ssh-destinations)))
          (choice (atelier-read-buffer-choice "Machine" destinations))
-         (destination (if (equal choice "Enter SSH destination")
-                          (read-string "SSH destination: ") choice))
+         (target (cdr (assoc choice extra)))
+         (destination (cond (target (plist-get target :destination))
+                            ((equal choice "Enter SSH destination")
+                             (read-string "SSH destination: "))
+                            (t choice)))
          (platform (cond
+                    (target (plist-get target :platform))
                     ((equal destination "local") nil)
-                    ((equal destination "WSL") 'wsl)
                     ((equal (atelier-read-buffer-choice
                              "Remote system" '("POSIX" "Windows"))
                             "Windows")
                      'windows)
                     (t 'posix)))
-         (destination (if (eq platform 'wsl)
-                          (read-string "WSL distribution: " (or (getenv "WSL_DISTRO_NAME") "Ubuntu"))
-                        destination))
          (mount-root (when (eq platform 'windows)
                        (format "/%s:/" (upcase (read-string "Windows drive: " "C")))))
          (probe (when (memq platform '(windows wsl))
-                  (list :destination destination :platform 'windows
+                  (list :destination destination :platform platform
                         :mount-root mount-root :path (if (eq platform 'wsl) "/" mount-root))))
-         (remote-prefix (cond ((eq platform 'wsl) (format "/wsl:%s:" destination))
-                              ((eq platform 'posix) (format "/ssh:%s:" destination))))
+         (remote-prefix (when (eq platform 'posix) (format "/ssh:%s:" destination)))
          (directories (funcall atelier-read-directories-function
-                      (cond ((eq platform 'wsl) remote-prefix)
-                             (probe (funcall atelier-directory-function probe))
+                      (cond (probe (funcall atelier-directory-function probe))
                             (remote-prefix remote-prefix)
                              (t (expand-file-name "~/"))) multiple))
          targets)
@@ -1192,8 +1199,7 @@ When EXPLICIT is non-nil, permit another Dired entry of the same type."
       (unless (file-directory-p directory)
         (user-error "Directory does not exist: %s" directory))
       (push (list destination
-                  (cond ((eq platform 'wsl) (file-remote-p directory 'localname))
-                        (probe (funcall atelier-target-directory-function probe directory))
+                  (cond (probe (funcall atelier-target-directory-function probe directory))
                         (remote-prefix (file-remote-p directory 'localname))
                         (t directory))
                   platform mount-root) targets))
@@ -1284,7 +1290,7 @@ prepared operation, so cancellation or failure publishes no partial additions."
      ((equal destination "local") (atelier-normalize-directory path))
      ((eq (plist-get workspace :platform) 'windows) nil)
      ((eq (plist-get workspace :platform) 'wsl)
-      (atelier-normalize-directory (format "/wsl:%s:%s" destination path)))
+      (atelier-normalize-directory (funcall atelier-directory-function workspace)))
      (t (atelier-normalize-directory (format "/ssh:%s:%s" destination path))))))
 
 (defun atelier-known-project-roots ()
@@ -1314,19 +1320,14 @@ prepared operation, so cancellation or failure publishes no partial additions."
         (atelier-switch-workspace (plist-get existing :name))
       (unless (file-directory-p root)
         (user-error "Project directory does not exist: %s" root))
-      (let* ((remote (file-remote-p root))
-              (method (file-remote-p root 'method))
-              (user (file-remote-p root 'user))
-              (host (file-remote-p root 'host))
-              (name (atelier-unique-workspace-name root))
-             (workspace
-              (list :id (atelier-new-workspace-id) :name name
-                    :destination (if (and user (not (equal method "wsl")))
-                                     (concat user "@" host) (or host "local"))
-                    :path (if remote (file-remote-p root 'localname) root)
-                    :platform (and remote (if (equal method "wsl") 'wsl 'posix))
-                    :mount-root nil :created (float-time) :status 'running
-                    :entries nil)))
+      (pcase-let* ((`(,destination ,path ,platform ,mount-root)
+                    (funcall atelier-directory-target-function root))
+                   (name (atelier-unique-workspace-name root))
+                   (workspace
+                    (list :id (atelier-new-workspace-id) :name name
+                          :destination destination :path path :platform platform
+                          :mount-root mount-root :created (float-time) :status 'running
+                          :entries nil)))
         (atelier-capture-current-workspace)
         (setq atelier-workspaces (append atelier-workspaces (list workspace)))
         (atelier-operation-notify 'atelier-workspace-created-hook workspace)

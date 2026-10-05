@@ -46,8 +46,10 @@
 (require 'universel-atelier)
 (setq atelier-process-observation-function #'universel-atelier-process-observation-p
       atelier-process-table-function #'universel-atelier-process-table
-      atelier-foreground-process-function #'universel-foreground-process
-      atelier-process-runtime-function #'universel-atelier-process-runtime)
+      atelier-foreground-process-function #'universel-atelier-foreground-process
+      atelier-process-runtime-function #'universel-atelier-process-runtime
+      atelier-process-environment-function #'universel-atelier-process-environment
+      atelier-shell-launch-function #'universel-atelier-shell-launch)
 
 (defvar ghostel-char-mode-map)
 (defvar evil-mode-line-tag nil)
@@ -2088,7 +2090,7 @@
                     ((:destination "server" :path "/home/work/" :platform posix)
                      "/ssh:server:/home/work/")
                     ((:destination "Ubuntu" :path "/home/work/" :platform wsl)
-                     "/wsl:Ubuntu:/home/work/")))
+                     "//wsl.localhost/Ubuntu/home/work/")))
       (let* ((workspace (copy-tree (car case)))
              (before (copy-tree workspace)))
         (should (equal (atelier-workspace-directory workspace) (cadr case)))
@@ -3044,6 +3046,74 @@
     (setf (plist-get job :policy) 'never)
     (should-not (atelier-job-fallback-recipe job "/tmp/"))))
 
+(ert-deftest atelier-program-recipe-keeps-variables-the-program-added ()
+  (let* ((buffer (generate-new-buffer " *variables-shell*"))
+         (job (list :policy 'auto :buffer (buffer-name buffer)
+                    :shell '(:executable "/bin/zsh" :login ("-l"))))
+         (atelier-process-runtime-function (lambda (_) 60))
+         (atelier-shell-environment-cache (make-hash-table :test #'equal))
+         (atelier-process-environment-function
+          (lambda (record)
+            (if (= (plist-get record :pid) 10) '("HOME=/home/user" "PATH=/usr/bin" "PWD=/work" "SHLVL=0")
+              '("HOME=/home/user" "PATH=/home/user/bin:/usr/bin" "EDITOR=emacs" "PWD=/work"
+                "OLDPWD=/old" "SHLVL=1" "IS_DEMO=1" "_=/usr/bin/claude"))))
+         (atelier-shell-environment-function
+          (lambda (shell start)
+            (should (equal (plist-get shell :executable) "/bin/zsh"))
+            (should (equal start '("HOME=/home/user" "PATH=/usr/bin")))
+            '("HOME=/home/user" "PATH=/home/user/bin:/usr/bin" "EDITOR=emacs"))))
+    (unwind-protect
+        (let ((recipe (atelier-job-recipe
+                       job '(:pid 20 :executable "/opt/claude/versions/2.1.289"
+                             :argv ("claude" "--dangerously-skip-permissions")
+                             :owner (:pid 10))
+                       "/work/")))
+          (should (equal (plist-get recipe :environment) '("IS_DEMO=1")))
+          (should (equal (plist-get recipe :argv) '("claude" "--dangerously-skip-permissions"))))
+      (kill-buffer buffer))))
+
+(ert-deftest atelier-restart-runs-shell-program-with-its-variables-then-keeps-the-shell ()
+  (let* ((directory (file-name-as-directory (make-temp-file "atelier-shell-restart-" t)))
+         (shell '(:executable "/bin/sh" :login nil))
+         (entry (list :id "program-job" :kind 'terminal :name "program terminal" :persistent t
+                      :job (list :id "program" :buffer "program terminal" :policy 'always
+                                 :shell shell
+                                 :recipe (list :executable "/opt/probe/versions/1"
+                                               :argv '("sh" "-c" "printf %s \"$PROBE\" > program")
+                                               :directory directory :shell shell
+                                               :environment '("PROBE=restored")))))
+         (workspace (list :id "program-jobs" :name "program-jobs" :destination "local"
+                          :path directory :entries (list entry)))
+         (atelier-workspaces (list workspace))
+         (atelier-entry-live-buffers (make-hash-table :test #'equal))
+         (atelier-content-live-buffers (make-hash-table :test #'equal))
+         (buffer (generate-new-buffer " *program-restart*"))
+         (input (expand-file-name "input" directory))
+         launch)
+    (atelier-workspace-entries workspace)
+    (unwind-protect
+        (progn
+          (cl-letf (((symbol-function 'atelier-log) #'ignore)
+                    ((symbol-function 'atelier-workspace-stop-jobs) #'ignore)
+                    ((symbol-function 'ghostel-atelier-buffer)
+                     (lambda (_name _directory program arguments _workspace shell &rest _)
+                       (setq launch (list program arguments shell))
+                       (atelier-entry-set-live-buffer atelier-job-owner-entry buffer)
+                       buffer)))
+            (atelier-restart-saved-jobs workspace))
+          (should (equal (nth 0 launch) "/bin/sh"))
+          (should (equal (nth 2 launch) shell))
+          (with-temp-file input (insert "echo continued > shell\n"))
+          (let ((default-directory directory))
+            (apply #'call-process (nth 0 launch) input nil nil (nth 1 launch)))
+          (should (equal (with-temp-buffer
+                           (insert-file-contents (expand-file-name "program" directory))
+                           (buffer-string))
+                         "restored"))
+          (should (file-exists-p (expand-file-name "shell" directory))))
+      (kill-buffer buffer)
+      (delete-directory directory t))))
+
 (ert-deftest atelier-content-only-snapshot-differences-can-be-restored ()
   (let* ((live '(:version 10 :generation "live" :workspaces
                 ((:id "one" :name "one" :entries nil :contents ((:id "text" :contents "new"))))))
@@ -3322,8 +3392,7 @@
 
 (ert-deftest atelier-opening-project-preserves-ssh-user-and-wsl-method ()
   (require 'universel-atelier)
-  (cl-letf (((symbol-function 'universel-host-platform) (lambda () 'windows)))
-    (universel-register-wsl))
+  (add-to-list 'tramp-methods '("wsl" (tramp-login-program "wsl.exe")))
   (dolist (root '("/ssh:alice@host:/project/" "/ssh:alice@host#2222:/project/"
                   "/wsl:Ubuntu:/project/"))
     (let ((atelier-workspaces nil) (atelier-workspace-created-hook nil)
@@ -3340,6 +3409,82 @@
             (atelier-open-project-workspace root)
             (should (equal (atelier-workspace-project-root created) root)))
         (kill-buffer buffer)))))
+
+(ert-deftest universel-atelier-windows-foreground-is-the-only-later-child ()
+  (let* ((shell '(:pid 10 :ppid 1 :start-time 100.0 :argv ("pwsh.exe")))
+         (program '(:pid 20 :ppid 10 :start-time 150.0 :argv ("wsl.exe" "-u" "ziede")))
+         (reused '(:pid 30 :ppid 10 :start-time 50.0 :argv ("old.exe")))
+         (found (universel-atelier-foreground-process 10 (list shell program reused))))
+    (should (= (plist-get found :pid) 20))
+    (should (eq (plist-get found :owner) shell))
+    (should (= (plist-get (universel-atelier-foreground-process 10 (list shell program) t) :pid) 10))
+    (should-not (universel-atelier-foreground-process
+                 10 (list shell program '(:pid 40 :ppid 10 :start-time 160.0 :argv ("b.exe")))))))
+
+(ert-deftest universel-atelier-linux-foreground-follows-the-terminal-group ()
+  (let* ((shell '(:pid 10 :pgrp 10 :tty 2 :tpgid 20))
+         (foreground '(:pid 20 :ppid 10 :pgrp 20 :tty 2))
+         (child '(:pid 21 :ppid 20 :pgrp 20 :tty 2))
+         (other-terminal '(:pid 30 :ppid 10 :pgrp 20 :tty 3))
+         (table (list shell foreground child other-terminal)))
+    (should (= (plist-get (universel-atelier-foreground-process 10 table) :pid) 20))
+    (should (eq (plist-get (universel-atelier-foreground-process 10 table) :owner) shell))
+    (should-not (universel-atelier-foreground-process 999 table))
+    (should-not (universel-atelier-foreground-process
+                 10 (cons '(:pid 22 :ppid 10 :pgrp 20 :tty 2) table)))))
+
+(ert-deftest universel-atelier-wsl-terminal-foreground-is-found-by-its-marker ()
+  (let* ((terminal '(:pid 10 :ppid 1 :start-time 100.0
+                     :argv ("C:\\WINDOWS\\system32\\wsl.exe" "-d" "archlinux" "--cd" "/work"
+                            "--" "env" "UNIVERSEL_TERMINAL=t1" "/usr/sbin/zsh" "-l")))
+         (shell '(:pid 500 :ppid 499 :pgrp 500 :tty 34816 :tpgid 600 :argv ("-zsh")))
+         (claude '(:pid 600 :ppid 500 :pgrp 600 :tty 34816 :argv ("claude"))))
+    (cl-letf (((symbol-function 'universel-processes-with-variable)
+               (lambda (variable environment)
+                 (should (equal variable "UNIVERSEL_TERMINAL=t1"))
+                 (should (equal (plist-get environment :destination) "archlinux"))
+                 '(500 600)))
+              ((symbol-function 'universel-process-table)
+               (lambda (environment)
+                 (should (eq (plist-get environment :transport) 'wsl))
+                 (list shell claude))))
+      (let ((found (universel-atelier-foreground-process 10 (list terminal))))
+        (should (= (plist-get found :pid) 600))
+        (should (eq (plist-get found :owner) shell))))))
+
+(ert-deftest universel-atelier-wsl-files-open-through-the-share ()
+  (cl-letf (((symbol-function 'universel-host-platform) (lambda () 'windows)))
+    (should (equal (universel-atelier-file-path "/wsl:archlinux:/home/ziede/a.txt")
+                   "//wsl.localhost/archlinux/home/ziede/a.txt"))
+    (should (equal (universel-atelier-file-path "/ssh:host:/a.txt") "/ssh:host:/a.txt")))
+  (cl-letf (((symbol-function 'universel-real-path)
+             (lambda (path environment)
+               (should (equal (plist-get environment :destination) "archlinux"))
+               (if (equal path "/home/ziede/.zshrc") "/home/ziede/dotfiles/zsh/.zshrc" path))))
+    (should (equal (universel-atelier-resolve-wsl-path "//wsl.localhost/archlinux/home/ziede/.zshrc")
+                   "//wsl.localhost/archlinux/home/ziede/dotfiles/zsh/.zshrc"))
+    (should (equal (universel-atelier-resolve-wsl-path "//wsl.localhost/archlinux/srv/")
+                   "//wsl.localhost/archlinux/srv/"))
+    (should (equal (universel-atelier-resolve-wsl-path "/tmp/a.txt") "/tmp/a.txt")))
+  (should (equal (universel-atelier-directory-target "//wsl.localhost/archlinux/home/ziede/project/")
+                 '("archlinux" "/home/ziede/project/" wsl nil)))
+  (cl-letf (((symbol-function 'universel-wsl-distributions) (lambda () '("archlinux" "docker-desktop"))))
+    (should (equal (universel-atelier-wsl-destinations)
+                   '(("WSL: archlinux" :destination "archlinux" :platform wsl)
+                     ("WSL: docker-desktop" :destination "docker-desktop" :platform wsl))))))
+
+(ert-deftest universel-atelier-wsl-helper-stops-with-the-last-workspace ()
+  (let* ((one (list :id "one" :destination "archlinux" :platform 'wsl :path "/a" :status 'running))
+         (two (list :id "two" :destination "archlinux" :platform 'wsl :path "/b" :status 'running))
+         (atelier-workspaces (list one two))
+         stopped)
+    (cl-letf (((symbol-function 'universel-wsl-stop-helper) (lambda (name) (push name stopped)))
+              ((symbol-function 'atelier-workspace-status) (lambda (workspace) (plist-get workspace :status))))
+      (universel-atelier-release one)
+      (should-not stopped)
+      (setf (plist-get one :status) 'stopped)
+      (universel-atelier-release two)
+      (should (equal stopped '("archlinux"))))))
 
 (ert-deftest universel-atelier-separates-saved-ssh-port-without-changing-records ()
   (dolist (platform '(posix windows))

@@ -34,6 +34,8 @@
 The first non-nil environment plist wins.  Used by remote mount adapters.")
 
 (defvar universel--mounts (make-hash-table :test #'equal))
+(defvar universel--wsl-helpers (make-hash-table :test #'equal))
+(defvar universel--wsl-shells (make-hash-table :test #'equal))
 (defvar universel-clock-ticks-per-second 100)
 (defvar universel-log-function #'message
   "Function accepting a format string and arguments for connection messages.")
@@ -54,6 +56,20 @@ The first non-nil environment plist wins.  Used by remote mount adapters.")
     ('posix 'posix)
     (_ (error "Unknown Universel platform: %S" platform))))
 
+(defconst universel--wsl-share-regexp
+  "\\`[/\\\\][/\\\\]wsl\\(?:\\.localhost\\|\\$\\)[/\\\\]\\([^/\\\\]+\\)\\(.*\\)\\'"
+  "Windows path of a WSL distribution's files, as //wsl.localhost/NAME/PATH.")
+
+(defun universel--wsl-share-environment (path)
+  "Describe PATH under a WSL distribution's Windows share, or return nil."
+  (when (stringp path)
+    (let ((case-fold-search t))
+      (when (string-match universel--wsl-share-regexp path)
+        (let ((distribution (match-string 1 path))
+              (rest (replace-regexp-in-string "\\\\" "/" (match-string 2 path) t t)))
+          (list :platform 'posix :transport 'wsl :destination distribution
+                :directory (if (string-empty-p rest) "/" rest)))))))
+
 (defun universel-environment (&optional platform directory)
   "Resolve PLATFORM for DIRECTORY, or the current operation when nil.
 PLATFORM may be a symbol or an environment plist.  SSH TRAMP methods describe
@@ -66,6 +82,7 @@ explicitly or through `universel-environment-functions'."
          (detected
           (or explicit
               (run-hook-with-args-until-success 'universel-environment-functions directory)
+              (universel--wsl-share-environment directory)
               (when method
                 (let* ((remote (tramp-dissect-file-name directory))
                        (user (tramp-file-name-user remote))
@@ -153,6 +170,13 @@ Environment variables belong to the running Emacs process, not an SSH host."
         "powershell.exe"))
      ((eq (plist-get environment :transport) 'local)
       (or (getenv "SHELL") shell-file-name "/bin/sh"))
+     ((eq (plist-get environment :transport) 'wsl)
+      (let ((distribution (plist-get environment :destination)))
+        (or (gethash distribution universel--wsl-shells)
+            (when-let* ((answer (universel--wsl-request distribution "shell"))
+                        ((not (string-empty-p (string-trim answer)))))
+              (puthash distribution (string-trim answer) universel--wsl-shells))
+            "/bin/sh")))
      (t "/bin/sh"))))
 
 (defun universel-quote-argument (argument &optional platform)
@@ -210,9 +234,13 @@ Use `universel-command' first to construct an SSH or WSL launch."
         (when (and process (process-live-p process)) (delete-process process))
         (when (and output-file (file-exists-p output-file)) (delete-file output-file)))))))
 
-(defun universel-command (program arguments directory &optional platform)
+(defun universel-command (program arguments directory &optional platform variables)
   "Return a launch plist for PROGRAM and ARGUMENTS in DIRECTORY on PLATFORM.
-The result contains :program, :arguments, and the local launch :directory."
+The result contains :program, :arguments, and the local launch :directory.
+VARIABLES are NAME=VALUE strings PROGRAM starts with on a POSIX system."
+  (when variables
+    (setq arguments (append variables (cons program arguments))
+          program "env"))
   (let* ((environment (universel-environment platform directory))
          (transport (plist-get environment :transport))
          (destination (plist-get environment :destination))
@@ -248,17 +276,23 @@ The result contains :program, :arguments, and the local launch :directory."
                                   (list destination remote-command)))))
       (_ (error "Unsupported transport: %S" transport)))))
 
-(defun universel-shell-command (directory &optional platform)
+(defun universel-shell-command (directory &optional platform variables)
   "Return the existing interactive terminal launch for DIRECTORY on PLATFORM.
 Local launches carry :shell and leave :program nil for a terminal package's
- normal shell creation.  Remote launches honor the supplied directory and port."
+ normal shell creation.  WSL launches also carry :shell and its :location, and
+start with the NAME=VALUE VARIABLES.  Remote launches honor the supplied
+directory and port."
   (let* ((environment (universel-environment platform directory))
           (destination (plist-get environment :destination))
           (port (plist-get environment :port)))
     (pcase (plist-get environment :transport)
       ('local (list :program nil :shell (universel-default-shell environment)
                     :arguments '("-l") :directory directory))
-      ('wsl (universel-command "bash" '("-l") directory environment))
+      ('wsl
+       (let ((shell (universel-default-shell environment)))
+         (append (universel-command shell '("-l") (plist-get environment :directory)
+                                    environment variables)
+                 (list :shell shell :location environment))))
       ('ssh
        (list :program "ssh" :directory (universel-home-directory)
              :arguments
@@ -282,6 +316,10 @@ Return :programs and, for WSL discovery, :distribution."
          (script "for command do command -v -- \"$command\" >/dev/null 2>&1 && printf '%s\\n' \"$command\"; done"))
     (pcase (plist-get environment :transport)
       ('local (list :programs (cl-remove-if-not #'executable-find programs)))
+      ((and 'wsl (guard destination))
+       (when-let* ((answer (universel--wsl-request
+                            destination (mapconcat #'identity (cons "programs" programs) " "))))
+         (list :distribution destination :programs (split-string answer "\n" t))))
       ('wsl
        (when-let* ((wsl (executable-find "wsl.exe"))
                    (lines (universel-run-command-lines
@@ -311,16 +349,6 @@ Return :programs and, for WSL discovery, :distribution."
                   (append (list ssh) (when port (list "-p" (format "%s" port)))
                           (list destination remote-command)) timeout)))))
       (_ (error "Unsupported discovery environment: %S" environment)))))
-
-(defun universel-register-wsl ()
-  "Register the existing Windows-to-WSL Emacs file connection method."
-  (when (universel-platform-p 'windows (universel-host-platform))
-    (add-to-list 'tramp-methods
-                 '("wsl" (tramp-login-program "C:/Windows/System32/wsl.exe")
-                   (tramp-login-args (("-d") ("%h") ("-u" "%u")
-                                      ("-e" "/bin/sh" "-c" "\"exec 2>&1" "%l" "\"")))
-                   (tramp-remote-shell "/bin/sh")
-                   (tramp-remote-shell-login ("-l")) (tramp-remote-shell-args ("-c"))))))
 
 (defun universel-mount-key (environment)
   "Return the sharing key for ENVIRONMENT's remote filesystem."
@@ -418,7 +446,7 @@ STATE-DIRECTORY is required for the existing SSHFS Windows connection."
          (destination (plist-get environment :destination)))
     (pcase (plist-get environment :transport)
       ('local (file-name-as-directory (expand-file-name directory)))
-      ('wsl (format "/wsl:%s:%s" destination (file-name-as-directory directory)))
+      ('wsl (format "//wsl.localhost/%s%s" destination (file-name-as-directory directory)))
       ('ssh
        (if (universel-platform-p 'windows environment)
            (let ((root (or (plist-get environment :mount-root) "/C:/")))
@@ -441,6 +469,8 @@ STATE-DIRECTORY is required for the existing SSHFS Windows connection."
         (file-relative-name path (universel-file-directory
                                   (plist-get environment :directory) environment state-directory))
         (file-name-as-directory (plist-get environment :directory))))
+     ((universel--wsl-share-environment path)
+      (plist-get (universel--wsl-share-environment path) :directory))
      ((file-remote-p path) (file-remote-p path 'localname))
      (t path))))
 
@@ -469,11 +499,163 @@ STATE-DIRECTORY is required for the existing SSHFS Windows connection."
                  (null (directory-files mount-point nil directory-files-no-dot-files-regexp)))
         (delete-directory mount-point)))))
 
-(defun universel-process-observation-p (&optional platform)
-  "Whether the existing foreground-process observer supports PLATFORM."
+(defun universel-wsl-distributions ()
+  "Return the installed WSL distribution names, or nil outside a Windows host."
+  (when-let* (((eq (universel-host-platform) 'windows))
+              (wsl (executable-find "wsl.exe")))
+    (let ((process-environment (cons "WSL_UTF8=1" process-environment)))
+      (mapcar #'string-trim (universel-run-command-lines (list wsl "-l" "-q") 10)))))
+
+(defconst universel--wsl-helper-script
+  "while IFS= read -r request; do
+  printf '\\nuniversel-begin\\n'
+  case $request in
+    table)
+      cut -d' ' -f1 /proc/uptime
+      for directory in /proc/[0-9]*; do
+        printf '\\036%s\\037' \"${directory#/proc/}\"
+        cat \"$directory/stat\" 2>/dev/null
+        printf '\\037'
+        readlink \"$directory/exe\" 2>/dev/null
+        printf '\\037'
+        tr '\\000' '\\001' < \"$directory/cmdline\" 2>/dev/null
+      done ;;
+    'environ '*) tr '\\000' '\\001' < \"/proc/${request#environ }/environ\" 2>/dev/null ;;
+    'with '*)
+      grep -lzxF -e \"${request#with }\" /proc/[0-9]*/environ 2>/dev/null |
+        sed 's|^/proc/\\([0-9]*\\)/environ$|\\1|' ;;
+    shell) getent passwd \"$(id -un)\" | cut -d: -f7 ;;
+    'realpath '*) realpath -m -- \"${request#realpath }\" 2>/dev/null ;;
+    'programs '*)
+      set -f
+      for program in ${request#programs }; do
+        command -v -- \"$program\" >/dev/null 2>&1 && printf '%s\\n' \"$program\"
+      done
+      set +f ;;
+  esac
+  printf '\\nuniversel-end\\n'
+done
+"
+  "Shell loop answering one request per input line inside a WSL distribution.")
+
+(defvar universel-wsl-helper-timeout 5
+  "Seconds to wait for a WSL helper before giving up on one request.")
+
+(defun universel--wsl-helper (distribution)
+  "Return DISTRIBUTION's running helper, starting it when needed."
+  (let ((helper (gethash distribution universel--wsl-helpers)))
+    (unless (process-live-p helper)
+      (when helper (kill-buffer (process-buffer helper)))
+      (setq helper
+            (let ((default-directory (universel-home-directory)))
+              (make-process
+               :name (format "universel-wsl-%s" distribution)
+               :buffer (generate-new-buffer (format " *universel-wsl-%s*" distribution))
+               :command (list (or (executable-find "wsl.exe") "wsl.exe")
+                              "-d" distribution "-e" "sh" "-l" "-s")
+               :connection-type 'pipe :coding 'utf-8-unix :noquery t)))
+      (process-send-string helper universel--wsl-helper-script)
+      (puthash distribution helper universel--wsl-helpers))
+    helper))
+
+(defun universel-wsl-stop-helper (distribution)
+  "Stop DISTRIBUTION's helper, if one is running."
+  (when-let* ((helper (gethash distribution universel--wsl-helpers)))
+    (remhash distribution universel--wsl-helpers)
+    (when (process-live-p helper) (delete-process helper))
+    (kill-buffer (process-buffer helper))))
+
+(defun universel--wsl-request (distribution request)
+  "Return the helper's answer to REQUEST in DISTRIBUTION, or nil after a timeout."
+  (let* ((helper (universel--wsl-helper distribution))
+         (buffer (process-buffer helper))
+         (deadline (+ (float-time) universel-wsl-helper-timeout))
+         (finished (lambda ()
+                     (with-current-buffer buffer
+                       (goto-char (point-min))
+                       (search-forward "\nuniversel-end\n" nil t)))))
+    ;; Text a login shell prints at startup comes before the begin marker.
+    (with-current-buffer buffer (erase-buffer))
+    (process-send-string helper (concat request "\n"))
+    (while (and (process-live-p helper) (not (funcall finished))
+                (< (float-time) deadline))
+      (accept-process-output helper 0.05))
+    (if (funcall finished)
+        (with-current-buffer buffer
+          (let ((end (match-beginning 0)))
+            (goto-char (point-min))
+            (when (search-forward "\nuniversel-begin\n" end t)
+              (buffer-substring (point) end))))
+      (universel-wsl-stop-helper distribution)
+      nil)))
+
+(defun universel--stat-record (pid stat executable argv)
+  "Build a Linux process record for PID from its /proc stat line."
+  (let ((fields (split-string (substring stat (+ 2 (string-match ") " stat))))))
+    (list :pid pid :state (nth 0 fields) :ppid (string-to-number (nth 1 fields))
+          :pgrp (string-to-number (nth 2 fields)) :tty (string-to-number (nth 4 fields))
+          :tpgid (string-to-number (nth 5 fields))
+          :start-ticks (string-to-number (nth 19 fields))
+          :executable executable :argv argv)))
+
+(defun universel--wsl-process-records (environment)
+  "Return ENVIRONMENT's WSL process records, each carrying its running time."
+  (when-let* ((answer (universel--wsl-request (plist-get environment :destination) "table"))
+              (parts (split-string answer "\036"))
+              (uptime (string-to-number (car parts))))
+    (delq nil
+          (mapcar (lambda (part)
+                    (let ((fields (split-string part "\037")))
+                      (when (and (= (length fields) 4) (string-match-p ") " (nth 1 fields)))
+                        (let ((record (universel--stat-record
+                                       (string-to-number (nth 0 fields)) (nth 1 fields)
+                                       (string-trim-right (nth 2 fields))
+                                       (split-string (nth 3 fields) "\001" t))))
+                          (append record
+                                  (list :runtime (max 0 (- uptime (/ (float (plist-get record :start-ticks))
+                                                                    universel-clock-ticks-per-second)))
+                                        :location environment))))))
+                  (cdr parts)))))
+
+(defun universel-processes-with-variable (variable &optional platform)
+  "Return the IDs of processes on PLATFORM whose variables include VARIABLE.
+VARIABLE is a NAME=VALUE string."
   (let ((environment (universel-environment platform)))
-    (and (eq (plist-get environment :transport) 'local)
-         (universel-platform-p 'linux environment))))
+    (pcase (plist-get environment :transport)
+      ('wsl
+       (mapcar #'string-to-number
+               (split-string (or (universel--wsl-request (plist-get environment :destination)
+                                                         (concat "with " variable))
+                                 "")
+                             "\n" t)))
+      ('local
+       (when (universel-platform-p 'linux environment)
+         (cl-loop for path in (directory-files "/proc" t "\\`[0-9]+\\'")
+                  for pid = (string-to-number (file-name-nondirectory path))
+                  when (member variable (universel-process-environment pid environment))
+                  collect pid))))))
+
+(defun universel-real-path (path &optional platform)
+  "Return PATH on PLATFORM with every symbolic link resolved, or nil.
+PATH is a connection path; a WSL path is resolved inside its distribution."
+  (let ((environment (universel-environment platform)))
+    (pcase (plist-get environment :transport)
+      ('wsl (let ((answer (universel--wsl-request (plist-get environment :destination)
+                                                  (concat "realpath " path))))
+              (and answer (not (string-empty-p (string-trim answer))) (string-trim answer))))
+      ('local (file-truename path)))))
+
+(defun universel-process-observation-p (&optional platform)
+  "Whether the foreground-process observer supports PLATFORM.
+Linux reads /proc.  Windows asks a PowerShell helper, and WSL a helper inside
+its distribution, so both need a Windows host."
+  (let ((environment (universel-environment platform)))
+    (or (and (eq (plist-get environment :transport) 'local)
+             (or (universel-platform-p 'linux environment)
+                 (and (universel-platform-p 'windows environment)
+                      (eq (universel-host-platform) 'windows))))
+        (and (eq (plist-get environment :transport) 'wsl)
+             (eq (universel-host-platform) 'windows)))))
 
 (defun universel--read-proc (file &optional literally)
   (with-temp-buffer
@@ -482,48 +664,304 @@ STATE-DIRECTORY is required for the existing SSHFS Windows connection."
 
 (defun universel--process-entry (pid)
   (condition-case nil
-      (let* ((stat (universel--read-proc (format "/proc/%d/stat" pid)))
-             (fields (split-string (substring stat (+ 2 (string-match ") " stat)))))
-             (argv (mapcar (lambda (arg) (decode-coding-string arg 'utf-8))
-                           (split-string (universel--read-proc (format "/proc/%d/cmdline" pid) t) "\0" t))))
-        (list :pid pid :state (nth 0 fields) :ppid (string-to-number (nth 1 fields))
-              :pgrp (string-to-number (nth 2 fields)) :tty (string-to-number (nth 4 fields))
-              :tpgid (string-to-number (nth 5 fields))
-              :start-ticks (string-to-number (nth 19 fields))
-              :executable (file-truename (format "/proc/%d/exe" pid)) :argv argv))
+      (universel--stat-record
+       pid (universel--read-proc (format "/proc/%d/stat" pid))
+       (file-truename (format "/proc/%d/exe" pid))
+       (mapcar (lambda (arg) (decode-coding-string arg 'utf-8))
+               (split-string (universel--read-proc (format "/proc/%d/cmdline" pid) t) "\0" t)))
     (error nil)))
+
+(defun universel-process-environment (pid &optional platform)
+  "Return PID's environment on PLATFORM as NAME=VALUE strings, or nil.
+Windows keeps hidden =C:-style entries for each drive's current folder; they
+are not variables and are left out."
+  (when (universel-process-observation-p platform)
+    (cond
+     ((eq (plist-get (universel-environment platform) :transport) 'wsl)
+      (when-let* ((answer (universel--wsl-request
+                           (plist-get (universel-environment platform) :destination)
+                           (format "environ %d" pid))))
+        (split-string answer "\001" t)))
+     ((universel-platform-p 'windows (universel-environment platform))
+      (cl-remove-if (lambda (variable) (string-prefix-p "=" variable))
+                    (universel--windows-helper-request (format "environment %d" pid))))
+     (t
+      (condition-case nil
+          (mapcar (lambda (variable) (decode-coding-string variable 'utf-8))
+                  (split-string (universel--read-proc (format "/proc/%d/environ" pid) t) "\0" t))
+        (error nil))))))
+
+(defun universel-shell-environment (shell start &optional platform)
+  "Return a fresh interactive SHELL's variables on PLATFORM, or nil.
+SHELL is a plist with `:executable' and `:login'; START holds the NAME=VALUE
+variables it starts with.  Startup files may print to standard output, so
+only the text after a marker is read.  Windows shows a shell's current
+variables rather than its starting ones, so a Windows shell starts from
+Emacs's own variables, as a new terminal does, instead of START.  A WSL shell
+starts inside its distribution with exactly START."
+  (when (universel-process-observation-p platform)
+    (with-temp-buffer
+      (let* ((environment (universel-environment platform))
+             (wsl (eq (plist-get environment :transport) 'wsl))
+             (windows (and (not wsl) (universel-platform-p 'windows environment)))
+             (process-environment (if (or windows wsl) process-environment start))
+             (default-directory (universel-home-directory))
+             (coding-system-for-read 'utf-8)
+             (marker "\0universel-environment\0")
+             (arguments
+              (if windows
+                  (list "-NoLogo" "-NonInteractive" "-EncodedCommand"
+                        (universel--powershell-encoded
+                         (concat "[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)\n"
+                                 "[Console]::Out.Write(\"`0universel-environment`0\")\n"
+                                 "Get-ChildItem env: | ForEach-Object "
+                                 "{ [Console]::Out.Write(\"$($_.Name)=$($_.Value)`0\") }")))
+                '("-i" "-c" "printf '\\0universel-environment\\0'; env -0"))))
+        (when (and (eql 0 (if wsl
+                              (apply #'call-process (or (executable-find "wsl.exe") "wsl.exe")
+                                     nil '(t nil) nil
+                                     (append (list "-d" (plist-get environment :destination)
+                                                   "-e" "env" "-i")
+                                             start (list (plist-get shell :executable))
+                                             (plist-get shell :login) arguments))
+                            (apply #'call-process (plist-get shell :executable) nil '(t nil) nil
+                                   (append (plist-get shell :login) arguments))))
+                   (progn (goto-char (point-min)) (search-forward marker nil t)))
+          (split-string (buffer-substring (point) (point-max)) "\0" t))))))
+
+(defconst universel--windows-process-script
+  "[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class UniverselEnvironment {
+  [StructLayout(LayoutKind.Sequential)]
+  struct BasicInformation {
+    public IntPtr ExitStatus; public IntPtr PebBaseAddress; public IntPtr AffinityMask;
+    public IntPtr BasePriority; public IntPtr UniqueProcessId; public IntPtr ParentProcessId;
+  }
+  [DllImport(\"ntdll.dll\")]
+  static extern int NtQueryInformationProcess(IntPtr process, int kind, ref BasicInformation information, int length, out int returned);
+  [DllImport(\"kernel32.dll\", SetLastError = true)]
+  static extern IntPtr OpenProcess(int access, bool inherit, int pid);
+  [DllImport(\"kernel32.dll\", SetLastError = true)]
+  static extern bool ReadProcessMemory(IntPtr process, IntPtr address, byte[] buffer, IntPtr size, out IntPtr read);
+  [DllImport(\"kernel32.dll\")]
+  static extern bool IsWow64Process(IntPtr process, out bool wow64);
+  [DllImport(\"kernel32.dll\")]
+  static extern bool CloseHandle(IntPtr handle);
+
+  static IntPtr ReadPointer(IntPtr process, IntPtr address) {
+    var buffer = new byte[8]; IntPtr read;
+    return ReadProcessMemory(process, address, buffer, (IntPtr)8, out read)
+      ? (IntPtr)BitConverter.ToInt64(buffer, 0) : IntPtr.Zero;
+  }
+
+  // 64-bit layout: PEB.ProcessParameters at 0x20, then Environment at 0x80
+  // and EnvironmentSize at 0x3F0 in RTL_USER_PROCESS_PARAMETERS.
+  public static string[] Read(int pid) {
+    IntPtr process = OpenProcess(0x1000 | 0x10, false, pid);
+    if (process == IntPtr.Zero) return null;
+    try {
+      bool wow64;
+      if (!Environment.Is64BitProcess || (IsWow64Process(process, out wow64) && wow64)) return null;
+      var information = new BasicInformation(); int returned;
+      if (NtQueryInformationProcess(process, 0, ref information, Marshal.SizeOf(information), out returned) != 0)
+        return null;
+      IntPtr parameters = ReadPointer(process, information.PebBaseAddress + 0x20);
+      if (parameters == IntPtr.Zero) return null;
+      IntPtr block = ReadPointer(process, parameters + 0x80);
+      long size = ReadPointer(process, parameters + 0x3F0).ToInt64();
+      if (block == IntPtr.Zero || size <= 0 || size > (1 << 24)) return null;
+      var buffer = new byte[size]; IntPtr read;
+      if (!ReadProcessMemory(process, block, buffer, (IntPtr)size, out read)) return null;
+      string text = System.Text.Encoding.Unicode.GetString(buffer, 0, (int)read);
+      int end = text.IndexOf(\"\\0\\0\", StringComparison.Ordinal);
+      if (end >= 0) text = text.Substring(0, end);
+      return text.Split(new[] { '\\0' }, StringSplitOptions.RemoveEmptyEntries);
+    } finally { CloseHandle(process); }
+  }
+}
+'@
+while ($null -ne ($request = [Console]::In.ReadLine())) {
+  if ($request -match '^environment (\\d+)$') {
+    $answer = [UniverselEnvironment]::Read([int]$Matches[1])
+    [Console]::Out.WriteLine((ConvertTo-Json -InputObject $answer -Compress))
+  } else {
+    $records = @(Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId,ExecutablePath,CommandLine,CreationDate |
+      Where-Object CommandLine | ForEach-Object {
+        @{ pid = $_.ProcessId; ppid = $_.ParentProcessId; executable = $_.ExecutablePath
+           command = $_.CommandLine
+           start = if ($_.CreationDate) { ([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds() } else { 0 } } })
+    [Console]::Out.WriteLine((ConvertTo-Json -InputObject $records -Compress))
+  }
+  [Console]::Out.WriteLine('universel-end')
+  [Console]::Out.Flush()
+}"
+  "PowerShell loop answering `query' with the process list and `environment PID'
+with that process's variables, both as JSON.")
+
+(defvar universel-windows-process-timeout 3
+  "Seconds to wait for the Windows process helper before skipping an observation.")
+(defvar universel--windows-process-helper nil)
+
+(defun universel--windows-process-helper ()
+  "Return the running PowerShell process helper, starting it when needed."
+  (unless (process-live-p universel--windows-process-helper)
+    (when universel--windows-process-helper
+      (kill-buffer (process-buffer universel--windows-process-helper)))
+    (setq universel--windows-process-helper
+          (let ((default-directory (universel-home-directory)))
+            (make-process
+             :name "universel-processes"
+             :buffer (generate-new-buffer " *universel-processes*")
+             :command (list (universel-default-shell (universel-host-environment))
+                            "-NoLogo" "-NoProfile" "-NonInteractive" "-EncodedCommand"
+                            (universel--powershell-encoded universel--windows-process-script))
+             :connection-type 'pipe :coding 'utf-8 :noquery t))))
+  universel--windows-process-helper)
+
+(defun universel--windows-helper-request (request)
+  "Send REQUEST to the helper and return its parsed JSON answer, or nil.
+A helper that does not answer in time is replaced on the next request."
+  (let* ((process (universel--windows-process-helper))
+         (buffer (process-buffer process))
+         (deadline (+ (float-time) universel-windows-process-timeout))
+         (finished (lambda ()
+                     (with-current-buffer buffer
+                       (goto-char (point-min))
+                       (re-search-forward "^universel-end" nil t)))))
+    (with-current-buffer buffer (erase-buffer))
+    (process-send-string process (concat request "\n"))
+    (while (and (process-live-p process) (not (funcall finished))
+                (< (float-time) deadline))
+      (accept-process-output process 0.05))
+    (if (funcall finished)
+        (with-current-buffer buffer
+          (json-parse-string (buffer-substring (point-min) (match-beginning 0))
+                             :object-type 'plist :array-type 'list :null-object nil))
+      (delete-process process)
+      nil)))
+
+(defun universel--windows-process-records ()
+  "Return Windows process records from the helper, or nil."
+  (mapcar (lambda (record)
+            (let ((argv (universel-windows-split-command-line (plist-get record :command))))
+              (list :pid (plist-get record :pid) :ppid (plist-get record :ppid)
+                    :executable (or (plist-get record :executable) (car argv))
+                    :argv argv
+                    :start-time (/ (plist-get record :start) 1000.0))))
+          (universel--windows-helper-request "query")))
+
+(defun universel-windows-split-command-line (line)
+  "Split Windows command LINE into arguments as CommandLineToArgvW does.
+The program name ends at its closing quote or first blank, without escapes."
+  (when line
+    (let ((index 0) (end (length line)) arguments)
+      (if (and (< index end) (eq (aref line index) ?\"))
+          (let ((start (1+ index)))
+            (setq index start)
+            (while (and (< index end) (not (eq (aref line index) ?\"))) (cl-incf index))
+            (push (substring line start index) arguments)
+            (when (< index end) (cl-incf index)))
+        (while (and (< index end) (not (memq (aref line index) '(?\s ?\t)))) (cl-incf index))
+        (push (substring line 0 index) arguments))
+      (while (< index end)
+        (while (and (< index end) (memq (aref line index) '(?\s ?\t))) (cl-incf index))
+        (when (< index end)
+          (let ((argument "") quoted)
+            (while (and (< index end) (or quoted (not (memq (aref line index) '(?\s ?\t)))))
+              (pcase (aref line index)
+                (?\\
+                 (let ((count 0))
+                   (while (and (< index end) (eq (aref line index) ?\\))
+                     (cl-incf count) (cl-incf index))
+                   (if (and (< index end) (eq (aref line index) ?\"))
+                       (progn
+                         (setq argument (concat argument (make-string (/ count 2) ?\\)))
+                         (when (cl-oddp count)
+                           (setq argument (concat argument "\"") index (1+ index))))
+                     (setq argument (concat argument (make-string count ?\\))))))
+                (?\"
+                 (if (and quoted (< (1+ index) end) (eq (aref line (1+ index)) ?\"))
+                     (setq argument (concat argument "\"") index (+ index 2))
+                   (setq quoted (not quoted) index (1+ index))))
+                (char (setq argument (concat argument (string char)) index (1+ index)))))
+            (push argument arguments))))
+      (nreverse arguments))))
 
 (defun universel-process-table (&optional platform)
   "Return process observations for PLATFORM, or nil when unsupported."
   (when (universel-process-observation-p platform)
-    (let (entries)
-      (dolist (path (directory-files "/proc" t "\\`[0-9]+\\'"))
-        (when-let* ((entry (universel--process-entry (string-to-number (file-name-nondirectory path)))))
-          (push entry entries)))
-      entries)))
-
-(defun universel-foreground-process (pid table &optional direct)
-  "Find PID's foreground process in TABLE, or PID itself for DIRECT launches."
-  (when-let* ((owner (cl-find pid table :key (lambda (entry) (plist-get entry :pid)))))
-    (if direct owner
-      (let ((tpgid (plist-get owner :tpgid))
-            (pgrp (plist-get owner :pgrp)))
-        (unless (or (<= tpgid 0) (= tpgid pgrp))
-          (let* ((group (cl-remove-if-not
-                         (lambda (entry)
-                           (and (= (plist-get entry :tty) (plist-get owner :tty))
-                                (= (plist-get entry :pgrp) tpgid))) table))
-                 (pids (mapcar (lambda (entry) (plist-get entry :pid)) group))
-                 (roots (cl-remove-if
-                         (lambda (entry) (member (plist-get entry :ppid) pids)) group)))
-            (when (= (length roots) 1) (car roots))))))))
+    (cond
+     ((eq (plist-get (universel-environment platform) :transport) 'wsl)
+      (universel--wsl-process-records (universel-environment platform)))
+     ((universel-platform-p 'windows (universel-environment platform))
+      (universel--windows-process-records))
+     (t
+      (let (entries)
+        (dolist (path (directory-files "/proc" t "\\`[0-9]+\\'"))
+          (when-let* ((entry (universel--process-entry (string-to-number (file-name-nondirectory path)))))
+            (push entry entries)))
+        entries)))))
 
 (defun universel-process-runtime (entry &optional platform)
   "Return ENTRY's running time on PLATFORM."
   (unless (universel-process-observation-p platform)
     (error "Process observation is unavailable on this platform"))
-  (let ((uptime (string-to-number (car (split-string (universel--read-proc "/proc/uptime"))))))
-    (max 0 (- uptime (/ (float (plist-get entry :start-ticks)) universel-clock-ticks-per-second)))))
+  (cond
+   ((plist-get entry :runtime))
+   ((plist-get entry :start-time) (max 0 (- (float-time) (plist-get entry :start-time))))
+   (t
+    (let ((uptime (string-to-number (car (split-string (universel--read-proc "/proc/uptime"))))))
+      (max 0 (- uptime (/ (float (plist-get entry :start-ticks)) universel-clock-ticks-per-second)))))))
+
+(defun universel-shell-launch (shell directory &optional argv variables shell-variables platform)
+  "Return a launch plist on PLATFORM that starts SHELL in DIRECTORY.
+SHELL is a plist with `:executable' and `:login'.  When ARGV is non-nil, the
+shell runs it with the NAME=VALUE VARIABLES and then stays open.  The shell
+itself starts with SHELL-VARIABLES; Windows shells receive none.  PowerShell
+cannot give one command its own variables, so on Windows VARIABLES are set in
+the shell, where they were originally set too.  A WSL launch goes through
+wsl.exe; DIRECTORY is an Emacs path."
+  (let* ((environment (universel-environment platform))
+         (executable (plist-get shell :executable))
+         (login (plist-get shell :login)))
+    (if (universel-platform-p 'windows environment)
+        (let ((quote (lambda (argument) (universel-quote-argument argument 'windows))))
+          (list :program executable :directory directory
+                :arguments
+                (append login
+                        (when argv
+                          (list "-NoLogo" "-NoExit" "-Command"
+                                (concat
+                                 (mapconcat
+                                  (lambda (variable)
+                                    (let ((split (string-search "=" variable)))
+                                      (format "[Environment]::SetEnvironmentVariable(%s, %s); "
+                                              (funcall quote (substring variable 0 split))
+                                              (funcall quote (substring variable (1+ split))))))
+                                  variables "")
+                                 "& " (mapconcat quote argv " ")))))))
+      (let* ((quote (lambda (argument) (universel-quote-argument argument 'posix)))
+             (arguments
+              (append login
+                      (when argv
+                        (list "-i" "-c"
+                              (concat (mapconcat quote (append (when variables (cons "env" variables))
+                                                               argv)
+                                                 " ")
+                                      "; exec "
+                                      (mapconcat quote (cons executable login) " ")))))))
+        (if (eq (plist-get environment :transport) 'wsl)
+            (universel-command executable arguments
+                               (universel-file-path directory environment)
+                               environment shell-variables)
+          (list :program (if shell-variables "env" executable)
+                :arguments (if shell-variables
+                               (append shell-variables (cons executable arguments))
+                             arguments)
+                :directory directory))))))
 
 (defun universel-prepend-exec-path (directory)
   "Add local DIRECTORY to Emacs and subprocess executable search paths."

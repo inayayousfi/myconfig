@@ -44,8 +44,10 @@
                         (plist-get launch :arguments)
                          workspace
                          (when (plist-get launch :shell)
-                           (list :executable (plist-get launch :shell)
-                                 :login (member "-l" (plist-get launch :arguments))))
+                           (append (list :executable (plist-get launch :shell)
+                                         :login (member "-l" (plist-get launch :arguments)))
+                                   (when (plist-get launch :location)
+                                     (list :location (plist-get launch :location)))))
                          nil 'terminal in-terminal))))
     (atelier-show-buffer buffer workspace)))
 

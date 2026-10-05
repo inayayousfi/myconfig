@@ -21,6 +21,17 @@ metadata and entry type.  It returns the new live buffer.")
 Return the foreground process record, or nil.")
 (defvar atelier-process-runtime-function #'ignore
   "Function called with an observed process record to return its age in seconds.")
+(defvar atelier-process-environment-function #'ignore
+  "Function called with a process record to return its NAME=VALUE variables, or nil.")
+(defvar atelier-shell-environment-function #'ignore
+  "Function called with a shell plist and its starting NAME=VALUE variables.
+Return the variables of a fresh interactive shell started with them, or nil.")
+(defvar atelier-shell-environment-cache (make-hash-table :test #'equal))
+(defvar atelier-shell-launch-function nil
+  "Function called with a shell plist, directory, argv and NAME=VALUE variables.
+It returns (PROGRAM . ARGUMENTS) starting the shell, which runs a non-nil argv
+and then stays open.  When nil, shells and programs restart directly.")
+(defconst atelier-unreplayed-variables '("_" "OLDPWD" "PWD" "SHLVL"))
 
 (defconst atelier-persist-state-file
   (expand-file-name "workbench-state.el" atelier-state-directory))
@@ -59,17 +70,52 @@ Return the foreground process record, or nil.")
 
 (defun atelier-job-recipe (job foreground directory)
   (let ((policy (plist-get job :policy))
-        (program (file-name-nondirectory (plist-get foreground :executable)))
+        ;; Windows program files end in .exe; the denylist names programs without it.
+        (program (replace-regexp-in-string
+                  "\\.exe\\'" "" (file-name-nondirectory (plist-get foreground :executable)) t t))
         (fallback (atelier-job-fallback-recipe job directory)))
     (cond
      ((eq policy 'never) nil)
      ((and (eq policy 'auto)
              (< (funcall atelier-process-runtime-function foreground) 5)) fallback)
      ((and (eq policy 'auto) (member program atelier-process-denylist)) fallback)
-     (t (list :executable (plist-get foreground :executable)
-              :argv (copy-sequence (plist-get foreground :argv))
-              :directory directory
-              :shell (copy-tree (plist-get job :shell)))))))
+     (t (append (list :executable (plist-get foreground :executable)
+                      :argv (copy-sequence (plist-get foreground :argv))
+                      :directory directory
+                      :shell (copy-tree (plist-get job :shell)))
+                (when-let* ((environment (atelier-job-environment job foreground)))
+                  (list :environment environment)))))))
+
+(defun atelier-unreplayed-variable-p (variable)
+  "Whether VARIABLE describes the old session's location or nesting."
+  (member (substring variable 0 (string-search "=" variable))
+          atelier-unreplayed-variables))
+
+(defun atelier-fresh-shell-environment (shell start)
+  "Return the variables of a fresh SHELL started with START, once per session."
+  (let* ((key (list shell start))
+         (cached (gethash key atelier-shell-environment-cache 'unknown)))
+    (if (eq cached 'unknown)
+        (puthash key (funcall atelier-shell-environment-function shell start)
+                 atelier-shell-environment-cache)
+      cached)))
+
+(defun atelier-job-environment (job foreground)
+  "Return FOREGROUND's variables that a fresh shell of JOB would not set.
+FOREGROUND's :owner is the shell record it runs under.  A shell's process only
+shows the variables it started with, so its startup files are run again in a
+fresh shell to learn what they export."
+  (when-let* ((shell (plist-get job :shell))
+              (owner (plist-get foreground :owner))
+              ((not (eq owner foreground)))
+              (start (cl-remove-if #'atelier-unreplayed-variable-p
+                                   (funcall atelier-process-environment-function owner)))
+              (program (funcall atelier-process-environment-function foreground))
+              (fresh (atelier-fresh-shell-environment shell start)))
+    (cl-remove-if (lambda (variable)
+                    (or (atelier-unreplayed-variable-p variable) (member variable fresh)))
+                  program)))
+
 
 (defun atelier-observe-jobs ()
   "Observe actual processes in published records, never in a prepared copy."
@@ -223,16 +269,27 @@ Return the foreground process record, or nil.")
                    (executable (plist-get recipe :executable))
                    (saved-name (plist-get job :buffer)))
               (condition-case error
-                    (let* ((arguments (cdr (plist-get recipe :argv)))
-                          (shell (plist-get recipe :shell))
+                    (let* ((shell (plist-get recipe :shell))
                           (shell-restart
                            (and shell
                                 (equal executable (plist-get shell :executable))))
+                          ;; A program started from a shell restarts inside it,
+                          ;; so the shell remains after the program exits.
+                          (in-shell (and shell (not shell-restart)
+                                         (plist-get shell :executable)))
+                          (launch (when (and (or shell-restart in-shell) atelier-shell-launch-function)
+                                    (funcall atelier-shell-launch-function
+                                             shell (plist-get recipe :directory)
+                                             (and in-shell (plist-get recipe :argv))
+                                             (and in-shell (plist-get recipe :environment)))))
+                          (in-shell (and in-shell launch))
+                          (program (if launch (car launch) executable))
+                          (arguments (if launch (cdr launch) (cdr (plist-get recipe :argv))))
                            (name saved-name)
                            (atelier-job-owner-entry (plist-get entry :entry))
                             (buffer (funcall atelier-job-start-function
-                                     name (plist-get recipe :directory) executable arguments workspace
-                                     (and shell-restart shell)
+                                     name (plist-get recipe :directory) program arguments workspace
+                                     (and (or shell-restart in-shell) shell)
                                      (plist-get job :agent)
                                       (atelier-entry-value (plist-get entry :entry) :type))))
                        (unless (buffer-live-p buffer)

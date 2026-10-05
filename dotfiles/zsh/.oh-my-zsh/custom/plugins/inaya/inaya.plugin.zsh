@@ -105,6 +105,7 @@ if has claude; then
     unalias cco ccor 2>/dev/null
     function cco {
         "$HOME/.local/bin/claude-config-helper" trust || return
+        "$HOME/.local/bin/claude-config-helper" onboarded || return
         IS_DEMO=1 claude --dangerously-skip-permissions "$@"
     }
     function ccor {
@@ -113,6 +114,7 @@ if has claude; then
             return 1
         fi
         "$HOME/.local/bin/claude-config-helper" trust || return
+        "$HOME/.local/bin/claude-config-helper" onboarded || return
         claude remote-control --permission-mode bypassPermissions "$@"
     }
 fi

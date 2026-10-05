@@ -137,7 +137,7 @@ This file describes the capabilities installed for the $platform.
 - **Repository tools**: Git, GitHub CLI, and GNU Stow.
 - **Terminal tools**: Yazi, ripgrep, jq, and btop.
 - **Agent browser tools**: Playwright MCP. Claude Code and Pi are installed separately.
-- **Claude configuration**: \`claude-config-helper\` trusts projects, lists or clears saved approvals, applies the MCP servers listed in \`~/.config/claude-config-helper/mcp-servers.json\`, and checks files for tokens, email addresses and home paths.
+- **Claude configuration**: \`claude-config-helper\` trusts projects, marks Claude's first-run setup as finished, lists or clears saved approvals, applies the MCP servers listed in \`~/.config/claude-config-helper/mcp-servers.json\`, and checks files for tokens, email addresses and home paths.
 - **Remote access**: OpenSSH server and Tailscale service with optional login during setup.
 EOF
 

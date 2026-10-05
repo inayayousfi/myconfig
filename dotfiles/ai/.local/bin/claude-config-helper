@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Manage Claude Code project trust, saved approvals and MCP servers."""
+"""Manage Claude Code project trust, first-run setup, saved approvals and MCP servers."""
 
 import argparse
 import json
@@ -123,6 +123,17 @@ def trust(arguments):
     return 0
 
 
+def onboarded(arguments):
+    def change(state):
+        if state.get("hasCompletedOnboarding") is True:
+            return False
+        state["hasCompletedOnboarding"] = True
+        return True
+
+    edit_state(change)
+    return 0
+
+
 def approvals_list(arguments):
     projects = read_state(state_path()).get("projects", {})
     if arguments.directory:
@@ -233,6 +244,9 @@ def parser():
     command = commands.add_parser("trust", help="trust the project that contains DIRECTORY")
     command.add_argument("directory", nargs="?", default=".")
     command.set_defaults(run=trust)
+
+    command = commands.add_parser("onboarded", help="mark Claude's first-run setup as finished")
+    command.set_defaults(run=onboarded)
 
     approvals = commands.add_parser("approvals", help="list or clear saved tool approvals")
     actions = approvals.add_subparsers(required=True, metavar="action")

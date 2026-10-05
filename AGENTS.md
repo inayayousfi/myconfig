@@ -64,7 +64,7 @@ After a Linux source change, inspect both the repository path and the deployed p
 
 The `ai` package owns the shared agent source, Claude configuration, and OpenCode configuration. On Linux, Stow deploys it through `~/.agents/`, `~/.claude/`, and `~/.config/opencode/`. OpenCode also needs the generated link at `~/.config/opencode/AGENTS.md`, which points to `~/.agents/AGENTS.md`.
 
-The `ai` package also ships `claude-config-helper`, a Python command shared by Linux and Windows. It trusts projects, lists or clears Claude's saved approvals, applies the MCP servers listed in `dotfiles/ai/.config/claude-config-helper/mcp-servers.json` through Claude's own commands, and checks tracked files for tokens, email addresses and home paths. Only trust and approval changes edit `~/.claude.json` directly.
+The `ai` package also ships `claude-config-helper`, a Python command shared by Linux and Windows. It trusts projects, marks Claude's first-run setup as finished, lists or clears Claude's saved approvals, applies the MCP servers listed in `dotfiles/ai/.config/claude-config-helper/mcp-servers.json` through Claude's own commands, and checks tracked files for tokens, email addresses and home paths. Only trust, setup and approval changes edit `~/.claude.json` directly.
 
 The installer creates the OpenCode link during the agent configuration step. Do not add another stored `AGENTS.md` under the OpenCode configuration. The only instruction source is `dotfiles/ai/.agents/AGENTS.md`.
 

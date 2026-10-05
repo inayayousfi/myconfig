@@ -82,13 +82,15 @@ class ClaudeConfigHelper(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 state = json.loads(self.config.read_text())
                 self.assertTrue(state["projects"][str(self.project)]["hasTrustDialogAccepted"])
+                self.assertIs(state.pop("hasCompletedOnboarding"), True)
+                trusted = json.loads(json.dumps(state))
                 del state["projects"][str(self.project)]["hasTrustDialogAccepted"]
                 self.assertEqual(state, self.original)
                 self.assertEqual(self.calls()[-1], expected)
                 self.assertFalse(Path(str(self.config) + ".lock").exists())
         # Each change replaces the single backup of the previous state.
         self.assertEqual(list(self.home.glob(".claude.json.*")), [self.backup])
-        self.assertEqual(json.loads(self.backup.read_text()), self.original)
+        self.assertEqual(json.loads(self.backup.read_text()), trusted)
 
     def test_worktree_launch_trusts_main_checkout(self):
         self.git("init")

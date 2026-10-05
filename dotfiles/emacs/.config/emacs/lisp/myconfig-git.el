@@ -175,8 +175,16 @@
       (myconfig-diff-menu)
     (funcall #'myconfig-emacs-diff old new switches no-async)))
 
+(defun myconfig-git-quit-buffer (&optional _kill-buffer)
+  "Kill the current Magit buffer, or every Magit buffer of the repository from status."
+  (let ((others (and (derived-mode-p 'magit-status-mode)
+                     (delq (current-buffer) (magit-mode-get-buffers)))))
+    (magit-mode-quit-window t)
+    (mapc #'kill-buffer others)))
+
 (defun myconfig-git-setup ()
   (setq magit-display-buffer-function #'magit-display-buffer-same-window-except-diff-v1
+        magit-bury-buffer-function #'myconfig-git-quit-buffer
         magit-save-repository-buffers nil
         ediff-window-setup-function #'ediff-setup-windows-plain
         ediff-split-window-function #'split-window-horizontally)

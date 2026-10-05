@@ -26,9 +26,16 @@ Drafts the intended result early when a request includes future work, establishe
    - Reconcile any provisional message with the actual staged changes. Preserve its outcome focus when it remains accurate, but change it when the real change set requires that.
    - No emojis, no filler, no restating the diff line-by-line.
 
-5. **Preview the final message.** Output the commit message directly in the ordinary chat response as plain text, in a fenced code block tagged `text`. Do not put the commit message inside a tool call. In the same response, immediately continue to step 6.
+5. **Ask for confirmation with the full message inside the question.** You HAVE to call the question tool, and the complete final message MUST be inside that call. Text in the chat or in hidden reasoning never counts as showing it, and never refer to the message as shown above or elsewhere.
+   - If the question tool can attach a preview to its options, put the full message, in a fenced code block tagged `text`, in the preview of every option so it stays visible whichever option is focused. Use the subject line as the question text.
+   - Otherwise, the question text is the full message itself.
+   - The question text needs no question sentence. For this confirmation, this overrides the global rule that every question field contains one.
+   - Options: Confirm, I can't see the full message, and the global explain-more option. The user requests changes or cancels through the free-text answer. If the question tool offers no free-text answer, also add Request changes and Cancel.
 
-6. **Confirm once.** You HAVE to call the question tool: Confirm / Request changes / Cancel. Do not put the commit message in this tool call; it was already shown in step 5. Do not run `git commit` until the user confirms the final message. If they ask for changes, redraft, repeat step 5, then ask again. The provisional message from step 1 never counts as this confirmation.
+6. **Handle the answer.** Do not run `git commit` until the user confirms the final message. The provisional message from step 1 never counts as this confirmation.
+   - "I can't see the full message": write the full message as visible text in the chat response, then repeat step 5 with the full message as the question text.
+   - Changes: redraft, then repeat step 5.
+   - Cancel: stop without committing.
 
 7. Once confirmed, commit with the approved message (e.g. `git commit -F -` fed the final message, or `git commit -m`/`-m` flags as appropriate).
 

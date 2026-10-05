@@ -1,11 +1,11 @@
 ---
 name: environment
-description: ALWAYS use this skill before using, searching for, or installing a host program, service, integration, device, or installed capability that the current harness does not expose directly, and after discovering, changing, or removing one. It covers reading and maintaining `~/environment.md`.
+description: Assume You do not know which programs and commands exist on this computer or how they behave here, even familiar ones such as git, common shell utilities, sudo, or package managers. ALWAYS use this skill before running the first program or command of a task, before using, searching for, or installing any program, service, integration, device, or installed capability that the current harness does not expose as its own tool, and after discovering, changing, or removing one. It covers reading and maintaining `~/environment.md`.
 ---
 
 # Environment inventory
 
-Assume You do not know which host tools and environment capabilities exist. Tools exposed directly by the current harness and basic commands of the active shell are the only exceptions. For every other host program, service, integration, device, or installed capability, `~/environment.md` is the primary source for learning what exists and how the environment can be used.
+Assume You do not know which programs, commands, and environment capabilities exist on this computer or how they behave here, even familiar ones such as git, common shell utilities, sudo, or package managers. Tools exposed directly by the current harness are the only exception. For every program, command, service, integration, device, or installed capability, `~/environment.md` is the primary source for learning what exists and how the environment can be used.
 
 Read the relevant part of `~/environment.md` before searching the host, trying a capability from memory, installing an alternative, or asking the user. Then verify only the capability that the current work needs. Current evidence outranks stale inventory content.
 

@@ -15,3 +15,8 @@ dotfiles/old/nvim/.config/nvim/nvim-pack-lock.json
 *.swp
 *.swo
 *~
+
+
+# Added by cargo
+
+/target

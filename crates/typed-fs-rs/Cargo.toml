@@ -1,0 +1,7 @@
+[package]
+name = "typed-fs-rs"
+version.workspace = true
+edition = "2024"
+
+[dependencies]
+typed-fs-rs-macros = { path = "macros" }

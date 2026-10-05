@@ -132,8 +132,12 @@ jobs:
           retry sudo apt-get install -y desktop-file-utils emacs-nox imagemagick lua5.4 rsync stow zsh
           retry cargo install resvg --version 0.48.1 --locked
 
-      - name: Test Linux installers
-        run: ./test/test-linux.sh
+      # Includes the installer modules, the repository files and install.sh.
+      - name: Test Rust workspace
+        run: |
+          cargo fmt --all -- --check
+          cargo test --workspace
+          cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Test Claude configuration helper
         run: python3 test/test-claude-config-helper.py

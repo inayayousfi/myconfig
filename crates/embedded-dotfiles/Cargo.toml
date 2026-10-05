@@ -1,0 +1,7 @@
+[package]
+name = "embedded-dotfiles"
+version.workspace = true
+edition = "2024"
+
+[dependencies]
+typed-fs-rs = { path = "../typed-fs-rs" }

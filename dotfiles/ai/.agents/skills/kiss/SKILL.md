@@ -1,6 +1,6 @@
 ---
 name: kiss
-description: ALWAYS use this skill for any code review request, including questions about complexity, over-engineering, consistency, edge cases, or dead code. If You implemented the review target in the current context, never review it inline: delegate the exact target to a fresh Sub-Agent and tell it to use this skill. A reviewer that did not implement the target follows this skill directly. Never use another review skill for these requests.
+description: ALWAYS use this skill for any code review request, including questions about complexity, over-engineering, ownership, side effects, failure handling, consistency, edge cases, or dead code. If You implemented the review target in the current context, never review it inline: delegate the exact target to a fresh Sub-Agent and tell it to use this skill. A reviewer that did not implement the target follows this skill directly. Never use another review skill for these requests.
 ---
 
 # KISS review
@@ -15,14 +15,19 @@ Read the surrounding code before calling anything a defect. A line that looks wr
 
 Say when you are guessing. A finding you cannot prove is still worth raising, but it arrives labelled as a guess, never as a fact.
 
-Six checks receive the same scrutiny, but design comes first:
+The design checks test invariants: properties that must hold whatever shape the code takes. A finding names the invariant that breaks and the evidence that it breaks. If the code keeps the invariant by another means, there is no finding. Never require a particular structure, pattern or style to satisfy an invariant; existing projects reach these properties in their own ways. When a repository convention itself breaks an invariant, report that conflict as its own finding under the invariant's category, show both sides, and let the person decide.
 
-1. **Over-engineering** — abstraction, indirection, generality, config the problem never asked for, poor cohesion, or a unit without one clear purpose.
-2. **Pattern drift** — doesn't follow this codebase's conventions for names, vocabulary, control flow, visible data flow, comments or structure; a newcomer couldn't tell which one is "the" pattern.
-3. **Failure surface** — design-created invalid states, stale facts, partial updates, ownership ambiguity, ordering constraints, reentrancy hazards, cleanup paths or configuration combinations that a smaller shape makes impossible.
-4. **Naive edge cases** — clunky, roundabout, or overly defensive local handling where a simpler construct already covers it.
-5. **Dead weight** — unused abstractions, speculative flexibility, half-finished generalization, code paths that never fire.
-6. **Bugs** — actual correctness bugs.
+Nine checks receive the same scrutiny, but design comes first:
+
+1. **Ownership**: every concern, fact and piece of state has exactly one owner. Flag two units handling the same concern, a unit that handles one slice of every other unit's concern, a fact stored or decided in two places that can disagree, and state changed away from its owner.
+2. **Hidden effects**: every change to the outside world traces back to one unit whose stated job includes it. Flag a change that no unit's job declares, and decision logic that cannot be checked without causing outside effects.
+3. **Independence**: each unit stands on its own. Flag a removal that leaves something behind elsewhere; a unit that cannot be run and checked without the whole program; a wide surface, or two concepts behind one surface; a unit that checks where or for whom it runs; hidden state shared between units; an internal change that forces callers to change; a unit that receives more than it uses; and a central object that grows to serve every unit.
+4. **Coordination and scale**: flag a coordinating unit that does its members' work or handles their internal logic; an order that is hidden, or an order rule whose breakage would matter and that nothing checks; a grouping with no job of its own presented as a unit; and a larger unit whose callers must know its inner units, their contracts or their failures.
+5. **Failure**: flag a failure that leaves partial state where failing with nothing changed, or undoing before reporting, was possible; a partial state left unreported; an irreversible step that is not last; failures a caller can tell apart only by parsing text; an open or undocumented set of failures; a failed undo with no identity of its own; a unit that decides failure policy for another level; and invalid states, reentrancy hazards or configuration combinations that a different shape makes impossible.
+6. **Pattern drift**: doesn't follow this codebase's conventions for names, vocabulary, control flow, visible data flow, comments or structure; a newcomer couldn't tell which one is "the" pattern.
+7. **Naive edge cases**: clunky, roundabout, or overly defensive local handling where a simpler construct already covers it.
+8. **Dead weight**: machinery that serves no invariant and no requirement: unused abstractions, indirection, generality or configuration the problem never asked for, speculative flexibility, half-finished generalization, code paths that never fire.
+9. **Bugs**: actual correctness bugs.
 
 A critical bug may interrupt and lead the review only when it threatens security, data integrity or availability. Finish the whole-design pass before verifying ordinary bugs. Never let a concrete bug end structural analysis.
 
@@ -51,18 +56,18 @@ Use the strongest credible source as evidence. If written guidance conflicts wit
 
 Complete this pass before line-level review. Produce four things, even when the current design is sound:
 
-1. **Essential behavior** — what the change must accomplish, stripped of its implementation.
-2. **Actual path** — where data, ownership and control enter, move and leave.
-3. **Smallest credible shape** — the fewest cohesive units that satisfy the same requirements and repository constraints.
-4. **Concrete reduction** — which types, boundaries, states, registrations, branches, failure modes or cleanup paths that shape removes.
+1. **Essential behavior**: what the change must accomplish, stripped of its implementation.
+2. **Actual path**: where data, ownership and control enter, move and leave.
+3. **Least machinery that keeps every invariant**: the shape with the least machinery that satisfies the same requirements and repository constraints and keeps every invariant above.
+4. **Concrete reduction**: which types, boundaries, states, registrations, branches, failure modes or cleanup paths that shape removes.
 
 Treat elegance as an engineering property, not an aesthetic verdict. An elegant shape has direct visible flow, one authoritative owner for each fact and resource, few representable states, and no machinery without current work. Prefer a design that makes an invalid state or edge case impossible over one that detects, synchronizes or cleans it up correctly.
 
-The counterfactual is evidence, not an automatic verdict. Do not penalize machinery required by observed requirements, failure semantics, performance, compatibility or repository convention. Do not propose a toy that silently drops those constraints.
+The counterfactual is evidence, not an automatic verdict. Do not penalize machinery required by an invariant, observed requirements, failure semantics, performance, compatibility or repository convention. Do not propose a toy that silently drops those constraints.
 
 Inspect the complete shape for these signals:
 
-- an abstraction with one consumer or one implementation
+- an abstraction with one consumer or one implementation, unless the unit is the single owner of a concern or an effect
 - generic machinery followed by a special-case branch
 - duplicated state, facts or representations
 - ownership crossing a boundary without buying isolation
@@ -79,9 +84,9 @@ Measure where possible. Compare nonblank lines, ownership transfers, representat
 
 ## Step 3: Run every check
 
-Run all five design checks against the counterfactual before the bug check. Do not stop because one category produced findings. A clean category is still a completed internal pass.
+Run all eight design checks against the counterfactual before the bug check. Do not stop because one category produced findings. A clean category is still a completed internal pass.
 
-Use **Failure surface** only for risks created by the chosen architecture and removed by the smaller shape. Use **Naive edge cases** for roundabout local handling inside an otherwise credible shape. Do not repeat one concern under both headings.
+Use **Failure** for failure behavior that breaks an invariant. Use **Naive edge cases** for roundabout local handling inside an otherwise credible shape. Do not repeat one concern under both headings.
 
 Then inspect correctness. Handle a critical bug immediately. Record ordinary bugs for the final section and continue structural work first.
 
@@ -97,11 +102,11 @@ Wherever a finding's validity can be checked by running something — tests, a s
 
 Use plain markdown in the conversation. Do not create a file, artifact or report tool output. The result must be copy-pasteable into a fresh context with nothing else attached. Report generously; tag confidence honestly instead of suppressing.
 
-Critical bugs lead only when present. Always report a **Whole design** section containing the four counterfactual items and a clear verdict. Then report only categories that contain at least one finding, in this order: Over-engineering, Pattern drift, Failure surface, Naive edge cases, Dead weight, ordinary Bugs. Never emit an empty category heading or a `No findings` placeholder. If no category contains a finding, the Whole design verdict is the complete review.
+Critical bugs lead only when present. Always report a **Whole design** section containing the four counterfactual items and a clear verdict. Then report only categories that contain at least one finding, in this order: Ownership, Hidden effects, Independence, Coordination and scale, Failure, Pattern drift, Naive edge cases, Dead weight, ordinary Bugs. Never emit an empty category heading or a `No findings` placeholder. If no category contains a finding, the Whole design verdict is the complete review.
 
 Each finding must include `file:line`, what is wrong, why it is wrong for this codebase, the directional fix in words, a confidence tag, and the cross-verification result if one ran. Point at the actual convention or example it violates.
 
-Each structural finding must name the smaller shape and the concrete machinery it removes. A complaint without that reduction is taste, not a KISS finding. When the reduction removes invalid states, edge cases or failure paths, name those removals explicitly.
+Each invariant finding must name the invariant that breaks, the evidence, and the direction of the fix, without requiring a particular shape. Each Dead weight finding must name the smaller shape and the concrete machinery it removes. A complaint without that reduction is taste, not a KISS finding. When the reduction removes invalid states, edge cases or failure paths, name those removals explicitly.
 
 For pattern-drift findings, cite the strongest credible repository evidence. Keep uncertain readability concerns and label their confidence honestly.
 

@@ -1,33 +1,40 @@
-use std::{error::Error, path::PathBuf};
+use std::process::ExitCode;
 
-use myconfig_modules::{
-    ModuleContext, Profile,
-    linux::{
-        BaseModule, DotfilesModule, UbuntuServerBase, UbuntuServerDotfiles, UbuntuServerZsh,
-        ZshModule,
+use myconfig_interface::Profile;
+use myconfig_modules::*;
+
+static MODULES: &[&dyn Module] = &[
+    &Base {
+        packages: Base::UBUNTU,
+        unwanted: &[],
     },
-};
-use myconfig_utils::{LinuxSession, PackageSystem};
-use xshell::Shell;
+    &Zsh {
+        set_login_shell: true,
+    },
+];
 
-fn main() -> Result<(), Box<dyn Error>> {
-    if std::env::consts::OS != "linux" {
-        return Err("the Ubuntu Server installer requires Linux".into());
+fn main() -> ExitCode {
+    let has_apt = std::env::var_os("PATH").is_some_and(|path| {
+        std::env::split_paths(&path).any(|directory| directory.join("apt-get").is_file())
+    });
+    if std::env::consts::OS != "linux" || !has_apt {
+        eprintln!("error: the Ubuntu Server installer requires an apt-based Linux system");
+        return ExitCode::FAILURE;
     }
-
-    let sh = Shell::new()?;
-    let home = PathBuf::from(std::env::var_os("HOME").ok_or("HOME is unset")?);
-    let _session = LinuxSession::prepare(&sh, PackageSystem::Apt)?;
-
-    let context = ModuleContext {
-        profile: Profile::UbuntuServer,
+    myconfig_interface::main(Profile {
+        title: "Ubuntu Server",
         package_system: PackageSystem::Apt,
-        shell: &sh,
-        home: &home,
-    };
-    UbuntuServerBase.install(&context)?;
-    UbuntuServerZsh.install(&context)?;
-    UbuntuServerDotfiles.install(&context)?;
-    println!("Ubuntu Server profile completed successfully");
-    Ok(())
+        modules: MODULES,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MODULES;
+
+    #[test]
+    fn the_profile_is_only_the_shell() {
+        let names: Vec<_> = MODULES.iter().map(|module| module.name()).collect();
+        assert_eq!(names, ["base", "zsh"]);
+    }
 }

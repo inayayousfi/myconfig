@@ -1,5 +1,5 @@
 name: Bug Report
-description: Report a problem with the setup or bootstrap process
+description: Report a problem with the setup or install process
 title: "[Bug]: "
 labels: ["bug"]
 body:
@@ -14,6 +14,8 @@ body:
       label: Platform
       description: Which platform are you installing on?
       options:
+        - CachyOS
+        - Arch WSL
         - Ubuntu Server
         - Windows
         - Other Linux
@@ -27,9 +29,9 @@ body:
       label: Installation Method
       description: How did you run the installation?
       options:
-        - Bootstrap script (one-command)
-        - Manual installation (cloned repo)
-        - Downloaded release archive
+        - Install script (one-command)
+        - Installed myconfig command (install, verify or remove)
+        - Built from a cloned repo
     validations:
       required: true
 

@@ -1,55 +1,76 @@
-use std::{error::Error, path::PathBuf};
+use std::process::ExitCode;
 
-use myconfig_modules::{
-    ModuleContext, Profile,
-    linux::{
-        AgentsConfigureModule, AgentsPackagesModule, ArchWslAgentsConfigure, ArchWslAgentsPackages,
-        ArchWslAuthentication, ArchWslBase, ArchWslCli, ArchWslDotfiles,
-        ArchWslEnvironmentInventory, ArchWslRuntimes, ArchWslSsh, ArchWslTailscale,
-        ArchWslTerminalTools, ArchWslZsh, AuthenticationModule, BaseModule, CliModule,
-        DotfilesModule, EnvironmentInventoryModule, RuntimesModule, SshModule, TailscaleModule,
-        TerminalToolsModule, ZshModule,
-    },
-};
-use myconfig_utils::{LinuxSession, PackageSystem};
-use xshell::Shell;
+use myconfig_interface::Profile;
+use myconfig_modules::*;
 
-fn main() -> Result<(), Box<dyn Error>> {
-    if std::env::consts::OS != "linux" {
-        return Err("the Arch WSL installer requires Linux".into());
-    }
-    let wsl_kernel = std::fs::read_to_string("/proc/sys/kernel/osrelease")
+fn running_in_wsl() -> bool {
+    let kernel = std::fs::read_to_string("/proc/sys/kernel/osrelease")
         .unwrap_or_default()
         .to_ascii_lowercase();
-    if std::env::var_os("WSL_DISTRO_NAME").is_none()
-        && !wsl_kernel.contains("microsoft")
-        && !wsl_kernel.contains("wsl")
-    {
-        return Err("the Arch WSL installer requires WSL".into());
+    std::env::var_os("WSL_DISTRO_NAME").is_some()
+        || kernel.contains("microsoft")
+        || kernel.contains("wsl")
+}
+
+static MODULES: &[&dyn Module] = &[
+    &Base {
+        packages: Base::ARCH,
+        unwanted: &[],
+    },
+    &Ssh,
+    &Cli {
+        retired_config: &["hunk", "lazygit", "nvim", "tmux"],
+    },
+    &Runtimes,
+    &Zsh {
+        set_login_shell: false,
+    },
+    &TerminalTools,
+    &Tailscale,
+    &AgentsPackages {
+        extra: &[Package::WslSshAgent],
+    },
+    &AgentConfigStowed { ydotool: false },
+    &GitConfig { windows_ssh: true },
+    &EnvironmentInventory::ARCH_WSL,
+];
+
+fn main() -> ExitCode {
+    if std::env::consts::OS != "linux" || !running_in_wsl() {
+        eprintln!("error: the Arch WSL installer requires Linux inside WSL");
+        return ExitCode::FAILURE;
     }
-
-    let sh = Shell::new()?;
-    let home = PathBuf::from(std::env::var_os("HOME").ok_or("HOME is unset")?);
-    let _session = LinuxSession::prepare(&sh, PackageSystem::Arch)?;
-    let context = ModuleContext {
-        profile: Profile::ArchWsl,
+    myconfig_interface::main(Profile {
+        title: "Arch WSL",
         package_system: PackageSystem::Arch,
-        shell: &sh,
-        home: &home,
-    };
+        modules: MODULES,
+    })
+}
 
-    ArchWslBase.install(&context)?;
-    ArchWslSsh.install(&context)?;
-    ArchWslCli.install(&context)?;
-    ArchWslRuntimes.install(&context)?;
-    ArchWslZsh.install(&context)?;
-    ArchWslTerminalTools.install(&context)?;
-    ArchWslTailscale.install(&context)?;
-    ArchWslAgentsPackages.install(&context)?;
-    ArchWslDotfiles.install(&context)?;
-    ArchWslAgentsConfigure.install(&context)?;
-    ArchWslAuthentication.install(&context)?;
-    ArchWslEnvironmentInventory.install(&context)?;
-    println!("Arch WSL profile completed successfully");
-    Ok(())
+#[cfg(test)]
+mod tests {
+    use super::MODULES;
+
+    #[test]
+    fn the_profile_has_no_desktop_modules() {
+        let names: Vec<_> = MODULES.iter().map(|module| module.name()).collect();
+        for absent in [
+            "axidev-osk",
+            "ghostty",
+            "emacs",
+            "kde-plasma",
+            "cursor-theme",
+            "refind",
+            "kanata",
+            "kanata-kde",
+            "handy",
+            "pipewire",
+            "docker",
+        ] {
+            assert!(!names.contains(&absent), "Arch WSL includes {absent}");
+        }
+        for wanted in ["zsh", "agent-config", "git-config", "tailscale"] {
+            assert!(names.contains(&wanted), "Arch WSL lacks {wanted}");
+        }
+    }
 }

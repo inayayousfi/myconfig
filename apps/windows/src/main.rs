@@ -1,55 +1,49 @@
-use std::{error::Error, path::PathBuf};
+use std::process::ExitCode;
 
-use myconfig_modules::{
-    ModuleContext, Profile,
-    windows::{
-        AhkScriptsModule, AiConfigModule, EmacsConfigModule, IosevkaMonoFontModule, LlvmPathModule,
-        OhMyPoshConfigModule, PowerShellProfileModule, PsReadLineModule, RegistryTweaksModule,
-        SharedDesktopModule, TaskbarAutoHideModule, WindowsAhkScripts, WindowsAiConfig,
-        WindowsEmacsConfig, WindowsIosevkaMonoFont, WindowsLlvmPath, WindowsOhMyPoshConfig,
-        WindowsPowerShellProfile, WindowsPsReadLine, WindowsRegistryTweaks, WindowsSharedDesktop,
-        WindowsTaskbarAutoHide, WindowsTerminalConfig, WindowsTerminalConfigModule,
-        WindowsWingetPackages, WingetPackagesModule,
-    },
-};
-use myconfig_utils::PackageSystem;
-use xshell::Shell;
+use myconfig_interface::Profile;
+use myconfig_modules::*;
 
-fn main() -> Result<(), Box<dyn Error>> {
+static MODULES: &[&dyn Module] = &[
+    &PackageGroup::BASE,
+    &PackageGroup::DEV_TOOLS,
+    &PackageGroup::ART,
+    &PackageGroup::SUPPLEMENTARY,
+    &ArchWsl,
+    &PowerShellProfile,
+    &OhMyPosh,
+    &WindowsTerminal,
+    &EmacsCopied(EmacsOptions {
+        browser_terminal_firewall: false,
+    }),
+    &AutoHotkey,
+    &AgentConfigCopied,
+    &PsReadLine,
+    &OhMyPoshFont,
+    &LlvmPath,
+    &RegistryTweaks,
+    &TaskbarAutoHide,
+    &SharedDesktop,
+];
+
+fn main() -> ExitCode {
     if !cfg!(windows) {
-        return Err("the Windows Workstation installer requires Windows".into());
+        eprintln!("error: the Windows Workstation installer requires Windows");
+        return ExitCode::FAILURE;
     }
-    let args: Vec<_> = std::env::args_os().skip(1).collect();
-    if !args.is_empty() && args.as_slice() != ["--move-shared-desktop"] {
-        return Err("unknown Windows installer argument".into());
-    }
-    let sh = Shell::new()?;
-    let home = PathBuf::from(std::env::var_os("USERPROFILE").ok_or("USERPROFILE is unset")?);
-    let context = ModuleContext {
-        profile: Profile::Windows,
+    myconfig_interface::main(Profile {
+        title: "Windows Workstation",
         package_system: PackageSystem::Winget,
-        shell: &sh,
-        home: &home,
-    };
-    if !args.is_empty() {
-        return WindowsSharedDesktop.install(&context);
-    }
+        modules: MODULES,
+    })
+}
 
-    let selected = WindowsWingetPackages.install(&context)?;
-    WindowsPowerShellProfile.install(&context)?;
-    WindowsOhMyPoshConfig.install(&context)?;
-    WindowsTerminalConfig.install(&context)?;
-    WindowsEmacsConfig.install(&context)?;
-    WindowsAhkScripts.install(&context)?;
-    WindowsAiConfig.install(&context)?;
-    WindowsPsReadLine.install(&context)?;
-    WindowsIosevkaMonoFont.install(&context)?;
-    if selected.dev_tools {
-        WindowsLlvmPath.install(&context)?;
+#[cfg(test)]
+mod tests {
+    use super::MODULES;
+
+    #[test]
+    fn the_base_packages_come_first() {
+        // Every later module uses PowerShell 7 or another base package.
+        assert_eq!(MODULES[0].name(), "base-packages");
     }
-    WindowsRegistryTweaks.install(&context)?;
-    WindowsTaskbarAutoHide.install(&context)?;
-    WindowsSharedDesktop.install(&context)?;
-    println!("Windows Workstation profile completed successfully");
-    Ok(())
 }

@@ -452,7 +452,7 @@ boot_test_and_install() {
             -o "UserKnownHostsFile=$SSH_KNOWN_HOSTS" \
             -o StrictHostKeyChecking=accept-new \
             "$guest_user@127.0.0.1" \
-            'sudo mkdir -p /mnt/myconfig && sudo mount -t 9p -o trans=virtio,version=9p2000.L,rw myconfig /mnt/myconfig && bash /mnt/myconfig/cachyos/install.sh' \
+            'sudo mkdir -p /mnt/myconfig && sudo mount -t 9p -o trans=virtio,version=9p2000.L,rw myconfig /mnt/myconfig && install -Dm755 /mnt/myconfig/target/x86_64-unknown-linux-musl/release/myconfig-cachyos ~/.local/bin/myconfig && ~/.local/bin/myconfig' \
             || remote_status=$?
 
         if [ "$remote_status" -eq 0 ]; then
@@ -556,6 +556,11 @@ run_action() {
         return 1
     }
     require_command ssh || return 1
+    require_command cargo || return 1
+    # The guest runs the installer built from the working tree, through the shared folder.
+    vm_log "Building the CachyOS installer from the working tree"
+    cargo build --release --locked --target x86_64-unknown-linux-musl -p myconfig-cachyos \
+        --manifest-path "$REPO_ROOT/Cargo.toml" || return 1
     vm_log "WARNING: the guest has write access to $REPO_ROOT"
     boot_test_and_install "$display_count"
 }

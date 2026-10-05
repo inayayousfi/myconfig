@@ -1,0 +1,12 @@
+[package]
+name = "myconfig-interface"
+version.workspace = true
+edition = "2024"
+
+[dependencies]
+clap = { version = "4.6.7", features = ["derive"] }
+crossterm = "0.29.0"
+myconfig-modules = { path = "../modules" }
+myconfig-utils = { path = "../utils" }
+ratatui = "0.30.2"
+xshell = "0.2.7"

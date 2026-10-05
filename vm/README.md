@@ -46,7 +46,7 @@ The first run creates a disposable disk backed by the sealed base. Later runs co
 
 The repository is attached through QEMU 9p with write access. **Guest root can modify or delete files in the host checkout as the host user running QEMU.** Commit or back up work that must survive before running guest commands.
 
-The harness forwards local port 2222 to guest SSH and waits for the guest. It then mounts the repository at `/mnt/myconfig` and starts `bash /mnt/myconfig/cachyos/install.sh` in an interactive SSH terminal. The desktop remains open for graphical checks until you shut it down.
+The harness forwards local port 2222 to guest SSH and waits for the guest. Before booting, it builds the CachyOS installer from the working tree with `cargo build --release --target x86_64-unknown-linux-musl -p myconfig-cachyos`. It then mounts the repository at `/mnt/myconfig`, copies that binary to `~/.local/bin/myconfig` in the guest, and opens its screen in an interactive SSH terminal. The desktop remains open for graphical checks until you shut it down.
 
 The CachyOS profile reads the live working tree, including unstaged and untracked files. During Axidev OSK setup, select the installed login manager from the terminal menu. After the profile completes, reboot the test guest and verify that Axidev OSK appears on the login screen, emits input there, starts again in the desktop session, and types into a focused application.
 

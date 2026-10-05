@@ -1,4 +1,4 @@
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
 #[repr(usize)]
 pub enum Package {
     CaCertificates,
@@ -137,10 +137,12 @@ pub enum Package {
     DockerDesktop,
     VirtualBox,
     LibreOffice,
+    /// In the CachyOS repository; plain Arch gets `paru-bin` from the AUR instead.
+    Paru,
 }
 
 impl Package {
-    const COUNT: usize = 136;
+    const COUNT: usize = 137;
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -392,6 +394,11 @@ const PACKAGE_OVERRIDES: &[((Package, Platform), &str)] = &[
     ((Package::DockerCompose, Platform::Pacman), "docker-compose"),
     ((Package::Wsl, Platform::Winget), "Microsoft.WSL"),
     ((Package::Handy, Platform::Winget), "cjpais.Handy"),
+    ((Package::Paru, Platform::Pacman), "paru"),
+    (
+        (Package::DesktopFileUtils, Platform::Pacman),
+        "desktop-file-utils",
+    ),
 ];
 
 const fn build_packages()
@@ -564,6 +571,7 @@ const fn package_from_index(index: usize) -> Package {
         Package::DockerDesktop,
         Package::VirtualBox,
         Package::LibreOffice,
+        Package::Paru,
     ][index]
 }
 

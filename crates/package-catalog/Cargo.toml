@@ -1,4 +1,7 @@
 [package]
 name = "package-catalog"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
+
+[dependencies]
+serde = { version = "1.0.229", features = ["derive"] }

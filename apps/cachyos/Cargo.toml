@@ -1,9 +1,8 @@
 [package]
 name = "myconfig-cachyos"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 
 [dependencies]
+myconfig-interface = { path = "../../crates/interface" }
 myconfig-modules = { path = "../../crates/modules" }
-myconfig-utils = { path = "../../crates/utils" }
-xshell = "0.2.7"

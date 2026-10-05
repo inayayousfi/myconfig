@@ -111,6 +111,11 @@ cat >"$MOCK_BIN/ssh" <<'EOF'
 printf 'ssh:%s\n' "$*" >>"$CACHYOS_VM_TEST_LOG"
 EOF
 
+cat >"$MOCK_BIN/cargo" <<'EOF'
+#!/usr/bin/env bash
+printf 'cargo:%s\n' "$*" >>"$CACHYOS_VM_TEST_LOG"
+EOF
+
 cat >"$MOCK_BIN/remote-viewer" <<'EOF'
 #!/usr/bin/env bash
 exit 0
@@ -131,7 +136,7 @@ EOF
 chmod +x \
     "$MOCK_BIN/curl" "$MOCK_BIN/qemu-img" "$MOCK_BIN/qemu-system-x86_64" \
     "$MOCK_BIN/virt-cat" "$MOCK_BIN/guestfish" "$MOCK_BIN/ssh-keygen" "$MOCK_BIN/ssh" \
-    "$MOCK_BIN/remote-viewer" "$MOCK_BIN/sudo" "$MOCK_BIN/pacman"
+    "$MOCK_BIN/remote-viewer" "$MOCK_BIN/sudo" "$MOCK_BIN/pacman" "$MOCK_BIN/cargo"
 
 export CACHYOS_VM_TEST_PAGE="$FIXTURES/download.html"
 export CACHYOS_VM_TEST_CHECKSUM="$FIXTURES/$ISO_NAME.sha256"
@@ -242,8 +247,10 @@ grep -Fq 'mount_tag=myconfig,security_model=mapped-xattr' "$COMMAND_LOG" \
     || vm_fail "run did not expose the writable repository mount"
 grep -Fq 'sudo mount -t 9p -o trans=virtio,version=9p2000.L,rw myconfig /mnt/myconfig' "$COMMAND_LOG" \
     || vm_fail "run did not mount the live repository over SSH"
-grep -Fq 'bash /mnt/myconfig/cachyos/install.sh' "$COMMAND_LOG" \
-    || vm_fail "run did not start the CachyOS profile over SSH"
+grep -Fq 'cargo:build --release --locked --target x86_64-unknown-linux-musl -p myconfig-cachyos' "$COMMAND_LOG" \
+    || vm_fail "run did not build the CachyOS installer from the working tree"
+grep -Fq 'install -Dm755 /mnt/myconfig/target/x86_64-unknown-linux-musl/release/myconfig-cachyos ~/.local/bin/myconfig && ~/.local/bin/myconfig' "$COMMAND_LOG" \
+    || vm_fail "run did not start the CachyOS installer over SSH"
 
 main run
 [ "$(grep -Fc "qemu-img:create -f qcow2 -F qcow2 -b $BASE_DISK $TEST_DISK" "$COMMAND_LOG")" -eq 1 ] \

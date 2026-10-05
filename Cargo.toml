@@ -1,14 +1,19 @@
 [workspace]
 members = [
-    "apps/cachyos",
-    "apps/windows",
-    "apps/arch-wsl",
-    "apps/ubuntu-server",
-    "crates/package-catalog",
-    "crates/utils",
-    "crates/modules",
-    "crates/embedded-dotfiles",
-    "crates/typed-fs-rs",
-    "crates/typed-fs-rs/macros",
+  "apps/cachyos",
+  "apps/windows",
+  "apps/arch-wsl",
+  "apps/ubuntu-server",
+  "crates/package-catalog",
+  "crates/utils",
+  "crates/modules",
+  "crates/interface",
+  "crates/repository-tests",
+  "crates/embedded-dotfiles",
+  "crates/typed-fs-rs",
+  "crates/typed-fs-rs/macros",
 ]
 resolver = "3"
+
+[workspace.package]
+version = "0.54.0"

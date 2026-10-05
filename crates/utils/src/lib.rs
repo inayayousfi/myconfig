@@ -1,14 +1,10 @@
 use package_catalog::{PACKAGES, Package, Platform};
 
 mod files;
-mod linux_session;
-mod packages;
 mod programs;
 
 pub use files::{ExistingFilePolicy, install_embedded_file, install_embedded_file_with_policy};
-pub use linux_session::LinuxSession;
-pub use packages::{PackageInstallError, install_packages, remove_arch_packages};
-pub use programs::{emacs_home, find_program};
+pub use programs::find_program;
 
 /// Package identifier and the tool that will eventually install it.
 /// On Arch, official packages use Pacman and AUR packages use Paru.

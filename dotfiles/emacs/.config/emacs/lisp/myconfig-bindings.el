@@ -30,9 +30,20 @@
 (defun myconfig-directory-chooser-keymaps ()
   (when (bound-and-true-p evil-local-mode) (evil-normalize-keymaps)))
 
+(defun myconfig-clipboard-image-p ()
+  "Return non-nil when the system clipboard offers an image."
+  (let ((types (ignore-errors (gui-get-selection 'CLIPBOARD 'TARGETS))))
+    (and (vectorp types)
+         (cl-some (lambda (type)
+                    (and (symbolp type) (string-prefix-p "image/" (symbol-name type))))
+                  types))))
+
 (defun myconfig-paste ()
   (interactive)
   (cond
+   ;; Ghostel's handler saves the image and pastes its path, as a drop does.
+   ((myconfig-clipboard-image-p)
+    (call-interactively #'yank-media))
    ((derived-mode-p 'ghostel-mode)
     (ghostel-paste-string (current-kill 0)))
    ((and (bound-and-true-p evil-local-mode)

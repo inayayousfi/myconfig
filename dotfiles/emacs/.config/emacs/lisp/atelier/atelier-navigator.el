@@ -1094,33 +1094,48 @@ Otherwise step back within TYPE's stack, then remove or replace WINDOW."
     (list (atelier-workspace-id workspace))
     ((workspace (atelier-operation-workspace workspace))
      (entry (atelier-operation-entry workspace entry)))
-  "Close selected workspace content, or remove a view with ENTIRE-ENTRY."
-  (if (and (not (plist-get entry :content-reference))
-           (or entire-entry (not (plist-get entry :content-id))))
-      (progn
-        (atelier-entry-remove workspace entry t)
-        (when window (atelier-close-entry-window workspace window nil t)))
-    (let* ((stack-id (plist-get entry :stack-id))
-           (contents (if entire-entry (atelier-entry-stack entry)
-                       (list (atelier-entry-content entry))))
-           (type (atelier-entry-value entry :type))
-           (buffers (mapcar (lambda (content)
-                              (gethash (atelier-content-cache-key workspace (plist-get content :id))
-                                       atelier-content-live-buffers)) contents))
-           (atelier-approved-buffer-closes
-            (append (atelier-prepare-content-close workspace entry contents)
-                    atelier-approved-buffer-closes)))
-      (atelier-validate-buffer-closes)
-      (dolist (content contents)
-        (atelier-workspace-drop-content workspace (plist-get content :id)))
-      (when (and entire-entry (plist-get entry :stack-reference))
-        (atelier-plist-set! workspace :stacks
-                            (cl-remove stack-id (plist-get workspace :stacks)
-                                       :key (lambda (stack) (plist-get stack :id)) :test #'equal)))
-      (dolist (buffer buffers) (atelier-dispose-unreferenced-buffer buffer))
-      (when window (atelier-close-entry-window workspace window type))))
-  (when (and window (eq workspace (atelier-current-workspace)))
-    (atelier-capture-current-workspace))
+  "Close selected workspace content.
+With ENTIRE-ENTRY, delete ENTRY's whole stack, every view of it and
+their splits."
+  (let ((windows (and window (list window))))
+    (if (and (not (plist-get entry :content-reference))
+             (or (not (plist-get entry :content-id))
+                 (and entire-entry (not (plist-get entry :stack-id)))))
+        (progn
+          (atelier-entry-remove workspace entry t)
+          (when window (atelier-close-entry-window workspace window nil t)))
+      (let* ((stack-id (plist-get entry :stack-id))
+             (stack-windows
+              (and entire-entry (eq workspace (atelier-current-workspace))
+                   (cl-loop for view in (atelier-workspace-displayed-entries workspace)
+                            for view-window in (atelier-main-windows)
+                            when (equal stack-id (plist-get view :stack-id))
+                            collect view-window)))
+             (contents (if entire-entry (atelier-entry-stack entry)
+                         (list (atelier-entry-content entry))))
+             (type (atelier-entry-value entry :type))
+             (buffers (mapcar (lambda (content)
+                                (gethash (atelier-content-cache-key workspace (plist-get content :id))
+                                         atelier-content-live-buffers)) contents))
+             (atelier-approved-buffer-closes
+              (append (atelier-prepare-content-close workspace entry contents)
+                      atelier-approved-buffer-closes)))
+        (atelier-validate-buffer-closes)
+        (dolist (content contents)
+          (atelier-workspace-drop-content workspace (plist-get content :id)))
+        (when entire-entry
+          (atelier-plist-set! workspace :stacks
+                              (cl-remove stack-id (plist-get workspace :stacks)
+                                         :key (lambda (stack) (plist-get stack :id)) :test #'equal)))
+        (dolist (buffer buffers) (atelier-dispose-unreferenced-buffer buffer))
+        (if entire-entry
+            (progn
+              (setq windows (delete-dups (append windows stack-windows)))
+              (dolist (stack-window windows)
+                (atelier-close-entry-window workspace stack-window nil t)))
+          (when window (atelier-close-entry-window workspace window type)))))
+    (when (and windows (eq workspace (atelier-current-workspace)))
+      (atelier-capture-current-workspace)))
   (atelier-notify-change))
 
 (defun atelier-close-buffer (name &optional window)
@@ -1177,7 +1192,7 @@ Otherwise step back within TYPE's stack, then remove or replace WINDOW."
         (atelier-notify-change))))))
 
 (defun atelier-navigator-close-entry ()
-  "Remove the selected entry, including all of its contents."
+  "Delete the selected entry's whole stack, every view of it and their splits."
   (interactive)
   (atelier-navigator-close t))
 
@@ -1195,11 +1210,11 @@ Otherwise step back within TYPE's stack, then remove or replace WINDOW."
                               (pcase (car target)
                                 ('workspace "Close and remove this workspace")
                                 ('buffer "Kill this buffer")
-                                ('workspace-buffer (if entire-entry "Remove this entry"
+                                ('workspace-buffer (if entire-entry "Delete this view, its stack and all its contents"
                                                      "Close this content"))
                                 ('workspace-owned-buffer (if entire-entry "Remove this entry"
                                                            "Close this content"))
-                                ('workspace-content (if entire-entry "Remove this entry"
+                                ('workspace-content (if entire-entry "Delete this view, its stack and all its contents"
                                                       "Close this content"))
                                 ('workspace-owned-content (if entire-entry "Remove this entry"
                                                             "Close this content"))

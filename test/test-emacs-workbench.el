@@ -1440,6 +1440,50 @@
       (dolist (buffer (list replacement closing))
         (when (buffer-live-p buffer) (kill-buffer buffer))))))
 
+;; X deletes the selected view's whole stack, so a second split showing
+;; that stack must close with it.
+(ert-deftest atelier-navigator-close-entry-deletes-the-shared-stack-and-its-splits ()
+  (let* ((workspace (list :id "navigator-delete-stack" :name "navigator-delete-stack"
+                          :status 'running :destination "local" :path "/tmp/" :entries nil))
+         (atelier-workspaces (list workspace))
+         (atelier-navigator-window-configurations nil)
+         (old-selection (atelier-current-workspace-id))
+         (left (generate-new-buffer "delete-stack-left"))
+         (right (generate-new-buffer "delete-stack-right")))
+    (unwind-protect
+        (save-window-excursion
+          (atelier-select-workspace workspace)
+          (delete-other-windows)
+          (set-window-buffer (selected-window) left)
+          (set-window-buffer (split-window-right) right)
+          (cl-letf (((symbol-function 'display-graphic-p) (lambda (&optional _) t))
+                    ((symbol-function 'myconfig-normalize-directory)
+                     #'file-name-as-directory)
+                    ((symbol-function 'y-or-n-p) (lambda (&rest _) t)))
+            (atelier-capture-current-workspace)
+            (should (= (length (atelier-workspace-view-entries workspace)) 2))
+            (should (= (length (plist-get workspace :stacks)) 1))
+            (atelier-navigator)
+            (goto-char (cl-find-if
+                        (lambda (position)
+                          (pcase (get-text-property position 'atelier-navigator-target)
+                            (`(workspace-buffer ,_ ,_ ,entry-id)
+                             (eq (atelier-entry-live-buffer
+                                  (atelier-entry-by-id workspace entry-id))
+                                 left))))
+                        (atelier-navigator-positions)))
+            (atelier-navigator-close-entry)
+            (atelier-navigator-quit))
+          (should-not (buffer-live-p left))
+          (should-not (buffer-live-p right))
+          (should-not (plist-get workspace :stacks))
+          (should-not (plist-get workspace :contents))
+          (should-not (atelier-workspace-view-entries workspace))
+          (should (= (length (atelier-main-windows)) 1)))
+      (set-frame-parameter nil 'atelier-workspace-id old-selection)
+      (dolist (buffer (list left right))
+        (when (buffer-live-p buffer) (kill-buffer buffer))))))
+
 (ert-deftest atelier-navigator-renders-one-shared-stack-per-type ()
   (let* ((workspace (list :id "group-files" :name "group-files"
                           :status 'running :destination "local" :path "/tmp/"

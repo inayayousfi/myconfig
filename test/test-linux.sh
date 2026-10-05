@@ -1257,7 +1257,17 @@ docker_test_log="$TEST_HOME/docker-module.log"
     }
     systemctl() {
         printf 'systemctl:%s\n' "$*" >>"$docker_test_log"
-        [ "$*" = 'is-active docker.service' ] && printf 'active\n'
+        [ "$*" != '--user is-active docker.service' ] || printf 'active\n'
+    }
+    docker() {
+        printf 'docker:%s\n' "$*" >>"$docker_test_log"
+        case "$1 $2" in
+            'context inspect') return 1 ;;
+            'info --format') printf '[name=seccomp,profile=builtin name=rootless name=cgroupns]\n' ;;
+        esac
+    }
+    id() {
+        [ "$*" != -u ] || printf '1000\n'
     }
     user_is_in_group() {
         return 1
@@ -1265,12 +1275,32 @@ docker_test_log="$TEST_HOME/docker-module.log"
 
     module_docker
 )
-grep -Fxq 'packages:docker docker_buildx docker_compose' "$docker_test_log" \
-    || myconfig_fail "Docker module did not install the open source Docker packages"
-grep -Fxq 'sudo:systemctl enable --now docker.service' "$docker_test_log" \
-    || myconfig_fail "Docker module did not enable and start docker.service"
-grep -Fxq 'systemctl:is-active docker.service' "$docker_test_log" \
-    || myconfig_fail "Docker module did not verify docker.service"
+grep -Fxq 'packages:docker docker_buildx docker_compose docker_rootless_extras slirp4netns' "$docker_test_log" \
+    || myconfig_fail "Docker module did not install the rootless Docker packages"
+grep -Fxq 'sudo:systemctl disable --now docker.service docker.socket' "$docker_test_log" \
+    || myconfig_fail "Docker module did not disable the system Docker daemon"
+grep -Fxq 'systemctl:--user enable --now docker.service' "$docker_test_log" \
+    || myconfig_fail "Docker module did not enable and start the rootless daemon"
+grep -Fxq 'docker:context create rootless --description Rootless Docker daemon --docker host=unix:///run/user/1000/docker.sock' "$docker_test_log" \
+    || myconfig_fail "Docker module did not create the rootless context"
+grep -Fxq 'docker:context use rootless' "$docker_test_log" \
+    || myconfig_fail "Docker module did not select the rootless context"
+
+: >"$docker_test_log"
+(
+    install_package_ids() { :; }
+    sudo() { :; }
+    systemctl() {
+        [ "$*" != '--user is-active docker.service' ] || printf 'active\n'
+    }
+    docker() {
+        [ "$1" != info ] || printf '[name=seccomp,profile=builtin]\n'
+    }
+    user_is_in_group() {
+        return 1
+    }
+    module_docker
+) >/dev/null 2>&1 && myconfig_fail "Docker module accepted a daemon that is not rootless"
 
 : >"$docker_test_log"
 (

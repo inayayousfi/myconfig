@@ -24,10 +24,25 @@ module_docker() {
         return 1
     fi
 
-    myconfig_log "Installing Docker Engine, CLI, Buildx, and Compose"
-    install_package_ids docker docker_buildx docker_compose
+    myconfig_log "Installing rootless Docker Engine, CLI, Buildx, and Compose"
+    install_package_ids docker docker_buildx docker_compose \
+        docker_rootless_extras slirp4netns
 
-    sudo systemctl enable --now docker.service
-    [ "$(systemctl is-active docker.service)" = active ] \
-        || myconfig_fail "docker.service is not active"
+    myconfig_log "Disabling the system Docker daemon"
+    sudo systemctl disable --now docker.service docker.socket
+
+    myconfig_log "Starting the rootless Docker daemon"
+    systemctl --user daemon-reload
+    systemctl --user enable --now docker.service
+    [ "$(systemctl --user is-active docker.service)" = active ] \
+        || myconfig_fail "the rootless docker.service user unit is not active"
+
+    docker context inspect rootless >/dev/null 2>&1 \
+        || docker context create rootless \
+            --description "Rootless Docker daemon" \
+            --docker "host=unix:///run/user/$(id -u)/docker.sock"
+    docker context use rootless
+
+    docker info --format '{{.SecurityOptions}}' | grep -Fq 'name=rootless' \
+        || myconfig_fail "the selected Docker daemon is not rootless"
 }

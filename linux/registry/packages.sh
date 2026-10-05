@@ -126,3 +126,5 @@ register_package scrcpy official:scrcpy
 register_package docker official:docker
 register_package docker_buildx official:docker-buildx
 register_package docker_compose official:docker-compose
+register_package docker_rootless_extras aur:docker-rootless-extras
+register_package slirp4netns official:slirp4netns

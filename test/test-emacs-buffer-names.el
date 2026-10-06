@@ -103,6 +103,8 @@ The naming timer is not started; BODY runs its work with `atelier-name-buffers'.
            (log (get-buffer-create "*names-log*"))
            (shown (generate-new-buffer "shown")))
       (switch-to-buffer shown)
+      ;; Redisplay runs the window-change listener; batch Emacs does not redisplay.
+      (atelier-record-changed-windows (selected-frame))
       (atelier-name-buffers)
       (should (equal (atelier-names-test-owner background) "Detached"))
       (should (equal (buffer-name background) "Detached | file | background.txt"))

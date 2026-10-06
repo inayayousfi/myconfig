@@ -864,7 +864,7 @@
           (atelier-register-buffer buffer one)
           (atelier-select-workspace two)
           (set-window-buffer (selected-window) buffer)
-          (atelier-register-visible-frame-buffers (selected-frame))
+          (atelier-record-changed-windows (selected-frame))
           (should (atelier-workspace-entry-for-buffer one buffer))
           (should-not (atelier-workspace-entry-for-buffer two buffer))
           (let ((atelier-capturing-layout-p t))
@@ -2278,7 +2278,7 @@
           (advice-add 'xref--show-pos-in-buf :around #'atelier-xref-preview)
           (unwind-protect
               (let ((window-buffer-change-functions
-                     (cons #'atelier-register-visible-frame-buffers
+                     (cons #'atelier-record-changed-windows
                            window-buffer-change-functions)))
                 (xref-next-line)
                 (should (= (length (atelier-workspace-entries workspace)) 1))

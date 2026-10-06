@@ -466,16 +466,21 @@ current buffer; this does not create or remove workspace entries."
              (atelier-buffer-ownable-p (current-buffer)))
     (atelier-register-buffer (current-buffer) (atelier-current-workspace))))
 
-(defun atelier-register-visible-frame-buffers (frame)
-  "Register buffers displayed by FRAME in that frame's workspace."
-  (when-let* ((_ (not atelier-operation-current))
-              ((frame-live-p frame))
-              (workspace (atelier-current-workspace frame)))
-    (dolist (window (window-list frame 'no-minibuffer))
-      (unless (window-parameter window 'window-side)
-        (with-selected-window window
+(defun atelier-record-changed-windows (frame)
+  "Record each FRAME window whose buffer changed since the last run.
+Emacs compares every window with its buffer at the previous run, so no change
+is missed.  A change seen while an operation prepares its records is recorded
+once they are published."
+  (if atelier-operation-current
+      (atelier-operation-after (lambda () (atelier-record-changed-windows frame)))
+    (when-let* (((frame-live-p frame))
+                (workspace (atelier-current-workspace frame)))
+      (dolist (window (window-list frame 'no-minibuffer))
+        ;; The old buffer is nil for a new window and t for a restored one.
+        (unless (or (window-parameter window 'window-side)
+                    (eq (window-old-buffer window) (window-buffer window)))
           (when (atelier-buffer-registerable-p (window-buffer window) workspace)
-            (atelier-show-buffer (window-buffer window) workspace window)))))))
+            (atelier-record-window-buffer (window-buffer window) workspace window)))))))
 
 (atelier-define-operation atelier-refresh-current-buffer-entries ()
     (delete-dups (mapcar (lambda (pair) (atelier-workspace-id (car pair)))
@@ -589,10 +594,9 @@ current buffer; this does not create or remove workspace entries."
       (atelier-entry-activate-content preferred-entry (plist-get reference :content-id)))
     reference))
 
-(atelier-define-operation atelier-show-buffer (buffer &optional workspace window type)
-    (list (atelier-workspace-id (or workspace (atelier-current-workspace))))
-    ((workspace (atelier-operation-workspace (or workspace (atelier-current-workspace)))))
-  "Display BUFFER in WINDOW, retaining that view's identity and other views."
+(defun atelier-view-record-buffer (buffer workspace window &optional type)
+  "Register BUFFER in WORKSPACE and select it in WINDOW's view.
+Create the view when WINDOW has none."
   (let* ((window (or window (selected-window)))
          (reference (atelier-push-buffer buffer workspace type))
          (id (window-parameter window 'atelier-view-id))
@@ -603,11 +607,27 @@ current buffer; this does not create or remove workspace entries."
                                   :content-id (plist-get reference :content-id)) t)))
     (atelier-entry-activate-content view (plist-get reference :content-id))
     (set-window-parameter window 'atelier-view-id (plist-get view :id))
+    view))
+
+(atelier-define-operation atelier-show-buffer (buffer &optional workspace window type)
+    (list (atelier-workspace-id (or workspace (atelier-current-workspace))))
+    ((workspace (atelier-operation-workspace (or workspace (atelier-current-workspace)))))
+  "Display BUFFER in WINDOW, retaining that view's identity and other views."
+  (let* ((window (or window (selected-window)))
+         (view (atelier-view-record-buffer buffer workspace window type)))
     (set-window-buffer window buffer)
     (when (eq window (selected-window)) (set-buffer buffer))
     (atelier-activate-buffer buffer)
     (atelier-notify-change)
     view))
+
+(atelier-define-operation atelier-record-window-buffer (buffer &optional workspace window)
+    (list (atelier-workspace-id (or workspace (atelier-current-workspace))))
+    ((workspace (atelier-operation-workspace (or workspace (atelier-current-workspace)))))
+  "Point WINDOW's view at the BUFFER it already shows.
+Neither display nor activate BUFFER."
+  (prog1 (atelier-view-record-buffer buffer workspace window)
+    (atelier-notify-change)))
 
 (atelier-define-operation atelier-open-file (file &optional workspace)
     (list (atelier-workspace-id (or workspace (atelier-current-workspace))))
@@ -1862,7 +1882,7 @@ On entry, stay near the same listing row; on return, select TARGET."
   (when-let* ((scratch (get-buffer "*scratch*")))
     (atelier-mark-internal-buffer scratch))
   (add-hook 'window-configuration-change-hook #'atelier-notify-change)
-  (add-hook 'window-buffer-change-functions #'atelier-register-visible-frame-buffers)
+  (add-hook 'window-buffer-change-functions #'atelier-record-changed-windows)
   (add-hook 'after-rename-buffer-hook #'atelier-refresh-current-buffer-entries)
   (add-hook 'kill-buffer-hook #'atelier-current-buffer-killed)
   (add-hook 'delete-frame-functions #'atelier-capture-closing-frame)

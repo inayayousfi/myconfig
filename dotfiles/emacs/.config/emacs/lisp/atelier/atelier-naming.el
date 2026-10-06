@@ -14,7 +14,6 @@
 (declare-function atelier-buffer-ownable-p "atelier")
 (declare-function atelier-buffer-registerable-p "atelier")
 (declare-function atelier-register-buffer "atelier")
-(declare-function atelier-register-visible-frame-buffers "atelier")
 
 (defconst atelier-buffer-name-separator " | ")
 (defconst atelier-buffer-name-tracked-types '(file dired terminal aipanel)
@@ -133,8 +132,6 @@ shows its current folder until it is given a name."
   (setq atelier-naming-timer nil)
   (if (or atelier-operation-active atelier-operation-queue)
       (atelier-schedule-naming)
-    (dolist (frame (frame-list))
-      (atelier-register-visible-frame-buffers frame))
     (let* ((detached (atelier-ensure-detached-workspace))
            (index (atelier-buffer-owner-index))
            (unowned (cl-loop for buffer in (buffer-list)

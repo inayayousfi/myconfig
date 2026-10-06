@@ -187,10 +187,7 @@
         magit-bury-buffer-function #'myconfig-git-quit-buffer
         magit-save-repository-buffers nil
         ediff-window-setup-function #'ediff-setup-windows-plain
-        ediff-split-window-function #'split-window-horizontally)
-  (evil-set-initial-state 'magit-status-mode 'normal)
-  (evil-set-initial-state 'magit-log-mode 'normal)
-  (evil-set-initial-state 'magit-diff-mode 'normal))
+        ediff-split-window-function #'split-window-horizontally))
 
 (provide 'myconfig-git)
 ;;; myconfig-git.el ends here

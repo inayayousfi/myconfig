@@ -40,9 +40,7 @@
   (load (expand-file-name "remot.el" lisp-directory) nil t))
 
 (ghostel-atelier-setup)
-(setq atelier-close-without-asking t
-      ghostel-atelier-buffer-started-hook '(myconfig-terminal-enter-input)
-      ghostel-atelier-buffer-activate-function #'myconfig-terminal-activate)
+(setq atelier-close-without-asking t)
 (require 'universel-atelier)
 (setq atelier-process-observation-function #'universel-atelier-process-observation-p
       atelier-process-table-function #'universel-atelier-process-table
@@ -1931,7 +1929,6 @@
         (aipanel-terminal-function #'aipanel-default-terminal)
         (aipanel-buffer-created-hook nil)
         (aipanel-buffer-exited-hook nil)
-        (aipanel-window-change-hook nil)
         (atelier-agent-restored-functions nil))
     (aipanel-atelier-setup)
     (should (eq aipanel-owner-function #'aipanel-atelier-owner))
@@ -3184,13 +3181,12 @@
       (atelier-delete-workspace-record two)
       (should (= released 1)))))
 
-(ert-deftest ghostel-atelier-both-launch-paths-run-input-hook-and-respect-close-policy ()
+(ert-deftest ghostel-atelier-both-launch-paths-respect-close-policy ()
   (dolist (policy '(nil t))
     (dolist (direct '(nil t))
       (let* ((buffer (generate-new-buffer " *ghostel-start-test*"))
              (atelier-close-without-asking policy)
-             (calls 0) flags
-             (ghostel-atelier-buffer-started-hook (list (lambda () (cl-incf calls)))))
+             flags)
         (unwind-protect
             (cl-letf (((symbol-function 'ghostel-create) (lambda (_) buffer))
                       ((symbol-function 'ghostel-exec) #'ignore)
@@ -3200,7 +3196,6 @@
                        (lambda (_process flag) (push flag flags)))
                       ((symbol-function 'atelier-register-job-buffer) #'ignore))
               (ghostel-atelier-buffer "test" "/tmp/" (and direct "ssh"))
-              (should (= calls 1))
               (if policy (should flags) (should-not flags)))
           (kill-buffer buffer))))))
 

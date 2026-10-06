@@ -60,6 +60,7 @@
       (unwind-protect
           (progn
             (switch-to-buffer buffer)
+            (myconfig-terminal-enter-input)
             (should (eq ghostel--input-mode 'char))
             (should-not evil-local-mode)
             (dolist (key '("ESC" "<escape>" "C-c"))
@@ -86,7 +87,6 @@
           (atelier-content-live-buffers (make-hash-table :test #'equal))
           (atelier-entry-owners (make-hash-table :test #'eq))
           (atelier-change-hook nil)
-          (atelier-buffer-activate-functions nil)
           (atelier-buffer-kind-functions nil)
           (atelier-naming-timer nil)
           (buffer-list-update-hook (list #'atelier-schedule-naming))
@@ -106,6 +106,7 @@
            (setq terminal (ghostel-atelier-exec-buffer "terminal" root "/bin/sh" nil))
            (atelier-show-buffer terminal workspace)
            (with-current-buffer terminal
+             (myconfig-terminal-enter-input)
              (should (eq ghostel--input-mode 'char))
              (execute-kbd-macro (kbd "M-x"))
              (should (eq ghostel--input-mode 'emacs)))

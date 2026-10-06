@@ -102,8 +102,7 @@
   (add-hook 'evil-local-mode-hook #'myconfig-terminal-keep-input nil t)
   (add-hook 'post-command-hook #'myconfig-terminal-keep-writable nil t)
   (display-line-numbers-mode -1)
-  (hl-line-mode -1)
-  (myconfig-terminal-enter-input))
+  (hl-line-mode -1))
 
 (defun myconfig-terminal-keep-input ()
   "Do not let automatic Evil activation take input from a char-mode terminal."
@@ -115,13 +114,6 @@
 (defun myconfig-terminal-keep-writable ()
   (when (derived-mode-p 'ghostel-mode)
     (setq buffer-read-only nil)))
-
-(defun myconfig-terminal-activate (buffer)
-  (when (buffer-live-p buffer)
-    (with-current-buffer buffer
-      (when (and (derived-mode-p 'ghostel-mode)
-                 (process-live-p (get-buffer-process buffer)))
-        (myconfig-terminal-enter-input)))))
 
 (defun myconfig-terminal-configure-char-keys ()
   "Send terminal input by default; reserve only the exit and paste keys."
@@ -147,18 +139,14 @@
                 #'myconfig-normal-state)))
 
 (defun myconfig-terminal-setup ()
-  (setq ghostel-atelier-buffer-activate-function #'myconfig-terminal-activate)
-  (add-hook 'ghostel-atelier-buffer-started-hook #'myconfig-terminal-enter-input)
   (setq ghostel-kill-buffer-on-exit t
         ghostel-query-before-killing nil
         ghostel-term "xterm-256color"
         evil-ghostel-escape 'terminal
-        evil-ghostel-initial-state 'normal
         confirm-kill-processes nil)
   (setq-default kill-buffer-query-functions
                 (remq #'process-kill-buffer-query-function
                       (default-value 'kill-buffer-query-functions)))
-  (evil-set-initial-state 'ghostel-mode 'normal)
   (add-hook 'ghostel-mode-hook #'myconfig-terminal-display-setup)
   (define-key ghostel-mode-map myconfig-terminal-escape-key #'myconfig-normal-state)
   (myconfig-terminal-configure-char-keys)
@@ -173,12 +161,8 @@
   (ghostel-atelier-exec-buffer (format "*%s*" name) directory program arguments
                                '((kind . aipanel))))
 
-(defun myconfig-aipanel-activate ()
-  (myconfig-terminal-activate (current-buffer)))
-
 (defun myconfig-aipanel-setup ()
-  (setq aipanel-terminal-function #'myconfig-aipanel-terminal)
-  (add-hook 'aipanel-window-change-hook #'myconfig-aipanel-activate))
+  (setq aipanel-terminal-function #'myconfig-aipanel-terminal))
 
 (provide 'myconfig-terminal)
 ;;; myconfig-terminal.el ends here

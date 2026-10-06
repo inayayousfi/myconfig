@@ -17,7 +17,6 @@
                   "aipan.el" "atelier/aipanel-atelier.el"))
     (load (expand-file-name file lisp) nil t)))
 
-(setq ghostel-atelier-buffer-started-hook '(myconfig-terminal-enter-input))
 (myconfig-aipanel-setup)
 
 (ert-deftest aipanel-ordinary-discovers-and-builds-pi-launch ()
@@ -89,8 +88,6 @@
     (unwind-protect
         (progn
           (aipanel-atelier-setup)
-          (should (memq #'myconfig-aipanel-activate
-                        aipanel-window-change-hook))
           (with-current-buffer source
             (setq default-directory "/tmp/")
             (let ((owner (aipanel-default-owner))
@@ -102,21 +99,11 @@
                              (setq major-mode 'ghostel-mode
                                    ghostel--input-mode 'semi-char)
                              (use-local-map (make-sparse-keymap)))))
-                        ((symbol-function 'ghostel-char-mode)
-                         (lambda ()
-                           (setq ghostel--input-mode 'char)
-                           (use-local-map ghostel-char-mode-map)))
                         ((symbol-function 'atelier-register-job-buffer)
                          (lambda (&rest _) (ert-fail "Panel registered an Atelier job")))
                         ((symbol-function 'atelier-register-buffer)
                          (lambda (&rest _) (ert-fail "Panel registered an Atelier entry"))))
-                (define-key ghostel-char-mode-map (kbd "C-x") #'ghostel--send-event)
-                (define-key ghostel-char-mode-map (kbd "C-p") #'ghostel--send-event)
                 (setq panel (aipanel-start owner nil selection))
-                (with-current-buffer panel
-                  (should (eq ghostel--input-mode 'char))
-                  (should (eq (key-binding (kbd "C-x")) #'ghostel--send-event))
-                  (should (eq (key-binding (kbd "C-p")) #'ghostel--send-event)))
                 (should (eq (plist-get (buffer-local-value 'aipanel-owner panel) :source-buffer)
                             source))
                 (should (gethash panel atelier-internal-buffers))
@@ -136,7 +123,6 @@
           (aipanel-sessions (make-hash-table :test #'eq))
           (aipanel-owner-function #'aipanel-default-owner)
           (real-live (symbol-function 'aipanel-live-buffer))
-          (aipanel-window-change-hook nil)
           (aipanel-context-function (lambda (&rest _) nil)))
       (unwind-protect
           (progn
@@ -178,27 +164,6 @@
         (dolist (buffer (list source panel))
           (when (buffer-live-p buffer) (kill-buffer buffer)))))))
 
-(ert-deftest aipanel-ordinary-display-restores-normal-terminal-input ()
-  (with-temp-buffer
-    (setq major-mode 'ghostel-mode)
-    (setq-local evil-local-mode t
-                ghostel--input-mode 'char)
-    (let ((ghostel-char-mode-map (make-sparse-keymap)))
-      (define-key ghostel-char-mode-map (kbd "C-p") #'ghostel--send-event)
-      (define-key ghostel-char-mode-map (kbd "C-x") #'ghostel--send-event)
-      (cl-letf (((symbol-function 'get-buffer-process)
-                 (lambda (_buffer) 'agent-process))
-                ((symbol-function 'process-live-p)
-                 (lambda (process) (eq process 'agent-process)))
-                ((symbol-function 'evil-local-mode)
-                 (lambda (_value) (setq evil-local-mode nil)))
-                ((symbol-function 'ghostel-char-mode)
-                 (lambda () (use-local-map ghostel-char-mode-map))))
-        (myconfig-aipanel-activate)
-        (should-not evil-local-mode)
-        (should (eq (key-binding (kbd "C-p")) #'ghostel--send-event))
-        (should (eq (key-binding (kbd "C-x")) #'ghostel--send-event))))))
-
 (ert-deftest aipanel-ordinary-panel-follows-its-source-view ()
   (save-window-excursion
     (let ((source (generate-new-buffer " *panel-source-view*"))
@@ -236,8 +201,7 @@
     (let ((source (generate-new-buffer " *panel-split-source*"))
           (other (generate-new-buffer " *panel-split-other*"))
           (panel (generate-new-buffer " *panel-split-terminal*"))
-          (aipanel-sessions (make-hash-table :test #'eq))
-          (aipanel-window-change-hook nil))
+          (aipanel-sessions (make-hash-table :test #'eq)))
       (unwind-protect
           (progn
             (delete-other-windows)

@@ -12,7 +12,6 @@
 
 (declare-function atelier-switch-workspace "atelier")
 (declare-function atelier-show-buffer "atelier")
-(declare-function atelier-activate-buffer "atelier")
 (declare-function atelier-restore-entry-content "atelier")
 (declare-function atelier-main-window "atelier-navigator")
 (defvar orderless-matching-styles)
@@ -109,8 +108,7 @@ returning non-nil has shown the buffer; otherwise Traveller switches to it.")
          (buffer (atelier-restore-entry-content
                   (atelier-content-reference workspace content) workspace content-id)))
     (when (buffer-live-p buffer)
-      (atelier-show-buffer buffer workspace)
-      (atelier-activate-buffer buffer))
+      (atelier-show-buffer buffer workspace))
     buffer))
 
 (defun atelier-traveller-open (target)

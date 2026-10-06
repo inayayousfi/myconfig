@@ -762,7 +762,6 @@ entry never invents a nested disposition."
   (atelier-navigator-quit)
   (atelier-assign-buffer-to-workspace buffer)
   (switch-to-buffer buffer)
-  (atelier-activate-buffer buffer)
   (atelier-notify-change))
 
 (defun atelier-navigator-target-buffer (target)
@@ -905,8 +904,7 @@ entry never invents a nested disposition."
             (let ((current-index (cl-position entry (atelier-workspace-displayed-entries workspace))))
               (unless current-index (user-error "View is no longer displayed"))
               (set-window-buffer (atelier-focus-workspace-split workspace-name current-index) buffer))
-          (atelier-show-buffer buffer workspace))
-        (atelier-activate-buffer buffer))
+          (atelier-show-buffer buffer workspace)))
       (atelier-notify-change))))
 
 (defun atelier-navigator-open ()
@@ -962,8 +960,7 @@ entry never invents a nested disposition."
                              (atelier-entry-by-id workspace entry-id))
                             (atelier-workspace-owned-buffer workspace entry-id))))
            (when (buffer-live-p buffer)
-             (atelier-show-buffer buffer workspace)
-             (atelier-activate-buffer buffer))
+             (atelier-show-buffer buffer workspace))
            (atelier-notify-change)))
         (`(project ,root) (atelier-navigator-quit) (atelier-open-project-workspace root))
         (`(buffer ,name)

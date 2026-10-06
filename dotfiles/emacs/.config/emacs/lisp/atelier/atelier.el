@@ -9,15 +9,10 @@
 (require 'atelier-model)
 (require 'atelier-operation)
 
-(defvar atelier-buffer-activate-functions nil
-  "Functions called with a buffer after Atelier displays its content.")
 (defvar atelier-buffer-title-functions nil
   "Functions called with a buffer; the first non-nil result supplies its title.")
 (defvar atelier-buffer-kind-functions nil
   "Functions called with a buffer; the first non-nil result supplies its storage kind.")
-
-(defun atelier-activate-buffer (buffer)
-  (atelier-operation-notify 'atelier-buffer-activate-functions buffer))
 
 (defvar atelier-directory-function #'atelier-default-directory
   "Function mapping a workspace record to an Emacs directory.")
@@ -617,7 +612,6 @@ Create the view when WINDOW has none."
          (view (atelier-view-record-buffer buffer workspace window type)))
     (set-window-buffer window buffer)
     (when (eq window (selected-window)) (set-buffer buffer))
-    (atelier-activate-buffer buffer)
     (atelier-notify-change)
     view))
 
@@ -984,8 +978,6 @@ When EXPLICIT is non-nil, permit another Dired entry of the same type."
       (switch-to-buffer (or (car (nreverse restored-buffers))
                             (atelier-empty-workspace-buffer workspace))))
     (atelier-clean-window-buffer-history)
-    (dolist (window (window-list nil 'no-minibuffer))
-      (atelier-activate-buffer (window-buffer window)))
     (setq default-directory (atelier-workspace-directory workspace))))
 
 (defun atelier-notify-change ()
@@ -1402,7 +1394,6 @@ Interactively, choose an entry from the current workspace."
                         (atelier-restore-buffer entry workspace))))
       (progn
         (atelier-show-buffer buffer workspace)
-        (atelier-activate-buffer buffer)
         buffer)
     nil))
 

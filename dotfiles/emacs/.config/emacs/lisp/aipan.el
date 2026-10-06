@@ -73,7 +73,6 @@ Optional environment adapters can replace the Emacs file-handler default.")
   "Function called with owner, selection, and arguments to build a launch.")
 (defvar aipanel-buffer-created-hook nil)
 (defvar aipanel-buffer-exited-hook nil)
-(defvar aipanel-window-change-hook nil)
 (defvar aipanel-sessions (make-hash-table :test #'equal))
 
 (defvar-local aipanel-agent-id nil)
@@ -216,9 +215,6 @@ Optional environment adapters can replace the Emacs file-handler default.")
           ;; This terminal belongs to one agent process, not a respawnable
           ;; Ghostel command slot or a reusable shell.
           (ghostel-exec buffer program arguments '((kind . aipanel)))
-          ;; `ghostel-exec' resets input mode after `ghostel-mode-hook'.
-          ;; Enter char mode only after startup so C-x reaches the agent.
-          (with-current-buffer buffer (ghostel-char-mode))
           (when-let* ((process (get-buffer-process buffer)))
             (set-process-query-on-exit-flag process nil))
           buffer)
@@ -356,8 +352,7 @@ Optional environment adapters can replace the Emacs file-handler default.")
             (display-buffer-in-side-window
              wanted `((side . ,aipanel-side) (slot . 0)
                       (window-width . ,(max window-min-width
-                                            (floor (* (frame-width) 0.3))))))
-            (with-current-buffer wanted (run-hooks 'aipanel-window-change-hook))))))))
+                                            (floor (* (frame-width) 0.3))))))))))))
 
 (defun aipanel-follow-source-setup ()
   "Keep buffer-attached panels beside the selected source."
@@ -439,8 +434,7 @@ Optional environment adapters can replace the Emacs file-handler default.")
       (with-current-buffer source-buffer
         (when-let* ((context (funcall aipanel-context-function owner buffer)))
           (aipanel-queue-context buffer context)))
-      (aipanel-display-buffer buffer width))
-    (run-hooks 'aipanel-window-change-hook)))
+      (aipanel-display-buffer buffer width))))
 
 (provide 'aipan)
 ;;; aipan.el ends here

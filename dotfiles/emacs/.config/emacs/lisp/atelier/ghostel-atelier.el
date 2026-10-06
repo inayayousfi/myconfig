@@ -5,10 +5,6 @@
 (require 'ghostel)
 (defvar ghostel-mode-hook nil)
 
-(defvar ghostel-atelier-buffer-started-hook nil
-  "Hook run in a started terminal for personal input and display rules.")
-(defvar ghostel-atelier-buffer-activate-function #'ignore
-  "Function called with a displayed Ghostel buffer for personal input rules.")
 (defvar ghostel-atelier-default-shell-function (lambda () shell-file-name))
 
 (defun ghostel-atelier-exec-buffer (name directory program args &optional identity)
@@ -20,8 +16,6 @@
           (with-current-buffer buffer (setq-local default-directory directory))
           (ghostel-exec buffer program args identity)
           (with-current-buffer buffer
-            ;; Ghostel's spawn resets the input mode after the major-mode hook.
-            (run-hooks 'ghostel-atelier-buffer-started-hook)
             (when-let* ((_ atelier-close-without-asking)
                         (process (get-buffer-process buffer)))
               (set-process-query-on-exit-flag process nil)))
@@ -49,8 +43,6 @@
                                   ghostel-mode-hook))
                            (ghostel-shell (cons program args))
                           (created (ghostel-create name)))
-                     (with-current-buffer created
-                       (run-hooks 'ghostel-atelier-buffer-started-hook))
                      created))))
     (with-current-buffer buffer
       (setq-local default-directory desired-directory)
@@ -88,15 +80,10 @@
     (or (and (boundp 'ghostel--pid) ghostel--pid)
         (when-let* ((process (get-buffer-process buffer))) (process-id process)))))
 
-(defun ghostel-atelier-activate (buffer)
-  (when (ghostel-atelier-buffer-p buffer)
-    (funcall ghostel-atelier-buffer-activate-function buffer)))
-
 (defun ghostel-atelier-setup ()
   (atelier-register-entry-type 'terminal "terminal" #'ghostel-atelier-buffer-p)
   (add-hook 'atelier-buffer-kind-functions #'ghostel-atelier-kind)
   (add-hook 'atelier-buffer-title-functions #'ghostel-atelier-title)
-  (add-hook 'atelier-buffer-activate-functions #'ghostel-atelier-activate)
   (setq atelier-job-start-function #'ghostel-atelier-buffer
         atelier-job-process-id-function #'ghostel-atelier-process-id))
 

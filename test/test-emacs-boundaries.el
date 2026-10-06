@@ -113,13 +113,6 @@
           (should-not (plist-get workspace :contents)))
       (when (buffer-live-p buffer) (kill-buffer buffer)))))
 
-(ert-deftest atelier-display-activation-is-an-explicit-integration-event ()
-  (let ((buffer (current-buffer)) captured
-        (atelier-buffer-activate-functions nil))
-    (add-hook 'atelier-buffer-activate-functions (lambda (value) (setq captured value)))
-    (atelier-activate-buffer buffer)
-    (should (eq captured buffer))))
-
 (ert-deftest atelier-job-observation-uses-supplied-operations ()
   (let* ((buffer (generate-new-buffer "atelier-observed"))
          (job (list :buffer (buffer-name buffer) :direct-command t))

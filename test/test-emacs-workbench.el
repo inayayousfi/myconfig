@@ -218,7 +218,7 @@
       (should-not (local-variable-p 'meta-prefix-char)))))
 
 (ert-deftest myconfig-mode-line-names-every-active-input-mode ()
-  "Each active input layer is named precisely, joined with an ampersand."
+  "Each active input mode is named as [OWNER] STATE, joined with an ampersand."
   (cl-flet ((label (setup)
               (with-temp-buffer
                 (funcall setup)
@@ -230,28 +230,40 @@
                             (setq major-mode 'ghostel-mode)
                             (setq-local evil-local-mode t evil-state 'insert
                                         ghostel--input-mode 'semi-char)))
-                   " INSERT & SEMI-CHAR "))
+                   " [EVIL] INSERT & [GHOSTEL] SEMI-CHAR "))
     (should (equal (label (lambda ()
                             (setq major-mode 'ghostel-mode)
                             (setq-local evil-local-mode t evil-state 'normal
                                         ghostel--input-mode 'emacs)))
-                   " NORMAL & GHOSTEL EMACS "))
+                   " [EVIL] NORMAL & [GHOSTEL] EMACS "))
     (should (equal (label (lambda ()
                             (setq major-mode 'ghostel-mode)
                             (setq-local evil-local-mode nil ghostel--input-mode 'char)))
-                   " EVIL OFF & CHAR "))
+                   " [EVIL] OFF & [GHOSTEL] CHAR "))
+    ;; Ghostel's char keys come before multiple cursors; its other modes come after.
+    (should (equal (label (lambda ()
+                            (setq major-mode 'ghostel-mode)
+                            (setq-local evil-local-mode nil ghostel--input-mode 'char
+                                        multiple-cursors-mode t)))
+                   " [EVIL] OFF & [GHOSTEL] CHAR & [MULTIPLE-CURSORS] ON "))
+    (should (equal (label (lambda ()
+                            (setq major-mode 'ghostel-mode)
+                            (setq-local evil-local-mode t evil-state 'insert
+                                        ghostel--input-mode 'semi-char
+                                        multiple-cursors-mode t)))
+                   " [EVIL] INSERT & [MULTIPLE-CURSORS] ON & [GHOSTEL] SEMI-CHAR "))
     ;; Ordinary buffers: Evil's precise state and other modes, with Evil on or off.
     (should (equal (label (lambda ()
                             (setq-local evil-local-mode t evil-state 'visual
                                         evil-visual-selection 'line)))
-                   " VISUAL LINE "))
+                   " [EVIL] VISUAL LINE "))
     (should (equal (label (lambda ()
                             (setq-local evil-local-mode t evil-state 'normal
                                         multiple-cursors-mode t)))
-                   " NORMAL & MULTIPLE CURSORS "))
+                   " [EVIL] NORMAL & [MULTIPLE-CURSORS] ON "))
     (should (equal (label (lambda ()
                             (setq-local evil-local-mode nil overwrite-mode 'overwrite-mode-textual)))
-                   " EVIL OFF & OVERWRITE "))))
+                   " [EVIL] OFF & [EMACS] OVERWRITE "))))
 
 (ert-deftest myconfig-mode-line-buffer-name-opens-navigator ()
   (with-temp-buffer

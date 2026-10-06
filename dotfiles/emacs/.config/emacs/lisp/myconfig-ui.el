@@ -125,22 +125,29 @@
   (myconfig-mode-line-setup))
 
 (defun myconfig-mode-line-modes ()
-  "Name every input mode active in the current buffer, most general first."
-  (let ((terminal (derived-mode-p 'ghostel-mode)))
-    (delq nil
-          (list (cond ((not (bound-and-true-p evil-local-mode)) "EVIL OFF")
-                      ((and (eq evil-state 'visual)
-                            (memq evil-visual-selection '(line block)))
-                       (format "VISUAL %s" (upcase (symbol-name evil-visual-selection))))
-                      (t (upcase (symbol-name evil-state))))
-                (when terminal
-                  ;; Ghostel's read-only mode shares its name with Evil's emacs state.
-                  (if (eq ghostel--input-mode 'emacs)
-                      "GHOSTEL EMACS"
-                    (upcase (symbol-name ghostel--input-mode))))
-                (when (derived-mode-p 'wdired-mode) "WDIRED")
-                (when (bound-and-true-p multiple-cursors-mode) "MULTIPLE CURSORS")
-                (when (bound-and-true-p overwrite-mode) "OVERWRITE")))))
+  "Name every input mode active in the current buffer as [OWNER] STATE.
+Modes follow key lookup order: the first one listed sees a key first."
+  (let* ((terminal (derived-mode-p 'ghostel-mode))
+         (char (and terminal (eq ghostel--input-mode 'char)))
+         (ghostel (and terminal
+                       (cons "GHOSTEL" (upcase (symbol-name ghostel--input-mode))))))
+    (mapcar
+     (lambda (mode) (format "[%s] %s" (car mode) (cdr mode)))
+     (delq nil
+           (list (cons "EVIL"
+                       (cond ((not (bound-and-true-p evil-local-mode)) "OFF")
+                             ((and (eq evil-state 'visual)
+                                   (memq evil-visual-selection '(line block)))
+                              (format "VISUAL %s" (upcase (symbol-name evil-visual-selection))))
+                             (t (upcase (symbol-name evil-state)))))
+                 ;; Ghostel's char keys are an emulation keymap, just after Evil's.
+                 (and char ghostel)
+                 (when (bound-and-true-p multiple-cursors-mode) (cons "MULTIPLE-CURSORS" "ON"))
+                 ;; Its other modes, like Wdired, use the buffer's local keymap.
+                 (and terminal (not char) ghostel)
+                 (when (derived-mode-p 'wdired-mode) (cons "EMACS" "WDIRED"))
+                 ;; Overwrite has no keymap; it changes how typed characters insert.
+                 (when (bound-and-true-p overwrite-mode) (cons "EMACS" "OVERWRITE")))))))
 
 (defun myconfig-mode-line-state ()
   (propertize (concat " " (mapconcat #'identity (myconfig-mode-line-modes) " & ") " ")

@@ -34,6 +34,19 @@
                 (atelier-ensure-detached-workspace))
             'aipanel))))
 
+(defun aipanel-atelier-travel (buffer)
+  "Show panel BUFFER beside its source, in the workspace Traveller selected."
+  (when (aipanel-buffer-p buffer)
+    (let ((source (plist-get (buffer-local-value 'aipanel-owner buffer) :source-buffer)))
+      (unless (buffer-live-p source) (user-error "The panel's source buffer was closed"))
+      (atelier-show-buffer source (or (car (atelier-buffer-owner source))
+                                      (atelier-current-workspace)))
+      (with-current-buffer buffer (setq aipanel-hidden nil))
+      (aipanel-sync-source-visibility)
+      (when-let* ((window (get-buffer-window buffer)))
+        (select-window window))
+      t)))
+
 (defun aipanel-atelier-setup ()
   "Keep AIPanel side windows separate from workspace entries and jobs."
   (atelier-register-entry-type 'aipanel "aipanel" #'aipanel-buffer-p)
@@ -44,6 +57,7 @@
   (add-hook 'atelier-workspace-process-buffers-functions
             #'aipanel-atelier-workspace-process-buffers)
   (add-hook 'atelier-buffer-owner-functions #'aipanel-atelier-buffer-owner)
+  (add-hook 'atelier-traveller-open-functions #'aipanel-atelier-travel)
   (aipanel-follow-source-setup))
 
 (provide 'aipanel-atelier)

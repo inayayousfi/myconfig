@@ -1880,6 +1880,7 @@ On entry, stay near the same listing row; on return, select TARGET."
 (require 'atelier-choice)
 (require 'atelier-navigator)
 (require 'atelier-naming)
+(require 'atelier-traveller)
 (defalias 'atelier-close-current-entry #'atelier-close-current-view
   "Close the current workspace entry and its live buffer.")
 

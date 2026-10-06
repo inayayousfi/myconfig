@@ -133,7 +133,7 @@
 (defun myconfig-mode-line-buffer-name ()
   (atelier-clickable-label (format "%-12s" (buffer-name)) #'atelier-navigator
                            nil 'mode-line-buffer-id
-                           "Open workbench navigator (SPC w)"))
+                           "Open workbench navigator (SPC W)"))
 
 (defun myconfig-mode-line-setup ()
   (setq evil-normal-state-tag (propertize " NORMAL " 'face 'myconfig-mode-line-state)

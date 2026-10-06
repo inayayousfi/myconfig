@@ -1304,7 +1304,9 @@ their splits."
       (`(buffer ,name)
        (if-let* ((buffer (get-buffer name)))
            (with-current-buffer buffer
-             (rename-buffer (read-string "New buffer name: " name) t))
+             (rename-buffer (read-string "New buffer name: "
+                                         (atelier-buffer-editable-name buffer))
+                            t))
          (user-error "Buffer no longer exists: %s" name)))
       (`(workspace-buffer ,workspace-name ,_ ,entry-id)
        (if-let* ((workspace (atelier-workspace-get workspace-name))
@@ -1312,7 +1314,9 @@ their splits."
                  (buffer (atelier-entry-live-buffer entry)))
            (with-current-buffer buffer
              (atelier-entry-set-value entry :name
-                                    (rename-buffer (read-string "New buffer name: " (buffer-name)) t)))
+                                    (rename-buffer (read-string "New buffer name: "
+                                                                (atelier-buffer-editable-name buffer))
+                                                   t)))
          (user-error "Entry buffer no longer exists")))
       (`(workspace-owned-buffer ,workspace-name ,entry-id)
        (if-let* ((workspace (atelier-workspace-get workspace-name))
@@ -1320,7 +1324,9 @@ their splits."
                  (buffer (atelier-entry-live-buffer entry)))
            (with-current-buffer buffer
              (atelier-entry-set-value entry :name
-                                    (rename-buffer (read-string "New buffer name: " (buffer-name)) t)))
+                                    (rename-buffer (read-string "New buffer name: "
+                                                                (atelier-buffer-editable-name buffer))
+                                                   t)))
          (user-error "Entry buffer no longer exists")))
       (_ (user-error "This item cannot be renamed")))
     (atelier-notify-change)

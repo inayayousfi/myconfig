@@ -26,6 +26,14 @@
             (push panel panels)))))
     (delete-dups panels)))
 
+(defun aipanel-atelier-buffer-owner (buffer)
+  "Name a panel after the workspace of the source buffer it sits beside."
+  (when (aipanel-buffer-p buffer)
+    (let ((source (plist-get (buffer-local-value 'aipanel-owner buffer) :source-buffer)))
+      (cons (or (and (buffer-live-p source) (car (atelier-buffer-owner source)))
+                (atelier-ensure-detached-workspace))
+            'aipanel))))
+
 (defun aipanel-atelier-setup ()
   "Keep AIPanel side windows separate from workspace entries and jobs."
   (atelier-register-entry-type 'aipanel "aipanel" #'aipanel-buffer-p)
@@ -35,6 +43,7 @@
   (add-hook 'aipanel-buffer-exited-hook #'aipanel-atelier-buffer-exited)
   (add-hook 'atelier-workspace-process-buffers-functions
             #'aipanel-atelier-workspace-process-buffers)
+  (add-hook 'atelier-buffer-owner-functions #'aipanel-atelier-buffer-owner)
   (aipanel-follow-source-setup))
 
 (provide 'aipanel-atelier)

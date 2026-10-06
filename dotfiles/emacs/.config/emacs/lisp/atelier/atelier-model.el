@@ -678,10 +678,9 @@ BUFFER-P receives a live buffer and identifies automatic registrations of TYPE."
       (setq atelier-entry-types (append atelier-entry-types (list definition))))
     definition))
 
-(defun atelier-entry-buffer-name (type workspace)
-  "Return the canonical buffer name for TYPE in WORKSPACE."
-  (let ((label (plist-get (cdr (atelier-entry-type-definition type)) :buffer-name)))
-    (format "*%s:%s*" label (plist-get workspace :name))))
+(defun atelier-entry-buffer-name (type)
+  "Return TYPE's label, also the default name of a buffer Atelier creates for it."
+  (plist-get (cdr (atelier-entry-type-definition type)) :buffer-name))
 
 (defun atelier-workspace-entry-by-type (workspace type)
   "Return the newest entry of TYPE in WORKSPACE."

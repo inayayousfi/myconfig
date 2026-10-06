@@ -506,8 +506,11 @@ current buffer; this does not create or remove workspace entries."
         (let ((key (atelier-content-cache-key workspace (plist-get content :id))))
           (when (eq (gethash key atelier-content-live-buffers) (current-buffer))
             (remhash key atelier-content-live-buffers)
+            ;; Detached cannot stop, so a kill there never preserves content
+            ;; for a later restart.
             (unless (or atelier-preserve-job-recipe
                         (and (not (eq workspace (atelier-current-workspace)))
+                             (not (atelier-detached-workspace-p workspace))
                              (plist-get content :persistent)))
               (atelier-workspace-drop-content workspace (plist-get content :id)))
             (setq changed t)))))
@@ -867,16 +870,12 @@ For the final split, show another stack or switch to another workspace."
                    buffer
                   (let ((buffer (atelier-operation-track-buffer
                                  (generate-new-buffer
-                                  (atelier-entry-buffer-name 'dired workspace)))))
+                                  (atelier-buffer-folder-name directory)))))
                    (with-current-buffer buffer
                      (setq default-directory directory)
                      (dired-mode directory)
                      (dired-readin))
                    buffer))))))
-    (with-current-buffer buffer
-      (unless (string-prefix-p (atelier-entry-buffer-name 'dired workspace)
-                               (buffer-name))
-        (rename-buffer (atelier-entry-buffer-name 'dired workspace) t)))
     buffer))
 
 (defun atelier-register-dired-buffer (buffer workspace &optional explicit)
@@ -1868,6 +1867,7 @@ On entry, stay near the same listing row; on return, select TARGET."
   (add-hook 'after-make-frame-functions #'atelier-restore-new-frame)
   (add-hook 'emacs-startup-hook #'atelier-navigator-at-startup)
   (add-hook 'atelier-change-hook #'atelier-track-inactive-workspaces)
+  (atelier-naming-setup)
   (atelier-track-inactive-workspaces)
   (when (timerp atelier-workspace-inactive-timer)
     (cancel-timer atelier-workspace-inactive-timer))
@@ -1879,6 +1879,7 @@ On entry, stay near the same listing row; on return, select TARGET."
 ;; layer only calls their commands at runtime.
 (require 'atelier-choice)
 (require 'atelier-navigator)
+(require 'atelier-naming)
 (defalias 'atelier-close-current-entry #'atelier-close-current-view
   "Close the current workspace entry and its live buffer.")
 

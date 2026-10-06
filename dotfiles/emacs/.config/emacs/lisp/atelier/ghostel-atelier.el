@@ -13,10 +13,8 @@
 
 (defun ghostel-atelier-exec-buffer (name directory program args &optional identity)
   "Start a Ghostel buffer without registering an Atelier job."
-  (let ((buffer (atelier-operation-track-buffer (generate-new-buffer
-                  (generate-new-buffer-name
-                   (if (string-prefix-p "*" name) name
-                    (format "*%s*" (string-trim name "*" "*"))))))))
+  (let ((buffer (atelier-operation-track-buffer
+                 (generate-new-buffer (generate-new-buffer-name name)))))
     (condition-case error
         (progn
           (with-current-buffer buffer (setq-local default-directory directory))
@@ -43,10 +41,7 @@
          (default-directory desired-directory)
          (program (or command (plist-get shell :executable)
                       (funcall ghostel-atelier-default-shell-function)))
-          (name (if (and (null name) owner-workspace type)
-                   (atelier-entry-buffer-name type owner-workspace)
-                 (if (string-prefix-p "*" (or name "terminal")) name
-                   (format "*%s*" (string-trim (or name "terminal") "*" "*")))))
+         (name (or name (and type (atelier-entry-buffer-name type)) "terminal"))
          (buffer (if command
                      (ghostel-atelier-exec-buffer name desired-directory program args)
                     (let* ((ghostel-mode-hook

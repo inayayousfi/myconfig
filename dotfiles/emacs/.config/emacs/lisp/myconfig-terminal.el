@@ -17,12 +17,6 @@
   :group 'myconfig)
 (require 'ghostel-atelier)
 
-(defun myconfig-terminal-buffer-name (name)
-  (let ((name (or name "terminal")))
-    (if (string-prefix-p "*" name)
-        name
-      (format "*%s*" (string-trim name "*" "*")))))
-
 (atelier-define-operation myconfig-terminal ()
     (list (atelier-current-workspace-id)) nil
   (interactive)
@@ -33,11 +27,11 @@
           (existing (and workspace (not in-terminal)
                          (atelier-workspace-buffer-by-type workspace 'terminal)))
           (launch (unless existing (funcall atelier-terminal-command-function workspace)))
-         (name (atelier-entry-buffer-name 'terminal workspace))
+         (name (atelier-entry-buffer-name 'terminal))
          (buffer (or existing
                      (ghostel-atelier-buffer
                       (if in-terminal
-                          (generate-new-buffer-name (myconfig-terminal-buffer-name name))
+                          (generate-new-buffer-name name)
                         name)
                         (plist-get launch :directory)
                         (plist-get launch :program)
@@ -176,7 +170,8 @@
      (kbd "A") #'myconfig-terminal-enter-input))
 
 (defun myconfig-aipanel-terminal (name directory program arguments _owner _selection)
-  (ghostel-atelier-exec-buffer name directory program arguments '((kind . aipanel))))
+  (ghostel-atelier-exec-buffer (format "*%s*" name) directory program arguments
+                               '((kind . aipanel))))
 
 (defun myconfig-aipanel-activate ()
   (myconfig-terminal-activate (current-buffer)))

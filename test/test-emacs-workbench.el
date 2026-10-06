@@ -204,17 +204,6 @@
       (should (eq (key-binding (kbd "M-x")) #'myconfig-normal-state))
       (should (eq (key-binding (kbd "C-S-v")) #'myconfig-paste)))))
 
-(ert-deftest myconfig-terminal-mode-line-shows-char-input ()
-  (with-temp-buffer
-    (cl-letf (((symbol-function 'derived-mode-p)
-               (lambda (&rest modes) (memq 'ghostel-mode modes))))
-      (setq-local ghostel--input-mode 'char)
-      (should (equal (myconfig-terminal-mode-line-state) " INSERT "))
-      (should (eq (get-text-property 1 'face (myconfig-terminal-mode-line-state))
-                  'myconfig-mode-line-state))
-      (setq-local ghostel--input-mode 'emacs)
-      (should-not (myconfig-terminal-mode-line-state)))))
-
 (ert-deftest myconfig-terminal-restores-meta-prefix-on-exit ()
   (with-temp-buffer
     (cl-letf (((symbol-function 'ghostel-char-mode) #'ignore)
@@ -228,20 +217,41 @@
       (myconfig-terminal-escape)
       (should-not (local-variable-p 'meta-prefix-char)))))
 
-(ert-deftest myconfig-mode-line-selects-terminal-or-evil-state ()
-  (with-temp-buffer
-    (let ((evil-mode-line-tag " NORMAL "))
-      (cl-letf (((symbol-function 'derived-mode-p)
-                 (lambda (&rest modes) (memq 'ghostel-mode modes))))
-        (setq-local ghostel--input-mode 'char)
-        (should (equal (myconfig-mode-line-state) " INSERT "))
-        (setq-local ghostel--input-mode 'emacs)
-        (should (equal (myconfig-mode-line-state) " NORMAL "))
-        (setq evil-mode-line-tag " VISUAL ")
-        (should (equal (myconfig-mode-line-state) " VISUAL ")))))
-  (with-temp-buffer
-    (let ((evil-mode-line-tag " VISUAL "))
-      (should (equal (myconfig-mode-line-state) " VISUAL ")))))
+(ert-deftest myconfig-mode-line-names-every-active-input-mode ()
+  "Each active input layer is named precisely, joined with an ampersand."
+  (cl-flet ((label (setup)
+              (with-temp-buffer
+                (funcall setup)
+                (let ((state (myconfig-mode-line-state)))
+                  (should (eq (get-text-property 1 'face state) 'myconfig-mode-line-state))
+                  (substring-no-properties state)))))
+    ;; A new terminal, after Alt+x, and after i.
+    (should (equal (label (lambda ()
+                            (setq major-mode 'ghostel-mode)
+                            (setq-local evil-local-mode t evil-state 'insert
+                                        ghostel--input-mode 'semi-char)))
+                   " INSERT & SEMI-CHAR "))
+    (should (equal (label (lambda ()
+                            (setq major-mode 'ghostel-mode)
+                            (setq-local evil-local-mode t evil-state 'normal
+                                        ghostel--input-mode 'emacs)))
+                   " NORMAL & GHOSTEL EMACS "))
+    (should (equal (label (lambda ()
+                            (setq major-mode 'ghostel-mode)
+                            (setq-local evil-local-mode nil ghostel--input-mode 'char)))
+                   " EVIL OFF & CHAR "))
+    ;; Ordinary buffers: Evil's precise state and other modes, with Evil on or off.
+    (should (equal (label (lambda ()
+                            (setq-local evil-local-mode t evil-state 'visual
+                                        evil-visual-selection 'line)))
+                   " VISUAL LINE "))
+    (should (equal (label (lambda ()
+                            (setq-local evil-local-mode t evil-state 'normal
+                                        multiple-cursors-mode t)))
+                   " NORMAL & MULTIPLE CURSORS "))
+    (should (equal (label (lambda ()
+                            (setq-local evil-local-mode nil overwrite-mode 'overwrite-mode-textual)))
+                   " EVIL OFF & OVERWRITE "))))
 
 (ert-deftest myconfig-mode-line-buffer-name-opens-navigator ()
   (with-temp-buffer
@@ -256,11 +266,6 @@
                  (lambda () (interactive) (setq opened t))))
         (funcall (lookup-key map [mode-line mouse-1]))
         (should opened)))))
-
-(ert-deftest myconfig-terminal-mode-line-ignores-other-buffers ()
-  (with-temp-buffer
-    (setq-local ghostel--input-mode 'char)
-    (should-not (myconfig-terminal-mode-line-state))))
 
 (ert-deftest myconfig-file-wrap-margin-tracks-window-width ()
   (save-window-excursion

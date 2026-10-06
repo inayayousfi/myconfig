@@ -78,12 +78,6 @@
   (evil-ghostel-mode 1)
   (evil-normal-state))
 
-(defun myconfig-terminal-mode-line-state ()
-  "Show input state while Evil is disabled in a Ghostel terminal."
-  (when (and (derived-mode-p 'ghostel-mode)
-             (eq ghostel--input-mode 'char))
-    (propertize " INSERT " 'face 'myconfig-mode-line-state)))
-
 (defun myconfig-terminal-enter-input ()
   "Give the terminal process all keyboard input through Ghostel char mode."
   (interactive)

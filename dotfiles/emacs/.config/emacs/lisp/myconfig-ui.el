@@ -4,9 +4,13 @@
 
 (deftheme myconfig-blacknpink "Black and Pink workbench theme.")
 
+(defvar evil-state)
+(defvar evil-visual-selection)
+(defvar ghostel--input-mode)
+
 (defface myconfig-mode-line-state
   '((t (:foreground "#ff4ead" :weight bold)))
-  "Evil state in the mode line.")
+  "Input modes in the mode line.")
 
 (defun myconfig-turn-on-hl-line-mode ()
   (unless (derived-mode-p 'ghostel-mode)
@@ -120,9 +124,27 @@
         visible-bell nil)
   (myconfig-mode-line-setup))
 
+(defun myconfig-mode-line-modes ()
+  "Name every input mode active in the current buffer, most general first."
+  (let ((terminal (derived-mode-p 'ghostel-mode)))
+    (delq nil
+          (list (cond ((not (bound-and-true-p evil-local-mode)) "EVIL OFF")
+                      ((and (eq evil-state 'visual)
+                            (memq evil-visual-selection '(line block)))
+                       (format "VISUAL %s" (upcase (symbol-name evil-visual-selection))))
+                      (t (upcase (symbol-name evil-state))))
+                (when terminal
+                  ;; Ghostel's read-only mode shares its name with Evil's emacs state.
+                  (if (eq ghostel--input-mode 'emacs)
+                      "GHOSTEL EMACS"
+                    (upcase (symbol-name ghostel--input-mode))))
+                (when (derived-mode-p 'wdired-mode) "WDIRED")
+                (when (bound-and-true-p multiple-cursors-mode) "MULTIPLE CURSORS")
+                (when (bound-and-true-p overwrite-mode) "OVERWRITE")))))
+
 (defun myconfig-mode-line-state ()
-  "Show terminal input state or the active Evil state, but not both."
-  (or (myconfig-terminal-mode-line-state) evil-mode-line-tag))
+  (propertize (concat " " (mapconcat #'identity (myconfig-mode-line-modes) " & ") " ")
+              'face 'myconfig-mode-line-state))
 
 (defun myconfig-mode-line-status ()
   (cond (buffer-read-only "  RO") ((buffer-modified-p) "  *") (t "")))
@@ -136,14 +158,7 @@
                            "Open workbench navigator (SPC W)"))
 
 (defun myconfig-mode-line-setup ()
-  (setq evil-normal-state-tag (propertize " NORMAL " 'face 'myconfig-mode-line-state)
-        evil-insert-state-tag (propertize " INSERT " 'face 'myconfig-mode-line-state)
-        evil-visual-state-tag (propertize " VISUAL " 'face 'myconfig-mode-line-state)
-        evil-replace-state-tag (propertize " REPLACE " 'face 'myconfig-mode-line-state)
-        evil-operator-state-tag (propertize " OPERATOR " 'face 'myconfig-mode-line-state)
-        evil-motion-state-tag (propertize " MOTION " 'face 'myconfig-mode-line-state)
-        evil-emacs-state-tag (propertize " EMACS " 'face 'myconfig-mode-line-state)
-        evil-mode-line-format nil)
+  (setq evil-mode-line-format nil)
   (setq-default mode-line-format
                 '("%e" (:eval (myconfig-mode-line-state))
                   "  " (:eval (myconfig-mode-line-buffer-name))

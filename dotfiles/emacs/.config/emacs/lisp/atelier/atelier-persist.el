@@ -308,8 +308,7 @@ fresh shell to learn what they export."
 
 (defun atelier-snapshot-data ()
   (atelier-ensure-detached-workspace)
-  (unless (or atelier-persist-restoring atelier-navigator-window-configurations
-              atelier-operation-active)
+  (unless (or atelier-persist-restoring atelier-operation-active)
     (atelier-capture-current-workspace))
   (list :version 12
         :generation (or atelier-snapshot-generation (atelier-new-generation))

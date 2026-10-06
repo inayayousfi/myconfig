@@ -320,6 +320,24 @@
       (should-not (atelier-entry-by-id workspace (plist-get view :id)))
       (should (buffer-live-p buffer)))))
 
+(ert-deftest atelier-workspace-stacks-capture-under-navigator-keeps-views-openable ()
+  (atelier-stacks-test
+    (let* ((file (expand-file-name "example.txt" root))
+           (_ (with-temp-file file (insert "example")))
+           (buffer (atelier-open-file file workspace))
+           (_ (atelier-capture-current-workspace))
+           (view (car (atelier-workspace-displayed-entries workspace))))
+      (atelier-navigator)
+      ;; Any caller may capture while the navigator covers the frame.
+      (atelier-capture-current-workspace)
+      (atelier-navigator-open-content "stacks-test" (plist-get view :id)
+                                      (plist-get view :content-id) 0)
+      (should-not (assq (selected-frame) atelier-navigator-window-configurations))
+      (should (eq (window-buffer) buffer))
+      (should (equal (list (plist-get view :id))
+                     (mapcar (lambda (entry) (plist-get entry :id))
+                             (atelier-workspace-displayed-entries workspace)))))))
+
 (ert-deftest atelier-workspace-stacks-last-detached-view-shows-another-stack ()
   (atelier-stacks-test
     (let* ((buffer (generate-new-buffer "*scratch detach*"))

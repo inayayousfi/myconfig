@@ -386,6 +386,9 @@ workspace record is authoritative; BUFFER receives no ownership metadata."
 (atelier-define-operation atelier-capture-current-workspace ()
     (list (atelier-current-workspace-id)) nil
   (when-let* ((_ (display-graphic-p (selected-frame)))
+              ;; The navigator covers the frame; its saved configuration
+              ;; holds the real layout until it quits.
+              (_ (not (assq (selected-frame) atelier-navigator-window-configurations)))
               (workspace (atelier-current-workspace))
               (_ (not (cl-some
                        (lambda (window)
@@ -1826,8 +1829,7 @@ On entry, stay near the same listing row; on return, select TARGET."
       (run-hook-with-args 'atelier-workspace-created-hook workspace))))
 
 (defun atelier-capture-closing-frame (frame)
-  (when (and (frame-live-p frame) (display-graphic-p frame)
-             (not (assq frame atelier-navigator-window-configurations)))
+  (when (and (frame-live-p frame) (display-graphic-p frame))
     (with-selected-frame frame
       (atelier-capture-current-workspace)
       (atelier-notify-change)))

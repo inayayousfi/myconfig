@@ -730,7 +730,7 @@
                           :destination "local" :path "/tmp/" :platform 'local
                           :status 'running :entries nil))
          (atelier-workspaces (list workspace))
-         (atelier-navigator-window-configurations t)
+         (atelier-navigator-window-configurations (list (list (selected-frame))))
          (atelier-snapshot-generation "generation")
          (old-selection (atelier-current-workspace-id)))
     (unwind-protect

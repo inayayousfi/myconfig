@@ -123,6 +123,7 @@
         window-divider-default-bottom-width 1)
   (window-divider-mode 1)
   (blink-cursor-mode 1)
+  (which-key-mode 1)
   (setq blink-cursor-blinks 0
         ring-bell-function #'ignore
         use-dialog-box nil

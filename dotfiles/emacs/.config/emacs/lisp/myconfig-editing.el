@@ -397,6 +397,7 @@ so the default value alone is not sufficient."
     :init (setq evil-collection-setup-minibuffer t)
     :config (evil-collection-init))
   (add-hook 'evil-insert-state-exit-hook #'myconfig-save-after-evil-insert)
+  (savehist-mode 1)
   (use-package vertico :config (vertico-mode 1))
   (use-package orderless
     :config (setq completion-styles '(orderless basic)

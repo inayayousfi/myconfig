@@ -92,6 +92,73 @@
         (should (eq (window-buffer left) first))
         (should (= (length (atelier-workspace-stack workspace 'file)) 2))))))
 
+;; Switching buffers puts the last used one on top, so the previous buffer
+;; stays one step away in the navigator instead of returning to its old slot.
+(ert-deftest atelier-workspace-stacks-order-buffers-by-last-use ()
+  (atelier-stacks-test
+    (let ((files (mapcar (lambda (name) (expand-file-name name root))
+                         '("a.txt" "b.txt" "c.txt")))
+          buffers)
+      (dolist (file files)
+        (with-temp-file file (insert file))
+        (push (atelier-open-file file workspace) buffers))
+      (setq buffers (nreverse buffers))
+      (cl-flet ((order ()
+                  (mapcar (lambda (content) (file-name-nondirectory (plist-get content :file)))
+                          (atelier-workspace-stack workspace 'file)))
+                (shown ()
+                  (mapcar (lambda (content) (file-name-nondirectory (plist-get content :file)))
+                          (atelier-entry-stack (atelier-current-entry)))))
+        (should (equal (shown) '("c.txt" "b.txt" "a.txt")))
+        (with-current-buffer (atelier-render-navigator)
+          (goto-char (cl-find-if
+                      (lambda (position)
+                        (memq (car (get-text-property position 'atelier-navigator-target))
+                              '(workspace-buffer workspace-owned-buffer)))
+                      (atelier-navigator-positions)))
+          (atelier-navigator-stack-next)
+          (atelier-navigator-stack-next)
+          (atelier-navigator-commit-stack-selection))
+        ;; The navigator displays the selection only when it closes.
+        (should (equal (order) '("a.txt" "c.txt" "b.txt")))
+        (atelier-open-file (nth 1 files) workspace)
+        (should (eq (window-buffer) (nth 1 buffers)))
+        (should (equal (order) '("b.txt" "a.txt" "c.txt")))
+        (should (equal (shown) '("b.txt" "a.txt" "c.txt")))))))
+
+;; A stack past its limit closes its least recently used buffers, but keeps
+;; any buffer a view still selects and any file with unsaved changes.
+(ert-deftest atelier-workspace-stacks-limit-closes-least-recent-buffers ()
+  (atelier-stacks-test
+    (let ((atelier-stack-limit 2)
+          (buffers (make-hash-table :test #'equal)))
+      (cl-flet ((open (name)
+                  (let ((file (expand-file-name name root)))
+                    (with-temp-file file (insert name))
+                    (puthash name (atelier-open-file file workspace) buffers)))
+                (order ()
+                  (mapcar (lambda (content) (file-name-nondirectory (plist-get content :file)))
+                          (atelier-workspace-stack workspace 'file)))
+                (live (name) (buffer-live-p (gethash name buffers))))
+        (dolist (name '("a" "b" "c")) (open name))
+        (should (equal (order) '("c" "b")))
+        (should-not (live "a"))
+        (with-current-buffer (gethash "b" buffers) (insert "unsaved"))
+        (open "d")
+        (should (equal (order) '("d" "b")))
+        (should-not (live "c"))
+        (should (live "b"))
+        (with-current-buffer (gethash "b" buffers) (set-buffer-modified-p nil))
+        ;; The left view keeps showing d while the right view moves on.
+        (atelier-split-right)
+        (open "e")
+        (should (equal (order) '("e" "d")))
+        (should-not (live "b"))
+        (open "f")
+        (should (equal (order) '("f" "d")))
+        (should-not (live "e"))
+        (should (live "d"))))))
+
 (ert-deftest atelier-workspace-stacks-custom-type-uses-the-same-view-operation ()
   (atelier-stacks-test
     (let ((atelier-entry-types (copy-tree atelier-entry-types))

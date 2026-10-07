@@ -132,6 +132,7 @@
 (dired-atelier-setup)
 (setq atelier-state-directory myconfig-runtime-state-directory
       atelier-close-without-asking t
+      atelier-stack-limit 5
       atelier-workspace-inactive-timeout myconfig-workspace-inactive-timeout)
 (require 'universel-atelier)
 (universel-atelier-setup myconfig-runtime-state-directory)

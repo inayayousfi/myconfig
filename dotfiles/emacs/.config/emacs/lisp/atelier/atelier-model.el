@@ -87,7 +87,8 @@
 ;; reference the same live buffer.  Buffers carry no Atelier ownership
 ;; metadata.
 ;; A workspace owns stacks with stable identities and fixed content membership.
-;; Views select a stack and one of its contents independently.  The :contents
+;; Views select a stack and one of its contents independently.  A stack lists
+;; its contents most recently selected first, in any view.  The :contents
 ;; list is the workspace's content-record index, not a second membership list.
 ;; The cache is disposable and keyed by (workspace-id . content-id).
 (defvar atelier-content-live-buffers (make-hash-table :test #'equal))
@@ -438,14 +439,19 @@ PREDICATE receives each content record.  Other views retain shared records."
     (atelier-entry-set-live-buffer entry buffer)
     entry))
 
-(defun atelier-entry-activate-content (entry content-id)
-  "Select CONTENT-ID in ENTRY without changing another view or stack order."
-  (unless (atelier-workspace-content (atelier-entry-owner entry) content-id)
-    (error "Missing content %s" content-id))
-  (atelier-plist-set! entry :content-id content-id)
-  (atelier-plist-remove! entry :unassigned)
-  (atelier-plist-set! entry :stack-id
-                      (plist-get (atelier-workspace-content (atelier-entry-owner entry) content-id) :stack-id))
+(defun atelier-entry-activate-content (entry content-id &optional keep-order)
+  "Select CONTENT-ID in ENTRY without changing another view.
+Move CONTENT-ID to the top of its stack unless KEEP-ORDER."
+  (let* ((workspace (atelier-entry-owner entry))
+         (content (or (atelier-workspace-content workspace content-id)
+                      (error "Missing content %s" content-id)))
+         (stack (atelier-workspace-stack-record workspace (plist-get content :stack-id))))
+    (atelier-plist-set! entry :content-id content-id)
+    (atelier-plist-remove! entry :unassigned)
+    (atelier-plist-set! entry :stack-id (plist-get content :stack-id))
+    (when (and stack (not keep-order))
+      (atelier-plist-set! stack :content-ids
+                          (cons content-id (remove content-id (plist-get stack :content-ids))))))
   entry)
 
 (defun atelier-view-unassign-stack (workspace view)

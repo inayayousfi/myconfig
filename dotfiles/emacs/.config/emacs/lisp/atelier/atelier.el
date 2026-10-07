@@ -95,6 +95,15 @@ Return a nonempty list; when MULTIPLE is nil, return exactly one path.")
   :type 'integer
   :group 'atelier)
 
+(defcustom atelier-stack-limit nil
+  "Most buffers one workspace stack keeps, or nil for no limit.
+Adding a buffer past the limit closes the least recently used ones.  A buffer
+a view selects, or a file buffer with unsaved changes, is never closed."
+  :type '(choice (const :tag "No limit" nil) natnum)
+  :group 'atelier)
+
+(declare-function atelier-dispose-unreferenced-buffer "atelier-navigator")
+
 (defface atelier-navigator-active
   '((t (:inherit font-lock-keyword-face :weight bold)))
   "Selected workspace in the navigator."
@@ -277,12 +286,33 @@ workspace record is authoritative; BUFFER receives no ownership metadata."
         (let ((id (atelier-workspace-store-content
                    workspace (list :type type :kind (atelier-buffer-entry-kind buffer)))))
           (setq entry (atelier-content-reference workspace
-                                                 (atelier-workspace-content workspace id)))))
+                                                 (atelier-workspace-content workspace id)))
+          (atelier-workspace-trim-stack workspace id)))
       (atelier-update-entry-from-buffer entry buffer type)
       (when (and added (not no-notify))
         (atelier-operation-notify 'atelier-entry-added-hook workspace entry)
         (atelier-operation-notify 'atelier-change-hook))
       entry)))
+
+(defun atelier-workspace-trim-stack (workspace keep)
+  "Close least recently used contents beyond `atelier-stack-limit'.
+Trim the stack holding content KEEP in WORKSPACE, never closing KEEP."
+  (when-let* ((limit atelier-stack-limit)
+              (stack (atelier-workspace-stack-record
+                      workspace (plist-get (atelier-workspace-content workspace keep) :stack-id))))
+    (let ((excess (- (length (plist-get stack :content-ids)) limit))
+          (selected (mapcar (lambda (view) (plist-get view :content-id))
+                            (atelier-workspace-view-entries workspace))))
+      (dolist (id (reverse (plist-get stack :content-ids)))
+        (let ((buffer (gethash (atelier-content-cache-key workspace id)
+                               atelier-content-live-buffers)))
+          (unless (or (<= excess 0) (equal id keep) (member id selected)
+                      (and (buffer-live-p buffer)
+                           (buffer-local-value 'buffer-file-name buffer)
+                           (buffer-modified-p buffer)))
+            (atelier-workspace-drop-content workspace id)
+            (atelier-dispose-unreferenced-buffer buffer)
+            (cl-decf excess)))))))
 
 (defvar atelier-capturing-layout-p nil)
 (defvar atelier-capture-used-entry-ids nil)
@@ -306,7 +336,7 @@ workspace record is authoritative; BUFFER receives no ownership metadata."
                             (when (and view (not (plist-get view :content-reference))
                                        (not (member id atelier-capture-used-entry-ids)))
                               (let ((content (atelier-register-buffer buffer workspace t type)))
-                                (atelier-entry-activate-content view (plist-get content :content-id)))
+                                (atelier-entry-activate-content view (plist-get content :content-id) t))
                               view))
                           (cl-find-if
                           (lambda (candidate)
@@ -603,6 +633,8 @@ Create the view when WINDOW has none."
                                   :content-id (plist-get reference :content-id)) t)))
     (atelier-entry-activate-content view (plist-get reference :content-id))
     (set-window-parameter window 'atelier-view-id (plist-get view :id))
+    ;; Registration trims too, but before this view leaves its old buffer.
+    (atelier-workspace-trim-stack workspace (plist-get reference :content-id))
     view))
 
 (atelier-define-operation atelier-show-buffer (buffer &optional workspace window type)

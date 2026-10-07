@@ -7,6 +7,8 @@ run_profile() {
     module_ssh
     module_cli
     module_runtimes
+    module_flatpak
+    module_appimage
     module_zsh
     module_terminal_tools
     module_ghostty

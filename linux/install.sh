@@ -29,7 +29,7 @@ require_function adapter_remove_specs
 
 source "$LINUX_DIR/registry/packages.sh"
 
-for module in base cachyos ssh cli runtimes zsh emacs terminal-tools ghostty axidev-osk kanata kanata-kde handy pipewire tailscale docker agents dotfiles android-phone cursor-theme refind kde-plasma authentication; do
+for module in base cachyos ssh cli runtimes flatpak appimage zsh emacs terminal-tools ghostty axidev-osk kanata kanata-kde handy pipewire tailscale docker agents dotfiles android-phone cursor-theme refind kde-plasma authentication; do
     source "$LINUX_DIR/modules/$module.sh"
 done
 

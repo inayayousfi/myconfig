@@ -133,7 +133,7 @@ for cleanup_profile in cachyos arch-wsl; do
         rustup() { :; }
         # Exercise the real profile and package modules without running services,
         # deploying dotfiles, or installing anything on the host.
-        for unrelated_module in ssh ssh_server zsh ghostty axidev_osk tailscale \
+        for unrelated_module in ssh ssh_server flatpak appimage zsh ghostty axidev_osk tailscale \
             agents_packages dotfiles android_phone emacs cursor_theme refind \
             kanata kde_plasma_validate kde_plasma kanata_kde handy pipewire \
             docker agents_configure authentication; do
@@ -1463,6 +1463,12 @@ done
     || myconfig_fail "CachyOS profile does not include the Kanata KDE tray"
 [[ "$cachyos_profile" == *module_handy* ]] \
     || myconfig_fail "CachyOS profile does not include Handy"
+for app_module in module_flatpak module_appimage; do
+    [[ "$cachyos_profile" == *"$app_module"* ]] \
+        || myconfig_fail "CachyOS profile does not include $app_module"
+    [[ "$arch_wsl_profile" != *"$app_module"* ]] \
+        || myconfig_fail "Arch WSL profile includes $app_module"
+done
 [[ "$arch_wsl_profile" != *module_axidev_osk* ]] \
     || myconfig_fail "Arch WSL profile includes Axidev OSK"
 [[ "$arch_wsl_profile" != *module_ghostty* ]] \

@@ -90,6 +90,7 @@
     [mouse-1] #'atelier-dired-mouse-open
     [mouse-2] #'atelier-dired-mouse-open)
   (evil-define-key 'normal eglot-mode-map
+    (kbd "g a") #'eglot-code-actions
     (kbd "g d") #'atelier-xref-find-definitions
     (kbd "g D") #'atelier-xref-find-implementation)
   (evil-define-key 'normal atelier-directory-chooser-mode-map
@@ -179,7 +180,6 @@
   (define-key myconfig-leader-map (kbd "u r") #'atelier-set-job-policy)
   (define-key myconfig-leader-map (kbd "w") #'atelier-traveller)
   (define-key myconfig-leader-map (kbd "W") #'atelier-navigator)
-  (define-key myconfig-leader-map (kbd "g a") #'eglot-code-actions)
   (define-key myconfig-leader-map (kbd "g f") #'dape)
   (define-key myconfig-leader-map (kbd "g g") #'magit-status)
   (define-key myconfig-leader-map (kbd "g d") #'diff)

@@ -32,7 +32,7 @@ EOF
     sudo install -Dm644 "$config_tmp" /etc/ssh/sshd_config.d/10-myconfig.conf
     sudo rm -f /etc/ssh/sshd_config.d/10-local-only.conf
 
-    if ! sudo sshd -t || ! sudo systemctl enable sshd.service || ! sudo systemctl restart sshd.service; then
+    if ! sudo sshd -t; then
         sudo rm -f \
             /etc/ssh/sshd_config.d/10-myconfig.conf \
             /etc/ssh/sshd_config.d/10-local-only.conf
@@ -42,11 +42,7 @@ EOF
         if $had_legacy; then
             sudo install -Dm644 "$backup_dir/10-local-only.conf" /etc/ssh/sshd_config.d/10-local-only.conf
         fi
-        if ! sudo sshd -t || ! sudo systemctl restart sshd.service; then
-            myconfig_fail "OpenSSH failed and its previous configuration could not be restored"
-            return 1
-        fi
-        myconfig_fail "OpenSSH failed; its previous configuration was restored"
+        myconfig_fail "OpenSSH rejected its new configuration; the previous one was restored"
         return 1
     fi
 
@@ -55,4 +51,28 @@ EOF
     config_tmp=""
     backup_dir=""
     trap - RETURN
+}
+
+ssh_start_server() {
+    # Another program on port 22, such as a second WSL distribution sharing the
+    # same network, must not stop the rest of the install.
+    if ! sudo systemctl enable --now sshd.service; then
+        myconfig_log "WARNING: the OpenSSH server did not start. See: journalctl -u sshd.service"
+        myconfig_log "Retry with: sudo systemctl enable --now sshd.service"
+    fi
+}
+
+# A running server only needs the configuration module_ssh just wrote. A server
+# that is off stays off unless the user asks for it.
+module_ssh_server() {
+    if systemctl is-active --quiet sshd.service; then
+        myconfig_log "Restarting the OpenSSH server with its new configuration"
+        if ! sudo systemctl restart sshd.service; then
+            myconfig_log "WARNING: the OpenSSH server did not restart. See: journalctl -u sshd.service"
+        fi
+        return 0
+    fi
+
+    offer_action "The OpenSSH server is off." "Turn it on now?" \
+        "sudo systemctl enable --now sshd.service" ssh_start_server
 }

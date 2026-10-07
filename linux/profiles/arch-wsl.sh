@@ -11,6 +11,7 @@ run_profile() {
     module_agents_packages
     module_dotfiles
     module_agents_configure
+    module_ssh_server
     module_authentication
     write_environment_inventory
 }

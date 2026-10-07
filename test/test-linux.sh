@@ -133,7 +133,7 @@ for cleanup_profile in cachyos arch-wsl; do
         rustup() { :; }
         # Exercise the real profile and package modules without running services,
         # deploying dotfiles, or installing anything on the host.
-        for unrelated_module in ssh zsh ghostty axidev_osk tailscale \
+        for unrelated_module in ssh ssh_server zsh ghostty axidev_osk tailscale \
             agents_packages dotfiles android_phone emacs cursor_theme refind \
             kanata kde_plasma_validate kde_plasma kanata_kde handy pipewire \
             docker agents_configure authentication; do
@@ -1437,6 +1437,10 @@ ubuntu_profile="$(
     source "$REPO_ROOT/linux/profiles/ubuntu-server.sh"
     declare -f run_profile
 )"
+for profile_source in "$cachyos_profile" "$arch_wsl_profile"; do
+    [[ "$profile_source" == *module_ssh_server* ]] \
+        || myconfig_fail "a profile does not offer to turn on the OpenSSH server"
+done
 [[ "$cachyos_profile" == *module_axidev_osk* ]] \
     || myconfig_fail "CachyOS profile does not include Axidev OSK"
 [[ "$cachyos_profile" == *module_emacs* ]] \
@@ -1686,9 +1690,43 @@ grep -Fq 'makepkg:--noconfirm' "$paru_test_log" \
 grep -Fq 'pacman:-U --needed --noconfirm ' "$paru_test_log" \
     || myconfig_fail "Paru bootstrap did not install through the cached sudo credential"
 
-source "$REPO_ROOT/linux/modules/authentication.sh"
-auth_output="$(offer_authentication Test "test login" false)"
-[[ "$auth_output" == *"Test is not authenticated. Run: test login"* ]] \
-    || myconfig_fail "noninteractive authentication instructions were not printed"
+auth_output="$(MYCONFIG_TTY_PATH="$TEST_HOME/no-terminal" offer_action "Test is off." "Turn it on?" "test start" false)"
+[[ "$auth_output" == *"Test is off. Run: test start"* ]] \
+    || myconfig_fail "noninteractive step instructions were not printed"
+
+ssh_test_log="$TEST_HOME/ssh-server.log"
+ssh_output="$(
+    source "$REPO_ROOT/linux/modules/ssh.sh"
+    systemctl() { printf 'systemctl:%s\n' "$*" >>"$ssh_test_log"; return 3; }
+    sudo() { printf 'sudo:%s\n' "$*" >>"$ssh_test_log"; }
+    MYCONFIG_TTY_PATH="$TEST_HOME/no-terminal" module_ssh_server
+)"
+[[ "$ssh_output" == *"The OpenSSH server is off. Run: sudo systemctl enable --now sshd.service"* ]] \
+    || myconfig_fail "stopped OpenSSH server without a terminal did not print how to turn it on"
+if grep -Fq 'sudo:' "$ssh_test_log"; then
+    myconfig_fail "stopped OpenSSH server was changed without being asked"
+fi
+
+ssh_output="$(
+    source "$REPO_ROOT/linux/modules/ssh.sh"
+    sudo() { return 1; }
+    ssh_start_server
+    printf 'install continued\n'
+)"
+[[ "$ssh_output" == *"WARNING: the OpenSSH server did not start"* ]] \
+    || myconfig_fail "failed OpenSSH start did not warn"
+[[ "$ssh_output" == *"install continued"* ]] \
+    || myconfig_fail "failed OpenSSH start stopped the install"
+
+: >"$ssh_test_log"
+(
+    source "$REPO_ROOT/linux/modules/ssh.sh"
+    systemctl() { return 0; }
+    sudo() { printf 'sudo:%s\n' "$*" >>"$ssh_test_log"; }
+    offer_action() { myconfig_fail "running OpenSSH server asked before restarting"; }
+    module_ssh_server >/dev/null
+)
+grep -Fxq 'sudo:systemctl restart sshd.service' "$ssh_test_log" \
+    || myconfig_fail "running OpenSSH server did not restart with its new configuration"
 
 printf 'Linux installer tests passed.\n'

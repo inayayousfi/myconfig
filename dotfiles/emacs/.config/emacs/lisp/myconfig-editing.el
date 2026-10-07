@@ -37,6 +37,18 @@
 (declare-function project-files "project")
 (declare-function global-treesit-auto-mode "treesit-auto")
 (declare-function treesit-auto-add-to-auto-mode-alist "treesit-auto")
+(declare-function treesit-auto--get-mode-recipe "treesit-auto")
+(declare-function treesit-auto--ready-p "treesit-auto")
+(declare-function treesit-auto-recipe-ts-mode "treesit-auto")
+(declare-function package-read-all-archive-contents "package")
+(declare-function treesit-auto--build-treesit-source-alist "treesit-auto")
+(declare-function treesit-auto--prompt-to-install-package "treesit-auto")
+(declare-function treesit-auto--selected-recipes "treesit-auto")
+(declare-function treesit-auto-recipe-ext "treesit-auto")
+(declare-function treesit-auto-recipe-lang "treesit-auto")
+(declare-function treesit-auto-recipe-requires "treesit-auto")
+(defvar package-archive-contents)
+(defvar treesit-language-source-alist)
 (declare-function vertico-mode "vertico")
 (declare-function yas-global-mode "yasnippet")
 (declare-function yasnippet-capf "yasnippet-capf")
@@ -219,6 +231,54 @@ so the default value alone is not sufficient."
             (add-hook 'post-command-hook #'myconfig-flyover-refresh-eob nil t)))))
     (when (overlay-get overlay 'myconfig-flyover-eob-text)
       (myconfig-flyover-refresh-eob))))
+
+(defun myconfig-install-missing-grammar (install lang)
+  "Run INSTALL for tree-sitter LANG only when Emacs cannot load it already."
+  (or (treesit-language-available-p lang)
+      (funcall install lang)))
+
+(defun myconfig-prepare-tree-sitter-mode (&rest _)
+  "Install what the visited file's tree-sitter mode needs before Emacs picks it.
+The treesit-auto recipe matching the file name names the mode, installed
+from its package when Emacs lacks it, and the grammars it needs.  A mode
+therefore never starts without its grammar."
+  (when-let* ((file buffer-file-name)
+              (recipe (seq-find (lambda (recipe)
+                                  (when-let* ((ext (treesit-auto-recipe-ext recipe)))
+                                    (string-match-p ext file)))
+                                (treesit-auto--selected-recipes)))
+              (ts-mode (treesit-auto-recipe-ts-mode recipe))
+              (lang (treesit-auto-recipe-lang recipe)))
+    (condition-case error
+        (progn
+          (unless (fboundp ts-mode)
+            (unless package-archive-contents
+              (package-read-all-archive-contents))
+            (when (assq ts-mode package-archive-contents)
+              (package-install ts-mode)
+              (treesit-auto-add-to-auto-mode-alist (list lang))))
+          (when (fboundp ts-mode)
+            (let ((treesit-language-source-alist
+                   (treesit-auto--build-treesit-source-alist)))
+              (dolist (required (append (ensure-list (treesit-auto-recipe-requires recipe))
+                                        (list lang)))
+                (treesit-auto--prompt-to-install-package required)))))
+      (error
+       (display-warning 'myconfig
+                        (format "Tree-sitter setup for %s failed: %s"
+                                file (error-message-string error)))))))
+
+(defun myconfig-use-installed-grammar (install)
+  "Run INSTALL, then give the file the tree-sitter mode it now supports.
+treesit-auto reloads the file while it still hides the new grammar's
+language, so the file would keep its older mode."
+  (funcall install)
+  (when-let* ((buffer-file-name)
+              (recipe (treesit-auto--get-mode-recipe))
+              (ts-mode (treesit-auto-recipe-ts-mode recipe))
+              ((not (eq major-mode ts-mode)))
+              ((treesit-auto--ready-p ts-mode)))
+    (normal-mode)))
 
 (defun myconfig-compile ()
   (interactive)
@@ -431,7 +491,7 @@ so the default value alone is not sufficient."
   (when (universel-platform-p 'windows (universel-host-platform))
     (require 'treesit-langs))
   (use-package treesit-auto
-    :custom (treesit-auto-install 'prompt)
+    :custom (treesit-auto-install t)
     :config
     ;; Native Windows Emacs does not always provide a `cc' command.  Prefer
     ;; GCC when it is available and otherwise use LLVM's clang, which is part
@@ -441,6 +501,12 @@ so the default value alone is not sufficient."
         (setf (treesit-auto-recipe-cc recipe) (car compilers))
         (when (cdr compilers)
           (setf (treesit-auto-recipe-c++ recipe) (cdr compilers)))))
+    (advice-add 'set-auto-mode :before #'myconfig-prepare-tree-sitter-mode)
+    ;; A recipe installs the grammars it requires without checking for them.
+    (advice-add 'treesit-auto--prompt-to-install-package :around
+                #'myconfig-install-missing-grammar)
+    (advice-add 'treesit-auto--maybe-install-grammar :around
+                #'myconfig-use-installed-grammar)
     (treesit-auto-add-to-auto-mode-alist 'all)
     (global-treesit-auto-mode 1))
   (use-package mason :demand t)

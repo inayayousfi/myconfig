@@ -7,17 +7,22 @@
 (defvar evil-state)
 (defvar evil-visual-selection)
 (defvar ghostel--input-mode)
+(defvar evil-mode-line-format)
+(declare-function atelier-clickable-label "atelier")
+(declare-function atelier-navigator "atelier-navigator")
 
 (defface myconfig-mode-line-state
   '((t (:foreground "#ff4ead" :weight bold)))
-  "Input modes in the mode line.")
+  "Input modes in the mode line."
+  :group 'myconfig)
 
 (defun myconfig-turn-on-hl-line-mode ()
   (unless (derived-mode-p 'ghostel-mode)
     (hl-line-mode 1)))
 
 (define-globalized-minor-mode myconfig-global-hl-line-mode
-  hl-line-mode myconfig-turn-on-hl-line-mode)
+  hl-line-mode myconfig-turn-on-hl-line-mode
+  :group 'myconfig)
 
 (let ((black "#000000") (surface "#0a0a0a") (raised "#111111")
       (border "#1a1a1a") (heading "#f0f2f7") (text "#d0d6e0")

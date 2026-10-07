@@ -25,7 +25,7 @@
        (signal (car error) (cdr error))))))
 
 (atelier-define-operation ghostel-atelier-buffer
-    (&optional name directory command args owner-workspace shell agent type explicit)
+    (&optional name directory command args owner-workspace shell agent type)
     (list (atelier-workspace-id (or owner-workspace (atelier-current-workspace))))
     ((owner-workspace (atelier-operation-workspace (or owner-workspace (atelier-current-workspace))))
      (atelier-job-owner-entry
@@ -59,7 +59,7 @@
                             (list :executable program :login (member "-l" args))))))
       (atelier-register-job-buffer
        buffer shell desired-directory
-       (when (and command (null shell)) (cons program args)) nil agent type explicit))
+       (when (and command (null shell)) (cons program args)) nil agent type))
     buffer))
 
 (defun ghostel-atelier-process-exited (buffer _event)

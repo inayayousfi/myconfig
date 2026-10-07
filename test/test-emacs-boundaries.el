@@ -777,7 +777,7 @@
         (progn
           (make-directory next)
           (setq buffer (atelier-new-dired-buffer directory t workspace))
-          (atelier-register-dired-buffer buffer workspace t)
+          (atelier-register-dired-buffer buffer workspace)
           (let ((entry (atelier-workspace-entry-for-buffer workspace buffer)))
             (with-current-buffer buffer
               (let ((before (buffer-string)) (old-directory default-directory))

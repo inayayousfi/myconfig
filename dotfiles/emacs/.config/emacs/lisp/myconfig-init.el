@@ -2,6 +2,16 @@
 
 (require 'myconfig-core)
 
+(declare-function atelier-setup "atelier")
+(declare-function atelier-persist-setup "atelier-persist")
+(declare-function myconfig-bindings-setup "myconfig-bindings")
+(declare-function myconfig-editing-setup "myconfig-editing")
+(declare-function myconfig-git-setup "myconfig-git")
+(declare-function myconfig-terminal-setup "myconfig-terminal")
+(declare-function myconfig-ui-setup "myconfig-ui")
+(declare-function xref-atelier-setup "xref-atelier")
+(defvar tramp-connection-timeout)
+
 (defvar myconfig-initialized-p nil)
 (defvar myconfig-after-initialize-hook nil)
 

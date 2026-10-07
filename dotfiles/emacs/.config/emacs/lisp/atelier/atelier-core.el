@@ -5,6 +5,10 @@
 (require 'project)
 (defvar read-eval)
 (defvar atelier-approved-buffer-closes nil)
+(defvar atelier-operation-closing-immediately)
+(defvar atelier-preserve-job-recipe)
+(declare-function atelier-operation-after "atelier-operation")
+(declare-function atelier-operation-check "atelier-operation")
 
 (defgroup atelier nil "Workspace entries and restoration." :group 'environment)
 (defcustom atelier-state-directory

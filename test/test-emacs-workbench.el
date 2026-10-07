@@ -766,24 +766,22 @@
          (old-selection (atelier-current-workspace-id))
          (source (generate-new-buffer "detached-terminal-source"))
          (terminal (generate-new-buffer "detached-terminal-result"))
-         captured-workspace captured-type captured-explicit)
+         captured-workspace captured-type)
     (unwind-protect
         (let ((detached (atelier-ensure-detached-workspace)))
           (atelier-select-workspace detached)
           (atelier-assign-buffer-to-workspace source detached)
           (cl-letf (((symbol-function 'ghostel-atelier-buffer)
                      (lambda (_name _directory _command _args owner-workspace
-                                    _shell _agent type explicit)
+                                    _shell _agent type)
                        (setq captured-workspace owner-workspace
-                             captured-type type
-                             captured-explicit explicit)
+                             captured-type type)
                        terminal))
                      ((symbol-function 'myconfig-normalize-directory) #'identity))
            (with-current-buffer source (myconfig-terminal)))
           (should (equal (atelier-workspace-id captured-workspace)
                          (atelier-workspace-id detached)))
-          (should (eq captured-type 'terminal))
-          (should-not captured-explicit))
+          (should (eq captured-type 'terminal)))
       (set-frame-parameter nil 'atelier-workspace-id old-selection)
       (dolist (buffer (list source terminal))
         (when (buffer-live-p buffer) (kill-buffer buffer))))))

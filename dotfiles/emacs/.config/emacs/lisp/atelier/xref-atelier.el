@@ -3,6 +3,8 @@
 (require 'atelier)
 (require 'xref)
 
+(declare-function eglot-find-implementation "eglot")
+
 (defvar-local atelier-xref-source nil
   "Stable workspace and entry IDs for choosing from an Xref results buffer.")
 

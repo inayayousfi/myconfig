@@ -4,6 +4,7 @@
 (defvar myconfig-data-directory)
 (defvar ghostel-module-directory)
 (defvar ghostel-module-auto-install)
+(defvar aipanel-terminal-function)
 (declare-function myconfig-paste "myconfig-bindings")
 (setq ghostel-module-directory
       (expand-file-name "ghostel-module/" myconfig-data-directory)
@@ -42,7 +43,7 @@
                                          :login (member "-l" (plist-get launch :arguments)))
                                    (when (plist-get launch :location)
                                      (list :location (plist-get launch :location)))))
-                         nil 'terminal in-terminal))))
+                         nil 'terminal))))
     (atelier-show-buffer buffer workspace)))
 
 (atelier-define-operation myconfig-terminal-split-right ()

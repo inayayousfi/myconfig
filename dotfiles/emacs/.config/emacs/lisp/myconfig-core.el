@@ -3,6 +3,8 @@
 (require 'cl-lib)
 (require 'subr-x)
 
+(declare-function project-root "project")
+
 (defgroup myconfig nil "One stateful Emacs workbench." :group 'environment)
 
 (defvar myconfig-data-directory)

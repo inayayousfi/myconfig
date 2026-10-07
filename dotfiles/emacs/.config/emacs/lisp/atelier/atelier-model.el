@@ -3,6 +3,15 @@
 (require 'cl-lib)
 (require 'subr-x)
 
+(declare-function atelier-operation-buffers "atelier-operation")
+(declare-function atelier-operation-call "atelier-operation")
+(declare-function atelier-operation-entry "atelier-operation")
+(declare-function atelier-operation-frames "atelier-operation")
+(declare-function atelier-operation-notify "atelier-operation")
+(declare-function atelier-operation-select-frame "atelier-operation")
+(declare-function atelier-operation-track-buffer "atelier-operation")
+(declare-function atelier-operation-workspace "atelier-operation")
+
 (defconst atelier-detached-workspace-id "atelier-detached")
 (defconst atelier-detached-workspace-name "Detached")
 

@@ -22,7 +22,8 @@ Return the foreground process record, or nil.")
 (defvar atelier-process-runtime-function #'ignore
   "Function called with an observed process record to return its age in seconds.")
 (defvar atelier-process-environment-function #'ignore
-  "Function called with a process record to return its NAME=VALUE variables, or nil.")
+  "Function called with a process record to return its NAME=VALUE variables,
+or nil.")
 (defvar atelier-shell-environment-function #'ignore
   "Function called with a shell plist and its starting NAME=VALUE variables.
 Return the variables of a fresh interactive shell started with them, or nil.")
@@ -689,7 +690,8 @@ Keep entries referenced by an agent attachment independent so their IDs survive.
 
 (defun atelier-migrate-data-v11 (data)
   "Move v10 view-local lists into workspace type stacks, retaining selections.
-All content records already belong to the workspace; only view references change."
+All content records already belong to the workspace; only view references
+change."
   (let ((copy (copy-tree data)))
     (setf (plist-get copy :version) 11)
     (dolist (workspace (plist-get copy :workspaces))

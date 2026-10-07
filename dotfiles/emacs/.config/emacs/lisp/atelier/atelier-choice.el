@@ -4,6 +4,8 @@
 (require 'subr-x)
 (require 'atelier-model)
 
+(declare-function atelier-mark-internal-buffer "atelier")
+
 (defvar-keymap atelier-choice-mode-map
   :parent special-mode-map
   "j" #'atelier-choice-next

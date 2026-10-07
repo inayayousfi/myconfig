@@ -8,6 +8,7 @@
 
 (defvar-local myconfig-review-peer nil)
 
+(declare-function myconfig-emacs-diff "myconfig-git")
 (unless (fboundp 'myconfig-emacs-diff)
   (defalias 'myconfig-emacs-diff (symbol-function 'diff)))
 
@@ -176,7 +177,8 @@
     (funcall #'myconfig-emacs-diff old new switches no-async)))
 
 (defun myconfig-git-quit-buffer (&optional _kill-buffer)
-  "Kill the current Magit buffer, or every Magit buffer of the repository from status."
+  "Kill the current Magit buffer, or every Magit buffer of the repository
+from status."
   (let ((others (and (derived-mode-p 'magit-status-mode)
                      (delq (current-buffer) (magit-mode-get-buffers)))))
     (magit-mode-quit-window t)

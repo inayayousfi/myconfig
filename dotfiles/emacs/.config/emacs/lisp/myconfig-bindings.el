@@ -8,6 +8,9 @@
 
 (declare-function avy-goto-char-timer "avy")
 (declare-function eldoc-box-help-at-point "eldoc-box")
+(declare-function ghostel-paste-string "ghostel")
+(declare-function atelier-xref-find-definitions "xref-atelier")
+(declare-function atelier-xref-find-implementation "xref-atelier")
 (declare-function myconfig-search "myconfig-editing")
 (declare-function consult-mark "consult")
 (declare-function myconfig-terminal "myconfig-terminal")

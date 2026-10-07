@@ -3,6 +3,8 @@
 (require 'atelier-core)
 (require 'atelier-model)
 
+(defvar atelier-navigator-changed-views)
+
 (cl-defstruct (atelier-operation (:constructor atelier-operation-create))
   name ids original frames windows navigator-states notifications cleanups completion invalid buffers checks acquired-buffers)
 

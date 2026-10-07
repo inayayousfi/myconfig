@@ -12,7 +12,8 @@
 (defvar atelier-buffer-title-functions nil
   "Functions called with a buffer; the first non-nil result supplies its title.")
 (defvar atelier-buffer-kind-functions nil
-  "Functions called with a buffer; the first non-nil result supplies its storage kind.")
+  "Functions called with a buffer; the first non-nil result supplies its
+storage kind.")
 
 (defvar atelier-directory-function #'atelier-default-directory
   "Function mapping a workspace record to an Emacs directory.")
@@ -259,7 +260,7 @@ no Atelier ownership metadata."
   (atelier-entry-set-live-buffer entry buffer)
   entry)
 
-(atelier-define-operation atelier-register-buffer (buffer &optional workspace no-notify type _allow-duplicate-type)
+(atelier-define-operation atelier-register-buffer (buffer &optional workspace no-notify type)
     (list (atelier-workspace-id (or workspace (atelier-current-workspace))))
     ((workspace (atelier-operation-workspace (or workspace (atelier-current-workspace)))))
   "Register BUFFER as an entry of WORKSPACE and return that entry.
@@ -435,12 +436,12 @@ current buffer; this does not create or remove workspace entries."
   (atelier-set-buffer-excluded t buffer))
 
 (defun atelier-assign-buffer-to-workspace
-    (&optional buffer workspace type allow-duplicate-type)
+    (&optional buffer workspace type)
   "Compatibility wrapper for registering BUFFER in WORKSPACE."
   (let ((buffer (or buffer (current-buffer))))
     (remhash buffer atelier-internal-buffers)
     (atelier-register-buffer buffer (or workspace (atelier-current-workspace))
-                             nil type allow-duplicate-type)
+                             nil type)
     buffer))
 
 (defun atelier-buffer-ownable-p (buffer &optional workspace)
@@ -895,10 +896,9 @@ For the final split, show another stack or switch to another workspace."
                    buffer))))))
     buffer))
 
-(defun atelier-register-dired-buffer (buffer workspace &optional explicit)
-  "Register BUFFER as WORKSPACE's Dired type.
-When EXPLICIT is non-nil, permit another Dired entry of the same type."
-  (atelier-assign-buffer-to-workspace buffer workspace 'dired explicit)
+(defun atelier-register-dired-buffer (buffer workspace)
+  "Register BUFFER as WORKSPACE's Dired type."
+  (atelier-assign-buffer-to-workspace buffer workspace 'dired)
   buffer)
 
 (defun atelier-clean-window-buffer-history ()
@@ -1008,7 +1008,7 @@ When EXPLICIT is non-nil, permit another Dired entry of the same type."
         (when forget (atelier-entry-remove workspace entry t))))))
 
 (atelier-define-operation atelier-register-job-buffer
-    (buffer shell directory &optional direct-command policy agent type explicit)
+    (buffer shell directory &optional direct-command policy agent type)
     (list (atelier-workspace-id (or atelier-job-owner-workspace (atelier-current-workspace))))
     ((atelier-job-owner-workspace
       (atelier-operation-workspace (or atelier-job-owner-workspace (atelier-current-workspace))))
@@ -1018,7 +1018,7 @@ When EXPLICIT is non-nil, permit another Dired entry of the same type."
          (name (buffer-name buffer))
          (entry (or atelier-job-owner-entry
                      (atelier-workspace-entry-for-buffer workspace buffer)
-                    (atelier-register-buffer buffer workspace t type explicit)))
+                    (atelier-register-buffer buffer workspace t type)))
          (existing (atelier-entry-job entry))
          (job (or existing
                   (list :id (format "job-%s-%06x" (float-time) (random #xffffff))
@@ -1282,7 +1282,7 @@ prepared operation, so cancellation or failure publishes no partial additions."
         (delete-other-windows)
         (let ((buffer (atelier-new-dired-buffer (atelier-workspace-directory workspace)
                                                 t workspace)))
-          (atelier-register-dired-buffer buffer workspace t)
+          (atelier-register-dired-buffer buffer workspace)
           (switch-to-buffer buffer))
         (atelier-notify-change)))))
 
@@ -1348,7 +1348,7 @@ prepared operation, so cancellation or failure publishes no partial additions."
         (atelier-select-workspace workspace)
         (delete-other-windows)
         (let ((buffer (atelier-new-dired-buffer root t workspace)))
-          (atelier-register-dired-buffer buffer workspace t)
+          (atelier-register-dired-buffer buffer workspace)
           (switch-to-buffer buffer))
         (atelier-notify-change)))))
 

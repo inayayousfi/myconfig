@@ -4,6 +4,34 @@
 (require 'dired)
 (require 'subr-x)
 (require 'atelier-model)
+(require 'atelier-operation)
+
+(declare-function atelier--open-workspace "atelier")
+(declare-function atelier-assign-buffer-to-workspace "atelier")
+(declare-function atelier-capture-current-workspace "atelier")
+(declare-function atelier-clean-window-buffer-history "atelier")
+(declare-function atelier-clickable-label "atelier")
+(declare-function atelier-close-unassigned-view "atelier")
+(declare-function atelier-create-workspace "atelier")
+(declare-function atelier-delete-workspace-record "atelier")
+(declare-function atelier-display-entry-buffer "atelier")
+(declare-function atelier-empty-workspace-buffer "atelier")
+(declare-function atelier-known-project-roots "atelier")
+(declare-function atelier-mark-internal-buffer "atelier")
+(declare-function atelier-notify-change "atelier")
+(declare-function atelier-open-project-workspace "atelier")
+(declare-function atelier-register-buffer "atelier")
+(declare-function atelier-rename-workspace "atelier")
+(declare-function atelier-restore-buffer "atelier")
+(declare-function atelier-restore-entry-buffer "atelier")
+(declare-function atelier-restore-entry-content "atelier")
+(declare-function atelier-show-buffer "atelier")
+(declare-function atelier-stop-workspace "atelier")
+(declare-function atelier-switch-workspace "atelier")
+(declare-function atelier-workspace-entry-for-buffer "atelier")
+(declare-function atelier-workspace-project-root "atelier")
+(declare-function atelier-workspace-stop-jobs "atelier")
+(declare-function atelier-buffer-editable-name "atelier-naming")
 
 (defvar-keymap atelier-navigator-mode-map
   :parent special-mode-map
@@ -1079,7 +1107,7 @@ Otherwise step back within TYPE's stack, then remove or replace WINDOW."
     (let ((atelier-preserve-job-recipe nil))
       (atelier-kill-buffer buffer))))
 
-(defun atelier-prepare-content-close (workspace entry contents)
+(defun atelier-prepare-content-close (workspace _entry contents)
   "Confirm closing CONTENTS before removing their final buffer references."
   (unless atelier-close-without-asking
     (cl-loop for content in contents

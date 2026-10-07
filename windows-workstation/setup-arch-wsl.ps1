@@ -68,9 +68,15 @@ function ConvertTo-Base64Script {
     return [Convert]::ToBase64String($bytes)
 }
 
+# The script travels as an argument, not on stdin. Piping it in would make stdin the
+# PowerShell pipe instead of the console, so a sudo password prompt or the Phase 3
+# login questions would show on screen while every keystroke went nowhere.
+# --exec skips WSL's login shell, which would otherwise expand $1 before the inner
+# bash sees it. No double quotes: Windows PowerShell 5.1 passes them to native
+# programs unescaped.
 function Invoke-WslRootScript {
     param([string]$Script)
-    ConvertTo-Base64Script $Script | wsl -d $Distro -u root -- bash -c 'base64 -d | bash -s'
+    wsl -d $Distro -u root --exec bash -c 'bash <(base64 -d <<<$1)' _ (ConvertTo-Base64Script $Script)
 
     if ($LASTEXITCODE -ne 0) {
         throw "WSL root script failed with exit code $LASTEXITCODE."
@@ -79,7 +85,7 @@ function Invoke-WslRootScript {
 
 function Invoke-WslUserScript {
     param([string]$Script)
-    ConvertTo-Base64Script $Script | wsl -d $Distro -- bash -c 'base64 -d | bash -s'
+    wsl -d $Distro --exec bash -c 'bash <(base64 -d <<<$1)' _ (ConvertTo-Base64Script $Script)
 
     if ($LASTEXITCODE -ne 0) {
         throw "WSL user script failed with exit code $LASTEXITCODE."
@@ -247,6 +253,14 @@ sed -i 's/^# *%wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
 
 grep -q "^$WINUSER ALL=(ALL) NOPASSWD:ALL" /etc/sudoers || \
     echo "$WINUSER ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+# The wheel rule above has no NOPASSWD, and sudo -v by default wants every matching
+# rule to be password-free. The installer starts with sudo -v, so without this it
+# asks for a password the NOPASSWD rule was meant to make unnecessary.
+grep -q "^Defaults:$WINUSER verifypw=any" /etc/sudoers || \
+    echo "Defaults:$WINUSER verifypw=any" >> /etc/sudoers
+
+visudo -c
 
 # User services must survive with no shell open. loginctl needs logind to be
 # up, so fall back to the on-disk marker it would have written.

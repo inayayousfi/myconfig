@@ -8,6 +8,9 @@
 
 (declare-function avy-goto-char-timer "avy")
 (declare-function eldoc-box-help-at-point "eldoc-box")
+(declare-function eglot--code-action-bounds "eglot")
+(declare-function eglot--current-server-or-lose "eglot")
+(declare-function eglot--read-execute-code-action "eglot")
 (declare-function ghostel-paste-string "ghostel")
 (declare-function atelier-xref-find-definitions "xref-atelier")
 (declare-function atelier-xref-find-implementation "xref-atelier")
@@ -25,6 +28,14 @@
 (declare-function myconfig-compile "myconfig-editing")
 
 (defvar myconfig-leader-map (make-sparse-keymap))
+
+(defun myconfig-code-actions ()
+  "Choose among the code actions under point, even when there is only one.
+Eglot otherwise runs a single action at once when point is on its hint."
+  (interactive)
+  (eglot--read-execute-code-action
+   (apply #'eglot-code-actions (eglot--code-action-bounds))
+   (eglot--current-server-or-lose)))
 
 (defun myconfig-multiple-cursors-toggle ()
   (interactive)
@@ -108,7 +119,7 @@
     [mouse-1] #'atelier-dired-mouse-open
     [mouse-2] #'atelier-dired-mouse-open)
   (evil-define-key 'normal eglot-mode-map
-    (kbd "g a") #'eglot-code-actions
+    (kbd "g a") #'myconfig-code-actions
     (kbd "g d") #'atelier-xref-find-definitions
     (kbd "g D") #'atelier-xref-find-implementation)
   (evil-define-key 'normal atelier-directory-chooser-mode-map

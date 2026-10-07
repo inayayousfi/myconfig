@@ -13,11 +13,11 @@ user_is_in_group() {
 }
 
 module_docker() {
-    [ "$MYCONFIG_PROFILE" = cachyos ] || myconfig_fail "Docker is supported only on CachyOS"
+    [ "$MYCONFIG_PROFILE" = cachyos ] || myconfig_fail "Docker is supported only on CachyOS" || return 1
 
-    require_command id
-    require_command systemctl
-    require_function user_is_in_group
+    require_command id || return 1
+    require_command systemctl || return 1
+    require_function user_is_in_group || return 1
 
     if user_is_in_group docker; then
         myconfig_fail "current user is already in the docker group; refusing Docker setup"
@@ -35,7 +35,7 @@ module_docker() {
     systemctl --user daemon-reload
     systemctl --user enable --now docker.service
     [ "$(systemctl --user is-active docker.service)" = active ] \
-        || myconfig_fail "the rootless docker.service user unit is not active"
+        || myconfig_fail "the rootless docker.service user unit is not active" || return 1
 
     docker context inspect rootless >/dev/null 2>&1 \
         || docker context create rootless \

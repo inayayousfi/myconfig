@@ -17,6 +17,9 @@
 ;; Only the terminal emulator is absent in batch Emacs; panels are identified by its mode.
 (unless (fboundp 'ghostel-mode)
   (define-derived-mode ghostel-mode fundamental-mode "Ghostel"))
+(defvar-local ghostel-title nil)
+(defvar ghostel-buffer-name-function nil)
+(require 'ghostel-atelier)
 (add-hook 'atelier-buffer-owner-functions #'aipanel-atelier-buffer-owner)
 (add-hook 'atelier-traveller-open-functions #'aipanel-atelier-travel)
 
@@ -165,6 +168,51 @@ The naming timer is not started; BODY runs its work with `atelier-name-buffers'.
       (atelier-name-buffers)
       (should (equal (buffer-name panel) "work | aipanel | *Claude Code*"))
       (should-not (gethash panel (atelier-buffer-owner-index))))))
+
+;; Ghostel calls `ghostel-buffer-name-function' with each terminal title.
+(ert-deftest atelier-names-follow-terminal-titles ()
+  "A terminal's NAME part follows its title until the user names it by hand."
+  (atelier-names-test
+    (let ((terminal (generate-new-buffer "terminal"))
+          (atelier-buffer-kind-functions nil)
+          (atelier-buffer-title-functions nil)
+          (atelier-job-start-function nil)
+          (atelier-job-process-id-function nil)
+          (ghostel-buffer-name-function nil))
+      (ghostel-atelier-setup)
+      (cl-flet ((title (buffer value)
+                  (with-current-buffer buffer
+                    (setq ghostel-title value)
+                    (should-not (funcall ghostel-buffer-name-function value)))))
+        (with-current-buffer terminal (ghostel-mode))
+        (atelier-register-buffer terminal workspace nil 'terminal)
+        (atelier-name-buffers)
+        (should (equal (buffer-name terminal) "work | terminal | terminal"))
+        (title terminal "◐ Fix\nthe build")
+        (should (equal (buffer-name terminal) "work | terminal | ◐ Fix the build"))
+        (title terminal "◑ Fix the build")
+        (should (equal (buffer-name terminal) "work | terminal | ◑ Fix the build"))
+        (title terminal "")
+        (should (equal (buffer-name terminal) "work | terminal | terminal"))
+        (title terminal "◐ Fix the build")
+        (with-current-buffer terminal (rename-buffer "notes"))
+        (atelier-name-buffers)
+        (title terminal "◑ Something else")
+        (should (equal (buffer-name terminal) "work | terminal | notes"))
+        (with-current-buffer terminal (ghostel-atelier-resume-title))
+        (should (equal (buffer-name terminal) "work | terminal | ◑ Something else"))
+        (let* ((file (expand-file-name "source.txt" root))
+               (_ (with-temp-file file (insert "source")))
+               (source (atelier-open-file file workspace))
+               (panel (generate-new-buffer "*Claude Code*")))
+          (with-current-buffer panel
+            (ghostel-mode)
+            (setq-local aipanel-owner (list :source-buffer source))
+            (atelier-set-buffer-excluded t))
+          (atelier-name-buffers)
+          (should (equal (buffer-name panel) "work | aipanel | *Claude Code*"))
+          (title panel "◐ Panel work")
+          (should (equal (buffer-name panel) "work | aipanel | *Claude Code*")))))))
 
 (defun butlast-completions (completions)
   "Return COMPLETIONS without the base size Emacs stores in the last cell."

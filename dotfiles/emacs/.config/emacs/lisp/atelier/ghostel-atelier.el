@@ -75,6 +75,46 @@
   (when (local-variable-p 'ghostel-title buffer)
     (buffer-local-value 'ghostel-title buffer)))
 
+(defvar-local ghostel-atelier-start-base nil
+  "The NAME part the terminal had before its first title.")
+(defvar-local ghostel-atelier-title-base nil
+  "The NAME part this adapter last gave; another one is a name given by hand.")
+
+(defun ghostel-atelier-apply-title (buffer title)
+  "Make TITLE the NAME part of terminal BUFFER.
+A nil TITLE restores the name the terminal started with."
+  (with-current-buffer buffer
+    (let ((title (and title (string-trim (replace-regexp-in-string "[[:cntrl:]]+" " " title)))))
+      (setq atelier-buffer-base-name
+            (if (and title (not (string-empty-p title))) title ghostel-atelier-start-base)
+            ghostel-atelier-title-base atelier-buffer-base-name))
+    (if (or atelier-operation-active atelier-operation-queue)
+        (atelier-schedule-naming)
+      (atelier-name-buffer buffer))))
+
+(defun ghostel-atelier-buffer-name (title)
+  "Follow terminal TITLE in the Atelier name; Ghostel never renames.
+Ghostel calls it as `ghostel-buffer-name-function' on title and folder changes."
+  (let ((buffer (current-buffer)))
+    (when (eq (nth 1 (atelier-buffer-owner buffer)) 'terminal)
+      (let ((base (atelier-buffer-base buffer 'terminal)))
+        (unless ghostel-atelier-start-base
+          (setq ghostel-atelier-start-base base
+                ghostel-atelier-title-base base))
+        (when (equal base ghostel-atelier-title-base)
+          (ghostel-atelier-apply-title buffer title)))))
+  nil)
+
+(defun ghostel-atelier-resume-title ()
+  "Drop the name given by hand so this terminal follows its title again."
+  (interactive)
+  (unless (and (ghostel-atelier-buffer-p (current-buffer))
+               (eq (nth 1 (atelier-buffer-owner (current-buffer))) 'terminal))
+    (user-error "This buffer is not a workspace terminal"))
+  (unless ghostel-atelier-start-base
+    (setq ghostel-atelier-start-base (atelier-buffer-base (current-buffer) 'terminal)))
+  (ghostel-atelier-apply-title (current-buffer) ghostel-title))
+
 (defun ghostel-atelier-process-id (buffer)
   (with-current-buffer buffer
     (or (and (boundp 'ghostel--pid) ghostel--pid)
@@ -84,7 +124,8 @@
   (atelier-register-entry-type 'terminal "terminal" #'ghostel-atelier-buffer-p)
   (add-hook 'atelier-buffer-kind-functions #'ghostel-atelier-kind)
   (add-hook 'atelier-buffer-title-functions #'ghostel-atelier-title)
-  (setq atelier-job-start-function #'ghostel-atelier-buffer
+  (setq ghostel-buffer-name-function #'ghostel-atelier-buffer-name
+        atelier-job-start-function #'ghostel-atelier-buffer
         atelier-job-process-id-function #'ghostel-atelier-process-id))
 
 (provide 'ghostel-atelier)

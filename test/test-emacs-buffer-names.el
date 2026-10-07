@@ -3,6 +3,8 @@
 (require 'ert)
 (require 'cl-lib)
 (require 'ls-lisp)
+;; The live configuration matches typed words separately through Orderless.
+(require 'orderless)
 (defgroup myconfig nil "Test configuration." :group 'environment)
 (provide 'ghostel)
 (let ((lisp (expand-file-name "../dotfiles/emacs/.config/emacs/lisp/"
@@ -164,6 +166,11 @@ The naming timer is not started; BODY runs its work with `atelier-name-buffers'.
       (should (equal (buffer-name panel) "work | aipanel | *Claude Code*"))
       (should-not (gethash panel (atelier-buffer-owner-index))))))
 
+(defun butlast-completions (completions)
+  "Return COMPLETIONS without the base size Emacs stores in the last cell."
+  (when completions (setcdr (last completions) nil))
+  completions)
+
 (defun atelier-traveller-test-target (label)
   (or (cl-find label (atelier-traveller-targets)
                :key (lambda (target) (plist-get target :label)) :test #'equal)
@@ -213,6 +220,158 @@ The naming timer is not started; BODY runs its work with `atelier-name-buffers'.
        (when matches (setcdr (last matches) nil))
        (should (equal (mapcar #'substring-no-properties matches)
                       '("myconfig | file | init.el")))))))
+
+(ert-deftest atelier-traveller-lists-only-buffers-under-locked-segments ()
+  "A locked workspace lists only its buffers, shown without the locked part."
+  (atelier-names-test
+    (let ((file (expand-file-name "example.txt" root)))
+      (with-temp-file file (insert "example"))
+      (atelier-open-file file workspace)
+      (atelier-traveller-test-stopped-workspace root (expand-file-name "saved.txt" root))
+      (atelier-name-buffers)
+      (let ((table (atelier-traveller-table (atelier-traveller-targets))))
+        (atelier-traveller-with-matching
+         (lambda ()
+           (let ((work (all-completions "work | " table))
+                 (other (all-completions "other | file | " table)))
+             (should (member "file | example.txt" work))
+             (should-not (cl-find "saved.txt" work :test #'string-search))
+             (should (equal other '("saved.txt")))
+             (should (equal (funcall (completion-metadata-get
+                                      (completion-metadata "other | file | " table nil)
+                                      'annotation-function)
+                                     (car other))
+                            "  saved"))
+             (should (test-completion "work | file | example.txt" table)))))))))
+
+;; Batch Emacs cannot type into a real prompt, so these tests type into a buffer
+;; set up as Traveller sets up its prompt.  Keys run through the command loop
+;; and Traveller's key map; after each key the list is recomputed from
+;; Traveller's completion table, in its order, as the completion list would.
+;; Enter and Down act as the completion list's keys do: Enter chooses the
+;; highlighted entry and Down highlights the next.  The Vim-style layer is not
+;; exercised.
+(defvar vertico--base)
+(defvar vertico--candidates)
+(defvar vertico--index)
+
+(defun atelier-traveller-test-exit ()
+  "Choose the highlighted entry, as the completion list's Enter does."
+  (interactive)
+  (atelier-traveller-replace-input (concat vertico--base (nth vertico--index vertico--candidates)))
+  (exit-minibuffer))
+
+(defun atelier-traveller-test-next ()
+  "Highlight the next entry, as the completion list's Down does."
+  (interactive)
+  (setq vertico--index (min (1+ vertico--index) (1- (length vertico--candidates)))))
+
+(defvar-keymap atelier-traveller-test-list-map
+  :parent minibuffer-local-map
+  "RET" #'atelier-traveller-test-exit
+  "<down>" #'atelier-traveller-test-next)
+
+(defun atelier-traveller-test-keys (targets keys)
+  "Type KEYS into a simulated Traveller prompt over TARGETS.
+Return (INPUTS . CHOSEN): the input after each key that kept the prompt open,
+and the input Enter chose, or nil when the prompt stayed open."
+  (with-temp-buffer
+    (let* ((atelier-traveller--targets targets)
+           (table (atelier-traveller-table targets))
+           (inputs nil)
+           (shown nil)
+           (refresh (lambda ()
+                      (let* ((input (buffer-string))
+                             (matches (atelier-traveller-with-matching
+                                       (lambda () (completion-all-completions
+                                                   input table nil (length input))))))
+                        (when matches (setcdr (last matches) nil))
+                        (setq-local vertico--base
+                                    (substring input 0 (car (completion-boundaries
+                                                             input table nil ""))))
+                        (setq-local vertico--candidates
+                                    (mapcar #'substring-no-properties matches))
+                        ;; The highlight returns to the top only when the input changes.
+                        (unless (equal input shown)
+                          (setq-local vertico--index (if matches 0 -1))
+                          (setq shown input))))))
+      (switch-to-buffer (current-buffer))
+      (use-local-map atelier-traveller-test-list-map)
+      (atelier-traveller-setup-prompt)
+      (funcall refresh)
+      (add-hook 'post-command-hook
+                (lambda () (funcall refresh) (push (buffer-string) inputs)) nil t)
+      (let ((open (catch 'exit (execute-kbd-macro (kbd keys)) t)))
+        ;; The command loop runs the hook once before the first key.
+        (cons (cdr (nreverse inputs)) (unless open (buffer-string)))))))
+
+(defun atelier-traveller-test-workspace (workspace root)
+  "Open in WORKSPACE 2 files named like it under ROOT, and a saved workspace."
+  (dolist (name '("work.txt" "work-notes.txt"))
+    (let ((file (expand-file-name name root)))
+      (with-temp-file file (insert name))
+      (atelier-open-file file workspace)))
+  (atelier-traveller-test-stopped-workspace root (expand-file-name "saved.txt" root))
+  (atelier-name-buffers)
+  (atelier-traveller-targets))
+
+(ert-deftest atelier-traveller-typing-after-tab-searches-under-it ()
+  "TAB fills in the workspace, dropping the word typed for it even when a buffer
+there also matches it; typing then searches under it, and Enter opens the
+highlighted buffer without typing its name."
+  (atelier-names-test
+    (let ((targets (atelier-traveller-test-workspace workspace root)))
+      (should (equal (atelier-traveller-test-keys targets "w o TAB f TAB RET")
+                     '(("w" "wo" "work | " "work | f" "work | file | ")
+                       . "work | file | work-notes.txt"))))))
+
+(ert-deftest atelier-traveller-tab-starts-from-the-highlighted-buffer ()
+  "TAB fills in the workspace of the highlighted buffer, then the following ones."
+  (atelier-names-test
+    (let ((targets (atelier-traveller-test-workspace workspace root)))
+      (should (equal (cl-subseq (mapcar (lambda (target) (plist-get target :label)) targets) 0 3)
+                     '("work | file | work-notes.txt" "work | file | work.txt"
+                       "other | file | saved.txt")))
+      (should (equal (atelier-traveller-test-keys targets "<down> <down> TAB TAB")
+                     '(("" "" "other | " "Detached | ")))))))
+
+(ert-deftest atelier-traveller-lists-recent-buffers-first-and-current-last ()
+  "Open buffers come by last use, saved-only buffers after them, the current one last."
+  (atelier-names-test
+    (let* ((targets (atelier-traveller-test-workspace workspace root))
+           (label (lambda (name)
+                    (cl-find-if (lambda (candidate) (string-suffix-p name candidate))
+                                (mapcar (lambda (target) (plist-get target :label)) targets))))
+           (work (get-file-buffer (expand-file-name "work.txt" root)))
+           (notes (get-file-buffer (expand-file-name "work-notes.txt" root))))
+      (switch-to-buffer work)
+      (switch-to-buffer notes)
+      (let ((order (mapcar (lambda (target) (plist-get target :label))
+                           (atelier-traveller-by-recency targets notes))))
+        (should (equal (car order) (funcall label "work.txt")))
+        (should (equal (car (last order)) (funcall label "work-notes.txt")))
+        (should (equal (nth (- (length order) 2) order) (funcall label "saved.txt")))))))
+
+(ert-deftest atelier-traveller-tab-cycles-matching-workspaces ()
+  "TAB visits each workspace holding a match once and Shift+TAB goes back;
+typing keeps the last one filled in, and Shift+TAB then does nothing."
+  (atelier-names-test
+    (let ((targets (atelier-traveller-test-workspace workspace root)))
+      (should (equal (atelier-traveller-test-keys targets "TAB TAB TAB <backtab> x <backtab>")
+                     '(("work | " "other | " "Detached | " "other | " "other | x"
+                        "other | x"))))
+      (should (equal (atelier-traveller-test-keys targets "s a v TAB TAB")
+                     '(("s" "sa" "sav" "other | sav" "other | sav")))))))
+
+(ert-deftest atelier-traveller-backspace-edits-filled-in-text ()
+  "Backspace deletes characters of a filled-in segment like any text, so TAB
+then cycles again from what is left."
+  (atelier-names-test
+    (let ((targets (atelier-traveller-test-workspace workspace root)))
+      (should (equal (atelier-traveller-test-keys targets "TAB DEL TAB")
+                     '(("work | " "work |" "work | "))))
+      (should (equal (atelier-traveller-test-keys targets "TAB DEL DEL DEL DEL DEL DEL DEL TAB TAB")
+                     '(("work | " "work |" "work " "work" "wor" "wo" "w" "" "work | " "other | ")))))))
 
 (ert-deftest atelier-traveller-opens-saved-buffer-in-its-workspace ()
   "Choosing a saved buffer starts its workspace there and restores the buffer."

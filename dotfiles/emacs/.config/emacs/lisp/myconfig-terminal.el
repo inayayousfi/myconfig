@@ -92,12 +92,40 @@
   (setq-local meta-prefix-char nil)
   (setq buffer-read-only nil))
 
+(defun myconfig-terminal-enter-input-later (buffer)
+  "Give BUFFER terminal input once Ghostel has spawned, unless Alt+x came first."
+  (run-at-time 0 nil
+               (lambda ()
+                 (when (buffer-live-p buffer)
+                   (with-current-buffer buffer
+                     (unless (eq ghostel--input-mode 'emacs)
+                       (myconfig-terminal-enter-input)))))))
+
+(defun myconfig-terminal-insert-means-input ()
+  "Turn Evil's insert state in a terminal into Ghostel input."
+  (when (derived-mode-p 'ghostel-mode)
+    ;; Keys go to the program, so Evil must not repeat its own insert record.
+    (setq evil-insert-count nil
+          evil-insert-vcount nil
+          evil-insert-lines nil
+          evil-insert-repeat-info nil)
+    (let ((buffer (current-buffer)))
+      (run-at-time 0 nil
+                   (lambda ()
+                     (when (buffer-live-p buffer)
+                       (with-current-buffer buffer
+                         (when (and (bound-and-true-p evil-local-mode)
+                                    (eq evil-state 'insert))
+                           (myconfig-terminal-enter-input)))))))))
+
 (defun myconfig-terminal-display-setup ()
   (setq buffer-read-only nil)
   (add-hook 'evil-local-mode-hook #'myconfig-terminal-keep-input nil t)
   (add-hook 'post-command-hook #'myconfig-terminal-keep-writable nil t)
   (display-line-numbers-mode -1)
-  (hl-line-mode -1))
+  (hl-line-mode -1)
+  ;; Ghostel resets the input mode when it spawns, after this hook.
+  (myconfig-terminal-enter-input-later (current-buffer)))
 
 (defun myconfig-terminal-keep-input ()
   "Do not let automatic Evil activation take input from a char-mode terminal."
@@ -138,11 +166,15 @@
         ghostel-query-before-killing nil
         ghostel-term "xterm-256color"
         evil-ghostel-escape 'terminal
+        evil-ghostel-initial-state 'normal
+        ghostel-readonly-fast-exit nil
         confirm-kill-processes nil)
   (setq-default kill-buffer-query-functions
                 (remq #'process-kill-buffer-query-function
                       (default-value 'kill-buffer-query-functions)))
+  (evil-set-initial-state 'ghostel-mode 'normal)
   (add-hook 'ghostel-mode-hook #'myconfig-terminal-display-setup)
+  (add-hook 'evil-insert-state-entry-hook #'myconfig-terminal-insert-means-input)
   (define-key ghostel-mode-map myconfig-terminal-escape-key #'myconfig-normal-state)
   (myconfig-terminal-configure-char-keys)
   (define-key evil-ghostel-mode-map myconfig-terminal-escape-key #'myconfig-normal-state)

@@ -76,6 +76,70 @@
         (when (buffer-live-p buffer)
           (kill-buffer buffer))))))
 
+(defun myconfig-normal-test-wait-for-input (buffer)
+  "Let timers run until BUFFER is in Ghostel char mode, for at most one second."
+  (with-timeout (1 nil)
+    (while (not (eq (buffer-local-value 'ghostel--input-mode buffer) 'char))
+      (sit-for 0.02))))
+
+(defun myconfig-normal-test-count-text (buffer text)
+  (with-current-buffer buffer
+    (save-excursion
+      (goto-char (point-min))
+      (let ((count 0))
+        (while (search-forward text nil t) (setq count (1+ count)))
+        count))))
+
+(defun myconfig-normal-test-wait-for-text (buffer text count)
+  "Let BUFFER's terminal render until TEXT appears COUNT times, for at most 3 seconds."
+  (with-timeout (3 nil)
+    (while (< (myconfig-normal-test-count-text buffer text) count)
+      (sit-for 0.05))))
+
+(ert-deftest myconfig-terminal-insert-state-is-terminal-input ()
+  "A new terminal, and any later insert state, sends Escape and Ctrl keys to it."
+  :tags '(:graphical)
+  (skip-unless (display-graphic-p))
+  (save-window-excursion
+    (let ((buffer (ghostel-atelier-exec-buffer
+                   "*insert-test*" default-directory "/bin/sh" nil)))
+      (unwind-protect
+          (cl-flet ((should-be-input ()
+                      (myconfig-normal-test-wait-for-input buffer)
+                      (should (eq ghostel--input-mode 'char))
+                      (should-not evil-local-mode)
+                      (dolist (key '("ESC" "<escape>" "C-SPC" "C-v"))
+                        (should (eq (key-binding (kbd key)) #'ghostel--send-event)))))
+            (switch-to-buffer buffer)
+            (should-be-input)
+            (execute-kbd-macro (kbd "M-x"))
+            (should (eq evil-state 'normal))
+            (evil-insert-state)
+            (should-be-input)
+            ;; An Evil insert with a count must not replay the program's input.
+            (execute-kbd-macro (kbd "M-x"))
+            (should (string-prefix-p "evil" (symbol-name (key-binding (kbd "o")))))
+            (execute-kbd-macro (kbd "4 o"))
+            (should-be-input)
+            (execute-kbd-macro (kbd "e c h o SPC r e p l a y m a r k RET"))
+            (myconfig-normal-test-wait-for-text buffer "replaymark" 2)
+            (execute-kbd-macro (kbd "M-x"))
+            (sit-for 0.3)
+            (should (eq evil-state 'normal))
+            (should (eq ghostel--input-mode 'emacs))
+            (should (= (myconfig-normal-test-count-text buffer "replaymark") 2))
+            ;; Normal state sends nothing, even for a letter Evil leaves free.
+            (when-let* ((free (cl-find-if
+                               (lambda (key)
+                                 (memq (key-binding key)
+                                       '(self-insert-command ghostel-readonly-exit-and-send)))
+                               (mapcar #'string (number-sequence ?a ?z)))))
+              (ignore-errors (execute-kbd-macro free))
+              (should (eq ghostel--input-mode 'emacs))
+              (should (eq evil-state 'normal))))
+        (when (buffer-live-p buffer)
+          (kill-buffer buffer))))))
+
 (defmacro myconfig-normal-workspace-test (&rest body)
   "Run BODY with `terminal', a live shell shown in an isolated workspace.
 `workspace' and its directory `root' are bound; Atelier's naming timer runs."

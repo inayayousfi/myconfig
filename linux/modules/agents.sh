@@ -19,7 +19,19 @@ module_agents_packages() {
     export BUN_INSTALL="$HOME/.bun"
     export PATH="$HOME/.local/bin:$BUN_INSTALL/bin:$PATH"
 
-    bun add --global @playwright/mcp@latest
+    # Anthropic's installer puts claude in ~/.local/bin and Claude Code updates itself.
+    if [ ! -x "$HOME/.local/bin/claude" ]; then
+        local claude_installer
+        claude_installer="$(curl -fsSL https://claude.ai/install.sh)" \
+            || myconfig_fail "Could not download the Claude Code installer"
+        bash -c "$claude_installer" \
+            || myconfig_fail "Claude Code installer failed"
+    fi
+    [ -x "$HOME/.local/bin/claude" ] \
+        || myconfig_fail "Claude Code was not installed at ~/.local/bin/claude"
+
+    bun add --global @playwright/mcp@latest @mariozechner/pi-coding-agent@latest
+    [ -x "$BUN_INSTALL/bin/pi" ] || myconfig_fail "Pi was not installed at $BUN_INSTALL/bin/pi"
 
     local playwright_cli="$BUN_INSTALL/install/global/node_modules/.bin/playwright"
     local playwright_module="$BUN_INSTALL/install/global/node_modules/playwright"
@@ -136,7 +148,8 @@ This file describes the capabilities installed for the $platform.
 - **Runtimes**: Rust, Go, Bun, Node.js, Python, Java, LLVM, Make, and CMake.
 - **Repository tools**: Git, GitHub CLI, and GNU Stow.
 - **Terminal tools**: Yazi, ripgrep, jq, and btop.
-- **Agent browser tools**: Playwright MCP. Claude Code and Pi are installed separately.
+- **Coding agents**: Claude Code, installed by Anthropic's installer in \`~/.local/bin/claude\` and updated by itself. Pi, installed globally by Bun in \`~/.bun/bin/pi\`.
+- **Agent browser tools**: Playwright MCP.
 - **Claude configuration**: \`claude-config-helper\` trusts projects, marks Claude's first-run setup as finished, lists or clears saved approvals, applies the MCP servers listed in \`~/.config/claude-config-helper/mcp-servers.json\`, and checks files for tokens, email addresses and home paths.
 - **Remote access**: OpenSSH server and Tailscale service with optional login during setup.
 EOF

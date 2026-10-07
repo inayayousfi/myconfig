@@ -1527,8 +1527,22 @@ source "$REPO_ROOT/linux/modules/agents.sh"
     printf '#!/bin/sh\nexit 0\n' >"$HOME/.bun/install/global/node_modules/.bin/playwright"
     chmod +x "$HOME/.bun/install/global/node_modules/.bin/playwright"
     install_package_ids() { printf '%s\n' "$@" >>"$HOME/requests"; }
-    bun() { :; }
+    bun() {
+        printf '%s\n' "$*" >>"$HOME/bun-requests"
+        mkdir -p "$HOME/.bun/bin" && printf '#!/bin/sh\n' >"$HOME/.bun/bin/pi" && chmod +x "$HOME/.bun/bin/pi"
+    }
+    curl() {
+        printf '%s\n' "$*" >>"$HOME/downloads"
+        printf '%s\n' 'mkdir -p "$HOME/.local/bin" && printf "#!/bin/sh\n" >"$HOME/.local/bin/claude" && chmod +x "$HOME/.local/bin/claude"'
+    }
     module_agents_packages
+    module_agents_packages
+    [ "$(grep -c 'https://claude.ai/install.sh' "$HOME/downloads")" = 1 ] \
+        || myconfig_fail "Agent module did not install Claude Code exactly once"
+    [ -x "$HOME/.local/bin/claude" ] \
+        || myconfig_fail "Agent module did not leave Claude Code in ~/.local/bin"
+    grep -Fq '@mariozechner/pi-coding-agent@latest' "$HOME/bun-requests" \
+        || myconfig_fail "Agent module does not install Pi"
     if grep -Exq 'opencode|fx_agent' "$HOME/requests"; then
         myconfig_fail "Agent module still installs OpenCode or FX"
     fi

@@ -426,9 +426,9 @@ so the default value alone is not sufficient."
   ;; Windows users get the pre-built grammar bundle first.  It avoids the
   ;; compiler requirement for the common languages; treesit-auto remains the
   ;; fallback for languages which are not in the bundle.
-  (use-package treesit-langs
-    :if (universel-platform-p 'windows (universel-host-platform))
-    :demand t)
+  ;; A plain require: `use-package' would try to load it while compiling on Linux.
+  (when (universel-platform-p 'windows (universel-host-platform))
+    (require 'treesit-langs))
   (use-package treesit-auto
     :custom (treesit-auto-install 'prompt)
     :config

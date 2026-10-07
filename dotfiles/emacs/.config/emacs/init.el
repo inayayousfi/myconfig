@@ -89,9 +89,8 @@
 (defconst myconfig-required-packages
   `(evil evil-collection vertico orderless marginalia consult corfu cape
          yasnippet yasnippet-capf avy ghostel evil-ghostel magit diff-hl blamer flyover apheleia eldoc-box
-         treesit-auto mason dape multiple-cursors
-         ,@(universel-select '((linux simple-httpd websocket)
-                               (windows treesit-langs))
+         treesit-auto mason dape multiple-cursors simple-httpd websocket
+         ,@(universel-select '((windows treesit-langs))
                              (universel-host-platform)))
   "Elisp packages required by the live Atelier.")
 
@@ -151,18 +150,16 @@
   (myconfig-aipanel-setup))
 (require 'myconfig-git)
 (require 'myconfig-bindings)
-(when (universel-platform-p 'linux (universel-host-platform))
-  (require 'remot)
-  (require 'remot-atelier)
-  (remot-atelier-setup)
-  (setq remot-state-directory
-        (expand-file-name "remot/" myconfig-runtime-state-directory)
-        remot-exit-with-last-graphical-frame t))
+(require 'remot)
+(require 'remot-atelier)
+(remot-atelier-setup)
+(setq remot-state-directory
+      (expand-file-name "remot/" myconfig-runtime-state-directory)
+      remot-exit-with-last-graphical-frame t)
 
 (when (file-readable-p custom-file)
   (load custom-file nil t))
 
 (require 'myconfig-init)
 (myconfig-initialize)
-(when (universel-platform-p 'linux (universel-host-platform))
-  (remot-setup))
+(remot-setup)

@@ -420,6 +420,23 @@ function Install-EmacsConfig {
     Write-Log "Emacs configuration installed to $destination" -Level 'OK'
 }
 
+function Set-EmacsAsEditor {
+    # Remot's server in the running Emacs is named remot; emacsclient finds its
+    # key file by name. A new Emacs starts only when none is running.
+    $editor = "emacsclient --server-file=remot --alternate-editor=emacs"
+    foreach ($name in @('EDITOR', 'VISUAL')) {
+        [Environment]::SetEnvironmentVariable($name, $editor, "User")
+        Set-Item -Path "env:$name" -Value $editor
+    }
+
+    git config --global core.editor $editor
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not set Git's editor"
+    }
+
+    Write-Log "Files from Git and other programs open in the running Emacs" -Level 'OK'
+}
+
 # ============================================================================
 # Iosevka Mono Font
 # ============================================================================
@@ -667,6 +684,7 @@ function Main {
     Invoke-InstallStep "Oh My Posh configuration" { Install-OhMyPoshConfig }
     Invoke-InstallStep "Windows Terminal configuration" { Install-WindowsTerminalConfig }
     Invoke-InstallStep "Emacs configuration" { Install-EmacsConfig }
+    Invoke-InstallStep "Emacs as editor" { Set-EmacsAsEditor }
     Invoke-InstallStep "AutoHotkey scripts" { Install-AHKScripts }
     Invoke-InstallStep "AI config" { Install-AIConfig }
 

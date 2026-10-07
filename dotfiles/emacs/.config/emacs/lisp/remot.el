@@ -501,11 +501,17 @@ Its return value is passed unchanged to `remot-initialize-frame-function'."
 This does not expose the browser terminal or bypass its password.
 The server keeps this name globally, so tools that read `server-name',
 such as Magit's commit editor, reach it.  Programs started from this
-Emacs open files in it through EDITOR and VISUAL."
+Emacs open files in it through EDITOR and VISUAL.  Without local
+sockets, as on Windows, the server listens on a local TCP port and its
+key file goes where emacsclient finds it by name alone."
   (setq server-name remot-server-name)
+  (when server-use-tcp
+    (setq server-auth-dir (expand-file-name "~/.emacs.d/server/")))
   (unless (server-running-p server-name)
     (server-start nil t))
-  (let ((editor (format "emacsclient --socket-name=%s" remot-server-name)))
+  (let ((editor (format "emacsclient --%s=%s"
+                        (if server-use-tcp "server-file" "socket-name")
+                        remot-server-name)))
     (setenv "EDITOR" editor)
     (setenv "VISUAL" editor)))
 
@@ -562,12 +568,15 @@ Emacs open files in it through EDITOR and VISUAL."
          (signal (car error) (cdr error)))))))
 
 (defun remot-setup ()
-  "Configure Remot and graphical-window shutdown on GNU/Linux."
+  "Start Remot's local server in a graphical Emacs.
+On GNU/Linux, also configure the browser terminal and graphical-window
+shutdown."
+  (when (display-graphic-p)
+    (remot-start-local-server))
   (when (eq system-type 'gnu/linux)
     (add-hook 'delete-frame-functions
               #'remot-last-graphical-frame-closing t)
     (when (display-graphic-p)
-      (remot-start-local-server)
       (setq remot-password-record
             (remot-read-password-record))
       (add-hook 'server-after-make-frame-hook

@@ -8,7 +8,7 @@ $tokens = $null
 $parseErrors = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseInput($InstallerSource, [ref]$tokens, [ref]$parseErrors)
 if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
-foreach ($name in @('Copy-DotfileSafe', 'Install-EmacsConfig')) {
+foreach ($name in @('Copy-DotfileSafe', 'Find-EmacsExecutable', 'Install-EmacsConfig')) {
     $function = $ast.Find({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name }, $true)
     if (-not $function) { throw "Missing installer function: $name" }
     Invoke-Expression $function.Extent.Text
@@ -21,6 +21,7 @@ function Test-Path { param($Path) return $true }
 function New-Item { param($ItemType, $Path, [switch]$Force, $ErrorAction) }
 function Copy-Item { param($Path, $Destination, [switch]$Recurse, [switch]$Force, $ErrorAction) throw 'Injected copy failure' }
 function Get-Command { param($Name, $ErrorAction) return [pscustomobject]@{ Source = 'Test-EmacsHome' } }
+function Get-ChildItem { param($Path, $ErrorAction) }
 function Test-EmacsHome { $global:LASTEXITCODE = 0; return 'C:\emacs-test-home\' }
 $SharedDotfilesDir = 'C:\source'
 

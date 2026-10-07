@@ -19,6 +19,9 @@ $Colors = @{
     Error   = 'Red'
 }
 
+# Every ERROR line is kept so Main can list the failures when the run ends.
+$script:Failures = [System.Collections.Generic.List[string]]::new()
+
 function Write-Log {
     param(
         [string]$Message,
@@ -33,6 +36,7 @@ function Write-Log {
         }
         'ERROR' {
             Write-Host "[ERROR] $Message" -ForegroundColor $Colors.Error
+            $script:Failures.Add($Message)
         }
         default {
             Write-Host "[INFO] $Message" -ForegroundColor $Colors.Info
@@ -254,8 +258,38 @@ function Install-WingetPackages {
 # PowerShell Profile
 # ============================================================================
 
+function Grant-PwshControlledFolderAccess {
+    # Defender's Controlled Folder Access blocks pwsh.exe from writing to Documents,
+    # where PowerShell keeps its profile, so pwsh.exe goes on its allowed-apps list.
+    $preference = Get-MpPreference -ErrorAction SilentlyContinue
+    if (-not $preference -or $preference.EnableControlledFolderAccess -ne 1) {
+        return
+    }
+
+    $pwshPath = (Get-Process -Id $PID).Path
+    if ($preference.ControlledFolderAccessAllowedApplications -contains $pwshPath) {
+        return
+    }
+
+    Write-Log "Controlled Folder Access is on; allowing $pwshPath to write to protected folders..."
+    $command = "Add-MpPreference -ControlledFolderAccessAllowedApplications '$($pwshPath.Replace("'", "''"))' -ErrorAction Stop"
+    $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
+
+    try {
+        $process = Start-Process -FilePath $pwshPath -Verb RunAs -ArgumentList "-NoLogo", "-NoProfile", "-EncodedCommand", $encodedCommand -Wait -PassThru -ErrorAction Stop
+    } catch {
+        throw "Allowing $pwshPath through Controlled Folder Access needs administrator privileges"
+    }
+    if ($process.ExitCode -ne 0) {
+        throw "Add-MpPreference failed with exit code $($process.ExitCode); Defender may be managed by company policy"
+    }
+    Write-Log "Allowed $pwshPath through Controlled Folder Access" -Level 'OK'
+}
+
 function Install-PowerShellProfile {
     # Install the profile early so the next shell session picks up prompt changes.
+    Grant-PwshControlledFolderAccess
+
     $source = Join-Path $WindowsDotfilesDir "PowerShell\Microsoft.PowerShell_profile.ps1"
     $destination = $PROFILE
 
@@ -272,7 +306,7 @@ function Install-PowerShellProfile {
         Write-Log "Backed up existing profile to $backup"
     }
 
-    Copy-DotfileSafe -Source $source -Destination $destination
+    Copy-DotfileSafe -Source $source -Destination $destination -Required
     # Remove the downloaded-file marker from the installed profile.
     Unblock-File -Path $destination
     Write-Log "PowerShell profile installed" -Level 'OK'
@@ -292,7 +326,7 @@ function Install-OhMyPoshConfig {
         return
     }
 
-    Copy-DotfileSafe -Source $source -Destination $destination
+    Copy-DotfileSafe -Source $source -Destination $destination -Required
     Write-Log "Oh My Posh configuration installed" -Level 'OK'
 }
 
@@ -316,7 +350,7 @@ function Install-WindowsTerminalConfig {
         Write-Log "Backed up existing Windows Terminal config to $backup"
     }
 
-    Copy-DotfileSafe -Source $source -Destination $destination
+    Copy-DotfileSafe -Source $source -Destination $destination -Required
     Write-Log "Windows Terminal configuration installed" -Level 'OK'
 }
 
@@ -324,14 +358,40 @@ function Install-WindowsTerminalConfig {
 # Emacs Configuration
 # ============================================================================
 
+function Find-EmacsExecutable {
+    $emacsCommand = Get-Command emacs.exe -ErrorAction SilentlyContinue
+    if ($emacsCommand) {
+        return $emacsCommand.Source
+    }
+
+    # The GNU Emacs installer from winget does not add its bin folder to PATH,
+    # and the folder name carries the version: Program Files\Emacs\emacs-30.1\bin.
+    $installed = Get-ChildItem -Path "$env:ProgramFiles\Emacs\emacs-*\bin\emacs.exe" -ErrorAction SilentlyContinue |
+        Sort-Object { ($_.Directory.Parent.Name -replace '^emacs-', '') -as [version] } -Descending |
+        Select-Object -First 1
+    if (-not $installed) {
+        return $null
+    }
+
+    # Replace the bin folder of an older Emacs so an upgrade leaves no stale entry.
+    $binDir = $installed.DirectoryName
+    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    $entries = @($userPath -split ';' | Where-Object { $_ -and $_ -notlike "*\Emacs\emacs-*\bin" })
+    [Environment]::SetEnvironmentVariable("Path", (($entries + $binDir) -join ';'), "User")
+    $env:Path = "$env:Path;$binDir"
+    Write-Log "Added $binDir to the user PATH" -Level 'OK'
+
+    return $installed.FullName
+}
+
 function Install-EmacsConfig {
     $source = Join-Path $SharedDotfilesDir "emacs\.config\emacs"
-    $emacsCommand = Get-Command emacs.exe -ErrorAction SilentlyContinue
-    if (-not $emacsCommand) {
+    $emacsPath = Find-EmacsExecutable
+    if (-not $emacsPath) {
         throw "Emacs executable was not found after package installation"
     }
 
-    $emacsHome = (& $emacsCommand.Source --batch -Q --eval '(princ (expand-file-name "~/"))' | Out-String).Trim()
+    $emacsHome = (& $emacsPath --batch -Q --eval '(princ (expand-file-name "~/"))' | Out-String).Trim()
     if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($emacsHome)) {
         throw "Could not resolve Emacs home directory with Emacs itself"
     }
@@ -567,6 +627,24 @@ public class Taskbar {
 # Main Installation Flow
 # ============================================================================
 
+function Invoke-InstallStep {
+    # One failed step is logged and the next one still runs.
+    param(
+        [string]$Name,
+        [scriptblock]$Action
+    )
+
+    try {
+        & $Action
+    } catch {
+        # A required copy already logged this error before throwing it.
+        $message = $_.Exception.Message
+        if (-not ($script:Failures | Where-Object { $_.Contains($message) })) {
+            Write-Log "${Name}: $message" -Level 'ERROR'
+        }
+    }
+}
+
 function Main {
     Write-Host ""
     Write-Host "+================================================================+" -ForegroundColor Cyan
@@ -582,28 +660,39 @@ function Main {
     }
 
     # Install winget packages first because later steps depend on them.
-    $installedPackages = Install-WingetPackages
+    $installedPackages = Invoke-InstallStep "Winget packages" { Install-WingetPackages }
 
     # Copy the core configuration files and directories.
-    Install-PowerShellProfile
-    Install-OhMyPoshConfig
-    Install-WindowsTerminalConfig
-    Install-EmacsConfig
-    Install-AHKScripts
-    Install-AIConfig
+    Invoke-InstallStep "PowerShell profile" { Install-PowerShellProfile }
+    Invoke-InstallStep "Oh My Posh configuration" { Install-OhMyPoshConfig }
+    Invoke-InstallStep "Windows Terminal configuration" { Install-WindowsTerminalConfig }
+    Invoke-InstallStep "Emacs configuration" { Install-EmacsConfig }
+    Invoke-InstallStep "AutoHotkey scripts" { Install-AHKScripts }
+    Invoke-InstallStep "AI config" { Install-AIConfig }
 
     # Install the supporting tools and modules that the dotfiles expect.
-    Install-PSReadLineModule
-    Install-IosevkaMonoFont
+    Invoke-InstallStep "PSReadLine module" { Install-PSReadLineModule }
+    Invoke-InstallStep "Iosevka Mono font" { Install-IosevkaMonoFont }
     if ($installedPackages.DevTools) {
-        Install-LLVMPath
+        Invoke-InstallStep "LLVM PATH" { Install-LLVMPath }
     }
 
     # Apply the Windows shell and Start menu tweaks last.
-    Install-RegistryTweaks
-    Enable-TaskbarAutoHide
+    Invoke-InstallStep "Registry preferences" { Install-RegistryTweaks }
+    Invoke-InstallStep "Taskbar auto-hide" { Enable-TaskbarAutoHide }
 
-    Move-SharedDesktopToCurrentUser -IncludeDefaultDesktop -MoveEverything
+    Invoke-InstallStep "Desktop cleanup" { Move-SharedDesktopToCurrentUser -IncludeDefaultDesktop -MoveEverything }
+
+    if ($script:Failures.Count) {
+        Write-Host ""
+        Write-Host "Installation finished with $($script:Failures.Count) failure(s):" -ForegroundColor Red
+        foreach ($failure in $script:Failures) {
+            Write-Host "  - $failure" -ForegroundColor Red
+        }
+        Write-Host ""
+        Write-Log "Fix the failures above, then run this script again. Completed steps are safe to repeat."
+        exit 1
+    }
 
     Write-Host ""
     Write-Host "+================================================================+" -ForegroundColor Green

@@ -38,8 +38,10 @@ export LC_ALL=en_US.UTF-8
 export VI_MODE_SET_CURSOR=true
 
 if $IS_LINUX && [ -z "$WSL_DISTRO_NAME" ] && has emacs; then
-    export EDITOR="emacs"
-    export VISUAL="emacs"
+    # The running graphical Emacs opens the file as a buffer; its server is
+    # named remot. A new Emacs starts only when none is running.
+    export EDITOR="emacsclient --socket-name=remot --alternate-editor=emacs"
+    export VISUAL="$EDITOR"
 elif has vim; then
     export EDITOR="vim"
     export VISUAL="vim"
@@ -75,10 +77,12 @@ alias gcb='git fetch --prune && git branch -vv | grep ": gone]" | awk "{print \$
 alias please='sudo'
 
 # Tool aliases
-if [ "$EDITOR" = emacs ]; then
-    alias vi='emacs'
-    alias v='emacs'
-fi
+case "$EDITOR" in
+    emacs*)
+        alias vi='emacs'
+        alias v='emacs'
+        ;;
+esac
 
 if has bun; then
     alias npm='bun'

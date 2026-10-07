@@ -457,8 +457,11 @@ for editor_case in emacs vim vi; do
             export WSL_DISTRO_NAME=Arch
         fi
         source "$1" || exit 1
-        [[ "$EDITOR" = "$MYCONFIG_EDITOR_CASE" && "$VISUAL" = "$MYCONFIG_EDITOR_CASE" ]] \
-            || exit 1
+        expected="$MYCONFIG_EDITOR_CASE"
+        if [[ "$MYCONFIG_EDITOR_CASE" = emacs ]]; then
+            expected="emacsclient --socket-name=remot --alternate-editor=emacs"
+        fi
+        [[ "$EDITOR" = "$expected" && "$VISUAL" = "$expected" ]] || exit 1
         if [[ "$MYCONFIG_EDITOR_CASE" = emacs ]]; then
             (( ! $+aliases[vim] )) && [[ "${aliases[vi]}" = emacs && "${aliases[v]}" = emacs ]] \
                 || exit 1

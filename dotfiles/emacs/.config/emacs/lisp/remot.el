@@ -498,10 +498,16 @@ Its return value is passed unchanged to `remot-initialize-frame-function'."
 
 (defun remot-start-local-server ()
   "Allow same-user local clients through Remot's protected Unix socket.
-This does not expose the browser terminal or bypass its password."
-  (let ((server-name remot-server-name))
-    (unless (server-running-p server-name)
-      (server-start nil t))))
+This does not expose the browser terminal or bypass its password.
+The server keeps this name globally, so tools that read `server-name',
+such as Magit's commit editor, reach it.  Programs started from this
+Emacs open files in it through EDITOR and VISUAL."
+  (setq server-name remot-server-name)
+  (unless (server-running-p server-name)
+    (server-start nil t))
+  (let ((editor (format "emacsclient --socket-name=%s" remot-server-name)))
+    (setenv "EDITOR" editor)
+    (setenv "VISUAL" editor)))
 
 (defun remot-start ()
   "Start browser terminal listeners for an existing password verifier."

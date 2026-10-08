@@ -21,34 +21,15 @@
 (defvar atelier-job-owner-entry nil)
 (defvar atelier-preserve-job-recipe nil)
 (defvar atelier-inhibit-entry-removed-hook nil)
-(defvar atelier-navigator-window-configurations nil)
-(defvar atelier-navigator-selection-by-frame nil
-  "Last selected navigator target per frame, restored after navigator refreshes.")
 (defvar atelier-agent-restored-functions nil)
-(defvar atelier-directory-choice-result nil)
-(defvar atelier-directory-chooser-active nil)
-(defvar atelier-directory-chooser-buffers nil)
-(defvar atelier-choice-result nil)
-(defvar atelier-navigator-attach-source nil)
 (defvar atelier-inhibit-buffer-ownership nil)
-(defvar atelier-directory-chooser-mode nil)
 (defvar atelier-internal-buffers (make-hash-table :test #'eq :weakness 'key))
-(defconst atelier-navigator-buffer "*Atelier*")
-(defconst atelier-choice-buffer "*Atelier choice*")
 (defconst atelier-empty-buffer-prefix "*Atelier empty:")
 (defconst atelier-global-buffer-names
   '("*Messages*" "*Warnings*" "*Completions*" "*Native-compile-Log*"))
-(defvar atelier-entry-types
-  '((file :buffer-name "file" :buffer-p atelier-file-entry-buffer-p)
-    (dired :buffer-name "dired" :buffer-p atelier-dired-entry-buffer-p)
-    ;; Labels remain readable for saved jobs even without their runtime adapter.
-    (aipanel :buffer-name "aipanel")
-    (terminal :buffer-name "terminal")
-    (buffer :buffer-name "buffer"))
-  "Registered workspace entry types and their shared behavior.")
-(defvar-local atelier-navigator-first-position nil)
-(defvar-local atelier-directory-chooser-original-header nil)
-(defvar-local atelier-directory-chooser-header-was-local nil)
+(defvar atelier-types nil
+  "Registered content types as (TYPE . PROPERTIES), in definition order.
+Add one with `atelier-define-type'; read one with `atelier-type-get'.")
 (defvar atelier-change-hook nil
   "Hook run after a completed mutation of Atelier's public state.")
 (defvar atelier-before-switch-workspace-hook nil
@@ -197,7 +178,7 @@ Transfer disposable buffers from legacy entry/content keys before dropping them.
   "Classify legacy untyped content; BUFFER is the ordinary fallback type."
   (or (plist-get content :type)
       (pcase (plist-get content :kind)
-        ('file 'file) ('directory 'dired) ('terminal 'terminal) (_ 'buffer))))
+        ('file 'file) ('terminal 'terminal) (_ 'buffer))))
 
 (defun atelier-workspace-stack-record (workspace stack-id)
   "Return WORKSPACE's stack with STACK-ID."
@@ -236,7 +217,7 @@ Transfer disposable buffers from legacy entry/content keys before dropping them.
     (dolist (stack (plist-get workspace :stacks))
       (let ((id (plist-get stack :id)) (type (plist-get stack :type)))
         (unless (and (stringp id) (not (string-empty-p id)) (not (member id stack-ids))
-                     type (assq type atelier-entry-types))
+                     type (symbolp type))
           (error "Invalid stack identity or type"))
         (when (and (not (atelier-detached-workspace-p workspace)) (memq type types))
           (error "Workspace has more than one stack of type %s" type))
@@ -523,6 +504,57 @@ Unlike `plist-put', this always preserves PLIST's cons identity."
         (nconc workspace (list :id id))
         id)))
 
+;;; Reading records: interfaces and adapters read workspaces, views and
+;;; contents through these functions, never through the records themselves.
+
+(defconst atelier-workspace-fields
+  '(:id :name :destination :path :platform :mount-root :status)
+  "Fields `atelier-workspace-field' reads.")
+(defconst atelier-entry-fields
+  '(:id :stack-id :content-id :selected :orientation :content-reference :stack-reference)
+  "Fields `atelier-entry-field' reads from a view, layout or stack handle.")
+
+(defun atelier-workspace-field (workspace field)
+  "Return WORKSPACE's FIELD, one of `atelier-workspace-fields'."
+  (unless (memq field atelier-workspace-fields)
+    (error "Not a workspace field: %S" field))
+  (if (eq field :status) (atelier-workspace-status workspace) (plist-get workspace field)))
+
+(defun atelier-workspace-name (workspace)
+  "Return WORKSPACE's name."
+  (plist-get workspace :name))
+
+(defun atelier-workspace-contents (workspace)
+  "Return WORKSPACE's content records, the buffers its stacks hold."
+  (plist-get workspace :contents))
+
+(defun atelier-entry-field (entry field)
+  "Return ENTRY's FIELD, one of `atelier-entry-fields'."
+  (unless (memq field atelier-entry-fields)
+    (error "Not a view or stack field: %S" field))
+  (plist-get entry field))
+
+(defun atelier-content-field (content field)
+  "Return CONTENT's FIELD: :id, :stack-id or one of `atelier-content-properties'."
+  (unless (or (memq field '(:id :stack-id)) (memq field atelier-content-properties))
+    (error "Not a content field: %S" field))
+  (plist-get content field))
+
+(defun atelier-content-buffer (workspace content)
+  "Return the live buffer of WORKSPACE's CONTENT, or nil when it is only saved."
+  (let ((buffer (gethash (atelier-content-cache-key workspace (plist-get content :id))
+                         atelier-content-live-buffers)))
+    (and (buffer-live-p buffer) buffer)))
+
+(defun atelier-legacy-set (record property value)
+  "Set PROPERTY of RECORD, a plist of saved data, to VALUE in place.
+Upgrade steps use it on the saved state they receive."
+  (atelier-plist-set! record property value))
+
+(defun atelier-workspace-list ()
+  "Return every workspace in order, the reserved Detached workspace included."
+  atelier-workspaces)
+
 (defun atelier-workspace-get (name)
   (cl-find name atelier-workspaces
            :key (lambda (workspace) (plist-get workspace :name))
@@ -674,28 +706,80 @@ Nil selects the reserved Detached workspace."
                    workspace)
       (visit root nil))))
 
-(defun atelier-entry-type-definition (type)
-  "Return the registered definition for TYPE."
-  (or (assq type atelier-entry-types)
-      (error "Unknown Atelier entry type: %s" type)))
+(defconst atelier-type-functions
+  '(:buffer-p :capture :matches :restore :missing-paths :base-name :validate)
+  "Properties of `atelier-define-type' whose value is a function.")
 
-(defun atelier-register-entry-type (type buffer-name &optional buffer-p)
-  "Register TYPE with BUFFER-NAME and optional BUFFER-P predicate.
-BUFFER-P receives a live buffer and identifies automatic registrations of TYPE."
-  (unless (and (symbolp type) (stringp buffer-name)
-               (not (string-empty-p buffer-name)))
-    (error "Invalid Atelier entry type registration: %S %S" type buffer-name))
-  (let ((definition (list type :buffer-name buffer-name)))
-    (when buffer-p
-      (setq definition (append definition (list :buffer-p buffer-p))))
-    (if-let* ((existing (assq type atelier-entry-types)))
+(defun atelier-define-type (type &rest properties)
+  "Register content TYPE, replacing an earlier definition in its place.
+Each workspace keeps one stack per type.  PROPERTIES is a plist, and every
+property is optional:
+
+:label          String naming TYPE in buffer names and the navigator, and the
+                default name of a buffer created for it.  Defaults to TYPE's
+                name.
+:tracked        Non-nil when Atelier finds TYPE's buffers by identity, so it
+                qualifies their names even when they are wrapped in stars.
+:buffer-p       Function of BUFFER, non-nil when BUFFER is of TYPE.  Types are
+                tried in definition order; the first one matching wins.
+:capture        Function of BUFFER, called with BUFFER current, returning the
+                plist of content properties that describe it: at least :kind
+                and :persistent.  Without it a buffer is transient.
+:matches        Function of CONTENT and BUFFER, non-nil when BUFFER shows the
+                saved CONTENT, which has no live buffer yet.
+:restore        Function of CONTENT and WORKSPACE returning a live buffer for
+                saved CONTENT, or signalling an error that says why it cannot.
+                Without it Atelier looks for a buffer with CONTENT's name.
+:missing-paths  Function of CONTENT returning the paths whose confirmed absence
+                means CONTENT can never be restored.
+:base-name      Function of CONTENT and BUFFER, nil when CONTENT is only saved,
+                returning the NAME part of its buffer name, or nil to keep
+                the default.
+:validate       Function of WORKSPACE, ENTRY and DATA, the saved state being
+                loaded.  ENTRY is each view of TYPE and each TYPE stack no
+                view shows; signal an error to reject that state.
+
+A type saved by an adapter that is not loaded stays unregistered: Atelier keeps
+its contents, labels them with the type's name and gives them no behavior."
+  (unless (and type (symbolp type))
+    (error "An Atelier type must be a non-nil symbol: %S" type))
+  (unless (zerop (% (length properties) 2))
+    (error "Atelier type %s has an odd property list" type))
+  (cl-loop for (key value) on properties by #'cddr
+           do (cond
+               ((memq key atelier-type-functions)
+                (unless (or (null value) (functionp value))
+                  (error "Atelier type %s: %s must be a function" type key)))
+               ((eq key :label)
+                (unless (and (stringp value) (not (string-empty-p value)))
+                  (error "Atelier type %s: :label must be a non-empty string" type)))
+               ((not (eq key :tracked))
+                (error "Atelier type %s: unknown property %S" type key))))
+  (let ((definition (cons type (copy-sequence properties))))
+    (if-let* ((existing (assq type atelier-types)))
         (setcdr existing (cdr definition))
-      (setq atelier-entry-types (append atelier-entry-types (list definition))))
-    definition))
+      (setq atelier-types (append atelier-types (list definition))))
+    type))
 
-(defun atelier-entry-buffer-name (type)
+(defun atelier-type-get (type property)
+  "Return PROPERTY of TYPE's definition, or nil when it has none."
+  (plist-get (cdr (assq type atelier-types)) property))
+
+(defun atelier-type-label (type)
   "Return TYPE's label, also the default name of a buffer Atelier creates for it."
-  (plist-get (cdr (atelier-entry-type-definition type)) :buffer-name))
+  (or (atelier-type-get type :label) (symbol-name type)))
+
+(defun atelier-type-labels ()
+  "Return the label of every registered type."
+  (mapcar (lambda (definition) (atelier-type-label (car definition))) atelier-types))
+
+(defun atelier-buffer-type (buffer)
+  "Return the first registered type whose :buffer-p matches BUFFER, or `buffer'."
+  (or (cl-loop for (type . properties) in atelier-types
+               for predicate = (plist-get properties :buffer-p)
+               when (and predicate (funcall predicate buffer))
+               return type)
+      'buffer))
 
 (defun atelier-workspace-entry-by-type (workspace type)
   "Return the newest entry of TYPE in WORKSPACE."

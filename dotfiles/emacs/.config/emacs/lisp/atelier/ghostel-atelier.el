@@ -35,7 +35,7 @@
          (default-directory desired-directory)
          (program (or command (plist-get shell :executable)
                       (funcall ghostel-atelier-default-shell-function)))
-         (name (or name (and type (atelier-entry-buffer-name type)) "terminal"))
+         (name (or name (and type (atelier-type-label type)) "terminal"))
          (buffer (if command
                      (ghostel-atelier-exec-buffer name desired-directory program args)
                     (let* ((ghostel-mode-hook
@@ -66,10 +66,14 @@
   (atelier-job-process-exited buffer))
 
 (defun ghostel-atelier-buffer-p (buffer)
-  (with-current-buffer buffer (derived-mode-p 'ghostel-mode)))
+  "Return non-nil when BUFFER is a plain terminal or a program Ghostel runs.
+Panels that other packages create are not terminals."
+  (with-current-buffer buffer
+    (and (derived-mode-p 'ghostel-mode)
+         (memq (alist-get 'kind ghostel-identity) '(nil term exec)))))
 
-(defun ghostel-atelier-kind (buffer)
-  (when (ghostel-atelier-buffer-p buffer) 'terminal))
+(defun ghostel-atelier-capture (_buffer)
+  (atelier-job-capture))
 
 (defun ghostel-atelier-title (buffer)
   (when (local-variable-p 'ghostel-title buffer)
@@ -121,8 +125,10 @@ Ghostel calls it as `ghostel-buffer-name-function' on title and folder changes."
         (when-let* ((process (get-buffer-process buffer))) (process-id process)))))
 
 (defun ghostel-atelier-setup ()
-  (atelier-register-entry-type 'terminal "terminal" #'ghostel-atelier-buffer-p)
-  (add-hook 'atelier-buffer-kind-functions #'ghostel-atelier-kind)
+  (atelier-define-type 'terminal
+    :tracked t
+    :buffer-p #'ghostel-atelier-buffer-p
+    :capture #'ghostel-atelier-capture)
   (add-hook 'atelier-buffer-title-functions #'ghostel-atelier-title)
   (setq ghostel-buffer-name-function #'ghostel-atelier-buffer-name
         atelier-job-start-function #'ghostel-atelier-buffer

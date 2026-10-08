@@ -8,7 +8,8 @@
 (defvar evil-visual-selection)
 (defvar ghostel--input-mode)
 (defvar evil-mode-line-format)
-(declare-function atelier-clickable-label "atelier")
+(declare-function atelier-clickable-label "atelier-navigator")
+(declare-function atelier-workspace-name "atelier-model")
 (declare-function atelier-navigator "atelier-navigator")
 
 (defface myconfig-mode-line-state
@@ -209,7 +210,7 @@ Modes follow key lookup order: the first one listed sees a key first."
                   (:eval (myconfig-mode-line-status))
                   mode-line-format-right-align
                   (:eval (format "%s  " (if-let* ((workspace (atelier-current-workspace)))
-                                            (plist-get workspace :name)
+                                            (atelier-workspace-name workspace)
                                           "No workspace")))
                   (:eval (myconfig-mode-line-position)) "  ")))
 

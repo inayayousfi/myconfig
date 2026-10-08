@@ -18,10 +18,12 @@
 (unless (fboundp 'ghostel-mode)
   (define-derived-mode ghostel-mode fundamental-mode "Ghostel"))
 (defvar-local ghostel-title nil)
+(defvar-local ghostel-identity nil)
 (defvar ghostel-buffer-name-function nil)
 (require 'ghostel-atelier)
-(add-hook 'atelier-buffer-owner-functions #'aipanel-atelier-buffer-owner)
-(add-hook 'atelier-traveller-open-functions #'aipanel-atelier-travel)
+(require 'dired-atelier)
+(dired-atelier-setup)
+(aipanel-atelier-setup)
 
 (defmacro atelier-names-test (&rest body)
   "Run BODY with an isolated workspace, Detached workspace, files and buffers.
@@ -174,7 +176,6 @@ The naming timer is not started; BODY runs its work with `atelier-name-buffers'.
   "A terminal's NAME part follows its title until the user names it by hand."
   (atelier-names-test
     (let ((terminal (generate-new-buffer "terminal"))
-          (atelier-buffer-kind-functions nil)
           (atelier-buffer-title-functions nil)
           (atelier-job-start-function nil)
           (atelier-job-process-id-function nil)

@@ -13,9 +13,10 @@
                               (file-name-directory (or load-file-name buffer-file-name)))))
   (add-to-list 'load-path lisp)
   (add-to-list 'load-path (expand-file-name "atelier" lisp))
-  (dolist (file '("atelier/atelier.el" "atelier/ghostel-atelier.el" "myconfig-terminal.el"
-                  "aipan.el" "atelier/aipanel-atelier.el"))
+  (dolist (file '("atelier/atelier.el" "atelier/dired-atelier.el" "atelier/ghostel-atelier.el"
+                  "myconfig-terminal.el" "aipan.el" "atelier/aipanel-atelier.el"))
     (load (expand-file-name file lisp) nil t)))
+(dired-atelier-setup)
 
 (myconfig-aipanel-setup)
 

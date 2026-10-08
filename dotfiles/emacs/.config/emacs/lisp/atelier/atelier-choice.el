@@ -4,7 +4,10 @@
 (require 'subr-x)
 (require 'atelier-model)
 
-(declare-function atelier-mark-internal-buffer "atelier")
+(declare-function atelier-mark-interface-buffer "atelier")
+
+(defconst atelier-choice-buffer "*Atelier choice*")
+(defvar atelier-choice-result nil)
 
 (defvar-keymap atelier-choice-mode-map
   :parent special-mode-map
@@ -16,7 +19,7 @@
   "q" #'abort-recursive-edit)
 
 (define-derived-mode atelier-choice-mode special-mode "Atelier choice"
-  (atelier-mark-internal-buffer)
+  (atelier-mark-interface-buffer)
   (setq-local header-line-format " j/k move   Enter select   q cancel"
               hl-line-face 'atelier-navigator-current
               cursor-type 'box)

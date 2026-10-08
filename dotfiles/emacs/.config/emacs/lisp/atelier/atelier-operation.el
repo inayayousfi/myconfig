@@ -4,7 +4,7 @@
 (require 'atelier-model)
 
 (cl-defstruct (atelier-operation (:constructor atelier-operation-create))
-  name ids original frames windows navigator-states notifications cleanups completion invalid buffers checks acquired-buffers)
+  name ids original frames windows frame-states notifications cleanups completion invalid buffers checks acquired-buffers)
 
 (defvar atelier-operation-current nil
   "Preparation currently executing; its records are private copies.")
@@ -21,6 +21,11 @@
   "A job replacement explicitly needs the previous process stopped first.")
 (defvar atelier-operation-owned-effect nil
   "Native callback belongs to an effect explicitly performed by this operation.")
+(defvar atelier-frame-state-functions nil
+  "Per-frame state that interfaces keep outside workspace records.
+Each element is (SAVE . RESTORE).  SAVE is called with a frame and returns its
+state; RESTORE is called with the frame and that state when a failed operation
+returns the frame to how it was.")
 
 (defun atelier-operation-workspace (workspace)
   "Resolve WORKSPACE's stable ID in the current record set."
@@ -116,10 +121,9 @@ preparation so queued calls use stable targets, not obsolete record addresses."
   "Remember FRAME's display before preparing changes to it."
   (when (and atelier-operation-current (frame-live-p frame)
               (not (assq frame (atelier-operation-windows atelier-operation-current))))
-    (push (list frame
-                (alist-get frame atelier-navigator-window-configurations nil nil #'eq)
-                (alist-get frame atelier-navigator-selection-by-frame nil nil #'eq))
-          (atelier-operation-navigator-states atelier-operation-current))
+    (push (cons frame (mapcar (lambda (functions) (cons functions (funcall (car functions) frame)))
+                              atelier-frame-state-functions))
+          (atelier-operation-frame-states atelier-operation-current))
     (push (cons frame (current-window-configuration frame))
           (atelier-operation-windows atelier-operation-current))))
 
@@ -423,16 +427,10 @@ Record publication cannot undo already executed external process commands."
               (condition-case error (funcall cleanup)
                 ((error quit) (atelier-log "Operation %s cleanup failed: %s" name
                                            (error-message-string error)))))
-            (dolist (state (atelier-operation-navigator-states operation))
-              (when (frame-live-p (car state))
-                (setq atelier-navigator-window-configurations
-                      (assq-delete-all (car state) atelier-navigator-window-configurations)
-                      atelier-navigator-selection-by-frame
-                      (assq-delete-all (car state) atelier-navigator-selection-by-frame))
-                (when (nth 1 state)
-                  (push (cons (car state) (nth 1 state)) atelier-navigator-window-configurations))
-                (when (nth 2 state)
-                  (push (cons (car state) (nth 2 state)) atelier-navigator-selection-by-frame))))
+            (dolist (states (atelier-operation-frame-states operation))
+              (when (frame-live-p (car states))
+                (dolist (state (cdr states))
+                  (funcall (cdar state) (car states) (cdr state)))))
             (dolist (configuration (atelier-operation-windows operation))
               (when (frame-live-p (car configuration))
                 (set-window-configuration (cdr configuration))))))

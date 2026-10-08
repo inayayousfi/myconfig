@@ -37,23 +37,22 @@ returning non-nil has shown the buffer; otherwise Traveller switches to it.")
 
 (defun atelier-traveller-segments (workspace type)
   "Return the lockable WORKSPACE and TYPE segments of a label."
-  (list (plist-get workspace :name) (atelier-entry-buffer-name type)))
+  (list (atelier-workspace-name workspace) (atelier-type-label type)))
 
 (defun atelier-traveller-targets ()
   "Return every buffer Traveller can reach, as plists with a :label."
   (let (targets held)
-    (dolist (workspace atelier-workspaces)
-      (dolist (content (plist-get workspace :contents))
-        (let* ((type (or (plist-get content :type) 'buffer))
-               (buffer (gethash (atelier-content-cache-key workspace (plist-get content :id))
-                                atelier-content-live-buffers))
+    (dolist (workspace (atelier-workspace-list))
+      (dolist (content (atelier-workspace-contents workspace))
+        (let* ((type (or (atelier-content-field content :type) 'buffer))
+               (buffer (atelier-content-buffer workspace content))
                (buffer (and (buffer-live-p buffer) buffer)))
           (when buffer (push buffer held))
           (push (list :label (atelier-buffer-qualified-name
                               workspace type (atelier-content-base-name content type buffer))
                       :segments (atelier-traveller-segments workspace type)
                       :workspace-id (atelier-workspace-id workspace)
-                      :content-id (plist-get content :id)
+                      :content-id (atelier-content-field content :id)
                       :buffer buffer
                       :saved (not buffer))
                 targets))))
@@ -288,10 +287,10 @@ buffer level every label appears."
     (when (window-parameter nil 'window-side)
       (select-window (atelier-main-window)))
     (unless (equal (atelier-current-workspace-id) (atelier-workspace-id workspace))
-      (atelier-switch-workspace (plist-get workspace :name))
+      (atelier-switch-workspace (atelier-workspace-name workspace))
       (unless (equal (atelier-current-workspace-id) (atelier-workspace-id workspace))
         (user-error "Workspace %s is not open yet; travel again once it is"
-                    (plist-get workspace :name))))
+                    (atelier-workspace-name workspace))))
     (if-let* ((content-id (plist-get target :content-id)))
         (atelier-traveller-show-content (atelier-workspace-id workspace) content-id)
       (let ((buffer (plist-get target :buffer)))

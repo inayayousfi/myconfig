@@ -12,8 +12,8 @@
 
 (defun universel-atelier-environment (workspace)
   "Translate WORKSPACE's existing record into a Universel environment."
-  (let* ((platform (plist-get workspace :platform))
-         (destination (plist-get workspace :destination))
+  (let* ((platform (atelier-workspace-field workspace :platform))
+         (destination (atelier-workspace-field workspace :destination))
          (local (equal destination "local"))
          (port (when (and (not local) (not (eq platform 'wsl))
                           (string-match "#\\([0-9]+\\)\\'" destination))
@@ -24,24 +24,24 @@
           :transport (cond (local 'local) ((eq platform 'wsl) 'wsl) (t 'ssh))
           :destination (unless local destination)
           :port port
-          :directory (plist-get workspace :path)
-          :mount-root (plist-get workspace :mount-root))))
+          :directory (atelier-workspace-field workspace :path)
+          :mount-root (atelier-workspace-field workspace :mount-root))))
 
 (defun universel-atelier-directory (workspace)
   (let* ((environment (universel-atelier-environment workspace))
          (state-directory universel-atelier-state-directory)
          (connected (universel-files-connected-p environment state-directory)))
-    (prog1 (universel-file-directory (plist-get workspace :path) environment state-directory)
+    (prog1 (universel-file-directory (atelier-workspace-field workspace :path) environment state-directory)
       (when (and atelier-operation-current (not connected)
                  (universel-files-connected-p environment state-directory))
         (let ((owner (or (atelier-operation-live-event
-                          (lambda () (atelier-workspace-by-id (plist-get workspace :id))))
+                          (lambda () (atelier-workspace-by-id (atelier-workspace-field workspace :id))))
                          (copy-tree workspace))))
           (atelier-operation-cleanup
            (lambda () (universel-atelier-release owner))))))))
 
 (defun universel-atelier-execution-directory (workspace directory)
-  (if (equal (plist-get workspace :destination) "local") directory
+  (if (equal (atelier-workspace-field workspace :destination) "local") directory
     (universel-execution-path directory (universel-atelier-environment workspace)
                               universel-atelier-state-directory)))
 
@@ -55,7 +55,7 @@
 
 (defun universel-atelier-terminal-command (workspace)
   (let ((environment (universel-atelier-environment workspace)))
-    (universel-shell-command (plist-get workspace :path) environment
+    (universel-shell-command (atelier-workspace-field workspace :path) environment
                              (when (eq (plist-get environment :transport) 'wsl)
                                (list (universel-atelier--terminal-marker))))))
 
@@ -76,11 +76,11 @@ A WSL distribution's helper stops with its last running workspace."
                (not (cl-some (lambda (other)
                                (and (not (eq other workspace))
                                     (eq (atelier-workspace-status other) 'running)
-                                    (eq (plist-get other :platform) 'wsl)
-                                    (equal (plist-get other :destination)
-                                           (plist-get workspace :destination))))
-                             atelier-workspaces)))
-      (universel-wsl-stop-helper (plist-get workspace :destination)))
+                                    (eq (atelier-workspace-field other :platform) 'wsl)
+                                    (equal (atelier-workspace-field other :destination)
+                                           (atelier-workspace-field workspace :destination))))
+                             (atelier-workspace-list))))
+      (universel-wsl-stop-helper (atelier-workspace-field workspace :destination)))
     (when (and (eq (plist-get environment :transport) 'ssh)
                (eq (plist-get environment :platform) 'windows)
                (or force
@@ -88,16 +88,16 @@ A WSL distribution's helper stops with its last running workspace."
                          (lambda (other)
                            (and (not (eq other workspace))
                                 (eq (atelier-workspace-status other) 'running)
-                                (eq (plist-get other :platform) 'windows)
+                                (eq (atelier-workspace-field other :platform) 'windows)
                                 (equal (universel-mount-key environment)
                                        (universel-mount-key (universel-atelier-environment other)))))
-                         atelier-workspaces))))
+                         (atelier-workspace-list)))))
       (universel-release-files environment universel-atelier-state-directory))))
 
 (defun universel-atelier-detect-directory (directory)
   "Identify a Windows mount without opening any connection."
   (when universel-atelier-state-directory
-    (cl-loop for workspace in atelier-workspaces
+    (cl-loop for workspace in (atelier-workspace-list)
              for environment = (universel-atelier-environment workspace)
              thereis (universel-mounted-environment
                        directory environment universel-atelier-state-directory))))
@@ -211,6 +211,141 @@ returned record's :owner is the shell it runs under."
       (when foreground
         (append foreground (list :owner owner))))))
 
+;;; SSH destinations used before, suggested when choosing a machine
+
+(defcustom universel-atelier-shell-history-files
+  (delete-dups
+   (delq nil
+         (list (getenv "HISTFILE")
+               "~/.zsh_history"
+               "~/.bash_history"
+               "~/.history"
+               "~/.local/share/zsh/history"
+               "~/.local/share/fish/fish_history"
+               "~/.config/fish/fish_history")))
+  "Shell history files inspected for previously used SSH destinations."
+  :type '(repeat file)
+  :group 'universel)
+
+(defcustom universel-atelier-shell-history-read-limit (* 4 1024 1024)
+  "Maximum number of bytes read from the end of each shell history file."
+  :type 'integer
+  :group 'universel)
+
+(defconst universel-atelier-ssh-options-with-arguments
+  '("-B" "-b" "-c" "-D" "-E" "-e" "-F" "-I" "-i" "-J" "-L"
+    "-l" "-m" "-O" "-o" "-P" "-p" "-Q" "-R" "-S" "-W" "-w"))
+
+(defun universel-atelier-ssh-destination-valid-p (destination)
+  (and (stringp destination)
+       (string-match-p
+        (rx string-start
+            (optional (+ (any alnum "_.+-")) "@")
+            (or (+ (any alnum "_.-"))
+                (seq "[" (+ (any xdigit ":.")) "]"))
+            string-end)
+        destination)
+       (not (member destination '("ssh" "localhost")))))
+
+(defun universel-atelier-ssh-destination-from-command (command)
+  "Return the OpenSSH destination used by shell COMMAND, if recognizable."
+  (condition-case nil
+      (let* ((tokens (split-string-shell-command command))
+             (ssh-position (cl-position "ssh" tokens :test #'equal))
+             (prefix (and ssh-position (cl-subseq tokens 0 ssh-position)))
+             (invocation-p
+              (and ssh-position
+                   (cl-every
+                    (lambda (token)
+                      (or (member token '("command" "sudo" "env" "exec" "nohup"
+                                          "time" "tailscale"))
+                          (string-prefix-p "-" token)
+                          (string-match-p "=" token)))
+                    prefix)))
+             (arguments (and invocation-p (nthcdr (1+ ssh-position) tokens)))
+             destination)
+        (while (and arguments (not destination))
+          (let ((argument (pop arguments)))
+            (cond
+             ((equal argument "--")
+              (setq destination (pop arguments)))
+             ((member argument universel-atelier-ssh-options-with-arguments)
+              (pop arguments))
+             ((string-prefix-p "-" argument))
+             ((universel-atelier-ssh-destination-valid-p argument)
+              (setq destination argument)))))
+        (and (universel-atelier-ssh-destination-valid-p destination) destination))
+    (error nil)))
+
+(defun universel-atelier-shell-history-commands (file)
+  (when-let* ((expanded (expand-file-name file))
+              ((file-readable-p expanded)))
+    (with-temp-buffer
+      (let* ((size (file-attribute-size (file-attributes expanded)))
+             (start (max 0 (- size universel-atelier-shell-history-read-limit))))
+        (insert-file-contents expanded nil start size)
+        (when (> start 0)
+          (goto-char (point-min))
+          (delete-region (point-min) (min (point-max) (1+ (line-end-position)))))
+        (goto-char (point-min))
+        (let (commands)
+          (while (not (eobp))
+            (let ((line (buffer-substring-no-properties
+                         (line-beginning-position) (line-end-position))))
+              (cond
+               ((string-match (rx string-start ": " (+ digit) ":" (+ digit) ";"
+                                  (group (* anychar))) line)
+                (push (match-string 1 line) commands))
+               ((string-match (rx string-start (* blank) "- cmd:" (* blank)
+                                  (group (* anychar))) line)
+                (push (replace-regexp-in-string "\\\\n" " " (match-string 1 line) t t)
+                      commands))
+               ((not (string-match-p (rx string-start "#" (+ digit) string-end) line))
+                (push line commands))))
+            (forward-line 1))
+          (nreverse commands))))))
+
+(defun universel-atelier-shell-history-ssh-destinations ()
+  "Return SSH destinations found in configured shell histories, newest first."
+  (let ((files
+         (sort (cl-remove-if-not #'file-readable-p
+                                 (mapcar #'expand-file-name universel-atelier-shell-history-files))
+               (lambda (left right)
+                 (time-less-p (file-attribute-modification-time (file-attributes right))
+                              (file-attribute-modification-time (file-attributes left))))))
+        destinations)
+    (dolist (file files)
+      (let (file-destinations)
+        (dolist (command (universel-atelier-shell-history-commands file))
+          (when-let* ((destination (universel-atelier-ssh-destination-from-command command)))
+            (push destination file-destinations)))
+        (setq destinations (append destinations (delete-dups file-destinations)))))
+    (delete-dups destinations)))
+
+(defun universel-atelier-ssh-aliases ()
+  (let ((files (list (expand-file-name "~/.ssh/config"))) aliases)
+    (while files
+      (let ((file (pop files)))
+        (when (file-readable-p file)
+          (with-temp-buffer
+            (insert-file-contents file)
+            (goto-char (point-min))
+            (while (re-search-forward "^[[:space:]]*Host[[:space:]]+\\(.+\\)$" nil t)
+              (dolist (host (split-string (match-string 1)))
+                (unless (string-match-p "[*?!]" host) (push host aliases))))
+            (goto-char (point-min))
+            (while (re-search-forward "^[[:space:]]*Include[[:space:]]+\\(.+\\)$" nil t)
+              (dolist (pattern (split-string (match-string 1)))
+                (setq files (append (file-expand-wildcards
+                                     (expand-file-name pattern
+                                                        (expand-file-name "~/.ssh/")))
+                                    files))))))))
+    (delete-dups (nreverse aliases))))
+
+(defun universel-atelier-ssh-suggestions ()
+  "Suggest SSH aliases, then destinations found in shell histories."
+  (append (universel-atelier-ssh-aliases) (universel-atelier-shell-history-ssh-destinations)))
+
 (defun universel-atelier-setup (state-directory)
   "Connect Atelier to Universel, storing mounts below STATE-DIRECTORY."
   (setq universel-atelier-state-directory state-directory
@@ -233,6 +368,7 @@ returned record's :owner is the shell it runs under."
   (when (eq (universel-host-platform) 'windows)
     (advice-add 'find-file-noselect :filter-args #'universel-atelier--resolve-first-argument)
     (advice-add 'dired-noselect :filter-args #'universel-atelier--resolve-first-argument))
+  (add-hook 'atelier-destination-suggestion-functions #'universel-atelier-ssh-suggestions)
   (add-hook 'universel-environment-functions #'universel-atelier-detect-directory))
 
 (defun universel-atelier-process-observation-p ()

@@ -20,7 +20,7 @@
           (entry (and workspace
                       (atelier-buffer-registerable-p (current-buffer) workspace)
                       (atelier-show-buffer (current-buffer) workspace)))
-           (source (and entry (cons (atelier-workspace-id workspace) (plist-get entry :id))))
+           (source (and entry (cons (atelier-workspace-id workspace) (atelier-entry-field entry :id))))
          (result (let ((atelier-inhibit-buffer-ownership (and source t)))
                    (call-interactively command))))
     (when source

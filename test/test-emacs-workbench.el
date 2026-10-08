@@ -10,6 +10,7 @@
 (provide 'myconfig-terminal)
 (provide 'ghostel)
 (provide 'evil-ghostel)
+(defvar-local ghostel-identity nil)
 (provide 'simple-httpd)
 (defvar httpd--server nil)
 (cl-defstruct websocket origin negotiated-protocols protocols ready-state)
@@ -29,6 +30,7 @@
                          (file-name-directory (or load-file-name buffer-file-name)))))
   (add-to-list 'load-path (expand-file-name "atelier" lisp-directory))
   (load (expand-file-name "atelier/atelier.el" lisp-directory) nil t)
+  (load (expand-file-name "atelier/dired-atelier.el" lisp-directory) nil t)
   (load (expand-file-name "atelier/ghostel-atelier.el" lisp-directory) nil t)
   (load (expand-file-name "myconfig-terminal.el" lisp-directory) nil t)
   (load (expand-file-name "myconfig-ui.el" lisp-directory) nil t)
@@ -39,7 +41,10 @@
   (load (expand-file-name "myconfig-editing.el" lisp-directory) nil t)
   (load (expand-file-name "remot.el" lisp-directory) nil t))
 
+(dired-atelier-setup)
+(atelier-navigator-setup)
 (ghostel-atelier-setup)
+(aipanel-atelier-setup)
 (setq atelier-close-without-asking t)
 (require 'universel-atelier)
 (setq atelier-process-observation-function #'universel-atelier-process-observation-p
@@ -956,13 +961,12 @@
            (should (equal (plist-get (atelier-register-buffer first workspace nil 'dired) :id)
                           (plist-get first-entry :id)))
           (should (eq (atelier-entry-live-buffer first-entry) first))
-          (let ((atelier-entry-types (copy-tree atelier-entry-types)))
-            (atelier-register-entry-type
-             'preview "preview" (lambda (buffer) (eq buffer second)))
-            (should (equal (atelier-entry-buffer-name 'preview) "preview"))
-            (should (eq (atelier-buffer-entry-type second) 'dired))
-            (setf (plist-get (cdr (assq 'dired atelier-entry-types)) :buffer-p) nil)
-            (should (eq (atelier-buffer-entry-type second) 'preview))))
+          (let ((atelier-types (copy-tree atelier-types)))
+            (atelier-define-type 'preview :buffer-p (lambda (buffer) (eq buffer second)))
+            (should (equal (atelier-type-label 'preview) "preview"))
+            (should (eq (atelier-buffer-type second) 'dired))
+            (setf (plist-get (cdr (assq 'dired atelier-types)) :buffer-p) nil)
+            (should (eq (atelier-buffer-type second) 'preview))))
       (dolist (buffer (delete-dups (list first second)))
         (when (buffer-live-p buffer) (kill-buffer buffer)))
       (delete-directory directory t))))
@@ -982,7 +986,7 @@
                 first-entry (atelier-register-buffer first workspace))
           (setq second (find-file-noselect second-file)
                 second-entry (atelier-register-buffer second workspace))
-          (should (eq (atelier-buffer-entry-type first) 'file))
+          (should (eq (atelier-buffer-type first) 'file))
           (should-not (eq first-entry second-entry))
            (should (equal (plist-get (atelier-workspace-entry-by-type workspace 'file) :content-id)
                           (plist-get second-entry :content-id)))
@@ -1054,13 +1058,13 @@
           (write-region "notes" nil file nil 'silent)
           (atelier-select-workspace workspace)
           (setq dired-buffer (atelier-new-dired-buffer directory t workspace))
-          (atelier-register-dired-buffer dired-buffer workspace)
+          (atelier-assign-buffer-to-workspace dired-buffer workspace 'dired)
           (switch-to-buffer dired-buffer)
           (with-current-buffer dired-buffer
             (cl-letf (((symbol-function 'dired-get-file-for-visit)
                        (lambda () file))
-                      ((symbol-function 'atelier-buffer-entry-type)
-                       (lambda (_buffer) nil)))
+                      ((symbol-function 'atelier-buffer-type)
+                       (lambda (_buffer) 'buffer)))
               (setq opened (atelier-dired-open))
               (let ((entry (atelier-workspace-entry-for-buffer workspace opened)))
                 (should (eq (atelier-entry-value entry :type) 'file))
@@ -1658,18 +1662,18 @@
             (insert "- cmd: echo ssh fake@example.com\n"
                     "  when: 1700000003\n"
                     "- cmd: ssh fish@server.internal\n"))
-          (let ((atelier-shell-history-files (list zsh-history fish-history)))
+          (let ((universel-atelier-shell-history-files (list zsh-history fish-history)))
             (should
-             (equal (sort (atelier-shell-history-ssh-destinations) #'string-lessp)
+             (equal (sort (universel-atelier-shell-history-ssh-destinations) #'string-lessp)
                     '("first@example.com" "fish@server.internal" "latest@10.0.0.8")))))
       (delete-file zsh-history)
       (delete-file fish-history))))
 
 (ert-deftest atelier-parses-ssh-options-before-the-destination ()
-  (should (equal (atelier-ssh-destination-from-command
+  (should (equal (universel-atelier-ssh-destination-from-command
                   "command ssh -i ~/.ssh/work -o StrictHostKeyChecking=no user@192.0.2.5")
                  "user@192.0.2.5"))
-  (should-not (atelier-ssh-destination-from-command "printf 'ssh fake@example.com'")))
+  (should-not (universel-atelier-ssh-destination-from-command "printf 'ssh fake@example.com'")))
 
 (ert-deftest atelier-migrates-global-name-state-to-stable-ids ()
   (let* ((data '(:version 2 :generation "old" :current-workspace "two"
@@ -2212,13 +2216,15 @@
       (dolist (buffer (list first second))
         (when (buffer-live-p buffer) (kill-buffer buffer))))))
 
-(ert-deftest atelier-aipanel-buffer-type-precedes-ghostel-terminal ()
+(ert-deftest atelier-aipanel-buffer-type-is-not-a-ghostel-terminal ()
+  "Ghostel marks a panel as its own kind, so the terminal type never claims it."
   (with-temp-buffer
     (cl-letf (((symbol-function 'derived-mode-p)
                (lambda (&rest modes) (memq 'ghostel-mode modes))))
-      (should (eq (atelier-buffer-entry-type (current-buffer)) 'terminal))
-      (setq-local aipanel-owner '(:entry-id "source"))
-      (should (eq (atelier-buffer-entry-type (current-buffer)) 'aipanel)))))
+      (should (eq (atelier-buffer-type (current-buffer)) 'terminal))
+      (setq-local aipanel-owner '(:entry-id "source")
+                  ghostel-identity '((kind . aipanel)))
+      (should (eq (atelier-buffer-type (current-buffer)) 'aipanel)))))
 
 (ert-deftest atelier-xref-navigation-stacks-a-single-definition ()
   (require 'xref)
@@ -3408,8 +3414,7 @@
                     ((symbol-function 'atelier-capture-current-workspace) #'ignore)
                     ((symbol-function 'atelier-select-workspace) (lambda (workspace &rest _) (setq created workspace)))
                     ((symbol-function 'delete-other-windows) #'ignore)
-                    ((symbol-function 'atelier-new-dired-buffer) (lambda (&rest _) buffer))
-                    ((symbol-function 'atelier-register-dired-buffer) #'ignore)
+                    ((symbol-function 'atelier-dired-start-buffer) (lambda (_) buffer))
                     ((symbol-function 'switch-to-buffer) #'ignore))
             (atelier-open-project-workspace root)
             (should (equal (atelier-workspace-project-root created) root)))

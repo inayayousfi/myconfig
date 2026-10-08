@@ -1,7 +1,6 @@
 ;;; atelier.el --- Workspace entry trees and restoration -*- lexical-binding: t; -*-
 
 (require 'cl-lib)
-(require 'dired)
 (require 'project)
 (require 'subr-x)
 (require 'tramp)
@@ -11,9 +10,9 @@
 
 (defvar atelier-buffer-title-functions nil
   "Functions called with a buffer; the first non-nil result supplies its title.")
-(defvar atelier-buffer-kind-functions nil
-  "Functions called with a buffer; the first non-nil result supplies its
-storage kind.")
+(defvar atelier-workspace-start-function #'atelier-empty-workspace-buffer
+  "Function of a new WORKSPACE returning the buffer it shows first.
+It also supplies the buffer shown when a saved layout cannot be restored.")
 
 (defvar atelier-directory-function #'atelier-default-directory
   "Function mapping a workspace record to an Emacs directory.")
@@ -34,11 +33,17 @@ Each entry is (LABEL :destination DESTINATION :platform PLATFORM).  The value
 may also be a function returning such entries when the choice is offered.")
 (defvar atelier-file-path-function #'identity
   "Function translating a saved file or directory path before it is restored.")
+(defvar atelier-read-choice-function #'atelier-default-read-choice
+  "Function called with a TITLE and CHOICES, strings, returning the chosen one.")
 (defvar atelier-read-directories-function #'atelier-default-read-directories
   "Function called with DIRECTORY and MULTIPLE to choose directory paths.
 Return a nonempty list; when MULTIPLE is nil, return exactly one path.")
 (defvar atelier-directory-target-function #'atelier-default-directory-target
   "Function mapping an Emacs directory to (DESTINATION PATH PLATFORM MOUNT-ROOT).")
+
+(defun atelier-default-read-choice (title choices)
+  "Choose one of CHOICES using ordinary Emacs completion."
+  (completing-read (format "%s: " title) choices nil t))
 
 (defun atelier-default-read-directories (directory _multiple)
   "Choose one directory using ordinary Emacs completion."
@@ -76,25 +81,6 @@ Return a nonempty list; when MULTIPLE is nil, return exactly one path.")
   (list :program nil :shell shell-file-name :arguments nil
         :directory (atelier-workspace-directory workspace)))
 
-(defcustom atelier-shell-history-files
-  (delete-dups
-   (delq nil
-         (list (getenv "HISTFILE")
-               "~/.zsh_history"
-               "~/.bash_history"
-               "~/.history"
-               "~/.local/share/zsh/history"
-               "~/.local/share/fish/fish_history"
-               "~/.config/fish/fish_history")))
-  "Shell history files inspected for previously used SSH destinations."
-  :type '(repeat file)
-  :group 'atelier)
-
-(defcustom atelier-shell-history-read-limit (* 4 1024 1024)
-  "Maximum number of bytes read from the end of each shell history file."
-  :type 'integer
-  :group 'atelier)
-
 (defcustom atelier-stack-limit nil
   "Most buffers one workspace stack keeps, or nil for no limit.
 Adding a buffer past the limit closes the least recently used ones.  A buffer
@@ -102,57 +88,45 @@ a view selects, or a file buffer with unsaved changes, is never closed."
   :type '(choice (const :tag "No limit" nil) natnum)
   :group 'atelier)
 
-(declare-function atelier-dispose-unreferenced-buffer "atelier-navigator")
+(declare-function atelier-dispose-unreferenced-buffer "atelier-views")
 
-(defface atelier-navigator-active
-  '((t (:inherit font-lock-keyword-face :weight bold)))
-  "Selected workspace in the navigator."
-  :group 'atelier)
+(defvar atelier-frame-covered-functions nil
+  "Functions of a frame, non-nil when an interface covers that frame.
+A covering interface keeps the frame's real layout aside until it leaves, so
+Atelier neither captures nor announces the covered layout.")
+(defvar atelier-uncover-frame-functions nil
+  "Functions called with a frame to remove the interface covering it.")
+(defvar atelier-covered-frame-refresh-functions nil
+  "Functions called with a covered frame after workspace state changed under it.")
 
-(defface atelier-navigator-live
-  '((t (:inherit default :weight bold)))
-  "Live inactive workspace in the navigator."
-  :group 'atelier)
+(defun atelier-frame-covered-p (&optional frame)
+  "Whether an interface covers FRAME, the selected frame by default."
+  (run-hook-with-args-until-success 'atelier-frame-covered-functions
+                                    (or frame (selected-frame))))
 
-(defface atelier-navigator-saved
-  '((t (:inherit shadow)))
-  "Stopped workspace in the navigator."
-  :group 'atelier)
+(defun atelier-uncover-frame (&optional frame)
+  "Remove any interface covering FRAME, restoring its real layout."
+  (when (atelier-frame-covered-p frame)
+    (run-hook-with-args 'atelier-uncover-frame-functions (or frame (selected-frame)))))
 
-(defface atelier-navigator-hover
-  '((t (:inherit highlight :weight bold)))
-  "Readable pointer hover for navigator controls."
-  :group 'atelier)
+(defun atelier-buffer-internal-p (buffer)
+  "Whether BUFFER is an interface or notice that workspaces never own."
+  (and (gethash buffer atelier-internal-buffers) t))
 
-(defface atelier-navigator-current
-  '((t (:inherit highlight :weight bold :extend t)))
-  "Keyboard-selected navigator row."
-  :group 'atelier)
+(defvar atelier-interface-buffers (make-hash-table :test #'eq :weakness 'key)
+  "Buffers of Atelier's own interfaces, such as the navigator.")
 
-(defface atelier-navigator-section
-  '((t (:inherit font-lock-comment-face :weight bold :height 0.9)))
-  "Navigator section headings."
-  :group 'atelier)
+(defun atelier-mark-interface-buffer (&optional buffer)
+  "Mark BUFFER, the current one by default, as an Atelier interface.
+Workspaces never own it, clearing buffers spares it, and window history
+drops it."
+  (let ((buffer (or buffer (current-buffer))))
+    (atelier-mark-internal-buffer buffer)
+    (puthash buffer t atelier-interface-buffers)))
 
-(defface atelier-navigator-current-status
-  '((t (:inherit success :weight bold)))
-  "Current workspace status label."
-  :group 'atelier)
-
-(defface atelier-navigator-running-status
-  '((t (:inherit font-lock-constant-face)))
-  "Background running workspace status label."
-  :group 'atelier)
-
-(defface atelier-navigator-buffer
-  '((t (:inherit default)))
-  "Workspace buffer rows."
-  :group 'atelier)
-
-(defface atelier-navigator-branch
-  '((t (:inherit shadow)))
-  "Tree branches and secondary navigator text."
-  :group 'atelier)
+(defun atelier-interface-buffer-p (buffer)
+  "Whether BUFFER is one of Atelier's own interfaces."
+  (and (gethash buffer atelier-interface-buffers) t))
 
 (defun atelier-workspace-directory (&optional workspace)
   (let ((workspace (or workspace (atelier-current-workspace))))
@@ -167,33 +141,69 @@ a view selects, or a file buffer with unsaved changes, is never closed."
                 (plist-get workspace :destination))
       "Emacs")))
 
-(defun atelier-buffer-entry-kind (buffer)
+(define-error 'atelier-restore-unavailable "Saved content is unavailable")
+
+(defun atelier-buffer-capture (buffer)
+  "Return the content properties describing BUFFER, from BUFFER's own type.
+A type without :capture describes a transient buffer."
   (with-current-buffer buffer
-    (or (run-hook-with-args-until-success 'atelier-buffer-kind-functions buffer)
-        (cond
-          (buffer-file-name 'file)
-          ((derived-mode-p 'dired-mode) 'directory)
-          ((string-prefix-p "*scratch" (buffer-name)) 'scratch)
-          (t 'transient)))))
+    (if-let* ((capture (atelier-type-get (atelier-buffer-type buffer) :capture)))
+        (funcall capture buffer)
+      (list :kind 'transient :persistent nil))))
 
-(defun atelier-buffer-entry-persistent-p (buffer)
-  (memq (atelier-buffer-entry-kind buffer) '(file directory scratch terminal)))
+(defun atelier-job-capture ()
+  "Return the content properties of the current buffer's restartable job."
+  (list :kind 'terminal :persistent t :directory default-directory))
 
-(defun atelier-file-entry-buffer-p (buffer)
-  "Return non-nil when BUFFER visits a file."
-  (buffer-local-value 'buffer-file-name buffer))
+(defun atelier-file-capture (_buffer)
+  (list :kind 'file :persistent t
+        :file (expand-file-name buffer-file-name)
+        :directory default-directory))
 
-(defun atelier-dired-entry-buffer-p (buffer)
-  "Return non-nil when BUFFER is a Dired entry."
-  (with-current-buffer buffer
-    (derived-mode-p 'dired-mode)))
+(defun atelier-file-matches-p (content buffer)
+  (when-let* ((file (buffer-local-value 'buffer-file-name buffer)))
+    (equal (plist-get content :file) (expand-file-name file))))
 
-(defun atelier-buffer-entry-type (buffer)
-  "Return BUFFER's first matching registered entry type, if any."
-  (cl-loop for definition in atelier-entry-types
-           for predicate = (plist-get (cdr definition) :buffer-p)
-           when (and predicate (funcall predicate buffer))
-           return (car definition)))
+(defun atelier-file-restore (content workspace)
+  (let ((file (plist-get content :file)))
+    (unless (file-readable-p file)
+      (signal 'atelier-restore-unavailable (list "File is missing or unreadable")))
+    (atelier-file-buffer file workspace)))
+
+(defun atelier-buffer-type-capture (buffer)
+  "Describe a scratch BUFFER with its text, and any other buffer as transient."
+  (if (string-prefix-p "*scratch" (buffer-name buffer))
+      (list :kind 'scratch :persistent t :directory default-directory
+            :contents (buffer-substring-no-properties (point-min) (point-max)))
+    (list :kind 'transient :persistent nil)))
+
+(defun atelier-buffer-type-restore (content _workspace)
+  "Recreate scratch CONTENT, or find a transient buffer by its saved name."
+  (if (eq (plist-get content :kind) 'scratch)
+      (let ((buffer (atelier-operation-track-buffer
+                     (generate-new-buffer (or (plist-get content :name) "*scratch*")))))
+        (with-current-buffer buffer
+          (funcall initial-major-mode)
+          (insert (or (plist-get content :contents) "")))
+        buffer)
+    (atelier-restore-by-name content)))
+
+(defun atelier-restore-by-name (content)
+  "Return the live buffer named like CONTENT, the default restoration."
+  (or (and (plist-get content :name) (get-buffer (plist-get content :name)))
+      (signal 'atelier-restore-unavailable (list "No saved content could be restored"))))
+
+(atelier-define-type 'file
+  :tracked t
+  :buffer-p (lambda (buffer) (buffer-local-value 'buffer-file-name buffer))
+  :capture #'atelier-file-capture
+  :matches #'atelier-file-matches-p
+  :restore #'atelier-file-restore
+  :missing-paths (lambda (content) (list (plist-get content :file))))
+
+(atelier-define-type 'buffer
+  :capture #'atelier-buffer-type-capture
+  :restore #'atelier-buffer-type-restore)
 
 (defun atelier-buffer-owned-by-other-workspace-p (buffer workspace)
   "Return non-nil when BUFFER is owned outside WORKSPACE, even in a stack."
@@ -211,19 +221,11 @@ a view selects, or a file buffer with unsaved changes, is never closed."
        (not (atelier-buffer-owned-by-other-workspace-p buffer workspace))))
 
 (defun atelier-entry-matches-buffer-p (entry buffer)
+  "Whether ENTRY shows BUFFER, live or by its type's :matches rule."
   (or (eq (atelier-entry-live-buffer entry) buffer)
       (and (not (atelier-entry-live-buffer entry))
-           (with-current-buffer buffer
-             (pcase (atelier-entry-value entry :kind)
-               ('file (and buffer-file-name
-                           (equal (atelier-entry-value entry :file)
-                                  (expand-file-name buffer-file-name))))
-               ('directory
-                (and (derived-mode-p 'dired-mode)
-                     (equal (atelier-entry-value entry :directory)
-                            (file-name-as-directory
-                             (expand-file-name default-directory)))))
-               (_ nil))))))
+           (when-let* ((matches (atelier-type-get (atelier-entry-value entry :type) :matches)))
+             (funcall matches (atelier-entry-content entry) buffer)))))
 
 (defun atelier-workspace-entry-for-buffer (workspace buffer)
   (or (cl-find-if (lambda (entry) (atelier-entry-matches-buffer-p entry buffer))
@@ -245,27 +247,17 @@ no Atelier ownership metadata."
          workspace)))
 
 (defun atelier-update-entry-from-buffer (entry buffer &optional type)
+  "Record BUFFER's state in ENTRY: a job's own description, else its type's."
   (with-current-buffer buffer
-    (atelier-entry-set-value entry :name (buffer-name))
-    (atelier-entry-set-value entry :kind (atelier-buffer-entry-kind buffer))
-    (atelier-entry-set-value entry :persistent (atelier-buffer-entry-persistent-p buffer))
-    (when type (atelier-entry-set-value entry :type type))
-    (pcase (atelier-entry-value entry :kind)
-      ('file
-       (atelier-entry-set-value entry :file (expand-file-name buffer-file-name))
-       (atelier-entry-set-value entry :directory default-directory))
-      ('directory
-       (atelier-entry-set-value entry :directory
-                                (file-name-as-directory (expand-file-name default-directory))))
-      ('scratch
-       (atelier-entry-set-value entry :directory default-directory)
-       (atelier-entry-set-value entry :contents
-                                (buffer-substring-no-properties (point-min) (point-max))))
-      ('terminal
-       (atelier-entry-set-value entry :directory default-directory)))
-    (when-let* ((job (atelier-entry-job entry)))
-      (setf (plist-get job :buffer) (buffer-name)))
-    (atelier-entry-set-value entry :point (point)))
+    (let ((job (atelier-entry-job entry)))
+      (atelier-entry-set-value entry :name (buffer-name))
+      (cl-loop for (property value) on (if job (atelier-job-capture)
+                                         (atelier-buffer-capture buffer))
+               by #'cddr
+               do (atelier-entry-set-value entry property value))
+      (when type (atelier-entry-set-value entry :type type))
+      (when job (setf (plist-get job :buffer) (buffer-name)))
+      (atelier-entry-set-value entry :point (point))))
   (atelier-entry-set-live-buffer entry buffer)
   entry)
 
@@ -277,14 +269,15 @@ no Atelier ownership metadata."
 WORKSPACE defaults to the workspace selected by the current frame.  The
 workspace record is authoritative; BUFFER receives no ownership metadata."
   (setq workspace (or workspace (atelier-current-workspace))
-        type (or type (atelier-buffer-entry-type buffer)))
+        type (or type (atelier-buffer-type buffer)))
   (when (and workspace (atelier-buffer-registerable-p buffer workspace))
     (let ((entry (atelier-workspace-entry-for-buffer workspace buffer))
           added)
       (unless entry
         (setq added t)
         (let ((id (atelier-workspace-store-content
-                   workspace (list :type type :kind (atelier-buffer-entry-kind buffer)))))
+                   workspace (list :type type
+                                   :kind (plist-get (atelier-buffer-capture buffer) :kind)))))
           (setq entry (atelier-content-reference workspace
                                                  (atelier-workspace-content workspace id)))
           (atelier-workspace-trim-stack workspace id)))
@@ -326,7 +319,7 @@ Trim the stack holding content KEEP in WORKSPACE, never closing KEEP."
                          (and (plist-get view :stack-id) (not (plist-get view :content-id))))
                      (not (atelier-buffer-registerable-p buffer workspace)))))
       (progn (push id atelier-capture-used-entry-ids) view)
-    (let ((type (atelier-buffer-entry-type buffer)))
+    (let ((type (atelier-buffer-type buffer)))
     (when-let* ((_ (atelier-buffer-registerable-p buffer workspace))
                 (entry
                  (if atelier-capturing-layout-p
@@ -414,7 +407,7 @@ Trim the stack holding content KEEP in WORKSPACE, never closing KEEP."
   (when-let* ((_ (display-graphic-p (selected-frame)))
               ;; The navigator covers the frame; its saved configuration
               ;; holds the real layout until it quits.
-              (_ (not (assq (selected-frame) atelier-navigator-window-configurations)))
+              (_ (not (atelier-frame-covered-p)))
               (workspace (atelier-current-workspace))
               (_ (not (cl-some
                        (lambda (window)
@@ -479,13 +472,11 @@ current buffer; this does not create or remove workspace entries."
     (let ((name (buffer-name)))
       (and (or workspace (atelier-current-workspace))
            (not atelier-inhibit-buffer-ownership)
-           (not atelier-directory-chooser-active)
            (not (gethash buffer atelier-internal-buffers))
            (not (minibufferp buffer))
            (not (string-prefix-p " " name))
            (not (member name atelier-global-buffer-names))
-           (not (string-prefix-p atelier-empty-buffer-prefix name))
-           (not (member name (list atelier-navigator-buffer atelier-choice-buffer)))))))
+           (not (string-prefix-p atelier-empty-buffer-prefix name))))))
 
 (defun atelier-own-current-buffer ()
   (when (and (not atelier-operation-current)
@@ -683,10 +674,12 @@ Permission, connection and editor setup failures do not prove a record dead."
   (let* ((job (plist-get content :job))
          (recipe (plist-get job :recipe))
          (executable (plist-get recipe :executable))
-         (file (plist-get content :file))
-         (directory (if job (plist-get recipe :directory)
-                      (and (eq (plist-get content :kind) 'directory)
-                           (plist-get content :directory)))))
+         (paths (if job
+                    (list (plist-get recipe :directory)
+                          (and executable (file-name-absolute-p executable) executable))
+                  (when-let* ((missing (atelier-type-get (plist-get content :type)
+                                                         :missing-paths)))
+                    (funcall missing content)))))
     (and (not (buffer-live-p
                (gethash (atelier-content-cache-key workspace (plist-get content :id))
                         atelier-content-live-buffers)))
@@ -698,7 +691,7 @@ Permission, connection and editor setup failures do not prove a record dead."
                 (and path
                      (or connected (funcall atelier-local-path-p-function workspace path))
                      (atelier-path-confirmed-missing-p path)))
-              (list file directory (and executable (file-name-absolute-p executable) executable)))))))
+              paths)))))
 
 (defun atelier-prune-workspace-contents (workspace &optional connected)
   "Prune only confirmed dead contents and empty views in WORKSPACE."
@@ -842,13 +835,20 @@ For the final split, show another stack or switch to another workspace."
       (atelier-mark-internal-buffer))
     buffer))
 
+(defun atelier-restore-content (content workspace)
+  "Return a live buffer for saved CONTENT through its type's :restore rule.
+A job's buffer cannot be recreated here; jobs restart through their recipe."
+  (if (eq (plist-get content :kind) 'terminal)
+      (signal 'atelier-restore-unavailable (list "No live terminal could be restored"))
+    (if-let* ((restore (atelier-type-get (plist-get content :type) :restore)))
+        (funcall restore content workspace)
+      (atelier-restore-by-name content))))
+
 (defun atelier-restore-buffer (entry &optional workspace)
   "Restore ENTRY, or forget its failed content and report the reason."
   (let* ((workspace (or workspace (atelier-current-workspace)))
-         (file (when-let* ((saved (atelier-entry-value entry :file)))
-                 (funcall atelier-file-path-function saved)))
-         (name (atelier-entry-value entry :name))
-         (directory (when-let* ((saved (atelier-entry-value entry :directory)))
+         (content (copy-sequence (atelier-entry-content entry workspace)))
+         (directory (when-let* ((saved (plist-get content :directory)))
                       (funcall atelier-file-path-function saved)))
          (content-id (plist-get entry :content-id))
          failure
@@ -856,26 +856,12 @@ For the final split, show another stack or switch to another workspace."
           (condition-case error
               (let ((buffer
                      (or (atelier-entry-live-buffer entry)
-                         (cond
-                          ((eq (atelier-entry-value entry :kind) 'terminal)
-                           (setq failure "No live terminal could be restored") nil)
-                          (file
-                           (if (file-readable-p file)
-                               (atelier-file-buffer file workspace)
-                             (setq failure "File is missing or unreadable") nil))
-                          ((eq (atelier-entry-value entry :kind) 'directory)
-                           (if (and directory (file-directory-p directory))
-                               (atelier-new-dired-buffer directory nil workspace)
-                             (setq failure "Directory is missing or inaccessible") nil))
-                          ((eq (atelier-entry-value entry :kind) 'scratch)
-                           (let ((buffer (atelier-operation-track-buffer
-                                          (generate-new-buffer (or name "*scratch*")))))
-                             (with-current-buffer buffer
-                               (funcall initial-major-mode)
-                               (insert (or (atelier-entry-value entry :contents) "")))
-                             buffer))
-                          ((and name (get-buffer name)) (get-buffer name))
-                          (t nil)))))
+                         (progn
+                           (when-let* ((saved (plist-get content :file)))
+                             (setq content (plist-put content :file
+                                                      (funcall atelier-file-path-function saved))))
+                           (setq content (plist-put content :directory directory))
+                           (atelier-restore-content content workspace)))))
                 (when (buffer-live-p buffer)
                   (with-current-buffer buffer
                     (cond
@@ -891,6 +877,9 @@ For the final split, show another stack or switch to another workspace."
                   (atelier-entry-set-live-buffer entry buffer)
                   (atelier-operation-notify 'atelier-entry-restored-hook workspace entry buffer))
                 buffer)
+            (atelier-restore-unavailable
+             (setq failure (cadr error))
+             nil)
             (error
              (atelier-operation-notify 'atelier-entry-restore-failed-hook workspace entry error)
              (setq failure (error-message-string error))
@@ -899,39 +888,6 @@ For the final split, show another stack or switch to another workspace."
         buffer
       (atelier-forget-failed-content
        workspace content-id (or failure "No saved content could be restored")))))
-
-(defun atelier-new-dired-buffer (directory &optional force-new workspace)
-  (setq directory (file-name-as-directory (expand-file-name directory))
-        workspace (or workspace (atelier-current-workspace)))
-  (let ((buffer
-         (or (unless force-new
-               (atelier-find-workspace-buffer
-                (lambda (buffer _workspace)
-                  (with-current-buffer buffer
-                    (and (derived-mode-p 'dired-mode)
-                         (condition-case nil
-                             (file-equal-p default-directory directory)
-                           (error nil)))))
-                workspace))
-             (let ((buffer (unless force-new (dired-noselect directory))))
-               (if (and buffer
-                        (not (atelier-buffer-owned-by-other-workspace-p
-                              buffer workspace)))
-                   buffer
-                  (let ((buffer (atelier-operation-track-buffer
-                                 (generate-new-buffer
-                                  (atelier-buffer-folder-name directory)))))
-                   (with-current-buffer buffer
-                     (setq default-directory directory)
-                     (dired-mode directory)
-                     (dired-readin))
-                   buffer))))))
-    buffer))
-
-(defun atelier-register-dired-buffer (buffer workspace)
-  "Register BUFFER as WORKSPACE's Dired type."
-  (atelier-assign-buffer-to-workspace buffer workspace 'dired)
-  buffer)
 
 (defun atelier-clean-window-buffer-history ()
   (dolist (window (window-list nil 'no-minibuffer))
@@ -949,10 +905,8 @@ For the final split, show another stack or switch to another workspace."
       (window-next-buffers window)))))
 
 (defun atelier-navigation-buffer-p (buffer)
-  "Whether BUFFER is a temporary navigator or choice interface."
-  (and (buffer-live-p buffer)
-       (or (equal (buffer-name buffer) atelier-choice-buffer)
-           (with-current-buffer buffer (derived-mode-p 'atelier-navigator-mode)))))
+  "Whether BUFFER is an Atelier interface, to drop from window history."
+  (and (buffer-live-p buffer) (atelier-interface-buffer-p buffer)))
 
 (defun atelier-layout-split-size (window orientation ratio)
   (let* ((horizontal (eq orientation 'horizontal))
@@ -1006,7 +960,7 @@ For the final split, show another stack or switch to another workspace."
           (error
            (atelier-log "Workspace layout restore failed: %s" error)
            (switch-to-buffer (or (car (nreverse restored-buffers))
-                                 (atelier-new-dired-buffer default-directory)))))
+                                 (funcall atelier-workspace-start-function workspace)))))
       (switch-to-buffer (or (car (nreverse restored-buffers))
                             (atelier-empty-workspace-buffer workspace))))
     (atelier-clean-window-buffer-history)
@@ -1014,7 +968,7 @@ For the final split, show another stack or switch to another workspace."
 
 (defun atelier-notify-change ()
   (force-mode-line-update t)
-  (unless (assq (selected-frame) atelier-navigator-window-configurations)
+  (unless (atelier-frame-covered-p)
     (atelier-operation-notify 'atelier-change-hook)))
 
 (defun atelier-workspace-stop-jobs (workspace &optional forget preserve-shared)
@@ -1091,115 +1045,9 @@ For the final split, show another stack or switch to another workspace."
                       when (eq (atelier-entry-live-buffer entry) buffer)
                       return (list workspace job entry)))))
 
-(defconst atelier-ssh-options-with-arguments
-  '("-B" "-b" "-c" "-D" "-E" "-e" "-F" "-I" "-i" "-J" "-L"
-    "-l" "-m" "-O" "-o" "-P" "-p" "-Q" "-R" "-S" "-W" "-w"))
-
-(defun atelier-ssh-destination-valid-p (destination)
-  (and (stringp destination)
-       (string-match-p
-        (rx string-start
-            (optional (+ (any alnum "_.+-")) "@")
-            (or (+ (any alnum "_.-"))
-                (seq "[" (+ (any xdigit ":.")) "]"))
-            string-end)
-        destination)
-       (not (member destination '("ssh" "localhost")))))
-
-(defun atelier-ssh-destination-from-command (command)
-  "Return the OpenSSH destination used by shell COMMAND, if recognizable."
-  (condition-case nil
-      (let* ((tokens (split-string-shell-command command))
-             (ssh-position (cl-position "ssh" tokens :test #'equal))
-             (prefix (and ssh-position (cl-subseq tokens 0 ssh-position)))
-             (invocation-p
-              (and ssh-position
-                   (cl-every
-                    (lambda (token)
-                      (or (member token '("command" "sudo" "env" "exec" "nohup"
-                                          "time" "tailscale"))
-                          (string-prefix-p "-" token)
-                          (string-match-p "=" token)))
-                    prefix)))
-             (arguments (and invocation-p (nthcdr (1+ ssh-position) tokens)))
-             destination)
-        (while (and arguments (not destination))
-          (let ((argument (pop arguments)))
-            (cond
-             ((equal argument "--")
-              (setq destination (pop arguments)))
-             ((member argument atelier-ssh-options-with-arguments)
-              (pop arguments))
-             ((string-prefix-p "-" argument))
-             ((atelier-ssh-destination-valid-p argument)
-              (setq destination argument)))))
-        (and (atelier-ssh-destination-valid-p destination) destination))
-    (error nil)))
-
-(defun atelier-shell-history-commands (file)
-  (when-let* ((expanded (expand-file-name file))
-              ((file-readable-p expanded)))
-    (with-temp-buffer
-      (let* ((size (file-attribute-size (file-attributes expanded)))
-             (start (max 0 (- size atelier-shell-history-read-limit))))
-        (insert-file-contents expanded nil start size)
-        (when (> start 0)
-          (goto-char (point-min))
-          (delete-region (point-min) (min (point-max) (1+ (line-end-position)))))
-        (goto-char (point-min))
-        (let (commands)
-          (while (not (eobp))
-            (let ((line (buffer-substring-no-properties
-                         (line-beginning-position) (line-end-position))))
-              (cond
-               ((string-match (rx string-start ": " (+ digit) ":" (+ digit) ";"
-                                  (group (* anychar))) line)
-                (push (match-string 1 line) commands))
-               ((string-match (rx string-start (* blank) "- cmd:" (* blank)
-                                  (group (* anychar))) line)
-                (push (replace-regexp-in-string "\\\\n" " " (match-string 1 line) t t)
-                      commands))
-               ((not (string-match-p (rx string-start "#" (+ digit) string-end) line))
-                (push line commands))))
-            (forward-line 1))
-          (nreverse commands))))))
-
-(defun atelier-shell-history-ssh-destinations ()
-  "Return SSH destinations found in configured shell histories, newest first."
-  (let ((files
-         (sort (cl-remove-if-not #'file-readable-p
-                                 (mapcar #'expand-file-name atelier-shell-history-files))
-               (lambda (left right)
-                 (time-less-p (file-attribute-modification-time (file-attributes right))
-                              (file-attribute-modification-time (file-attributes left))))))
-        destinations)
-    (dolist (file files)
-      (let (file-destinations)
-        (dolist (command (atelier-shell-history-commands file))
-          (when-let* ((destination (atelier-ssh-destination-from-command command)))
-            (push destination file-destinations)))
-        (setq destinations (append destinations (delete-dups file-destinations)))))
-    (delete-dups destinations)))
-
-(defun atelier-ssh-aliases ()
-  (let ((files (list (expand-file-name "~/.ssh/config"))) aliases)
-    (while files
-      (let ((file (pop files)))
-        (when (file-readable-p file)
-          (with-temp-buffer
-            (insert-file-contents file)
-            (goto-char (point-min))
-            (while (re-search-forward "^[[:space:]]*Host[[:space:]]+\\(.+\\)$" nil t)
-              (dolist (host (split-string (match-string 1)))
-                (unless (string-match-p "[*?!]" host) (push host aliases))))
-            (goto-char (point-min))
-            (while (re-search-forward "^[[:space:]]*Include[[:space:]]+\\(.+\\)$" nil t)
-              (dolist (pattern (split-string (match-string 1)))
-                (setq files (append (file-expand-wildcards
-                                     (expand-file-name pattern
-                                                        (expand-file-name "~/.ssh/")))
-                                    files))))))))
-    (delete-dups (nreverse aliases))))
+(defvar atelier-destination-suggestion-functions nil
+  "Functions returning SSH destinations to suggest when choosing a machine.
+Each returns a list of destination strings, most relevant first.")
 
 (defun atelier-read-workspace-target (&optional multiple)
   "Choose a connection and directory, or directory targets when MULTIPLE."
@@ -1210,10 +1058,9 @@ For the final split, show another stack or switch to another workspace."
                         (append '("local")
                                 (mapcar #'car extra)
                                 '("Enter SSH destination")
-                                (atelier-ssh-aliases)
-                                (atelier-shell-history-ssh-destinations)
+                                (apply #'append (mapcar #'funcall atelier-destination-suggestion-functions))
                                 atelier-remembered-ssh-destinations)))
-         (choice (atelier-read-buffer-choice "Machine" destinations))
+         (choice (funcall atelier-read-choice-function "Machine" destinations))
          (target (cdr (assoc choice extra)))
          (destination (cond (target (plist-get target :destination))
                             ((equal choice "Enter SSH destination")
@@ -1222,7 +1069,7 @@ For the final split, show another stack or switch to another workspace."
          (platform (cond
                     (target (plist-get target :platform))
                     ((equal destination "local") nil)
-                    ((equal (atelier-read-buffer-choice
+                    ((equal (funcall atelier-read-choice-function
                              "Remote system" '("POSIX" "Windows"))
                             "Windows")
                      'windows)
@@ -1312,10 +1159,7 @@ prepared operation, so cancellation or failure publishes no partial additions."
         (atelier-operation-notify 'atelier-workspace-created-hook workspace)
         (atelier-select-workspace workspace)
         (delete-other-windows)
-        (let ((buffer (atelier-new-dired-buffer (atelier-workspace-directory workspace)
-                                                t workspace)))
-          (atelier-register-dired-buffer buffer workspace)
-          (switch-to-buffer buffer))
+        (switch-to-buffer (funcall atelier-workspace-start-function workspace))
         (atelier-notify-change)))))
 
 (defun atelier-unique-workspace-name (root)
@@ -1379,9 +1223,7 @@ prepared operation, so cancellation or failure publishes no partial additions."
         (atelier-operation-notify 'atelier-workspace-created-hook workspace)
         (atelier-select-workspace workspace)
         (delete-other-windows)
-        (let ((buffer (atelier-new-dired-buffer root t workspace)))
-          (atelier-register-dired-buffer buffer workspace)
-          (switch-to-buffer buffer))
+        (switch-to-buffer (funcall atelier-workspace-start-function workspace))
         (atelier-notify-change)))))
 
 (defun atelier-current-entry (&optional buffer workspace)
@@ -1638,8 +1480,8 @@ INACTIVE-ONLY rechecks the timeout when an automatic request was queued."
      (lambda ()
        (atelier-track-inactive-workspaces)
        (dolist (frame (frame-list))
-         (when (assq frame atelier-navigator-window-configurations)
-           (with-selected-frame frame (atelier-render-navigator))))))
+         (when (atelier-frame-covered-p frame)
+           (run-hook-with-args 'atelier-covered-frame-refresh-functions frame)))))
     (atelier-notify-change)))
 
 (atelier-define-operation atelier-close-workspace (&optional confirmed)
@@ -1706,100 +1548,6 @@ INACTIVE-ONLY rechecks the timeout when an automatic request was queued."
     (atelier-notify-change)
     window))
 
-(defun atelier-file-browser ()
-  (interactive)
-  (when (window-parameter nil 'window-side)
-    (select-window (atelier-main-window)))
-  (let* ((frame (selected-frame))
-         (workspace (atelier-current-workspace))
-         (directory (unless (derived-mode-p 'atelier-navigator-mode)
-                      default-directory))
-         (existing (atelier-workspace-buffer-by-type workspace 'dired)))
-    (when (assq frame atelier-navigator-window-configurations)
-      (atelier-navigator-quit))
-    (setq directory (if (and directory (file-directory-p directory))
-                        directory
-                      (if (file-directory-p default-directory)
-                          default-directory
-                        (atelier-workspace-directory))))
-    (atelier-show-buffer (or existing (atelier-new-dired-buffer directory nil workspace))
-                         workspace)))
-
-(defun atelier-dired-create (name)
-  "Create a file named NAME, or a directory if NAME ends in a slash.
-Create it relative to the current Dired directory and refresh the listing."
-  (interactive (list (read-string "New file or directory (end with / for directory): ")))
-  (when (string-empty-p name)
-    (user-error "Enter a file or directory name"))
-  (let* ((directory-p (eq (aref name (1- (length name))) ?/))
-         (path (expand-file-name name (dired-current-directory))))
-    (when (or (file-exists-p path) (file-symlink-p path))
-      (user-error "Already exists: %s" path))
-    (if directory-p
-        (make-directory path)
-      (write-region "" nil path nil 'silent nil 'excl))
-    (revert-buffer)
-    (dired-goto-file path)))
-
-(defun atelier-dired-open ()
-  (interactive)
-  (let ((file (dired-get-file-for-visit)))
-    (if (file-directory-p file)
-        (atelier-dired-change-directory file)
-      (atelier-open-file file))))
-
-(atelier-define-operation atelier-dired-change-directory (directory &optional target)
-    (delete-dups (mapcar (lambda (pair) (atelier-workspace-id (car pair)))
-                        (atelier-entries-for-buffer (current-buffer)))) nil
-  "Read DIRECTORY into the current Dired buffer and keep its workspace entry.
-On entry, stay near the same listing row; on return, select TARGET."
-  (let ((buffer (current-buffer))
-        (text (buffer-string))
-        (position (point))
-        (modified (buffer-modified-p))
-        (old-directory default-directory)
-        (old-dired-directory (copy-tree dired-directory))
-        (subdirs (mapcar (lambda (item) (cons (car item) (marker-position (cdr item))))
-                         dired-subdir-alist)))
-    (atelier-operation-cleanup
-     (lambda ()
-       (when (buffer-live-p buffer)
-         (with-current-buffer buffer
-           (let ((inhibit-read-only t) (buffer-undo-list t))
-             (erase-buffer)
-             (insert text)
-             (setq default-directory old-directory dired-directory old-dired-directory
-                   dired-subdir-alist
-                   (mapcar (lambda (item) (cons (car item) (copy-marker (cdr item)))) subdirs))
-             (goto-char position)
-             (set-buffer-modified-p modified)))))))
-  (let ((line (line-number-at-pos)))
-    (setq directory (file-name-as-directory (expand-file-name directory)))
-    (setq dired-directory directory
-          default-directory directory)
-    (dired-readin)
-    (unless (and target (dired-goto-file target))
-      (goto-char (point-min))
-      (forward-line (1- line))
-      (when (eobp) (forward-line -1))
-      (unless (dired-move-to-filename)
-        (dired-next-line 1))))
-  (atelier-refresh-current-buffer-entries)
-  (current-buffer))
-
-(defun atelier-dired-up-directory ()
-  "Read the parent directory into the current Dired buffer."
-  (interactive)
-  (let* ((directory (dired-current-directory))
-         (parent (file-name-directory (directory-file-name directory))))
-    (atelier-dired-change-directory parent directory)))
-
-(defun atelier-dired-mouse-open (event)
-  "Open the Dired item clicked by EVENT in the current window and buffer."
-  (interactive "e")
-  (mouse-set-point event)
-  (atelier-dired-open))
-
 (atelier-define-operation atelier-split-below ()
     (list (atelier-current-workspace-id)) nil
   (interactive)
@@ -1836,28 +1584,6 @@ On entry, stay near the same listing row; on return, select TARGET."
                   (cl-subseq atelier-workspaces target)))
     (atelier-notify-change)))
 
-(defun atelier-workspace-menu (_event name)
-  (interactive "e")
-  (atelier-switch-workspace name)
-  (popup-menu
-   '("Workspace"
-     ["Rename" atelier-rename-workspace t]
-     ["Edit target" atelier-edit-workspace t]
-     ["Close" atelier-close-workspace t]
-     ["Delete" atelier-delete-workspace t])))
-
-(defun atelier-clickable-label (label action &optional context-action face help)
-  (let ((map (make-sparse-keymap)))
-    (define-key map [mouse-1] action)
-    (define-key map [mouse-2] action)
-    (define-key map [mode-line mouse-1] action)
-    (define-key map [mode-line mouse-2] action)
-    (define-key map [header-line mouse-1] action)
-    (define-key map [header-line mouse-2] action)
-    (when context-action (define-key map [mouse-3] context-action))
-    (propertize label 'face face 'mouse-face 'atelier-navigator-hover 'help-echo help
-                'follow-link t 'keymap map)))
-
 (defun atelier-create-default ()
   (let* ((root (atelier-project-root))
          (name (or (atelier-safe-name (file-name-nondirectory (directory-file-name root))) "home")))
@@ -1875,29 +1601,20 @@ On entry, stay near the same listing row; on return, select TARGET."
   (when (and (frame-live-p frame) (display-graphic-p frame))
     (with-selected-frame frame
       (atelier-capture-current-workspace)
-      (atelier-notify-change)))
-  (setq atelier-navigator-window-configurations
-        (assq-delete-all frame atelier-navigator-window-configurations))
-  (atelier-navigator-frame-closed frame))
+      (atelier-notify-change))))
 
 (defun atelier-restore-new-frame (frame)
   (when (and (frame-live-p frame) (display-graphic-p frame) atelier-workspaces)
     (with-selected-frame frame
       (let ((workspace (or (atelier-current-workspace) (car atelier-workspaces))))
-        (atelier-open-workspace workspace frame))
-      (atelier-navigator))))
-
-(defun atelier-navigator-at-startup ()
-  (when (display-graphic-p)
-    (atelier-navigator)))
+        (atelier-open-workspace workspace frame)))))
 
 (defun atelier-setup ()
   (unless atelier-workspaces (atelier-create-default))
   (atelier-ensure-detached-workspace)
   (unless (atelier-current-workspace)
     (atelier-select-workspace (car atelier-workspaces)))
-  (dolist (name (append atelier-global-buffer-names
-                        (list atelier-navigator-buffer atelier-choice-buffer)))
+  (dolist (name atelier-global-buffer-names)
     (when-let* ((buffer (get-buffer name)))
       (atelier-mark-internal-buffer buffer)))
   ;; Emacs creates *scratch* before Atelier knows which workspace to restore.
@@ -1910,9 +1627,10 @@ On entry, stay near the same listing row; on return, select TARGET."
   (add-hook 'kill-buffer-hook #'atelier-current-buffer-killed)
   (add-hook 'delete-frame-functions #'atelier-capture-closing-frame)
   (add-hook 'after-make-frame-functions #'atelier-restore-new-frame)
-  (add-hook 'emacs-startup-hook #'atelier-navigator-at-startup)
   (add-hook 'atelier-change-hook #'atelier-track-inactive-workspaces)
   (atelier-naming-setup)
+  (setq atelier-read-choice-function #'atelier-read-buffer-choice)
+  (atelier-navigator-setup)
   (atelier-track-inactive-workspaces)
   (when (timerp atelier-workspace-inactive-timer)
     (cancel-timer atelier-workspace-inactive-timer))
@@ -1922,6 +1640,7 @@ On entry, stay near the same listing row; on return, select TARGET."
 
 ;; UI modules depend on the complete service layer above, while the service
 ;; layer only calls their commands at runtime.
+(require 'atelier-views)
 (require 'atelier-choice)
 (require 'atelier-navigator)
 (require 'atelier-naming)

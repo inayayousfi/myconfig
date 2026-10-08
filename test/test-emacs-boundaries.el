@@ -9,11 +9,74 @@
 (require 'atelier)
 (require 'atelier-persist)
 
+;; Recorded before any test loads an adapter, since tests run in name order.
+(defconst atelier-test-core-features (copy-sequence features))
+(defconst atelier-test-core-types (mapcar #'car atelier-types))
+(require 'dired-atelier)
+(dired-atelier-setup)
+(atelier-navigator-setup)
+
 (ert-deftest atelier-loads-without-application-or-integration-packages ()
-  (dolist (feature '(myconfig-core ghostel evil aipan univers remot dired-atelier))
-    (should-not (featurep feature)))
+  "The core alone loads no adapter or the packages they adapt, and registers
+only the types it implements itself."
+  (dolist (feature '(myconfig-core ghostel evil aipan univers remot dired dired-atelier))
+    (should-not (memq feature atelier-test-core-features)))
+  (should (equal atelier-test-core-types '(file buffer)))
   (should-not atelier-close-without-asking)
   (should-not atelier-job-start-function))
+
+;; Interfaces and adapters read and change workspaces only through the core's
+;; functions, so the core alone decides how its records look and change.
+(defconst atelier-test-client-files
+  '("atelier/atelier-navigator.el" "atelier/atelier-traveller.el" "atelier/atelier-naming.el"
+    "atelier/atelier-choice.el" "atelier/dired-atelier.el" "atelier/ghostel-atelier.el"
+    "atelier/aipanel-atelier.el" "atelier/universel-atelier.el" "atelier/xref-atelier.el"
+    "atelier/remot-atelier.el" "myconfig-ui.el" "myconfig-editing.el" "myconfig-terminal.el"
+    "myconfig-bindings.el")
+  "Files outside the core that use Atelier.")
+
+(defconst atelier-test-private-patterns
+  '("\\_<atelier--" "\\_<atelier-workspaces\\_>" "\\_<atelier-content-live-buffers\\_>"
+    "\\_<atelier-entry-owners\\_>" "\\_<atelier-plist-" "\\_<atelier-entry-set-value\\_>"
+    "\\_<atelier-model-workspace\\_>" "\\_<atelier-content-cache-key\\_>"
+    "(plist-get \\(workspace\\|view\\|content\\|stack\\) :"
+    "(plist-get entry :\\(id\\|stack-id\\|content-id\\|selected\\|orientation\\|content-reference\\|stack-reference\\)\\_>")
+  "Private core names, and direct reads of record fields.")
+
+(defun atelier-test-private-uses (file)
+  "Return \"FILE:LINE: TEXT\" for each private use in FILE.
+Upgrade steps, whose names contain \"-upgrade-\", read old saved data on purpose."
+  (with-temp-buffer
+    (insert-file-contents file)
+    (set-syntax-table emacs-lisp-mode-syntax-table)
+    (goto-char (point-min))
+    (let (uses)
+      (while (progn (forward-comment most-positive-fixnum) (not (eobp)))
+        (let* ((start (point))
+               (form (read (current-buffer)))
+               (end (point))
+               (name (and (consp form) (symbolp (nth 1 form)) (symbol-name (nth 1 form)))))
+          (unless (and name (string-match-p "-upgrade-" name))
+            (save-excursion
+              (dolist (pattern atelier-test-private-patterns)
+                (goto-char start)
+                (while (re-search-forward pattern end t)
+                  (push (format "%s:%d: %s" (file-name-nondirectory file)
+                                (line-number-at-pos)
+                                (string-trim (buffer-substring (line-beginning-position)
+                                                               (line-end-position))))
+                        uses)))))))
+      (nreverse uses))))
+
+(ert-deftest atelier-clients-use-only-core-functions ()
+  (let ((lisp (expand-file-name "../dotfiles/emacs/.config/emacs/lisp/"
+                                (file-name-directory (or load-file-name buffer-file-name
+                                                         (locate-library "atelier"))))))
+    (should (equal (cl-mapcan (lambda (file)
+                                (let ((path (expand-file-name file lisp)))
+                                  (when (file-exists-p path) (atelier-test-private-uses path))))
+                              atelier-test-client-files)
+                   nil))))
 
 (ert-deftest atelier-private-files-have-private-permissions ()
   (let* ((directory (make-temp-file "atelier-private-" t))
@@ -777,7 +840,7 @@
         (progn
           (make-directory next)
           (setq buffer (atelier-new-dired-buffer directory t workspace))
-          (atelier-register-dired-buffer buffer workspace)
+          (atelier-assign-buffer-to-workspace buffer workspace 'dired)
           (let ((entry (atelier-workspace-entry-for-buffer workspace buffer)))
             (with-current-buffer buffer
               (let ((before (buffer-string)) (old-directory default-directory))

@@ -7,6 +7,9 @@
              (expand-file-name "../dotfiles/emacs/.config/emacs/lisp/atelier/"
                                (file-name-directory (or load-file-name buffer-file-name))))
 (require 'atelier-persist)
+(require 'dired-atelier)
+(dired-atelier-setup)
+(atelier-navigator-setup)
 
 (defmacro atelier-stacks-test (&rest body)
   "Run BODY with real windows and an isolated workspace, files and buffers."
@@ -162,12 +165,11 @@
 
 (ert-deftest atelier-workspace-stacks-custom-type-uses-the-same-view-operation ()
   (atelier-stacks-test
-    (let ((atelier-entry-types (copy-tree atelier-entry-types))
+    (let ((atelier-types (copy-tree atelier-types))
           (one (generate-new-buffer "stack-custom-one"))
           (two (generate-new-buffer "stack-custom-two")))
-      (atelier-register-entry-type 'custom "custom"
-                                   (lambda (buffer)
-                                     (string-prefix-p "stack-custom" (buffer-name buffer))))
+      (atelier-define-type 'custom
+        :buffer-p (lambda (buffer) (string-prefix-p "stack-custom" (buffer-name buffer))))
       (atelier-show-buffer one workspace)
       (let ((left (selected-window))
             (right (atelier-split-right)))
@@ -223,15 +225,51 @@
           (should (atelier-validate-state
                    (list :version 11 :generation "round-trip" :workspaces (list flat)))))))))
 
+;; An adapter may be missing, as when its package is not installed; its saved
+;; buffers must survive loading, or the next save would drop the whole state.
+(ert-deftest atelier-workspace-stacks-keep-a-type-no-adapter-registers ()
+  (atelier-stacks-test
+    (let* ((saved (list :version 12 :generation "unregistered"
+                        :current-workspace-id "stacks-test"
+                        :workspaces
+                        (list (list :id "stacks-test" :name "stacks-test"
+                                    :destination "local" :path root :status 'running
+                                    :entry-root-ids '("view")
+                                    :entries '((:id "view" :parent-id nil :displayed t
+                                                    :stack-id "phantom-stack"
+                                                    :content-id "phantom"))
+                                    :stacks '((:id "phantom-stack" :type phantom
+                                                   :content-ids ("phantom")))
+                                    :contents '((:id "phantom" :type phantom :kind transient
+                                                     :persistent t :name "panel"
+                                                     :stack-id "phantom-stack"))))))
+           (validated (atelier-validate-state saved))
+           (restored (atelier-workspace-runtime-copy (car (plist-get validated :workspaces)))))
+      (should-not (assq 'phantom atelier-types))
+      (should (= (length (atelier-workspace-stack restored 'phantom)) 1))
+      (should (equal (atelier-type-label 'phantom) "phantom"))
+      (should (equal (plist-get (atelier-workspace-persistent-copy restored) :contents)
+                     (plist-get (car (plist-get validated :workspaces)) :contents))))))
+
+;; A mistake in a type definition fails where it is written, naming the property.
+(ert-deftest atelier-workspace-stacks-type-definitions-reject-mistakes ()
+  (let ((atelier-types (copy-tree atelier-types)))
+    (should (eq (atelier-define-type 'notes :label "notes" :buffer-p #'always) 'notes))
+    (should (equal (atelier-type-label 'notes) "notes"))
+    (should (string-match-p ":buffer-predicate"
+                            (cadr (should-error (atelier-define-type 'notes :buffer-predicate #'always)))))
+    (should (string-match-p ":restore"
+                            (cadr (should-error (atelier-define-type 'notes :restore "not a function")))))
+    (should-error (atelier-define-type 'notes :label ""))
+    (should (eq (atelier-type-get 'notes :buffer-p) #'always))))
+
 (ert-deftest atelier-workspace-stacks-restart-visible-and-hidden-jobs-once-each ()
   (atelier-stacks-test
-    (let ((atelier-entry-types (copy-tree atelier-entry-types))
-          (atelier-buffer-kind-functions
-           (list (lambda (buffer)
-                   (when (string-prefix-p "*stack-job" (buffer-name buffer)) 'terminal))))
+    (let ((atelier-types (copy-tree atelier-types))
           (starts 0))
-      (atelier-register-entry-type
-       'terminal "terminal" (lambda (buffer) (string-prefix-p "*stack-job" (buffer-name buffer))))
+      (atelier-define-type 'terminal
+        :buffer-p (lambda (buffer) (string-prefix-p "*stack-job" (buffer-name buffer)))
+        :capture (lambda (_buffer) (atelier-job-capture)))
       ;; This exercises the real process and job lifecycle, not Ghostel's PTY.
       (cl-labels ((start-job (name directory program args owner &optional _shell _agent type)
                     (let ((buffer (generate-new-buffer name))

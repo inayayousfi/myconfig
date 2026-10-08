@@ -2,8 +2,13 @@
 
 (require 'dired)
 (require 'atelier)
+(require 'atelier-persist)
 
 (defvar atelier-directory-chooser-multiple nil)
+(defvar atelier-directory-choice-result nil)
+(defvar atelier-directory-chooser-buffers nil)
+(defvar-local atelier-directory-chooser-original-header nil)
+(defvar-local atelier-directory-chooser-header-was-local nil)
 (defconst atelier-dired-workspace-marker ?W
   "Native Dired flag character for workspace addition, not a key binding.")
 (defvar atelier-directory-chooser-mode-map (make-sparse-keymap)
@@ -114,7 +119,7 @@ not workspace flags.  In the picker, return the surviving directory selection."
 (defun atelier-read-directories-with-dired (directory multiple)
   "Choose DIRECTORY paths through Dired; allow several when MULTIPLE is non-nil."
   (let ((atelier-directory-choice-result nil)
-        (atelier-directory-chooser-active t)
+        (atelier-inhibit-buffer-ownership t)
         (atelier-directory-chooser-multiple multiple)
         (atelier-directory-chooser-buffers nil)
         (existing-buffers (buffer-list)))
@@ -134,9 +139,201 @@ not workspace flags.  In the picker, return the surviving directory selection."
   (mouse-set-point event)
   (atelier-directory-chooser-enter))
 
+;;; The Dired type
+
+(defun atelier-dired-buffer-p (buffer)
+  "Return non-nil when BUFFER is a Dired listing."
+  (with-current-buffer buffer (derived-mode-p 'dired-mode)))
+
+(defun atelier-dired-capture (_buffer)
+  (list :kind 'directory :persistent t
+        :directory (file-name-as-directory (expand-file-name default-directory))))
+
+(defun atelier-dired-matches-p (content buffer)
+  (with-current-buffer buffer
+    (and (derived-mode-p 'dired-mode)
+         (equal (atelier-content-field content :directory)
+                (file-name-as-directory (expand-file-name default-directory))))))
+
+(defun atelier-dired-restore (content workspace)
+  (let ((directory (atelier-content-field content :directory)))
+    (unless (and directory (file-directory-p directory))
+      (signal 'atelier-restore-unavailable (list "Directory is missing or inaccessible")))
+    (atelier-new-dired-buffer directory nil workspace)))
+
+(defun atelier-dired-base-name (content buffer)
+  "Name a Dired buffer after the folder it lists, live or saved."
+  (if buffer
+      (with-current-buffer buffer
+        (when (derived-mode-p 'dired-mode)
+          (atelier-buffer-folder-name default-directory)))
+    (when-let* ((directory (atelier-content-field content :directory)))
+      (atelier-buffer-folder-name directory))))
+
+(defun atelier-dired-start-buffer (workspace)
+  "List WORKSPACE's folder in a new Dired buffer that WORKSPACE owns."
+  (let ((buffer (atelier-new-dired-buffer (atelier-workspace-directory workspace) t workspace)))
+    (atelier-assign-buffer-to-workspace buffer workspace 'dired)
+    buffer))
+
+;;; Folder browsing in workspace views
+
+(defun atelier-new-dired-buffer (directory &optional force-new workspace)
+  (setq directory (file-name-as-directory (expand-file-name directory))
+        workspace (or workspace (atelier-current-workspace)))
+  (let ((buffer
+         (or (unless force-new
+               (atelier-find-workspace-buffer
+                (lambda (buffer _workspace)
+                  (with-current-buffer buffer
+                    (and (derived-mode-p 'dired-mode)
+                         (condition-case nil
+                             (file-equal-p default-directory directory)
+                           (error nil)))))
+                workspace))
+             (let ((buffer (unless force-new (dired-noselect directory))))
+               (if (and buffer
+                        (not (atelier-buffer-owned-by-other-workspace-p
+                              buffer workspace)))
+                   buffer
+                  (let ((buffer (atelier-operation-track-buffer
+                                 (generate-new-buffer
+                                  (atelier-buffer-folder-name directory)))))
+                   (with-current-buffer buffer
+                     (setq default-directory directory)
+                     (dired-mode directory)
+                     (dired-readin))
+                   buffer))))))
+    buffer))
+
+(defun atelier-file-browser ()
+  (interactive)
+  (when (window-parameter nil 'window-side)
+    (select-window (atelier-main-window)))
+  (let* ((frame (selected-frame))
+         (workspace (atelier-current-workspace))
+         (directory (unless (atelier-buffer-internal-p (current-buffer))
+                      default-directory))
+         (existing (atelier-workspace-buffer-by-type workspace 'dired)))
+    (atelier-uncover-frame frame)
+    (setq directory (if (and directory (file-directory-p directory))
+                        directory
+                      (if (file-directory-p default-directory)
+                          default-directory
+                        (atelier-workspace-directory))))
+    (atelier-show-buffer (or existing (atelier-new-dired-buffer directory nil workspace))
+                         workspace)))
+
+(defun atelier-dired-create (name)
+  "Create a file named NAME, or a directory if NAME ends in a slash.
+Create it relative to the current Dired directory and refresh the listing."
+  (interactive (list (read-string "New file or directory (end with / for directory): ")))
+  (when (string-empty-p name)
+    (user-error "Enter a file or directory name"))
+  (let* ((directory-p (eq (aref name (1- (length name))) ?/))
+         (path (expand-file-name name (dired-current-directory))))
+    (when (or (file-exists-p path) (file-symlink-p path))
+      (user-error "Already exists: %s" path))
+    (if directory-p
+        (make-directory path)
+      (write-region "" nil path nil 'silent nil 'excl))
+    (revert-buffer)
+    (dired-goto-file path)))
+
+(defun atelier-dired-open ()
+  (interactive)
+  (let ((file (dired-get-file-for-visit)))
+    (if (file-directory-p file)
+        (atelier-dired-change-directory file)
+      (atelier-open-file file))))
+
+(atelier-define-operation atelier-dired-change-directory (directory &optional target)
+    (delete-dups (mapcar (lambda (pair) (atelier-workspace-id (car pair)))
+                        (atelier-entries-for-buffer (current-buffer)))) nil
+  "Read DIRECTORY into the current Dired buffer and keep its workspace entry.
+On entry, stay near the same listing row; on return, select TARGET."
+  (let ((buffer (current-buffer))
+        (text (buffer-string))
+        (position (point))
+        (modified (buffer-modified-p))
+        (old-directory default-directory)
+        (old-dired-directory (copy-tree dired-directory))
+        (subdirs (mapcar (lambda (item) (cons (car item) (marker-position (cdr item))))
+                         dired-subdir-alist)))
+    (atelier-operation-cleanup
+     (lambda ()
+       (when (buffer-live-p buffer)
+         (with-current-buffer buffer
+           (let ((inhibit-read-only t) (buffer-undo-list t))
+             (erase-buffer)
+             (insert text)
+             (setq default-directory old-directory dired-directory old-dired-directory
+                   dired-subdir-alist
+                   (mapcar (lambda (item) (cons (car item) (copy-marker (cdr item)))) subdirs))
+             (goto-char position)
+             (set-buffer-modified-p modified)))))))
+  (let ((line (line-number-at-pos)))
+    (setq directory (file-name-as-directory (expand-file-name directory)))
+    (setq dired-directory directory
+          default-directory directory)
+    (dired-readin)
+    (unless (and target (dired-goto-file target))
+      (goto-char (point-min))
+      (forward-line (1- line))
+      (when (eobp) (forward-line -1))
+      (unless (dired-move-to-filename)
+        (dired-next-line 1))))
+  (atelier-refresh-current-buffer-entries)
+  (current-buffer))
+
+(defun atelier-dired-up-directory ()
+  "Read the parent directory into the current Dired buffer."
+  (interactive)
+  (let* ((directory (dired-current-directory))
+         (parent (file-name-directory (directory-file-name directory))))
+    (atelier-dired-change-directory parent directory)))
+
+(defun atelier-dired-mouse-open (event)
+  "Open the Dired item clicked by EVENT in the current window and buffer."
+  (interactive "e")
+  (mouse-set-point event)
+  (atelier-dired-open))
+
+;;; Saved state from older formats
+
+(defun atelier-dired-upgrade-descriptors (data)
+  "Give format 3 folder descriptors, which visit no file, the directory kind."
+  (let ((copy (copy-tree data)))
+    (dolist (workspace (plist-get copy :workspaces) copy)
+      (dolist (descriptor (append (plist-get workspace :buffers)
+                                  (plist-get workspace :owned-buffers)))
+        (when (and (plist-get descriptor :dired) (not (plist-get descriptor :file)))
+          (atelier-legacy-set descriptor :kind 'directory))))))
+
+(defun atelier-dired-upgrade-types (data)
+  "Type format 5 folder entries as Dired before the core types the rest."
+  (atelier-legacy-map-entries
+   (copy-tree data)
+   (lambda (entry)
+     (when (and (eq (plist-get entry :kind) 'directory)
+                (not (plist-member entry :type)))
+       (atelier-legacy-set entry :type 'dired)))))
+
 (defun dired-atelier-setup ()
-  "Use Dired for Atelier directory selection, without assigning shortcuts."
-  (setq atelier-read-directories-function #'atelier-read-directories-with-dired))
+  "Register the Dired type and use Dired to choose and start workspace folders.
+Assign no shortcuts."
+  (atelier-define-type 'dired
+    :tracked t
+    :buffer-p #'atelier-dired-buffer-p
+    :capture #'atelier-dired-capture
+    :matches #'atelier-dired-matches-p
+    :restore #'atelier-dired-restore
+    :missing-paths (lambda (content) (list (atelier-content-field content :directory)))
+    :base-name #'atelier-dired-base-name)
+  (atelier-define-upgrade-step 3 #'atelier-dired-upgrade-descriptors)
+  (atelier-define-upgrade-step 5 #'atelier-dired-upgrade-types)
+  (setq atelier-read-directories-function #'atelier-read-directories-with-dired
+        atelier-workspace-start-function #'atelier-dired-start-buffer))
 
 (provide 'dired-atelier)
 ;;; dired-atelier.el ends here

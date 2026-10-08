@@ -16,8 +16,6 @@
 (declare-function atelier-register-buffer "atelier")
 
 (defconst atelier-buffer-name-separator " | ")
-(defconst atelier-buffer-name-tracked-types '(file dired terminal aipanel)
-  "Types whose buffers Atelier tracks by identity, never by name.")
 (defvar atelier-buffer-owner-functions nil
   "Functions called with a buffer that no workspace stack holds.
 The first non-nil result, (WORKSPACE . TYPE), names that buffer.")
@@ -32,12 +30,11 @@ The first non-nil result, (WORKSPACE . TYPE), names that buffer.")
 (defun atelier-buffer-owner-index ()
   "Map each live buffer held by a workspace stack to (WORKSPACE TYPE KIND)."
   (let ((index (make-hash-table :test #'eq)))
-    (dolist (workspace atelier-workspaces)
-      (dolist (content (plist-get workspace :contents))
-        (let ((buffer (gethash (atelier-content-cache-key workspace (plist-get content :id))
-                               atelier-content-live-buffers)))
+    (dolist (workspace (atelier-workspace-list))
+      (dolist (content (atelier-workspace-contents workspace))
+        (let ((buffer (atelier-content-buffer workspace content)))
           (when (and (buffer-live-p buffer) (not (gethash buffer index)))
-            (puthash buffer (list workspace (plist-get content :type) (plist-get content :kind))
+            (puthash buffer (list workspace (atelier-content-field content :type) (atelier-content-field content :kind))
                      index)))))
     index))
 
@@ -51,7 +48,7 @@ The first non-nil result, (WORKSPACE . TYPE), names that buffer.")
 (defun atelier-buffer-strip-qualifier (name type)
   "Return NAME without a leading \"WORKSPACE | TYPE | \" qualifier.
 A legacy Atelier name such as \"*terminal:WORKSPACE*\" becomes its type label."
-  (let ((label (atelier-entry-buffer-name type)))
+  (let ((label (atelier-type-label type)))
     (cond
      ((string-match (concat "\\`.+?" (regexp-quote atelier-buffer-name-separator)
                             (regexp-quote label)
@@ -74,36 +71,36 @@ A legacy Atelier name such as \"*terminal:WORKSPACE*\" becomes its type label."
   "Return the NAME part of CONTENT, live in BUFFER or only saved."
   (cond
    (buffer (atelier-buffer-strip-qualifier (buffer-name buffer) type))
-   ((and (eq type 'dired) (plist-get content :directory))
-    (atelier-buffer-folder-name (plist-get content :directory)))
-   ((plist-get content :name)
-    (atelier-buffer-strip-qualifier (plist-get content :name) type))
-   ((plist-get content :file) (file-name-nondirectory (plist-get content :file)))
+   ((when-let* ((base-name (atelier-type-get type :base-name)))
+      (funcall base-name content nil)))
+   ((atelier-content-field content :name)
+    (atelier-buffer-strip-qualifier (atelier-content-field content :name) type))
+   ((atelier-content-field content :file) (file-name-nondirectory (atelier-content-field content :file)))
    (t "unnamed")))
 
 (defun atelier-buffer-base (buffer type)
   "Return BUFFER's name without qualifier, remembering it on first use.
-A name given since Atelier last named BUFFER replaces it.  A Dired buffer
-shows its current folder until it is given a name."
+A name given since Atelier last named BUFFER replaces it.  Until then, a
+TYPE with :base-name may supply the name, such as a listed folder's."
   (with-current-buffer buffer
     (when (and atelier-buffer-assigned-name
                (not (equal (buffer-name) atelier-buffer-assigned-name)))
       (setq atelier-buffer-base-name (atelier-buffer-strip-qualifier (buffer-name) type)
             atelier-buffer-assigned-name nil))
     (or atelier-buffer-base-name
-        (if (derived-mode-p 'dired-mode)
-            (atelier-buffer-folder-name default-directory)
-          (setq atelier-buffer-base-name
-                (atelier-buffer-strip-qualifier (buffer-name) type))))))
+        (when-let* ((base-name (atelier-type-get type :base-name)))
+          (funcall base-name nil buffer))
+        (setq atelier-buffer-base-name
+              (atelier-buffer-strip-qualifier (buffer-name) type)))))
 
 (defun atelier-buffer-name-keeps-native-p (base type kind)
   "Whether a star-named BASE is found by exact name and must keep it."
-  (and (not (memq type atelier-buffer-name-tracked-types))
+  (and (not (atelier-type-get type :tracked))
        (not (eq kind 'scratch))
        (string-match-p "\\`\\*.*\\*\\(<[0-9]+>\\)?\\'" base)))
 
 (defun atelier-buffer-qualified-name (workspace type base)
-  (string-join (list (plist-get workspace :name) (atelier-entry-buffer-name type) base)
+  (string-join (list (atelier-workspace-name workspace) (atelier-type-label type) base)
                atelier-buffer-name-separator))
 
 (defun atelier-name-buffer (buffer &optional index)

@@ -9,6 +9,7 @@
   (add-to-list 'load-path (expand-file-name "atelier" lisp)))
 (require 'dired-atelier)
 (require 'universel-atelier)
+(dired-atelier-setup)
 
 (defmacro atelier-dired-test-with-directories (&rest body)
   (declare (indent 0))

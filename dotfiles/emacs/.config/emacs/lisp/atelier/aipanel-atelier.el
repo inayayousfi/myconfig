@@ -2,6 +2,7 @@
 
 (require 'aipan)
 (require 'atelier)
+(require 'atelier-persist)
 
 (defalias 'aipanel-atelier-owner #'aipanel-default-owner
   "Compatibility name for AIPanel's source-owned attachment.")
@@ -47,9 +48,61 @@
         (select-window window))
       t)))
 
+;;; Saved panels
+
+(defun aipanel-atelier-agent-job-p (job)
+  "Whether a pre-format-6 terminal JOB ran a coding agent."
+  (or (consp (plist-get job :agent))
+      (and (plist-get job :agent)
+           (member (file-name-nondirectory (or (car (plist-get job :direct-command)) ""))
+                   '("opencode" "claude" "codex" "fx")))))
+
+(defun aipanel-atelier-upgrade-types (data)
+  "Type format 5 agent jobs as panels before the core types them as terminals."
+  (atelier-legacy-map-entries
+   (copy-tree data)
+   (lambda (entry)
+     (when (and (eq (plist-get entry :kind) 'terminal)
+                (not (plist-member entry :type))
+                (plist-get entry :job)
+                (aipanel-atelier-agent-job-p (plist-get entry :job)))
+       (atelier-legacy-set entry :type 'aipanel)))))
+
+(defun aipanel-atelier-attached-p (entry)
+  "Whether saved panel ENTRY records the source entry it sits beside."
+  (stringp (plist-get (plist-get (plist-get (plist-get entry :job) :agent) :attachment)
+                      :entry-id)))
+
+(defun aipanel-atelier-upgrade-attachments (data)
+  "Drop format 6 and 7 workspace-level panels, which had no source buffer."
+  (let ((data (atelier-legacy-remove-entries
+               data (lambda (entry)
+                      (and (eq (plist-get entry :type) 'aipanel)
+                           (not (aipanel-atelier-attached-p entry)))))))
+    (dolist (workspace (plist-get data :workspaces) data)
+      (cl-remf workspace :agent-directory))))
+
+(defun aipanel-atelier-validate (workspace entry data)
+  "Reject saved state where panel ENTRY is not attached to another buffer."
+  (let* ((attachment (plist-get (plist-get (atelier-entry-job entry) :agent) :attachment))
+         (source-id (plist-get attachment :entry-id))
+         (workspaces (plist-get data :workspaces))
+         (source (cl-loop for candidate in workspaces
+                          thereis (atelier-entry-by-id candidate source-id))))
+    (unless (and (stringp source-id) source
+                 (not (cl-some (lambda (owner)
+                                 (and (atelier-entry-by-id owner source-id)
+                                      (eq (atelier-entry-value source :type owner) 'aipanel)))
+                               workspaces)))
+      (error "Invalid AIPanel attachment in workspace %s" (atelier-workspace-name workspace)))))
+
 (defun aipanel-atelier-setup ()
   "Keep AIPanel side windows separate from workspace entries and jobs."
-  (atelier-register-entry-type 'aipanel "aipanel" #'aipanel-buffer-p)
+  (atelier-define-type 'aipanel :tracked t :buffer-p #'aipanel-buffer-p
+                       :validate #'aipanel-atelier-validate)
+  (atelier-define-upgrade-step 5 #'aipanel-atelier-upgrade-types)
+  (atelier-define-upgrade-step 6 #'aipanel-atelier-upgrade-attachments)
+  (atelier-define-upgrade-step 7 #'aipanel-atelier-upgrade-attachments)
   (setq aipanel-owner-function #'aipanel-atelier-owner
         aipanel-context-function #'aipanel-atelier-context)
   (add-hook 'aipanel-buffer-created-hook #'aipanel-atelier-buffer-created)

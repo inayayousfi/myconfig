@@ -28,7 +28,7 @@
           (existing (and workspace (not in-terminal)
                          (atelier-workspace-buffer-by-type workspace 'terminal)))
           (launch (unless existing (funcall atelier-terminal-command-function workspace)))
-         (name (atelier-entry-buffer-name 'terminal))
+         (name (atelier-type-label 'terminal))
          (buffer (or existing
                      (ghostel-atelier-buffer
                       (if in-terminal

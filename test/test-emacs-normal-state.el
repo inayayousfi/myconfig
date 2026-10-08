@@ -167,7 +167,6 @@
           (atelier-content-live-buffers (make-hash-table :test #'equal))
           (atelier-entry-owners (make-hash-table :test #'eq))
           (atelier-change-hook nil)
-          (atelier-buffer-kind-functions nil)
           (atelier-naming-timer nil)
           (buffer-list-update-hook (list #'atelier-schedule-naming))
           (window-buffer-change-functions (list #'atelier-record-changed-windows))

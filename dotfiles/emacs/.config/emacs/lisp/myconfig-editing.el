@@ -5,6 +5,8 @@
 (require 'myconfig-core)
 
 (declare-function atelier-open-file "atelier")
+(declare-function atelier-current-workspace "atelier-model")
+(declare-function atelier-workspace-directory "atelier")
 (declare-function atelier-buffer-list "atelier-navigator")
 (declare-function global-blamer-mode "blamer")
 (declare-function cape-dabbrev "cape")
@@ -281,8 +283,12 @@ language, so the file would keep its older mode."
     (normal-mode)))
 
 (defun myconfig-compile ()
+  "Compile from the current workspace's folder, or the buffer's without one."
   (interactive)
-  (compile (read-shell-command "Compile command: " compile-command)))
+  (let ((default-directory (if (atelier-current-workspace)
+                               (atelier-workspace-directory)
+                             default-directory)))
+    (compile (read-shell-command "Compile command: " compile-command))))
 
 (defun myconfig-project-file-candidates (root)
   (if-let* ((project (project-current nil root)))

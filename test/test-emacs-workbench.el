@@ -10,6 +10,7 @@
 (provide 'myconfig-terminal)
 (provide 'ghostel)
 (provide 'evil-ghostel)
+(provide 'ghostel-compile)
 (defvar-local ghostel-identity nil)
 (provide 'simple-httpd)
 (defvar httpd--server nil)
@@ -221,6 +222,34 @@
       (should-not meta-prefix-char)
       (myconfig-terminal-escape)
       (should-not (local-variable-p 'meta-prefix-char)))))
+
+(ert-deftest myconfig-terminal-leaves-compile-runs-as-compile-buffers ()
+  "A Ghostel compile run is neither a workspace terminal nor terminal input."
+  (let ((terminal (generate-new-buffer "terminal"))
+        (compile (generate-new-buffer "compile"))
+        entered)
+    (unwind-protect
+        (progn
+          (dolist (buffer (list terminal compile))
+            (with-current-buffer buffer
+              (setq major-mode 'ghostel-mode)
+              (setq-local ghostel--input-mode 'semi-char)))
+          (with-current-buffer compile
+            (setq ghostel-identity '((kind . compile))
+                  buffer-read-only t))
+          (should (eq (atelier-buffer-type terminal) 'terminal))
+          (should-not (eq (atelier-buffer-type compile) 'terminal))
+          (with-current-buffer compile
+            (myconfig-terminal-keep-writable)
+            (should buffer-read-only))
+          (cl-letf (((symbol-function 'myconfig-terminal-enter-input)
+                     (lambda () (push (current-buffer) entered))))
+            (myconfig-terminal-enter-input-later terminal)
+            (myconfig-terminal-enter-input-later compile)
+            (sit-for 0.05))
+          (should (equal entered (list terminal))))
+      (kill-buffer terminal)
+      (kill-buffer compile))))
 
 (ert-deftest myconfig-mode-line-names-every-active-input-mode ()
   "Each active input mode is named as [OWNER] STATE, joined with an ampersand."
@@ -3970,6 +3999,25 @@
                (set-buffer-modified-p nil)
                (setq-local kill-buffer-query-functions nil))
              (kill-buffer buffer)))))))
+
+(ert-deftest myconfig-compile-starts-in-the-workspace-folder ()
+  "Compiling from a file in a subfolder runs in the workspace's folder."
+  (atelier-test-with-lifecycle
+    (let* ((root (file-name-as-directory (make-temp-file "myconfig-compile-" t)))
+           (sub (file-name-as-directory (expand-file-name "sub" root)))
+           directory)
+      (unwind-protect
+          (progn
+            (make-directory sub)
+            (setf (plist-get active :path) root)
+            (with-temp-buffer
+              (setq default-directory sub)
+              (cl-letf (((symbol-function 'read-shell-command) (lambda (&rest _) "true"))
+                        ((symbol-function 'compile)
+                         (lambda (&rest _) (setq directory default-directory))))
+                (myconfig-compile)))
+            (should (equal directory root)))
+        (delete-directory root t)))))
 
 (ert-deftest atelier-navigator-folds-stopped-group-and-every-workspace-without-opening ()
   (atelier-test-with-lifecycle

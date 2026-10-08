@@ -7,6 +7,7 @@
 (provide 'myconfig-core)
 (provide 'ghostel)
 (provide 'evil-ghostel)
+(provide 'ghostel-compile)
 (defvar myconfig-data-directory temporary-file-directory)
 (defvar ghostel-char-mode-map (make-sparse-keymap))
 (let ((lisp (expand-file-name "../dotfiles/emacs/.config/emacs/lisp/"

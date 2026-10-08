@@ -11,6 +11,7 @@
       ghostel-module-auto-install 'download)
 (require 'ghostel)
 (require 'evil-ghostel)
+(require 'ghostel-compile)
 
 (defcustom myconfig-terminal-escape-key (kbd "M-x")
   "Shared key sequence that returns editor views to Evil normal state."
@@ -93,12 +94,14 @@
   (setq buffer-read-only nil))
 
 (defun myconfig-terminal-enter-input-later (buffer)
-  "Give BUFFER terminal input once Ghostel has spawned, unless Alt+x came first."
+  "Give BUFFER terminal input once Ghostel has spawned, unless Alt+x came first.
+A compile run keeps its read-only compilation keys."
   (run-at-time 0 nil
                (lambda ()
                  (when (buffer-live-p buffer)
                    (with-current-buffer buffer
-                     (unless (eq ghostel--input-mode 'emacs)
+                     (unless (or (eq ghostel--input-mode 'emacs)
+                                 (ghostel-atelier-compile-buffer-p))
                        (myconfig-terminal-enter-input)))))))
 
 (defun myconfig-terminal-insert-means-input ()
@@ -135,7 +138,8 @@
     (myconfig-terminal-enter-input)))
 
 (defun myconfig-terminal-keep-writable ()
-  (when (derived-mode-p 'ghostel-mode)
+  (when (and (derived-mode-p 'ghostel-mode)
+             (not (ghostel-atelier-compile-buffer-p)))
     (setq buffer-read-only nil)))
 
 (defun myconfig-terminal-configure-char-keys ()
@@ -174,6 +178,9 @@
                       (default-value 'kill-buffer-query-functions)))
   (evil-set-initial-state 'ghostel-mode 'normal)
   (add-hook 'ghostel-mode-hook #'myconfig-terminal-display-setup)
+  ;; Compile runs in a real terminal, so colours, progress bars and line
+  ;; drawing render instead of showing their escape codes.
+  (ghostel-compile-global-mode 1)
   (add-hook 'evil-insert-state-entry-hook #'myconfig-terminal-insert-means-input)
   (define-key ghostel-mode-map myconfig-terminal-escape-key #'myconfig-normal-state)
   (myconfig-terminal-configure-char-keys)

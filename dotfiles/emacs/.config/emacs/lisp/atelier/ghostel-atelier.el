@@ -65,9 +65,16 @@
 (defun ghostel-atelier-process-exited (buffer _event)
   (atelier-job-process-exited buffer))
 
+(defun ghostel-atelier-compile-buffer-p (&optional buffer)
+  "Return non-nil when BUFFER shows a `ghostel-compile' run, not a terminal.
+Ghostel sets this identity after its mode hooks, so check it when acting."
+  (eq (alist-get 'kind (buffer-local-value 'ghostel-identity
+                                           (or buffer (current-buffer))))
+      'compile))
+
 (defun ghostel-atelier-buffer-p (buffer)
   "Return non-nil when BUFFER is a plain terminal or a program Ghostel runs.
-Panels that other packages create are not terminals."
+Compile runs and panels that other packages create are not terminals."
   (with-current-buffer buffer
     (and (derived-mode-p 'ghostel-mode)
          (memq (alist-get 'kind ghostel-identity) '(nil term exec)))))

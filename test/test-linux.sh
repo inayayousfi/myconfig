@@ -589,9 +589,11 @@ assert(frame[1].value == 4 and frame[2].value == -4)
 '
 grep -Fq 'local multiplier = 4' "$pointer_plugin" \
     || myconfig_fail "libinput pointer-sensitivity multiplier changed"
-grep -Fq '/etc/libinput/plugins/90-myconfig-pointer-sensitivity.lua' \
+grep -Fq '"$MYCONFIG_REPO_ROOT"/linux/assets/libinput/*.lua' \
     "$REPO_ROOT/linux/modules/kde-plasma.sh" \
-    || myconfig_fail "KDE Plasma module does not install the libinput plugin"
+    && grep -Fq '"/etc/libinput/plugins/${libinput_plugin##*/}"' \
+        "$REPO_ROOT/linux/modules/kde-plasma.sh" \
+    || myconfig_fail "KDE Plasma module does not install the libinput plugins"
 grep -Fq 'panel.lengthMode = "fit";' \
     "$REPO_ROOT/dotfiles/kde-plasma/.local/share/myconfig/kde-plasma/layout.js" \
     || myconfig_fail "KDE Plasma dock does not fit its content"

@@ -109,12 +109,14 @@ module_kde_plasma() {
 
     install_kde_plasma_glass || return 1
 
-    local pointer_plugin="$MYCONFIG_REPO_ROOT/linux/assets/libinput/90-myconfig-pointer-sensitivity.lua"
-    [ -f "$pointer_plugin" ] \
-        || myconfig_fail "libinput pointer-sensitivity plugin was not found"
-    sudo install -Dm644 \
-        "$pointer_plugin" \
-        /etc/libinput/plugins/90-myconfig-pointer-sensitivity.lua
+    local libinput_plugin libinput_plugins=("$MYCONFIG_REPO_ROOT"/linux/assets/libinput/*.lua)
+    [ -f "${libinput_plugins[0]}" ] \
+        || myconfig_fail "libinput plugins were not found"
+    for libinput_plugin in "${libinput_plugins[@]}"; do
+        sudo install -Dm644 \
+            "$libinput_plugin" \
+            "/etc/libinput/plugins/${libinput_plugin##*/}"
+    done
 
     [ -x "$HOME/.local/bin/myconfig-kde-plasma-layout" ] \
         || myconfig_fail "KDE Plasma layout command was not stowed"

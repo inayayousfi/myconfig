@@ -229,31 +229,37 @@
           (when (buffer-live-p buffer) (kill-buffer buffer)))))))
 
 (ert-deftest atelier-side-window-commands-return-to-last-selected-main-split ()
+  "From a side panel, the terminal and the file browser show their buffer in
+the last selected main split and leave the panel open."
   (dolist (command '(myconfig-terminal atelier-file-browser))
     (save-window-excursion
-      (let ((source (generate-new-buffer " *side-command-source*"))
-            (panel (generate-new-buffer " *side-command-panel*"))
-            (target (generate-new-buffer " *side-command-target*"))
-            (atelier-file-browser-window-configurations nil)
-            (atelier-navigator-window-configurations nil))
+      (let* ((source (generate-new-buffer "side-command-source"))
+             (panel (generate-new-buffer " *side-command-panel*"))
+             (target (generate-new-buffer "side-command-target"))
+             (workspace (list :id "side" :name "side" :destination "local"
+                              :path temporary-file-directory :status 'running :entries nil))
+             (atelier-workspaces (list workspace))
+             (atelier-content-live-buffers (make-hash-table :test #'equal))
+             (atelier-entry-owners (make-hash-table :test #'eq))
+             (atelier-change-hook nil)
+             (atelier-navigator-window-configurations nil)
+             (old-selection (frame-parameter nil 'atelier-workspace-id)))
         (unwind-protect
             (progn
               (delete-other-windows)
+              (atelier-select-workspace workspace)
               (let ((main (split-window-below)))
                 (select-window main)
                 (switch-to-buffer source)
                 (let ((side (display-buffer-in-side-window panel '((side . right)))))
                   (select-window side)
-                  (cl-letf (((symbol-function 'atelier-current-workspace)
-                             (lambda (&rest _) '(:id "side" :name "side")))
-                            ((symbol-function 'atelier-workspace-buffer-by-type)
+                  (cl-letf (((symbol-function 'atelier-workspace-buffer-by-type)
                              (lambda (&rest _) target)))
                     (funcall command))
                   (should (eq (selected-window) main))
                   (should (eq (window-buffer main) target))
-                  (if (eq command 'atelier-file-browser)
-                      (should-not (window-live-p side))
-                    (should (eq (window-buffer side) panel))))))
+                  (should (eq (window-buffer side) panel)))))
+          (set-frame-parameter nil 'atelier-workspace-id old-selection)
           (dolist (buffer (list source panel target))
             (when (buffer-live-p buffer) (kill-buffer buffer))))))))
 

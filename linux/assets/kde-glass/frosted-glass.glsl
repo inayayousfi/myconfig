@@ -2,161 +2,157 @@
 // Copyright (c) 2026 Sepehr Kalanaki. Licensed under the MIT License;
 // see LICENSE-OverShifted-LiquidGlass.
 
-const float liquidGlassE = 2.718281828459045;
-
-float liquidGlassCurve(float distance)
-{
-    const float a = 0.7;
-    const float b = 2.3;
-    const float c = 5.2;
-    // Let the wrap persist across the lens rather than ending at its shoulder.
-    const float d = 1.9;
-    return 1.0 - b * pow(c * liquidGlassE, -d * distance - a);
-}
-
 float liquidGlassRandom(vec2 coordinate)
 {
     return fract(sin(dot(coordinate, vec2(12.9898, 78.233))) * 43758.5453);
 }
 
-float liquidGlassRoundedRadialPosition(vec2 position, vec2 halfSize, float radius)
-{
-    vec2 absolutePosition = abs(position);
-    float positionLength = length(absolutePosition);
-    if (positionLength < 0.0001) {
-        return 0.0;
-    }
-
-    vec2 ray = absolutePosition / positionLength;
-    vec2 cornerCenter = max(halfSize - vec2(radius), vec2(0.0));
-    float verticalHit = halfSize.x / max(ray.x, 0.0001);
-    if (verticalHit * ray.y <= cornerCenter.y) {
-        return positionLength / verticalHit;
-    }
-
-    float horizontalHit = halfSize.y / max(ray.y, 0.0001);
-    if (horizontalHit * ray.x <= cornerCenter.x) {
-        return positionLength / horizontalHit;
-    }
-
-    float projectedCenter = dot(ray, cornerCenter);
-    float discriminant = max(projectedCenter * projectedCenter
-        - dot(cornerCenter, cornerCenter) + radius * radius, 0.0);
-    float cornerHit = projectedCenter + sqrt(discriminant);
-    return positionLength / max(cornerHit, 0.0001);
-}
-
 GlassFragment snellsRefraction(vec2 position, vec2 halfBlurSize, vec4 cornerRadius, float minHalfSize, float dist, float edgeFactor, float concaveFactor)
 {
-    vec2 p = position / max(halfBlurSize, vec2(1.0));
-    float maxHalfSize = max(halfBlurSize.x, halfBlurSize.y);
-    float aspectRatio = maxHalfSize / max(minHalfSize, 1.0);
-    // Derive rounding from the allocated surface. Thin surfaces naturally
-    // become pills; larger, near-square surfaces retain most of their corners.
-    float radiusFraction = mix(0.14, 1.0,
-        smoothstep(1.35, 2.75, aspectRatio));
-    float dynamicRadius = minHalfSize * radiusFraction;
-    // Normalize every point by the rounded boundary reached along its ray
-    // from the center. One field now drives silhouette, optics, and lighting.
-    float radialPosition = liquidGlassRoundedRadialPosition(position,
-        halfBlurSize, dynamicRadius);
-    float shapeDistance = radialPosition - 1.0;
-    float shapeAA = max(fwidth(shapeDistance), 1.0 / max(minHalfSize, 1.0));
-    float shapeCoverage = 1.0 - smoothstep(-shapeAA, shapeAA, shapeDistance);
-    float interiorDistance = max(0.0, 1.0 - radialPosition);
+    // The rim band is the part of the slab that bends light across the edge.
+    float curvature = clamp(materialCurvature, 0.0, 3.0);
+    float bevelWidth = clamp(minHalfSize * 0.45, 10.0, 72.0);
 
-    // OverShifted's default fPower is 1.0. Keep the KWin strength control by
-    // making its configured default (15 -> shader value 0.75) map to that.
+    // Fill the whole area KWin gives, rounded only by the corner radius it
+    // passes for this surface. One exact rounded-rectangle distance field
+    // drives the silhouette, the rim optics, and the rim lighting.
+    vec4 radii = clamp(cornerRadius, vec4(0.0), vec4(minHalfSize));
+    float radius = position.x > 0.0
+        ? (position.y > 0.0 ? radii.y : radii.w)
+        : (position.y > 0.0 ? radii.x : radii.z);
+    vec2 corner = abs(position) - (halfBlurSize - vec2(radius));
+    float shapeDistance = length(max(corner, 0.0))
+        + min(max(corner.x, corner.y), 0.0) - radius;
+    vec2 outward = corner.x > 0.0 && corner.y > 0.0
+        ? normalize(corner)
+        : (corner.x > corner.y ? vec2(1.0, 0.0) : vec2(0.0, 1.0));
+    outward *= vec2(position.x < 0.0 ? -1.0 : 1.0, position.y < 0.0 ? -1.0 : 1.0);
+    float rimDistance = max(0.0, -shapeDistance);
+    float shapeCoverage = 1.0 - smoothstep(-0.5, 0.5, shapeDistance);
+
+    // A band wider than its corner radius folds into a separate facet at the
+    // corner. Keep the band wide along the edges and narrow it to the corner
+    // radius as it approaches each corner, so the rim bends continuously.
+    float alongEdge = max(0.0, -min(corner.x, corner.y));
+    bevelWidth = mix(max(min(radius, bevelWidth), 2.0), bevelWidth,
+        smoothstep(0.0, bevelWidth * 1.5, alongEdge));
+
+    // The glass is a slab with a rounded, convex rim and a shallow dome over
+    // its face. Their normals light the surface. The dome is a smooth oval
+    // so the face has no creases of its own.
+    float bevelHeight = bevelWidth * 0.85 * curvature;
+    float bevel = clamp(rimDistance / bevelWidth, 0.02, 1.0);
+    float bevelRise = 1.0 - bevel;
+    float bevelProfile = sqrt(1.0 - bevelRise * bevelRise);
+    float rimSlope = min(bevelHeight / bevelWidth * bevelRise / bevelProfile, 8.0);
+    float domeHeight = min(minHalfSize * 0.06, 10.0) * curvature;
+    vec2 domePosition = position / max(halfBlurSize, vec2(1.0));
+    vec2 domeGradient = 2.0 * domeHeight * domePosition
+        / max(halfBlurSize, vec2(1.0));
+    vec3 normal = normalize(vec3(outward * rimSlope + domeGradient, 1.0));
+
+    // Rounded glass resting on content magnifies its face and compresses
+    // its rim: the image swells toward the middle and wraps into the edge
+    // while staying continuous with the content outside. Draw each point
+    // toward the center, fading along the rim profile to nothing at the
+    // edge. Lines therefore bow toward the corners instead of stretching.
+    float ior = clamp(materialIOR, 1.0, 2.5);
     float effectPower = clamp(refractionStrength / 0.75, 0.0, 2.0);
-    float radialScale = pow(max(0.0001, liquidGlassCurve(interiorDistance)), effectPower);
-    vec2 samplePosition = p * radialScale;
-    vec2 sampleUV = clamp(samplePosition * 0.5 + vec2(0.5),
-        0.5 / blurSize, 1.0 - 0.5 / blurSize);
+    // The magnification is the same in both directions so text on the face
+    // keeps its proportions; only the rim compresses.
+    vec2 displacement = -position * 0.12 * bevelProfile * effectPower;
 
-    // The reference implementation refracts its lightly blurred framebuffer,
-    // then adds subtle grain before applying the edge glow.
+    // Optional dispersion: short wavelengths bend slightly more. The rim
+    // compresses the background strongly, so even a small split becomes a
+    // wide colored streak; cap it in background pixels.
+    float fringing = clamp(refractionRGBFringing, 0.0, 1.0);
+    float dispersion = min(fringing * 0.3,
+        fringing * 20.0 / max(length(displacement), 1.0));
+    vec2 texel = 1.0 / max(blurSize, vec2(1.0));
+    vec2 baseUV = position * texel + vec2(0.5);
+    vec2 minUV = 0.5 * texel;
+    vec2 maxUV = vec2(1.0) - 0.5 * texel;
+    vec2 sampleUV = clamp(baseUV + displacement * texel, minUV, maxUV);
     vec4 color = texture(texUnit, sampleUV);
+    color.r = texture(texUnit, clamp(baseUV
+        + displacement * (1.0 - dispersion) * texel, minUV, maxUV)).r;
+    color.b = texture(texUnit, clamp(baseUV
+        + displacement * (1.0 + dispersion) * texel, minUV, maxUV)).b;
+
     // A very small symmetric diffusion gives the surface microscopic
     // roughness without replacing the coherent refracted image with blur.
-    vec2 roughnessOffset = vec2(1.25, -0.85) / blurSize;
+    vec2 roughnessOffset = vec2(1.25, -0.85) * texel;
     vec4 roughTransmission = 0.5 * (
-        texture(texUnit, clamp(sampleUV + roughnessOffset, 0.0, 1.0))
-        + texture(texUnit, clamp(sampleUV - roughnessOffset, 0.0, 1.0))
+        texture(texUnit, clamp(sampleUV + roughnessOffset, minUV, maxUV))
+        + texture(texUnit, clamp(sampleUV - roughnessOffset, minUV, maxUV))
     );
-    color = mix(color, roughTransmission, clamp(materialRoughness, 0.0, 0.16));
-    // Pixel-scale noise avoids the broad, correlated patches of a tiny input scale.
-    color.rgb += vec3(liquidGlassRandom(gl_FragCoord.xy) - 0.5) * 0.075;
+    color.rgb = mix(color.rgb, roughTransmission.rgb,
+        clamp(materialRoughness, 0.0, 0.16));
 
-    float angularGlow = sin(atan(p.y, p.x) - 0.5);
-    float edgeGlow = 1.0 - smoothstep(-0.5, 0.5, interiorDistance);
-    color.rgb *= 1.0 + angularGlow * 0.25 * edgeGlow;
+    // KWin draws this glass before the window's content, which is mostly
+    // light text and icons. A continuous tone curve dims the glass in
+    // proportion to the square of the surrounding background brightness:
+    // dark areas are barely touched and bright ones come down the most, so
+    // that content stays readable without a threshold. Wide taps follow the
+    // neighborhood rather than fine detail; lighting is applied afterward so
+    // the rim and highlights keep their brightness.
+    vec2 readabilityReach = 28.0 * texel;
+    vec3 neighborhood = 0.25 * (
+        texture(texUnit, clamp(baseUV + vec2(readabilityReach.x, 0.0), minUV, maxUV)).rgb
+        + texture(texUnit, clamp(baseUV - vec2(readabilityReach.x, 0.0), minUV, maxUV)).rgb
+        + texture(texUnit, clamp(baseUV + vec2(0.0, readabilityReach.y), minUV, maxUV)).rgb
+        + texture(texUnit, clamp(baseUV - vec2(0.0, readabilityReach.y), minUV, maxUV)).rgb);
+    float backgroundLuminance = dot(max(neighborhood, color.rgb),
+        vec3(0.2126, 0.7152, 0.0722));
+    color.rgb *= 1.0 - 0.44 * backgroundLuminance * backgroundLuminance;
 
-    // KWin composites this material directly over the desktop, whereas the
-    // reference demo renders into a lit scene. Restore that missing scene
-    // light with the analytical rounded-surface normal. Keep illumination in a
-    // shell that follows the signed-distance contour instead of laying a
-    // circular-looking gradient across the front face.
-    const float gradientStep = 1.0;
-    vec2 surfaceGradient = vec2(
-        liquidGlassRoundedRadialPosition(position + vec2(gradientStep, 0.0),
-            halfBlurSize, dynamicRadius)
-            - liquidGlassRoundedRadialPosition(position - vec2(gradientStep, 0.0),
-                halfBlurSize, dynamicRadius),
-        liquidGlassRoundedRadialPosition(position + vec2(0.0, gradientStep),
-            halfBlurSize, dynamicRadius)
-            - liquidGlassRoundedRadialPosition(position - vec2(0.0, gradientStep),
-                halfBlurSize, dynamicRadius)
-    ) * minHalfSize * 0.5;
+    // Light the curved surface from the top left. Shading follows the real
+    // surface normal, so the dome brightens toward the light and the rim
+    // facing away falls into a soft shade.
     vec3 keyLight = normalize(vec3(-0.70, 0.70, 0.72));
-    vec2 planarNormal = length(surfaceGradient) > 0.0001
-        ? normalize(surfaceGradient) : vec2(0.0);
-    // Share one wide angular transition between light and shade so neither
-    // side has its own cutoff or a visible join halfway around the lens.
-    float lightBlend = smoothstep(-0.95, 0.95,
-        dot(planarNormal, normalize(keyLight.xy)));
-    float diffuseLight = mix(0.12, 0.92, lightBlend);
-    float oppositeLight = 1.0 - lightBlend;
-    // Add a separate, low-frequency light from the same source. Unlike the
-    // shoulder and rim terms below, it reaches across the full glass face to
-    // provide a quiet readability lift without softening their definition.
-    vec3 diffuseNormal = normalize(vec3(surfaceGradient * 0.70, 1.0));
-    float broadDiffuseLight = smoothstep(-0.20, 0.92,
-        dot(diffuseNormal, keyLight));
-    float diffuseFaceCoverage = smoothstep(0.0, 0.24,
-        interiorDistance + shapeAA);
-    float diffuseFill = (0.016 + 0.040 * broadDiffuseLight)
-        * diffuseFaceCoverage;
-    color.rgb = mix(color.rgb, vec3(1.0), diffuseFill);
-    // Place the strongest light just inside the silhouette, on the shoulder
-    // of the lens. This reads as a three-quarter bevel rather than an outline
-    // painted directly on the edge or a gradient spread over the front face.
-    float innerReach = 1.0 - smoothstep(0.12, 0.62, interiorDistance);
-    float edgeRelease = smoothstep(0.0, 0.16, interiorDistance);
-    float shoulderLight = innerReach * mix(0.38, 1.0, edgeRelease);
-    float edgeKiss = 1.0 - smoothstep(0.0, 0.11, interiorDistance);
-    // A soft union avoids a ridge where the edge band meets the shoulder.
-    float lightProfile = shoulderLight + 0.82 * edgeKiss * (1.0 - shoulderLight);
-    // Compensate for analytical alpha falloff at the silhouette. Without this
-    // narrow term the premultiplied highlight appears to stop one pixel early.
-    float silhouetteKiss = 1.0 - smoothstep(0.0, 0.11 + shapeAA,
-        interiorDistance);
-    float coverageCompensation = mix(1.0, 2.2, 1.0 - shapeCoverage);
-    float transmittedRim = (0.018 + 0.070 * diffuseLight)
-        * pow(lightProfile, 1.2);
-    float rimHighlight = 0.17 * pow(diffuseLight, 1.7)
-        * pow(lightProfile, 1.7);
-    float edgeSpecular = 0.10 * pow(diffuseLight, 1.5)
-        * silhouetteKiss * coverageCompensation;
-    color.rgb = mix(color.rgb, vec3(1.0),
-        clamp(transmittedRim + rimHighlight + edgeSpecular, 0.0, 0.38));
-    float respondingShadow = (0.035 + 0.19 * oppositeLight)
-        * pow(lightProfile, 1.2);
-    color.rgb *= 1.0 - respondingShadow;
+    vec3 view = vec3(0.0, 0.0, 1.0);
+    float facing = dot(normal, keyLight) - keyLight.z;
+    color.rgb *= 1.0 + 0.22 * facing;
+    // The real dome is too shallow to light the face visibly over a dark
+    // desktop, so a broader copy of it lifts the top left and shades the
+    // bottom right.
+    vec3 bodyNormal = normalize(vec3(domePosition * 0.9, 1.0));
+    float bodyLight = smoothstep(-0.20, 0.92, dot(bodyNormal, keyLight));
+    color.rgb *= 1.0 - 0.09 * (1.0 - bodyLight);
+    color.rgb = mix(color.rgb, vec3(1.0), 0.060 * bodyLight);
 
-    float bend = clamp(1.0 - radialScale, 0.0, 1.0);
-    vec3 normal = normalize(vec3(planarNormal * bend * 3.0, 1.0));
+    // Glass reflects more at grazing angles, so the steep rim mirrors a soft
+    // bright environment on every side. This is what gives the edge depth.
+    float cosine = clamp(normal.z, 0.0, 1.0);
+    float fresnel = 0.04 + 0.96 * pow(1.0 - cosine, 5.0);
+    vec3 reflected = reflect(-view, normal);
+    float environment = 0.30 + 0.70 * smoothstep(-0.70, 0.90, dot(reflected, keyLight));
+    color.rgb = mix(color.rgb, vec3(environment), clamp(fresnel, 0.0, 0.45));
+
+    // Light catches the steep part of the rim as a thin line. It is
+    // brightest where the rim faces the light and reappears, weaker, on the
+    // opposite rim where light leaves the glass after crossing it. A broad
+    // angular falloff keeps the line continuous along straight edges.
+    float steepness = smoothstep(0.30, 0.85, 1.0 - cosine);
+    float lightAlignment = dot(outward, normalize(keyLight.xy));
+    float keyLobe = pow(smoothstep(-0.35, 1.0, lightAlignment), 2.0);
+    float exitLobe = pow(smoothstep(-0.35, 1.0, -lightAlignment), 2.0);
+    float rimLight = steepness * (0.04 + 0.47 * keyLobe + 0.085 * exitLobe);
+    // Light entering through the lit shoulder spreads into the rim, and the
+    // curved body gathers it again just inside the opposite edge.
+    float shoulderGlow = 0.085 * keyLobe * bevelRise * bevelRise;
+    float exitCaustic = 0.04 * exitLobe * pow(bevelRise, 1.5)
+        * (1.0 - steepness);
+    color.rgb = mix(color.rgb, vec3(1.0),
+        clamp(rimLight + shoulderGlow + exitCaustic, 0.0, 0.65));
+
+    // Dither below one 8-bit step to avoid banding without visible grain.
+    color.rgb += vec3(liquidGlassRandom(gl_FragCoord.xy) - 0.5) / 255.0;
+
+    color.rgb = clamp(color.rgb, 0.0, 1.0);
+
     // glass() applies the remaining material stages, then premultiplies this
     // analytical coverage for KWin's GL_ONE/GL_ONE_MINUS_SRC_ALPHA blend.
     return GlassFragment(vec4(color.rgb, shapeCoverage), dist, edgeFactor,
-        concaveFactor, normal, materialIOR);
+        concaveFactor, normal, ior);
 }

@@ -52,97 +52,113 @@ assert program.addShaderFromSourceCode(QOpenGLShader.Fragment, fragment), progra
 assert program.link(), program.log()
 assert program.bind()
 
-image = QImage(256, 128, QImage.Format_RGBA8888)
-for y in range(image.height()):
-    for x in range(image.width()):
-        image.setPixelColor(x, y, QColor("white" if (x // 8 + y // 8) % 2 else "black"))
-scene = QOpenGLTexture(image)
-diffuse = QOpenGLTexture(image)
-scene.setWrapMode(QOpenGLTexture.ClampToEdge)
-diffuse.setWrapMode(QOpenGLTexture.ClampToEdge)
-diffuse.bind(0)
-scene.bind(1)
-for name, value in {
-    "texUnit": 0, "sceneTexture": 1, "blurSize": QVector2D(256, 128),
+def pattern(width, height, color):
+    image = QImage(width, height, QImage.Format_RGBA8888)
+    for y in range(height):
+        for x in range(width):
+            image.setPixelColor(x, y, QColor(color(x, y)))
+    texture = QOpenGLTexture(image)
+    texture.setWrapMode(QOpenGLTexture.ClampToEdge)
+    return texture
+
+uniforms = {
+    "texUnit": 0, "sceneTexture": 1,
     "cornerRadius": QVector4D(18, 18, 18, 18), "edgeSizePixels": 160.0,
-    "materialThickness": 80.0,
-    "materialCurvature": 1.25,
+    "materialThickness": 80.0, "materialCurvature": 1.0, "materialIOR": 1.5,
+    "materialRoughness": 0.0, "materialInteriorShadow": 0.0,
     "refractionNormalPow": 1.0, "refractionRGBFringing": 0.0,
     "refractionOffsetStrength": 1.0, "refractionBevelIntensity": 1.0,
     "physicallyBasedRefraction": 1, "edgeLighting": 0,
     "tintStrength": 0.0, "tintColor": QVector3D(0, 0, 0), "tintGray": 0.0,
     "autoTintAlpha": 0, "autoTintAlphaRange": QVector2D(0, 1),
     "glowStrength": 0.0, "glowColor": QVector3D(0, 0, 0),
-}.items():
-    location = program.uniformLocation(name)
-    if isinstance(value, int):
-        functions.glUniform1i(location, value)
-    elif isinstance(value, float):
-        functions.glUniform1f(location, value)
-    else:
-        program.setUniformValue(location, value)
-assert functions.glGetError() == 0, "OpenGL uniform setup failed"
+}
 
 vao = QOpenGLVertexArrayObject()
 assert vao.create()
-vao.bind()
-fbo = QOpenGLFramebufferObject(QSize(256, 128))
-assert fbo.isValid()
 
-def render(strength):
-    assert fbo.bind()
+def render(texture, width, height, strength):
+    fbo = QOpenGLFramebufferObject(QSize(width, height))
+    assert fbo.isValid() and fbo.bind()
     assert program.bind()
     vao.bind()
-    diffuse.bind(0)
-    scene.bind(1)
-    functions.glViewport(0, 0, 256, 128)
+    texture.bind(0)
+    texture.bind(1)
+    for name, value in {**uniforms, "blurSize": QVector2D(width, height), "refractionStrength": strength}.items():
+        location = program.uniformLocation(name)
+        if isinstance(value, int):
+            functions.glUniform1i(location, value)
+        elif isinstance(value, float):
+            functions.glUniform1f(location, value)
+        else:
+            program.setUniformValue(location, value)
+    functions.glViewport(0, 0, width, height)
     functions.glClearColor(0, 0, 0, 0)
     functions.glClear(0x4000)
-    functions.glUniform1f(program.uniformLocation("refractionStrength"), strength)
-    functions.glUniform1f(program.uniformLocation("materialIOR"), 1.5)
-    functions.glUniform1f(program.uniformLocation("materialRoughness"), 0.0)
-    functions.glUniform1f(program.uniformLocation("materialInteriorShadow"), 0.0)
     functions.glDrawArrays(0x0004, 0, 3)
     assert functions.glGetError() == 0, "Offscreen draw failed"
-    return fbo.toImage()
+    image = fbo.toImage(True, 0).convertToFormat(QImage.Format_RGBA8888_Premultiplied)
+    fbo.release()
+    return image
 
-plain = render(0.0)
-liquid = render(0.75)
+checker = pattern(256, 128, lambda x, y: "white" if (x // 8 + y // 8) % 2 else "black")
+plain = render(checker, 256, 128, 0.0)
+liquid = render(checker, 256, 128, 0.75)
 
 def differences(first, second, rows, columns=range(32, 224)):
     return sum(abs(first.pixelColor(x, y).red() - second.pixelColor(x, y).red()) > 20
                for y in rows for x in columns)
 
-assert differences(plain, liquid, range(4, 20)) > 100, "LiquidGlass radial remap did not refract the edge"
-assert differences(plain, liquid, range(62, 66), range(126, 130)) < 6, "LiquidGlass radial remap moved the center anchor"
+assert differences(plain, liquid, range(4, 20)) > 100, "Glass did not refract the edge"
+# The face is lit and dimmed, so compare which squares are light, not values.
+center = [(x, y) for y in range(60, 68) for x in range(124, 132)]
+levels = [liquid.pixelColor(x, y).red() for x, y in center]
+midpoint = (min(levels) + max(levels)) / 2
+assert max(levels) - min(levels) > 60 and all(
+    (plain.pixelColor(x, y).red() > 127) == (level > midpoint)
+    for (x, y), level in zip(center, levels)), "Glass moved the center anchor"
 assert max(liquid.pixelColor(x, y).alpha() for y in range(1, 4) for x in range(1, 4)) < 8, \
-    "LiquidGlass did not make pixels outside its adaptive rounded rectangle transparent"
-assert "OverShifted/LiquidGlass" in glass, "LiquidGlass source attribution is missing"
-assert "aspectRatio" in glass and "dynamicRadius" in glass, "LiquidGlass rounding is not derived from its allocation"
-assert "liquidGlassRoundedRadialPosition" in glass, "LiquidGlass has no shared radial rounded-rectangle field"
-assert "float shapeDistance = radialPosition - 1.0" in glass, "LiquidGlass alpha does not use the shared surface"
-assert "liquidGlassCurve(interiorDistance)" in glass, "LiquidGlass refraction does not use the shared surface"
-assert "opticalDepth" not in glass and "opticalGradient" not in glass, "LiquidGlass still contains a second optical surface"
-assert "1.0 - b * pow(c * liquidGlassE, -d * distance - a)" in glass, "LiquidGlass radial curve is missing"
-assert "const float d = 1.9" in glass, "LiquidGlass wrap no longer reaches into the face"
-assert "smoothstep(-0.95, 0.95," in glass and "float oppositeLight = 1.0 - lightBlend" in glass, \
-    "Material light and shadow no longer share a soft directional transition"
-assert "lightProfile = shoulderLight + 0.82 * edgeKiss * (1.0 - shoulderLight)" in glass, \
-    "Material light has a hard seam between edge and shoulder"
-assert "liquidGlassRandom(gl_FragCoord.xy)" in glass, "Material grain is not pixel-scale"
-assert "vec3(-0.70, 0.70, 0.72)" in glass, "Top-left material light is missing"
-assert "broadDiffuseLight" in glass and "diffuseFaceCoverage" in glass, \
-    "Full-surface diffuse readability light is missing"
-assert "edgeRelease" in glass and "shoulderLight" in glass, "Material light is not positioned on the lens shoulder"
-assert "edgeKiss" in glass and "lightProfile" in glass, "Material light does not touch the silhouette"
-assert "silhouetteKiss" in glass and "edgeSpecular" in glass, "Material light does not compensate at alpha-covered edge pixels"
-assert "oppositeLight" in glass and "respondingShadow" in glass, "Material light has no opposing directional shadow"
-assert "roughTransmission" in glass and "materialRoughness" in glass, "Material surface roughness is missing"
-print("OverShifted LiquidGlass shader checks passed: refraction, grain, alpha, and top-left transmitted light.")
+    "Glass did not make pixels outside its adaptive rounded rectangle transparent"
 
-fbo.release()
-vao.release()
+# Premultiplied output must never carry more color than coverage, or KWin's
+# GL_ONE blend adds stray light over the desktop.
+white = pattern(64, 64, lambda x, y: "white")
+for image in (liquid, render(white, 256, 128, 0.75)):
+    # pixelColor() unpremultiplies, so read the stored RGBA bytes instead.
+    data = bytes(image.constBits())[:image.sizeInBytes()]
+    assert all(max(data[i:i + 3]) <= data[i + 3] for i in range(0, len(data), 4)), \
+        "Glass produced premultiplied color brighter than its coverage"
+
+# Rounded glass refracts rather than stretches: its rim compresses the
+# background and its face magnifies it. Through horizontal stripes 4 px tall,
+# count stripe edges down the middle column of the rim and of the face.
+stripes = pattern(512, 256, lambda x, y: "white" if (y // 4) % 2 else "black")
+lens = render(stripes, 512, 256, 0.75)
+
+def stripe_edges(rows):
+    levels = [lens.pixelColor(256, y).red() for y in rows]
+    midpoint = (min(levels) + max(levels)) / 2
+    return sum((a > midpoint) != (b > midpoint) for a, b in zip(levels, levels[1:]))
+
+rim_rows, face_rows = range(2, 40), range(80, 176)
+assert stripe_edges(rim_rows) > len(rim_rows) / 4, "Glass rim stretches the background instead of compressing it"
+assert stripe_edges(face_rows) < len(face_rows) / 4, "Glass face does not magnify the background"
+
+# The tips of a long pill are antialiased over about one pixel, like its sides.
+pill = render(white, 400, 40, 0.75)
+row = [pill.pixelColor(x, 20).alpha() for x in range(40)]
+assert sum(1 for alpha in row if 8 < alpha < 247) <= 2, f"Pill tip edge is soft: {row}"
+
+# Plasma draws mostly white content on the glass. Over a bright background
+# the face darkens so that content stays readable; over a dark background it
+# is not darkened.
+bright_face = render(white, 256, 128, 0.75).pixelColor(128, 64).red()
+assert bright_face <= 200, f"Glass over white stays too bright for white content: {bright_face}"
+dark_face = render(pattern(64, 64, lambda x, y: "#404040"), 256, 128, 0.75).pixelColor(128, 64).red()
+assert dark_face >= 0x40, f"Glass darkened a dark background: {dark_face}"
+
+assert "OverShifted/LiquidGlass" in glass, "LiquidGlass source attribution is missing"
+print("Glass shader checks passed: compressed rim and magnified face, anchored center, crisp tips, valid premultiplied output, readable face over bright backgrounds.")
+
 program.release()
-scene.destroy()
-diffuse.destroy()
 vao.destroy()

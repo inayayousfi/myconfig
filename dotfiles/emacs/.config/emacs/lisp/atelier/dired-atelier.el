@@ -4,6 +4,10 @@
 (require 'atelier)
 (require 'atelier-persist)
 
+(defvar auto-revert-notify-watch-descriptor)
+(declare-function auto-revert-notify-rm-watch "autorevert")
+(declare-function auto-revert-notify-add-watch "autorevert")
+
 (defvar atelier-directory-chooser-multiple nil)
 (defvar atelier-directory-choice-result nil)
 (defvar atelier-directory-chooser-buffers nil)
@@ -247,6 +251,15 @@ Create it relative to the current Dired directory and refresh the listing."
         (atelier-dired-change-directory file)
       (atelier-open-file file))))
 
+(defun atelier-dired-watch-current-directory ()
+  "Move Auto-Revert's folder watch to the folder this Dired buffer lists.
+While a buffer has a watch, Auto-Revert re-reads it only when that watch
+reports a change, so a watch left on the previous folder hides every change
+in the folder now listed."
+  (when (bound-and-true-p auto-revert-notify-watch-descriptor)
+    (auto-revert-notify-rm-watch)
+    (auto-revert-notify-add-watch)))
+
 (atelier-define-operation atelier-dired-change-directory (directory &optional target)
     (delete-dups (mapcar (lambda (pair) (atelier-workspace-id (car pair)))
                         (atelier-entries-for-buffer (current-buffer)))) nil
@@ -271,12 +284,14 @@ On entry, stay near the same listing row; on return, select TARGET."
                    dired-subdir-alist
                    (mapcar (lambda (item) (cons (car item) (copy-marker (cdr item)))) subdirs))
              (goto-char position)
-             (set-buffer-modified-p modified)))))))
+             (set-buffer-modified-p modified))
+           (atelier-dired-watch-current-directory))))))
   (let ((line (line-number-at-pos)))
     (setq directory (file-name-as-directory (expand-file-name directory)))
     (setq dired-directory directory
           default-directory directory)
     (dired-readin)
+    (atelier-dired-watch-current-directory)
     (unless (and target (dired-goto-file target))
       (goto-char (point-min))
       (forward-line (1- line))

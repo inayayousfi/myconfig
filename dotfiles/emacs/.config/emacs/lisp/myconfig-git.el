@@ -5,6 +5,9 @@
 (require 'diff)
 (require 'ediff)
 (require 'myconfig-core)
+(require 'filenotify)
+
+(declare-function diff-hl-dired-update "diff-hl-dired")
 
 (defvar-local myconfig-review-peer nil)
 
@@ -184,7 +187,80 @@ from status."
     (magit-mode-quit-window t)
     (mapc #'kill-buffer others)))
 
+;;; Git marks in Dired
+
+;; diff-hl redraws a Dired buffer's Git marks only when Dired re-reads it, and
+;; Dired re-reads only when the folder itself changes.  Staging, committing or
+;; editing an existing file changes no folder, so the marks went stale.
+
+(defvar myconfig-git-dired-watches nil
+  "Watched repositories, as (GIT-DIRECTORY TOPLEVEL DESCRIPTOR TIMER).")
+(defvar-local myconfig-git-dired-checked-directory nil
+  "The folder whose repository this Dired buffer last looked up.")
+
+(defun myconfig-git-dired-buffers (toplevel)
+  "Return the Dired buffers with Git marks that list a folder inside TOPLEVEL."
+  (seq-filter (lambda (buffer)
+                (with-current-buffer buffer
+                  (and (bound-and-true-p diff-hl-dired-mode)
+                       (file-in-directory-p default-directory toplevel))))
+              (buffer-list)))
+
+(defun myconfig-git-dired-refresh (git-directory)
+  "Redraw the Git marks of GIT-DIRECTORY's Dired buffers.
+Stop watching the repository once none of its Dired buffers remains."
+  (when-let* ((watch (assoc git-directory myconfig-git-dired-watches)))
+    (setf (nth 3 watch) nil)
+    (if-let* ((buffers (myconfig-git-dired-buffers (nth 1 watch))))
+        (dolist (buffer buffers)
+          (with-current-buffer buffer (diff-hl-dired-update)))
+      (file-notify-rm-watch (nth 2 watch))
+      (setq myconfig-git-dired-watches (delq watch myconfig-git-dired-watches)))))
+
+(defun myconfig-git-dired-schedule (watch)
+  "Refresh WATCH's repository once its burst of changes settles.
+One Git command writes several files, and each would otherwise refresh."
+  (when (timerp (nth 3 watch)) (cancel-timer (nth 3 watch)))
+  (setf (nth 3 watch)
+        (run-at-time 0.3 nil #'myconfig-git-dired-refresh (car watch))))
+
+(defun myconfig-git-dired-watch-repository ()
+  "Watch the Git folder of the repository the current Dired buffer lists.
+Any Git command, from Emacs or any other program, writes there."
+  (when (and (bound-and-true-p diff-hl-dired-mode)
+             (not (file-remote-p default-directory))
+             (not (equal default-directory myconfig-git-dired-checked-directory)))
+    (setq myconfig-git-dired-checked-directory default-directory)
+    (pcase-let ((`(,git-directory ,toplevel)
+                 (split-string (myconfig-git-text default-directory "rev-parse"
+                                                  "--absolute-git-dir" "--show-toplevel")
+                               "\n" t)))
+      (when (and toplevel (not (assoc git-directory myconfig-git-dired-watches)))
+        (let ((watch (list git-directory (file-name-as-directory toplevel) nil nil)))
+          (when-let* ((descriptor
+                       (ignore-errors
+                         (file-notify-add-watch
+                          git-directory '(change)
+                          (lambda (event)
+                            ;; Git takes a lock file even to read, as the
+                            ;; refresh's own status does.  Only a write, which
+                            ;; ends on the real file, changes what is shown.
+                            (unless (string-suffix-p ".lock" (or (nth 3 event) (nth 2 event)))
+                              (myconfig-git-dired-schedule watch)))))))
+            (setf (nth 2 watch) descriptor)
+            (push watch myconfig-git-dired-watches)))))))
+
+(defun myconfig-git-dired-file-saved ()
+  "Refresh the Git marks of the repository holding the file just saved.
+Saving an existing file changes neither its folder nor the Git folder."
+  (when-let* ((file buffer-file-name)
+              (watch (seq-find (lambda (watch) (file-in-directory-p file (nth 1 watch)))
+                               myconfig-git-dired-watches)))
+    (myconfig-git-dired-schedule watch)))
+
 (defun myconfig-git-setup ()
+  (add-hook 'dired-after-readin-hook #'myconfig-git-dired-watch-repository)
+  (add-hook 'after-save-hook #'myconfig-git-dired-file-saved)
   (setq magit-display-buffer-function #'magit-display-buffer-same-window-except-diff-v1
         magit-bury-buffer-function #'myconfig-git-quit-buffer
         magit-save-repository-buffers nil

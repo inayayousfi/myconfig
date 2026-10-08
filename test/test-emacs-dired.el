@@ -9,6 +9,8 @@
   (add-to-list 'load-path (expand-file-name "atelier" lisp)))
 (require 'dired-atelier)
 (require 'universel-atelier)
+(require 'diff-hl-dired)
+(require 'myconfig-git)
 (dired-atelier-setup)
 
 (defmacro atelier-dired-test-with-directories (&rest body)
@@ -233,5 +235,96 @@
                (lambda (&rest _) (ert-fail "Target conversion must not open a connection"))))
       (should (equal (universel-atelier-directory-target (expand-file-name "child/" mount))
                      '("alice@host#2222" "/C:/child/" windows "/C:/"))))))
+
+;; Dired re-reads a listing only when told the folder changed, by a file-change
+;; watch.  The tests wait for those real events instead of simulating them.
+(defun atelier-dired-test-wait-until (predicate)
+  "Wait up to 6 seconds for PREDICATE, letting file-change events arrive."
+  (let ((end (+ (float-time) 6)))
+    (while (and (not (funcall predicate)) (< (float-time) end))
+      (read-event nil nil 0.1))
+    (funcall predicate)))
+
+(defun atelier-dired-test-lists-p (buffer name)
+  (with-current-buffer buffer
+    (save-excursion (goto-char (point-min)) (and (search-forward name nil t) t))))
+
+;; Moving to another folder reads it into the same buffer; the listing must
+;; keep following that folder, not the one the buffer showed first.
+(ert-deftest atelier-dired-listing-follows-changes-after-changing-directory ()
+  (atelier-dired-test-with-directories
+    (let ((global-auto-revert-non-file-buffers t)
+          (auto-revert-avoid-polling nil)
+          (auto-revert-verbose nil)
+          (was-on global-auto-revert-mode))
+      (unwind-protect
+          (let ((buffer (dired-noselect root)))
+            (global-auto-revert-mode 1)
+            (with-current-buffer buffer
+              (auto-revert-buffers)
+              (should auto-revert-notify-watch-descriptor)
+              (atelier-dired-change-directory one))
+            (dolist (name '("first" "second"))
+              (write-region "" nil (expand-file-name name one))
+              (should (atelier-dired-test-wait-until
+                       (lambda () (atelier-dired-test-lists-p buffer name))))))
+        (unless was-on (global-auto-revert-mode -1))))))
+
+;; Staging, committing or editing an existing file changes no folder, so only
+;; the repository watch and the save hook can bring the Git marks up to date.
+(ert-deftest myconfig-git-dired-marks-follow-outside-commits-and-saves ()
+  (let* ((root (file-name-as-directory (file-truename (make-temp-file "dired-git-" t))))
+         (file (expand-file-name "f" root))
+         (dired-mode-hook '(diff-hl-dired-mode))
+         (dired-after-readin-hook nil)
+         (after-save-hook nil)
+         (myconfig-git-dired-watches nil)
+         (buffers (buffer-list))
+         (refreshes 0)
+         (count (lambda (&rest _) (setq refreshes (1+ refreshes)))))
+    (cl-flet ((git (&rest arguments)
+                (let ((default-directory root))
+                  (should (zerop (apply #'call-process "git" nil nil nil
+                                        "-c" "user.name=test" "-c" "user.email=test@example.invalid"
+                                        "-c" "commit.gpgsign=false" arguments)))))
+              (mark (buffer)
+                (with-current-buffer buffer
+                  (save-excursion
+                    (dired-goto-file file)
+                    (cl-some (lambda (overlay) (overlay-get overlay 'diff-hl-dired-type))
+                             (overlays-in (line-beginning-position) (1+ (line-end-position))))))))
+      (unwind-protect
+          (progn
+            (myconfig-git-setup)
+            (advice-add 'diff-hl-dired-update :before count)
+            (git "init" "-q")
+            (git "commit" "-q" "--allow-empty" "-m" "start")
+            (write-region "one\n" nil file)
+            (let ((buffer (dired-noselect root)))
+              (should (atelier-dired-test-wait-until (lambda () (eq (mark buffer) 'unknown))))
+              (git "add" "f")
+              (git "commit" "-q" "-m" "f")
+              (should (atelier-dired-test-wait-until (lambda () (null (mark buffer)))))
+              ;; Refreshing stops once Git stops writing: Git may update its
+              ;; index once more after a commit, but a refresh's own status
+              ;; must not start another refresh.
+              (cl-flet ((idle () (let ((end (+ (float-time) 1)))
+                                   (while (< (float-time) end) (read-event nil nil 0.1)))))
+                (idle)
+                (setq refreshes 0)
+                (idle)
+                (should (= refreshes 0)))
+              (with-current-buffer (find-file-noselect file)
+                (let ((make-backup-files nil))
+                  (goto-char (point-max))
+                  (insert "two\n")
+                  (save-buffer)))
+              (should (atelier-dired-test-wait-until (lambda () (eq (mark buffer) 'change))))))
+        (advice-remove 'diff-hl-dired-update count)
+        (dolist (buffer (buffer-list))
+          (unless (memq buffer buffers) (kill-buffer buffer)))
+        (dolist (watch myconfig-git-dired-watches)
+          (file-notify-rm-watch (nth 2 watch)))
+        (delete-directory root t)))))
 
 (ert-run-tests-batch-and-exit)

@@ -129,6 +129,8 @@ Eglot otherwise runs a single action at once when point is on its hint."
     (kbd "l") #'atelier-dired-open
     (kbd "h") #'atelier-dired-up-directory
     (kbd "n") #'atelier-dired-create
+    ;; A full reload; Dired's own r redraws only the file line under point.
+    (kbd "r") #'revert-buffer
     (kbd "W") #'atelier-dired-flag-workspace
     (kbd "x") #'atelier-dired-execute-flags
     [mouse-1] #'atelier-dired-mouse-open

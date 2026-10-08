@@ -43,21 +43,36 @@ Eglot otherwise runs a single action at once when point is on its hint."
       (mc/keyboard-quit)
     (call-interactively #'mc/edit-lines)))
 
+(defvar-keymap myconfig-resize-repeat-map
+  :doc "Arrows that keep resizing after a resize, until another key."
+  "<left>" #'myconfig-resize-left
+  "<right>" #'myconfig-resize-right
+  "<up>" #'myconfig-resize-up
+  "<down>" #'myconfig-resize-down)
+
+(defun myconfig-resize (direction amount)
+  "Resize the split toward DIRECTION by AMOUNT, then let a bare arrow repeat."
+  (atelier-resize-split direction amount)
+  ;; Each arrow re-arms the map, so a held arrow keeps resizing; any other
+  ;; key drops it and runs as usual.
+  (set-transient-map myconfig-resize-repeat-map nil nil
+                     "Arrows keep resizing; any other key stops"))
+
 (defun myconfig-resize-left ()
   (interactive)
-  (atelier-resize-split 'left 3))
+  (myconfig-resize 'left 3))
 
 (defun myconfig-resize-right ()
   (interactive)
-  (atelier-resize-split 'right 3))
+  (myconfig-resize 'right 3))
 
 (defun myconfig-resize-up ()
   (interactive)
-  (atelier-resize-split 'up 2))
+  (myconfig-resize 'up 2))
 
 (defun myconfig-resize-down ()
   (interactive)
-  (atelier-resize-split 'down 2))
+  (myconfig-resize 'down 2))
 
 (defun myconfig-directory-chooser-keymaps ()
   (when (bound-and-true-p evil-local-mode) (evil-normalize-keymaps)))

@@ -24,6 +24,22 @@
         (should (eq evil-state 'normal))
         (should (equal (buffer-string) "some text"))))))
 
+(ert-deftest myconfig-resize-arrows-repeat-until-another-key ()
+  "After SPC and an arrow, bare arrows keep resizing; any other key ends it."
+  (save-window-excursion
+    (with-temp-buffer
+      (switch-to-buffer (current-buffer))
+      (insert "abcdef\nghijkl")
+      (goto-char 3)
+      (evil-normal-state)
+      (let (resized)
+        (cl-letf (((symbol-function 'atelier-resize-split)
+                   (lambda (direction _amount) (push direction resized))))
+          (execute-kbd-macro (kbd "SPC <left> <left> <right> l <left>")))
+        (should (equal (nreverse resized) '(left left right)))
+        ;; l moved right, then the arrow moved the cursor back.
+        (should (= (point) 3))))))
+
 (ert-deftest myconfig-normal-shortcut-keeps-project-search ()
   (with-temp-buffer
     (evil-normal-state)

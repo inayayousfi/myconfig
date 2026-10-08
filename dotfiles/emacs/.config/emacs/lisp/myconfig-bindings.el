@@ -208,7 +208,6 @@ Eglot otherwise runs a single action at once when point is on its hint."
   (define-key myconfig-leader-map (kbd "n") #'consult-mark)
   (define-key myconfig-leader-map (kbd "/") #'consult-line)
   (define-key myconfig-leader-map (kbd "i") #'consult-imenu)
-  (define-key myconfig-leader-map (kbd "C") #'execute-extended-command)
   (define-key myconfig-leader-map (kbd "c") #'execute-extended-command)
   (when (fboundp 'aipanel-toggle)
     (define-key myconfig-leader-map (kbd "a") #'aipanel-toggle))

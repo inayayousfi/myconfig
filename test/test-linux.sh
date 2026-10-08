@@ -1722,7 +1722,10 @@ auth_output="$(MYCONFIG_TTY_PATH="$TEST_HOME/no-terminal" offer_action "Test is 
 ssh_test_log="$TEST_HOME/ssh-server.log"
 ssh_output="$(
     source "$REPO_ROOT/linux/modules/ssh.sh"
-    systemctl() { printf 'systemctl:%s\n' "$*" >>"$ssh_test_log"; return 3; }
+    systemctl() {
+        printf 'systemctl:%s\n' "$*" >>"$ssh_test_log"
+        return 3
+    }
     sudo() { printf 'sudo:%s\n' "$*" >>"$ssh_test_log"; }
     MYCONFIG_TTY_PATH="$TEST_HOME/no-terminal" module_ssh_server
 )"

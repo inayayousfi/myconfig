@@ -2342,6 +2342,9 @@
         (when (member (buffer-file-name buffer)
                       (list first-file second-file third-file))
           (kill-buffer buffer)))
+      ;; Emacs 29's xref sets the list's folder from a zero-delay timer; let it
+      ;; run before the list goes, or it fails in whichever test waits next.
+      (sleep-for 0.01)
       (when-let* ((xref (get-buffer "*xref*"))) (kill-buffer xref))
       (delete-directory directory t))))
 

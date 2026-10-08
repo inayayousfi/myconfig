@@ -1558,7 +1558,7 @@
               (targets (mapcar (lambda (position)
                                  (get-text-property position 'atelier-navigator-target))
                                (atelier-navigator-positions))))
-           (should (string-match-p (regexp-quote "View 1: [visible.txt]") text))
+           (should (string-match-p (regexp-quote "View 1  file      visible.txt") text))
           (should-not (string-match-p "^     File entries$" text))
           (should (= (length (split-string text "visible.txt")) 2))
           (should (equal (cl-remove-if-not
@@ -1601,9 +1601,9 @@
         (should (equal (atelier-navigator-target)
                        '(workspace-buffer "sorted" 2 "entry-b")))))
     (let ((position 0))
-      (dolist (label '("Split (side-by-side)" "View 1: [first split]"
-                       "Split (stacked)" "View 2: [second split]"
-                       "View 3: [third split]"))
+      (dolist (label '("Split (side-by-side)" "View 1  buffer    first split"
+                       "Split (stacked)" "View 2  buffer    second split"
+                       "View 3  buffer    third split"))
         (setq position (string-match (regexp-quote label) text position))
         (should position)
         (setq position (match-end 0))))
@@ -2577,7 +2577,7 @@
     (let ((header (substring-no-properties
                    (apply #'concat (atelier-navigator-header)))))
       (dolist (pair '(("Prev" "k" "<up>") ("Next" "j" "<down>")
-                      ("Stack" "h" "l") ("Fold" "o") ("Stop" "s")
+                      ("Item" "h" "l") ("Group" "{" "}") ("Fold" "o") ("Stop" "s")
                       ("Open" "RET") ("Attach" "a") ("Detach" "d")
                       ("Close" "x") ("Rename" "r" "R") ("Quit" "q")))
         (should (string-match (concat "\\[" (car pair) " \\([^]]+\\)\\]") header))
@@ -2607,7 +2607,8 @@
       (should (equal (atelier-navigator-header-shortcuts #'atelier-navigator-toggle-fold)
                      "unbound")))))
 
-(ert-deftest atelier-navigator-stack-keys-activate-and-cycle-contents ()
+(ert-deftest atelier-navigator-stack-keys-move-only-the-cursor ()
+  "h and l walk the buffers of a row, wrapping; only RET changes the stack."
   (let* ((entry (list :id "stacked" :kind 'file :type 'file :name "current.txt"
                       :stack '((:content-id "previous" :kind file :type file
                                 :name "previous-dired" :persistent t)
@@ -2617,91 +2618,74 @@
                           :status 'running :destination "local" :path temporary-file-directory
                           :entries (list entry)))
          (atelier-workspaces (list workspace))
-         (atelier-navigator-selection-by-frame nil)
-         pending-idle
-         (restored (generate-new-buffer " *stack-navigation*")))
-    (unwind-protect
-        (cl-letf (((symbol-function 'myconfig-normalize-directory)
-                   #'file-name-as-directory)
-                  ((symbol-function 'atelier-current-workspace) (lambda (&optional _frame) workspace))
-                  ((symbol-function 'atelier-restore-buffer) (lambda (&rest _) restored))
-                  ((symbol-function 'atelier-notify-change) #'ignore)
-                  ((symbol-function 'run-with-idle-timer)
-                   (lambda (_delay _repeat callback)
-                     (setq pending-idle callback)
-                     (timer-create))))
-          (with-current-buffer (atelier-render-navigator)
-            (should (string-match-p (regexp-quote "[current.txt]  [previous-dired]  [third.txt]")
-                                    (buffer-string)))
-            (goto-char (cl-find-if
-                        (lambda (position)
-                          (equal (get-text-property position 'atelier-navigator-target)
-                                 '(workspace-owned-buffer "stacked-ws" "stacked")))
-                        (atelier-navigator-positions)))
-            (atelier-navigator-stack-next)
-            (should (equal (cadddr (atelier-navigator-target)) "previous"))
-            (should (equal (atelier-entry-value entry :name) "current.txt"))
-            (should-not (get-text-property (point) 'mouse-face))
-            (should (lookup-key (get-text-property (point) 'keymap) [mouse-1]))
-            (atelier-navigator-stack-next)
-            (should (equal (cadddr (atelier-navigator-target)) "third"))
-            (should (equal (atelier-entry-value entry :name) "current.txt"))
-            (funcall pending-idle)
-            (should-not atelier-navigator-stack-timer)
-            (should (equal (mapcar (lambda (content) (plist-get content :name))
-                                   (atelier-entry-stack entry))
-                           '("third.txt" "current.txt" "previous-dired")))
-            (atelier-navigator-stack-previous)
-            (atelier-navigator-commit-stack-selection)
-            (should (equal (atelier-entry-value entry :name) "previous-dired"))
-            (should (equal (plist-get entry :id) "stacked"))
-            (should (= (length (atelier-navigator-positions))
-                       (length (delete-dups (atelier-navigator-positions)))))))
-      (kill-buffer restored))))
+         (atelier-navigator-selection-by-frame nil))
+    (cl-letf (((symbol-function 'myconfig-normalize-directory)
+               #'file-name-as-directory)
+              ((symbol-function 'atelier-current-workspace) (lambda (&optional _frame) workspace)))
+      (with-current-buffer (atelier-render-navigator)
+        (should (string-match-p (regexp-quote "current.txt  ·  previous-dired  ·  third.txt")
+                                (buffer-string)))
+        (goto-char (cl-find-if
+                    (lambda (position)
+                      (equal (get-text-property position 'atelier-navigator-target)
+                             '(workspace-owned-buffer "stacked-ws" "stacked")))
+                    (atelier-navigator-positions)))
+        (should (looking-at-p "current\\.txt"))
+        (cl-flet ((highlighted ()
+                    (atelier-navigator-highlight-item)
+                    (buffer-substring-no-properties
+                     (overlay-start atelier-navigator-highlight)
+                     (overlay-end atelier-navigator-highlight)))
+                  (order ()
+                    (mapcar (lambda (content) (plist-get content :name))
+                            (atelier-entry-stack entry))))
+          (should (equal (highlighted) "current.txt"))
+          (atelier-navigator-stack-next)
+          (should (equal (cadddr (atelier-navigator-target)) "previous"))
+          (should (equal (highlighted) "previous-dired"))
+          (should-not (get-text-property (point) 'mouse-face))
+          (should (lookup-key (get-text-property (point) 'keymap) [mouse-1]))
+          (atelier-navigator-stack-next)
+          (should (equal (cadddr (atelier-navigator-target)) "third"))
+          (atelier-navigator-stack-next)
+          (should (equal (atelier-navigator-target)
+                         '(workspace-owned-buffer "stacked-ws" "stacked")))
+          (atelier-navigator-stack-previous)
+          (should (equal (cadddr (atelier-navigator-target)) "third"))
+          (should (equal (order) '("current.txt" "previous-dired" "third.txt")))
+          (should (= (length (atelier-navigator-positions))
+                     (length (delete-dups (atelier-navigator-positions))))))))))
 
-(ert-deftest atelier-navigator-stack-activation-survives-quit-in-same-view ()
-  (let* ((entry (list :id "visible-stack" :displayed t :kind 'scratch
-                      :name "first" :stack '((:content-id "second"
-                                               :kind scratch :name "second"))))
-         (workspace (list :id "visible-ws" :name "visible-ws"
-                          :status 'running :destination "local" :path temporary-file-directory
-                          :entries (list entry)))
-         (atelier-workspaces (list workspace))
-         (atelier-navigator-selection-by-frame nil)
-         (first (generate-new-buffer " *visible-first*"))
-         (second (generate-new-buffer " *visible-second*")))
-    (unwind-protect
-        (save-window-excursion
-          (delete-other-windows)
-          (switch-to-buffer first)
-          (atelier-entry-set-live-buffer entry first)
-          (let ((atelier-navigator-window-configurations
-                 (list (cons (selected-frame) (current-window-configuration)))))
-            (cl-letf (((symbol-function 'myconfig-normalize-directory)
-                       #'file-name-as-directory)
-                      ((symbol-function 'atelier-current-workspace)
-                       (lambda (&optional _frame) workspace))
-                      ((symbol-function 'atelier-restore-buffer)
-                       (lambda (active _workspace)
-                         (atelier-entry-set-live-buffer active second)
-                         second))
-                      ((symbol-function 'atelier-notify-change) #'ignore)
-                      ((symbol-function 'run-with-idle-timer)
-                       (lambda (&rest _) (timer-create))))
-              (switch-to-buffer (atelier-render-navigator))
-              (goto-char (cl-find-if
-                          (lambda (position)
-                            (equal (get-text-property position 'atelier-navigator-target)
-                                   '(workspace-buffer "visible-ws" 0 "visible-stack")))
-                          (atelier-navigator-positions)))
-              (atelier-navigator-stack-next)
-              (should (equal (atelier-entry-value entry :name) "first"))
-              (should (eq (window-buffer) (atelier-navigator-frame-buffer)))
-              (atelier-navigator-quit)
-              (should (eq (window-buffer) second))
-              (should (equal (plist-get entry :id) "visible-stack")))))
-      (dolist (buffer (list first second))
-        (when (buffer-live-p buffer) (kill-buffer buffer))))))
+(ert-deftest atelier-navigator-group-keys-jump-between-workspaces-and-sections ()
+  "} and { visit each workspace heading and the first item of each section."
+  (let* ((first (list :id "first-ws" :name "first-ws" :status 'running
+                      :destination "local" :path temporary-file-directory
+                      :entries (list '(:id "one" :kind scratch :name "one")
+                                     '(:id "two" :kind scratch :name "two"))))
+         (second (list :id "second-ws" :name "second-ws" :status 'running
+                       :destination "local" :path temporary-file-directory :entries nil))
+         (atelier-workspaces (list first second))
+         (atelier-navigator-selection-by-frame nil))
+    (cl-letf (((symbol-function 'myconfig-normalize-directory)
+               #'file-name-as-directory)
+              ((symbol-function 'atelier-known-project-roots) (lambda () nil))
+              ((symbol-function 'atelier-current-workspace) (lambda (&optional _frame) first)))
+      (with-current-buffer (atelier-render-navigator)
+        (goto-char (point-min))
+        (let (visited)
+          (dotimes (_ 5)
+            (atelier-navigator-next-group)
+            ;; Only a row's first name: the log buffers present vary.
+            (push (car (split-string (buffer-substring-no-properties (point) (line-end-position))
+                                     "  ·  "))
+                  visited))
+          (should (equal (nreverse visited)
+                         '("first-ws/  (current)" "second-ws/  (running)"
+                           "*Messages*"
+                           "Clear scratch and detached buffers"
+                           "first-ws/  (current)"))))
+        (atelier-navigator-previous-group)
+        (should (looking-at-p "Clear scratch"))))))
 
 (ert-deftest atelier-navigator-opens-stacked-content-in-the-same-view ()
   (let* ((entry (list :id "view" :kind 'file :type 'file :name "file"
@@ -3791,23 +3775,6 @@
         (should (eq (atelier-workspace-status target) 'stopped))
         (should (plist-get (atelier-entry-job (atelier-entry-by-id target "job-view")) :recipe))))))
 
-(ert-deftest atelier-delayed-choice-finishes-in-originating-frame-without-selecting-it ()
-  (let ((selected 'origin) callback applied)
-    (with-temp-buffer
-      (cl-letf (((symbol-function 'selected-frame) (lambda () selected))
-                ((symbol-function 'select-frame) (lambda (frame &rest _) (setq selected frame)))
-                ((symbol-function 'frame-live-p) (lambda (_) t))
-                ((symbol-function 'atelier-navigator-target) (lambda () 'chosen-content))
-                ((symbol-function 'atelier-navigator-activate-selected-content)
-                 (lambda (target) (setq applied (list selected target))))
-                ((symbol-function 'run-with-idle-timer)
-                 (lambda (_delay _repeat fn) (setq callback fn) (timer-create))))
-        (atelier-navigator-schedule-stack-activation)
-        (setq selected 'other)
-        (funcall callback)
-        (should (equal applied '(origin chosen-content)))
-        (should (eq selected 'other))))))
-
 (ert-deftest atelier-navigator-buffers-are-owned-by-separate-frames ()
   (let ((frames (make-hash-table :test #'eq)) first second)
     (unwind-protect
@@ -3818,8 +3785,8 @@
           (setq first (atelier-navigator-frame-buffer 'first t)
                 second (atelier-navigator-frame-buffer 'second t))
           (should-not (eq first second))
-          (with-current-buffer first (setq atelier-navigator-stack-pending-target 'first-choice))
-          (with-current-buffer second (should-not atelier-navigator-stack-pending-target))
+          (with-current-buffer first (setq atelier-navigator-stopped-expanded t))
+          (with-current-buffer second (should-not atelier-navigator-stopped-expanded))
           (should (eq first (atelier-navigator-frame-buffer 'first))))
       (dolist (buffer (list first second))
         (when (buffer-live-p buffer) (kill-buffer buffer))))))
@@ -3851,7 +3818,7 @@
       (delete-directory directory))))
 
 (ert-deftest atelier-navigator-failed-restoration-publishes-removal ()
-  (dolist (action '(owned content select))
+  (dolist (action '(owned content))
     (let* ((view (list :id "failed-view" :content-ids '("failed")))
            (workspace (list :id "navigator-failure" :name "navigator-failure"
                             :destination "local" :path temporary-file-directory
@@ -3862,8 +3829,6 @@
            (atelier-content-live-buffers (make-hash-table :test #'equal))
            (atelier-entry-owners (make-hash-table :test #'eq))
            (atelier-navigator-selection-by-frame nil)
-           (atelier-navigator-changed-views nil)
-           (atelier-navigator-stack-pending-target nil)
            (atelier-navigator-attach-source nil)
            (atelier-change-hook nil)
            (old-id (frame-parameter nil 'atelier-workspace-id))
@@ -3879,9 +3844,7 @@
                        (lambda () '(workspace-owned-buffer "navigator-failure" "failed-view"))))
               (pcase action
                 ('owned (atelier-navigator-open))
-                ('content (atelier-navigator-open-content "navigator-failure" "failed-view" "failed"))
-                ('select (atelier-navigator-activate-selected-content
-                          '(workspace-owned-content "navigator-failure" "failed-view" "failed"))))
+                ('content (atelier-navigator-open-content "navigator-failure" "failed-view" "failed")))
               (should-not (atelier-workspace-content workspace "failed"))
               (should-not (atelier-entry-by-id workspace "failed-view"))
               (should-not (atelier-workspace-stack workspace 'buffer))

@@ -169,6 +169,8 @@ Eglot otherwise runs a single action at once when point is on its hint."
     (kbd "k") #'atelier-navigator-previous
     (kbd "h") #'atelier-navigator-stack-previous
     (kbd "l") #'atelier-navigator-stack-next
+    (kbd "{") #'atelier-navigator-previous-group
+    (kbd "}") #'atelier-navigator-next-group
     (kbd "<down>") #'atelier-navigator-next
     (kbd "<up>") #'atelier-navigator-previous
     (kbd "RET") #'atelier-navigator-open

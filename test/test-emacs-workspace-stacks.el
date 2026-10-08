@@ -118,8 +118,9 @@
                       (atelier-navigator-positions)))
           (atelier-navigator-stack-next)
           (atelier-navigator-stack-next)
-          (atelier-navigator-commit-stack-selection))
-        ;; The navigator displays the selection only when it closes.
+          (should (equal (order) '("c.txt" "b.txt" "a.txt")))
+          (atelier-navigator-open))
+        (should (eq (window-buffer) (nth 0 buffers)))
         (should (equal (order) '("a.txt" "c.txt" "b.txt")))
         (atelier-open-file (nth 1 files) workspace)
         (should (eq (window-buffer) (nth 1 buffers)))

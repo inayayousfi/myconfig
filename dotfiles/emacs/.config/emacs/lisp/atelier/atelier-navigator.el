@@ -32,6 +32,28 @@
 (declare-function atelier-workspace-project-root "atelier")
 (declare-function atelier-workspace-stop-jobs "atelier")
 (declare-function atelier-buffer-editable-name "atelier-naming")
+(declare-function atelier-content-base-name "atelier-naming")
+(declare-function atelier-log-buffer-names "atelier-naming")
+
+(defface atelier-navigator-view
+  '((t (:inherit font-lock-constant-face)))
+  "The view that shows a stack in the navigator."
+  :group 'atelier)
+
+(defface atelier-navigator-type
+  '((t (:inherit font-lock-function-name-face)))
+  "The type of a stack in the navigator."
+  :group 'atelier)
+
+(defface atelier-navigator-top
+  '((t (:inherit font-lock-type-face)))
+  "The buffer on top of a stack, which its view shows."
+  :group 'atelier)
+
+(defface atelier-navigator-tree
+  '((t (:inherit font-lock-comment-face :slant normal)))
+  "Tree lines and separators between the buffers of a stack."
+  :group 'atelier)
 
 (defvar-keymap atelier-navigator-mode-map
   :parent special-mode-map
@@ -39,6 +61,8 @@
   "k" #'atelier-navigator-previous
   "h" #'atelier-navigator-stack-previous
   "l" #'atelier-navigator-stack-next
+  "{" #'atelier-navigator-previous-group
+  "}" #'atelier-navigator-next-group
   "<down>" #'atelier-navigator-next
   "<up>" #'atelier-navigator-previous
   "RET" #'atelier-navigator-open
@@ -54,8 +78,6 @@
   "R" #'atelier-navigator-rename
   "q" #'atelier-navigator-quit)
 
-(defvar-local atelier-navigator-changed-views nil
-  "Entries whose restored windows need their newly active content.")
 (defvar-local atelier-navigator-workspace-expansions nil
   "Workspace ID to (status . expanded), local to this frame's navigator.")
 (defvar-local atelier-navigator-stopped-expanded nil
@@ -74,7 +96,6 @@
 (defun atelier-navigator-toggle-fold ()
   "Toggle the stopped group or the workspace under point without opening it."
   (interactive)
-  (atelier-navigator-commit-stack-selection)
   (let ((target (atelier-navigator-target)))
     (pcase target
       (`(stopped-workspaces)
@@ -109,13 +130,6 @@
     (atelier-navigator-quit)
     (atelier-stop-workspace workspace)
     (atelier-navigator)))
-(defvar-local atelier-navigator-stack-timer nil
-  "Idle timer for activating the selected stack content.")
-(defvar-local atelier-navigator-stack-pending-target nil
-  "Content target chosen by h/l, retained until activation.")
-(defcustom atelier-navigator-stack-delay 0.45
-  "Seconds of idle time before h/l activates the selected content."
-  :type 'number :group 'atelier)
 
 (defun atelier-navigator-frame-buffer (&optional frame create)
   "Return FRAME's own navigator buffer, creating it when CREATE is non-nil."
@@ -129,11 +143,8 @@
         buffer))))
 
 (defun atelier-navigator-frame-closed (frame)
-  "Dispose of FRAME's private navigator and pending choice."
+  "Dispose of FRAME's private navigator and its remembered selection."
   (when-let* ((buffer (atelier-navigator-frame-buffer frame)))
-    (with-current-buffer buffer
-      (when atelier-navigator-stack-timer
-        (cancel-timer atelier-navigator-stack-timer)))
     (kill-buffer buffer))
   (setq atelier-navigator-selection-by-frame
         (assq-delete-all frame atelier-navigator-selection-by-frame)))
@@ -147,7 +158,8 @@
               line-spacing 0.12
               display-line-numbers-type 'relative)
   (hl-line-mode -1)
-  (display-line-numbers-mode 1))
+  (display-line-numbers-mode 1)
+  (add-hook 'post-command-hook #'atelier-navigator-highlight-item nil t))
 
 (defun atelier-navigator-header-shortcuts (command &optional other-command)
   "Describe active keyboard bindings for COMMAND and OTHER-COMMAND."
@@ -190,9 +202,12 @@
                                            "Select the previous item")
           (atelier-navigator-header-button "Next" #'atelier-navigator-next
                                            "Select the next item")
-          (atelier-navigator-header-button "Stack" #'atelier-navigator-stack-next
-                                             "Select another content on this row"
+          (atelier-navigator-header-button "Item" #'atelier-navigator-stack-next
+                                             "Move to another buffer on this row"
                                              #'atelier-navigator-stack-previous)
+          (atelier-navigator-header-button "Group" #'atelier-navigator-next-group
+                                             "Move to another workspace or section"
+                                             #'atelier-navigator-previous-group)
           (atelier-navigator-header-button "Fold" #'atelier-navigator-toggle-fold
                                            "Fold or expand without opening")
           (atelier-navigator-header-button "Stop" #'atelier-navigator-stop-workspace
@@ -217,11 +232,16 @@
          (position (posn-point start)))
     (when (and (window-live-p window) (integer-or-marker-p position))
       (select-window window)
-      (atelier-navigator-commit-stack-selection)
       (goto-char position)
       (atelier-navigator-open))))
 
+(defvar atelier-navigator-group-pending nil
+  "Whether the next inserted item starts a group that { and } jump to.")
+
 (defun atelier-navigator-insert (text target &optional face)
+  "Insert TEXT as an item that opens TARGET.
+Text marked `atelier-navigator-decoration' only frames the item: the
+cursor rests after it."
   (let* ((map (make-sparse-keymap))
          (newline (string-suffix-p "\n" text))
          (label (copy-sequence (if newline (substring text 0 -1) text)))
@@ -230,6 +250,9 @@
     (define-key map [mouse-1] #'atelier-navigator-click)
     (define-key map [mouse-2] #'atelier-navigator-click)
     (when face (setq properties (append properties (list 'face face))))
+    (when atelier-navigator-group-pending
+      (setq properties (append properties (list 'atelier-navigator-group t))
+            atelier-navigator-group-pending nil))
     (add-text-properties 0 (length label) properties label)
     (insert label)
     (when newline (insert "\n"))))
@@ -239,7 +262,12 @@
   (insert (propertize (format "  %s" (upcase title)) 'face 'atelier-navigator-section))
   (when detail
     (insert (propertize (format "  %s" detail) 'face 'atelier-navigator-branch)))
-  (insert "\n\n"))
+  (insert "\n\n")
+  (setq atelier-navigator-group-pending t))
+
+(defun atelier-navigator-decoration (text &optional face)
+  "Return TEXT as framing that the cursor skips, in FACE."
+  (propertize text 'atelier-navigator-decoration t 'face (or face 'atelier-navigator-branch)))
 
 (defun atelier-navigator-workspace-label (workspace active)
   (let* ((name (plist-get workspace :name))
@@ -252,8 +280,10 @@
                         ('current 'atelier-navigator-current-status)
                         ('running 'atelier-navigator-running-status)
                         (_ 'atelier-navigator-saved))))
-    (concat (if (atelier-navigator-workspace-expanded-p workspace) "  ▾ " "  ▸ ")
-            (propertize icon 'face status-face)
+    (concat (atelier-navigator-decoration
+             (if (atelier-navigator-workspace-expanded-p workspace) "  ▾ " "  ▸ ")
+             'atelier-navigator-buffer)
+            (atelier-navigator-decoration icon status-face)
             "  "
             (propertize (format "%s/" name) 'face name-face)
             "  "
@@ -262,109 +292,101 @@
 (defun atelier-navigator-target ()
   (get-text-property (point) 'atelier-navigator-target))
 
+(defun atelier-navigator-label-start (position)
+  "Return where the cursor rests on the item whose text starts at POSITION.
+That is its first character that is neither blank nor decoration."
+  (let ((end (or (next-single-property-change position 'atelier-navigator-target)
+                 (point-max)))
+        (rest position))
+    (while (and (< rest end)
+                (or (memq (char-after rest) '(?\s ?\t))
+                    (get-text-property rest 'atelier-navigator-decoration)))
+      (setq rest (1+ rest)))
+    (if (< rest end) rest position)))
+
 (defun atelier-navigator-positions ()
+  "Return the cursor position of each row's first item, in buffer order."
   (let ((position (point-min)) positions)
     (while (< position (point-max))
-      (if (and (get-text-property position 'atelier-navigator-target)
-               (not (get-text-property position 'atelier-navigator-stack-item)))
-          (progn
-            (push position positions)
-            (setq position (or (next-single-property-change
-                                position 'atelier-navigator-target nil (point-max))
-                               (point-max))))
-        (setq position (or (next-single-property-change
-                            position 'atelier-navigator-target nil (point-max))
-                           (point-max)))))
+      (when (and (get-text-property position 'atelier-navigator-target)
+                 (not (get-text-property position 'atelier-navigator-stack-item)))
+        (push (atelier-navigator-label-start position) positions))
+      (setq position (or (next-single-property-change
+                          position 'atelier-navigator-target nil (point-max))
+                         (point-max))))
     (nreverse positions)))
 
-(defun atelier-navigator-move (delta)
-  (let* ((positions (atelier-navigator-positions))
+(defun atelier-navigator-move (delta &optional positions)
+  "Move DELTA steps through POSITIONS, by default every row, wrapping around."
+  (let* ((positions (or positions (atelier-navigator-positions)))
          (next (cl-position-if (lambda (position) (> position (point))) positions))
          (current (max 0 (1- (or next (length positions)))))
          (target (and positions (nth (mod (+ current delta) (length positions)) positions))))
     (when target (goto-char target))))
 
+(defun atelier-navigator-row-items ()
+  "Return the cursor position of each item on the current row."
+  (let ((position (line-beginning-position))
+        (end (line-end-position))
+        items)
+    (while (< position end)
+      (when (get-text-property position 'atelier-navigator-target)
+        (push (atelier-navigator-label-start position) items))
+      (setq position (or (next-single-property-change
+                          position 'atelier-navigator-target nil end)
+                         end)))
+    (nreverse items)))
+
 (defun atelier-navigator-stack-move (delta)
-  "Select another content on the same entry row, wrapping at either end."
-  (let* ((begin (line-beginning-position))
-         (start (cl-find-if (lambda (position)
-                              (<= begin position (line-end-position)))
-                            (atelier-navigator-positions)))
-         (end (line-end-position))
-         positions)
-    (when start
-      (push start positions)
-      (let ((position start))
-        (while (and (setq position (next-single-property-change
-                                    position 'atelier-navigator-target nil end))
-                    (< position end))
-          (when (get-text-property position 'atelier-navigator-stack-item)
-            (push position positions))))
-      (setq positions (nreverse positions))
-      (when (> (length positions) 1)
-        (let* ((current (or (cl-position-if (lambda (position) (>= position (point)))
-                                             positions)
-                            0))
-               (current (if (= (nth current positions) (point)) current
-                          (max 0 (1- current)))))
-          (goto-char (nth (mod (+ current delta) (length positions)) positions))
-          (atelier-navigator-schedule-stack-activation))))))
+  "Move the cursor DELTA buffers along the current stack row, wrapping around.
+Only the cursor moves; RET opens the buffer under it."
+  (let ((items (atelier-navigator-row-items)))
+    (when (cdr items)
+      (atelier-navigator-move delta items))))
 
-(defun atelier-navigator-commit-stack-selection ()
-  "Activate a pending stack choice, if any."
-  (when atelier-navigator-stack-timer
-    (cancel-timer atelier-navigator-stack-timer)
-    (setq atelier-navigator-stack-timer nil)
-    (let ((target atelier-navigator-stack-pending-target))
-      (setq atelier-navigator-stack-pending-target nil)
-      (atelier-navigator-activate-selected-content target))))
+(defun atelier-navigator-group-move (forward)
+  "Move to the next workspace or section start, or the previous one unless
+FORWARD, wrapping around."
+  (let ((groups (cl-remove-if-not (lambda (position)
+                                    (get-text-property position 'atelier-navigator-group))
+                                  (atelier-navigator-positions))))
+    (when groups
+      (goto-char (if forward
+                     (or (cl-find-if (lambda (position) (> position (point))) groups)
+                         (car groups))
+                   (or (cl-find-if (lambda (position) (< position (point))) groups
+                                   :from-end t)
+                       (car (last groups))))))))
 
-(defun atelier-navigator-schedule-stack-activation ()
-  "Wait for a pause in h/l navigation before reordering the stack."
-  (when atelier-navigator-stack-timer
-    (cancel-timer atelier-navigator-stack-timer))
-  (setq atelier-navigator-stack-pending-target (atelier-navigator-target))
-  (let ((buffer (current-buffer))
-        (frame (selected-frame)))
-    (setq atelier-navigator-stack-timer
-          (run-with-idle-timer
-           atelier-navigator-stack-delay nil
-           (lambda ()
-             (when (and (frame-live-p frame) (buffer-live-p buffer))
-               (with-selected-frame frame
-                 (with-current-buffer buffer
-                   (atelier-operation-live-event #'atelier-navigator-commit-stack-selection)))))))))
+(defun atelier-navigator-next-group ()
+  "Move to the next workspace or section."
+  (interactive)
+  (atelier-navigator-group-move t))
 
-(atelier-define-operation atelier-navigator-activate-selected-content (&optional target)
-    (let* ((choice (or target (atelier-navigator-target)))
-           (workspace (atelier-workspace-get (nth 1 choice))))
-      (list (atelier-workspace-id (or workspace (user-error "Workspace no longer exists")))))
-    ((target (or target (atelier-navigator-target))))
-  "Make TARGET (or the selected horizontal content) top of its entry's stack."
-  (pcase (or target (atelier-navigator-target))
-    ((or `(workspace-content ,workspace-name ,_ ,entry-id ,content-id)
-         `(workspace-owned-content ,workspace-name ,entry-id ,content-id))
-     (let* ((workspace (atelier-workspace-get workspace-name))
-            (entry (and workspace (atelier-entry-by-id workspace entry-id))))
-       (unless entry
-         (user-error "Content no longer belongs to this entry"))
-       (if (buffer-live-p (atelier-restore-entry-content entry workspace content-id))
-           (progn
-             (cl-pushnew (cons (atelier-workspace-id workspace) (plist-get entry :id))
-                         atelier-navigator-changed-views
-                         :test (lambda (left right) (eq (cdr left) (cdr right))))
-             (setf (alist-get (selected-frame) atelier-navigator-selection-by-frame
-                             nil nil #'eq)
-                   (if-let* ((index (cl-position entry
-                                                (atelier-workspace-displayed-entries workspace))))
-                       (list 'workspace-buffer workspace-name index entry-id)
-                     (if (plist-get entry :content-reference)
-                         (list 'workspace-owned-content workspace-name entry-id content-id)
-                       (list 'workspace-owned-buffer workspace-name entry-id)))))
-         (setf (alist-get (selected-frame) atelier-navigator-selection-by-frame
-                          nil nil #'eq) nil))
-       (atelier-render-navigator)
-       (atelier-notify-change)))))
+(defun atelier-navigator-previous-group ()
+  "Move to the previous workspace or section."
+  (interactive)
+  (atelier-navigator-group-move nil))
+
+(defvar-local atelier-navigator-highlight nil
+  "Overlay marking the item under the cursor.")
+
+(defun atelier-navigator-highlight-item ()
+  "Highlight the item under the cursor, from its label to its end."
+  (let ((target (get-text-property (point) 'atelier-navigator-target)))
+    (if (not target)
+        (when atelier-navigator-highlight
+          (delete-overlay atelier-navigator-highlight))
+      (let* ((begin (or (previous-single-property-change
+                         (1+ (point)) 'atelier-navigator-target)
+                        (point-min)))
+             (start (atelier-navigator-label-start begin))
+             (end (or (next-single-property-change (point) 'atelier-navigator-target)
+                      (point-max))))
+        (unless atelier-navigator-highlight
+          (setq atelier-navigator-highlight (make-overlay start end))
+          (overlay-put atelier-navigator-highlight 'face 'atelier-navigator-current))
+        (move-overlay atelier-navigator-highlight start end)))))
 
 (defun atelier-navigator-stack-previous ()
   (interactive)
@@ -377,7 +399,6 @@
 (defun atelier-navigator-next (&optional count linewise)
   (interactive (list (prefix-numeric-value current-prefix-arg)
                      current-prefix-arg))
-  (atelier-navigator-commit-stack-selection)
   (if linewise
       (forward-line (or count 1))
     (atelier-navigator-move 1)))
@@ -385,7 +406,6 @@
 (defun atelier-navigator-previous (&optional count linewise)
   (interactive (list (prefix-numeric-value current-prefix-arg)
                      current-prefix-arg))
-  (atelier-navigator-commit-stack-selection)
   (if linewise
       (forward-line (- (or count 1)))
     (atelier-navigator-move -1)))
@@ -401,10 +421,10 @@
          (member (buffer-name buffer) atelier-global-buffer-names))
        (buffer-list))))))
 
-(defun atelier-navigator-buffer-name (name)
-  "Show Emacs duplicate suffixes as readable qualifiers, without renaming buffers."
-  (let* ((buffer (get-buffer name))
-         (title (and buffer
+(defun atelier-navigator-buffer-name (name &optional buffer)
+  "Show Emacs duplicate suffixes as readable qualifiers, without renaming buffers.
+A title supplied by BUFFER, the live buffer of NAME, replaces NAME."
+  (let* ((title (and buffer
                      (run-hook-with-args-until-success
                       'atelier-buffer-title-functions buffer))))
     (if (and (stringp title) (not (string-empty-p (string-trim title))))
@@ -520,6 +540,54 @@ Modified file buffers are saved and running workspace jobs are stopped first."
     ('vertical "Split (stacked)")
     (_ "Entry")))
 
+(defun atelier-navigator-content-name (workspace content type)
+  "Return CONTENT's NAME part as the navigator shows it, without its
+workspace and TYPE, which the navigator shows elsewhere."
+  (let ((buffer (gethash (atelier-content-cache-key workspace (plist-get content :id))
+                         atelier-content-live-buffers)))
+    (setq buffer (and (buffer-live-p buffer) buffer))
+    (atelier-navigator-buffer-name (atelier-content-base-name content type buffer) buffer)))
+
+(defconst atelier-navigator-log-label "logs"
+  "Type label of the row listing Emacs's own log buffers.")
+(defconst atelier-navigator-stack-separator "  ·  ")
+
+(defun atelier-navigator-type-label (label)
+  "Return LABEL, a stack's type, shown once before the names of its stack.
+Labels share one width so that the names after them line up."
+  (let ((width (apply #'max (length atelier-navigator-log-label)
+                      (mapcar (lambda (definition)
+                                (length (plist-get (cdr definition) :buffer-name)))
+                              atelier-entry-types))))
+    (atelier-navigator-decoration (format (format "%%-%ds  " width) label)
+                                  'atelier-navigator-type)))
+
+(defun atelier-navigator-insert-row (lead label items)
+  "Insert LEAD, then LABEL, then the name of each of ITEMS, ending the line.
+ITEMS is a list of (NAME . TARGET); the first is on top of its stack, and
+h and l move the cursor between them."
+  (atelier-navigator-insert
+   (concat lead (atelier-navigator-type-label label)
+           (propertize (car (car items)) 'face 'atelier-navigator-top))
+   (cdr (car items)))
+  (dolist (item (cdr items))
+    (insert (propertize atelier-navigator-stack-separator 'face 'atelier-navigator-tree))
+    (let ((start (point)))
+      (atelier-navigator-insert (car item) (cdr item) 'atelier-navigator-buffer)
+      (put-text-property start (point) 'atelier-navigator-stack-item t)))
+  (insert "\n"))
+
+(defun atelier-navigator-stack-items (workspace stack type first-target content-target)
+  "Return STACK's contents as row items: the first opens FIRST-TARGET, and
+CONTENT-TARGET, called with a content's ID, gives each other's target."
+  (if stack
+      (cons (cons (atelier-navigator-content-name workspace (car stack) type) first-target)
+            (mapcar (lambda (content)
+                      (cons (atelier-navigator-content-name workspace content type)
+                            (funcall content-target (plist-get content :id))))
+                    (cdr stack)))
+    (list (cons "(empty)" first-target))))
+
 (defun atelier-navigator-render-entry-tree
     (entry workspace-name displayed active prefix last-child)
   "Render ENTRY and its children for WORKSPACE-NAME.
@@ -529,8 +597,7 @@ LAST-CHILD describe the current branch position in the rendered tree."
          (child-prefix (concat prefix (if last-child "   " "│  "))))
     (if (atelier-layout-entry-p entry)
         (progn
-          (insert prefix
-                  (propertize branch 'face 'atelier-navigator-branch)
+          (insert (propertize (concat prefix branch) 'face 'atelier-navigator-tree)
                   " "
                   (propertize (atelier-navigator-layout-label entry)
                               'face 'atelier-navigator-branch)
@@ -547,45 +614,40 @@ LAST-CHILD describe the current branch position in the rendered tree."
                                         (plist-get candidate :id))
                                  :test #'equal))
              (visible (integerp index))
-             (live (atelier-entry-live-buffer entry))
-             (name (or (and live (buffer-name live))
-                       (atelier-entry-value entry :name) "Unavailable entry"))
+             (workspace (atelier-entry-owner entry))
+             (type (or (atelier-entry-value entry :type workspace) 'buffer))
+             (stack (atelier-entry-stack entry workspace))
              (selected (and visible active (plist-get entry :selected))))
-        (atelier-navigator-insert
-         (format "%s%s %s%s%s"
-                 prefix
-                 (propertize branch 'face 'atelier-navigator-branch)
-                 (if selected "▸ " "")
-                 (if visible (format "View %d: " (1+ index)) "")
-                 (if (cdr (atelier-entry-stack entry))
-                     (format "[%s]" (atelier-navigator-buffer-name name))
-                   (atelier-navigator-buffer-name name)))
-         (if visible
-             (list 'workspace-buffer workspace-name index entry-id)
-           (list 'workspace-owned-buffer workspace-name entry-id))
-         'atelier-navigator-buffer)
-        (dolist (content (cdr (atelier-entry-stack entry)))
-          (let ((start (point)))
-            (atelier-navigator-insert
-             (format "  [%s]"
-                     (atelier-navigator-buffer-name
-                      (or (plist-get content :name) "Unavailable content")))
-             (if visible
-                 (list 'workspace-content workspace-name index entry-id
-                       (plist-get content :id))
-               (list 'workspace-owned-content workspace-name entry-id
-                     (plist-get content :id)))
-             'atelier-navigator-saved)
-            (put-text-property start (point) 'atelier-navigator-stack-item t)))
-        (insert "\n")))))
+        (atelier-navigator-insert-row
+         (concat (atelier-navigator-decoration (concat prefix branch " ") 'atelier-navigator-tree)
+                 (if selected (atelier-navigator-decoration "▸ " 'atelier-navigator-active) "")
+                 (if visible
+                     (atelier-navigator-decoration (format "View %d  " (1+ index))
+                                                   'atelier-navigator-view)
+                   ""))
+         (atelier-entry-buffer-name type)
+         (atelier-navigator-stack-items
+          workspace stack type
+          (if visible
+              (list 'workspace-buffer workspace-name index entry-id)
+            (list 'workspace-owned-buffer workspace-name entry-id))
+          (lambda (content-id)
+            (if visible
+                (list 'workspace-content workspace-name index entry-id content-id)
+              (list 'workspace-owned-content workspace-name entry-id content-id)))))))))
 
-(defun atelier-navigator-render-workspace (workspace)
-  "Render WORKSPACE's heading and, when expanded, its saved contents."
+(defun atelier-navigator-render-workspace (workspace &optional indent)
+  "Render WORKSPACE's heading and, when expanded, its saved contents.
+INDENT, a string, shifts the whole workspace to the right."
   (atelier-workspace-entries workspace)
   (let* ((workspace-name (plist-get workspace :name))
-         (active (eq workspace (atelier-current-workspace))))
+         (active (eq workspace (atelier-current-workspace)))
+         (indent (or indent ""))
+         (prefix (concat indent "     ")))
+    (setq atelier-navigator-group-pending t)
     (atelier-navigator-insert
-     (atelier-navigator-workspace-label workspace active)
+     (concat (atelier-navigator-decoration indent)
+             (atelier-navigator-workspace-label workspace active))
      (list 'workspace workspace-name))
     (insert "\n")
     (when (atelier-navigator-workspace-expanded-p workspace)
@@ -604,12 +666,14 @@ LAST-CHILD describe the current branch position in the rendered tree."
                           (atelier-workspace-entries workspace))))))
         (when displayed-root
           (atelier-navigator-render-entry-tree
-           displayed-root workspace-name displayed-entries active "     " nil))
-        (cl-loop for entry in hidden for tail on hidden
-                 do (atelier-navigator-render-entry-tree
-                     entry workspace-name displayed-entries active "     " (null (cdr tail))))
+           displayed-root workspace-name displayed-entries active prefix nil))
+        ;; The scratch action below always closes the branch.
+        (dolist (entry hidden)
+          (atelier-navigator-render-entry-tree
+           entry workspace-name displayed-entries active prefix nil))
         (atelier-navigator-insert
-         "     ╰─ ＋ New scratch buffer\n"
+         (concat (atelier-navigator-decoration (concat prefix "╰─ ") 'atelier-navigator-tree)
+                 "＋ New scratch buffer\n")
          (list 'workspace-scratch workspace-name) 'success)))
     (insert "\n")))
 
@@ -619,7 +683,8 @@ LAST-CHILD describe the current branch position in the rendered tree."
     (with-current-buffer buffer
       (unless (derived-mode-p 'atelier-navigator-mode)
         (atelier-navigator-mode))
-      (let ((inhibit-read-only t))
+      (let ((inhibit-read-only t)
+            (atelier-navigator-group-pending nil))
         (erase-buffer)
         (atelier-navigator-section
          "Workspaces" (format "%d total" (length (atelier-user-workspaces))))
@@ -634,13 +699,17 @@ LAST-CHILD describe the current branch position in the rendered tree."
                                (eq (atelier-workspace-status workspace) 'running))
                              (atelier-user-workspaces))))
           (unless first-item (setq first-item (point)))
+          (setq atelier-navigator-group-pending t)
           (atelier-navigator-insert
-           (format "  %s Stopped workspaces (%d)\n\n"
-                   (if atelier-navigator-stopped-expanded "▾" "▸") (length stopped))
-           '(stopped-workspaces) 'atelier-navigator-saved)
+           (concat (atelier-navigator-decoration
+                    (if atelier-navigator-stopped-expanded "  ▾ " "  ▸ ")
+                    'atelier-navigator-saved)
+                   (propertize (format "Stopped workspaces (%d)\n\n" (length stopped))
+                               'face 'atelier-navigator-saved))
+           '(stopped-workspaces))
           (when atelier-navigator-stopped-expanded
             (dolist (workspace stopped)
-              (atelier-navigator-render-workspace workspace))))
+              (atelier-navigator-render-workspace workspace "  "))))
         (atelier-navigator-insert "  ＋ New workspace\n" '(new-workspace) 'success)
         (let ((projects
                (cl-remove-if
@@ -651,7 +720,7 @@ LAST-CHILD describe the current branch position in the rendered tree."
             (dolist (root projects)
               (unless first-item (setq first-item (point)))
               (atelier-navigator-insert
-               (concat "  ◇  "
+               (concat (atelier-navigator-decoration "  ◇  ")
                        (propertize
                         (format "%s/" (file-name-nondirectory (directory-file-name root)))
                         'face 'font-lock-keyword-face)
@@ -660,20 +729,38 @@ LAST-CHILD describe the current branch position in the rendered tree."
                        "\n")
                (list 'project root)))))
         (let* ((workspace (atelier-ensure-detached-workspace))
-                (entries (atelier-sort-entries-by-id
-                          (atelier-workspace-entries workspace))))
+               ;; Views showing the same stack share one row.
+               (stacks (let (seen)
+                         (cl-loop for entry in (atelier-sort-entries-by-id
+                                                (atelier-workspace-entries workspace))
+                                  for stack-id = (plist-get entry :stack-id)
+                                  unless (and stack-id (member stack-id seen))
+                                  collect (progn (push stack-id seen)
+                                                 (cons entry (atelier-entry-stack entry workspace))))))
+               (logs (cl-remove-if-not #'get-buffer (atelier-log-buffer-names)))
+               (total (+ (length logs)
+                         (apply #'+ (mapcar (lambda (stack) (length (cdr stack))) stacks)))))
           (atelier-navigator-section "Detached buffers"
-                                     (if entries (format "%d total" (length entries)) "none"))
-          (if entries
-              (dolist (entry entries)
-                (let* ((buffer (atelier-entry-live-buffer entry))
-                       (name (or (and buffer (buffer-name buffer))
-                                 (atelier-entry-value entry :name) "Unavailable entry")))
-                  (atelier-navigator-insert
-                   (format "  •  %s\n" (atelier-navigator-buffer-name name))
-                   (list 'workspace-owned-buffer atelier-detached-workspace-name
-                         (plist-get entry :id))
-                   'atelier-navigator-buffer)))
+                                     (if (> total 0) (format "%d total" total) "none"))
+          (dolist (stack stacks)
+            (let* ((entry (car stack))
+                   (entry-id (plist-get entry :id))
+                   (type (or (atelier-entry-value entry :type workspace) 'buffer)))
+              (atelier-navigator-insert-row
+               (atelier-navigator-decoration "  •  ")
+               (atelier-entry-buffer-name type)
+               (atelier-navigator-stack-items
+                workspace (cdr stack) type
+                (list 'workspace-owned-buffer atelier-detached-workspace-name entry-id)
+                (lambda (content-id)
+                  (list 'workspace-owned-content atelier-detached-workspace-name
+                        entry-id content-id))))))
+          (when logs
+            (atelier-navigator-insert-row
+             (atelier-navigator-decoration "  •  ")
+             atelier-navigator-log-label
+             (mapcar (lambda (name) (cons name (list 'detached-log name))) logs)))
+          (when (= total 0)
             (insert (propertize "  No detached buffers\n" 'face 'atelier-navigator-branch)))
           (atelier-navigator-insert "  ＋ New detached scratch buffer\n"
                                     (list 'workspace-scratch atelier-detached-workspace-name)
@@ -699,13 +786,12 @@ LAST-CHILD describe the current branch position in the rendered tree."
                                     candidate 'atelier-navigator-target)))
                           (atelier-navigator-positions)))
                     atelier-navigator-first-position)))
-          (goto-char position))))
+          (goto-char position)
+          (atelier-navigator-highlight-item))))
     buffer))
 
 (defun atelier-navigator-quit ()
   (interactive)
-  (when-let* ((navigator (atelier-navigator-frame-buffer)))
-    (with-current-buffer navigator (atelier-navigator-commit-stack-selection)))
   (setq atelier-navigator-attach-source nil)
   (let* ((frame (selected-frame))
          (navigator (atelier-navigator-frame-buffer))
@@ -713,11 +799,7 @@ LAST-CHILD describe the current branch position in the rendered tree."
                       (with-current-buffer navigator
                         (when (derived-mode-p 'atelier-navigator-mode)
                           (atelier-navigator-target)))))
-         (configuration (alist-get frame atelier-navigator-window-configurations nil nil #'eq))
-         (changed (and navigator (buffer-local-value 'atelier-navigator-changed-views
-                                                    navigator))))
-    (when navigator
-      (with-current-buffer navigator (setq atelier-navigator-changed-views nil)))
+         (configuration (alist-get frame atelier-navigator-window-configurations nil nil #'eq)))
     (when target
       (setf (alist-get frame atelier-navigator-selection-by-frame nil nil #'eq)
             target))
@@ -725,17 +807,7 @@ LAST-CHILD describe the current branch position in the rendered tree."
           (assq-delete-all frame atelier-navigator-window-configurations))
     (when configuration
       (set-window-configuration configuration)
-      (dolist (pair changed)
-         (let* ((workspace (atelier-workspace-by-id (car pair)))
-                (entry (and workspace (atelier-entry-by-id workspace (cdr pair)))))
-          (when (eq workspace (atelier-current-workspace))
-            (when-let* ((index (cl-position entry
-                                            (atelier-workspace-displayed-entries workspace)))
-                        (window (nth index (atelier-main-windows)))
-                        (buffer (atelier-entry-live-buffer entry)))
-              (set-window-buffer window buffer)))))
-      (atelier-clean-window-buffer-history))
-    (when changed (atelier-notify-change))))
+      (atelier-clean-window-buffer-history))))
 
 (defun atelier-navigator ()
   (interactive)
@@ -937,7 +1009,6 @@ entry never invents a nested disposition."
 
 (defun atelier-navigator-open ()
   (interactive)
-  (atelier-navigator-commit-stack-selection)
   (let ((target (atelier-navigator-target)))
     (if atelier-navigator-attach-source
         (atelier-navigator-finish-attach target)
@@ -991,6 +1062,13 @@ entry never invents a nested disposition."
              (atelier-show-buffer buffer workspace))
            (atelier-notify-change)))
         (`(project ,root) (atelier-navigator-quit) (atelier-open-project-workspace root))
+        (`(detached-log ,name)
+         ;; Like Traveller: Detached shows Emacs's logs without storing them.
+         (let ((buffer (or (get-buffer name) (user-error "Buffer no longer exists: %s" name))))
+           (atelier-navigator-quit)
+           (unless (atelier-detached-workspace-p (atelier-current-workspace))
+             (atelier-switch-workspace atelier-detached-workspace-name))
+           (switch-to-buffer buffer)))
         (`(buffer ,name)
          (if-let* ((buffer (get-buffer name)))
              (atelier-navigator-assign-buffer buffer)
@@ -1228,13 +1306,13 @@ their splits."
                                         (atelier-navigator-positions)
                                         :from-end t)))
     (unless target (user-error "No item on this line"))
-    (unless (memq (car target) '(workspace buffer workspace-buffer workspace-owned-buffer
+    (unless (memq (car target) '(workspace buffer detached-log workspace-buffer workspace-owned-buffer
                                   workspace-content workspace-owned-content project))
       (user-error "This item cannot be closed"))
     (unless (y-or-n-p (format "%s? "
                               (pcase (car target)
                                 ('workspace "Close and remove this workspace")
-                                ('buffer "Kill this buffer")
+                                ((or 'buffer 'detached-log) "Kill this buffer")
                                 ('workspace-buffer (if entire-entry "Delete this view, its stack and all its contents"
                                                      "Close this content"))
                                 ('workspace-owned-buffer (if entire-entry "Remove this entry"
@@ -1254,6 +1332,9 @@ their splits."
          (user-error "Workspace no longer exists: %s" name)))
       (`(buffer ,name)
        (atelier-close-buffer name))
+      (`(detached-log ,name)
+       (when-let* ((buffer (get-buffer name)))
+         (kill-buffer buffer)))
       (`(workspace-buffer ,workspace-name ,index ,entry-id)
        (let* ((workspace
                (or (atelier-workspace-get workspace-name)

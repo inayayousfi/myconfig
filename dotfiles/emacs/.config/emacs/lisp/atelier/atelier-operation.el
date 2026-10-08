@@ -3,8 +3,6 @@
 (require 'atelier-core)
 (require 'atelier-model)
 
-(defvar atelier-navigator-changed-views)
-
 (cl-defstruct (atelier-operation (:constructor atelier-operation-create))
   name ids original frames windows navigator-states notifications cleanups completion invalid buffers checks acquired-buffers)
 
@@ -118,15 +116,10 @@ preparation so queued calls use stable targets, not obsolete record addresses."
   "Remember FRAME's display before preparing changes to it."
   (when (and atelier-operation-current (frame-live-p frame)
               (not (assq frame (atelier-operation-windows atelier-operation-current))))
-    (let ((navigator (and (fboundp 'atelier-navigator-frame-buffer)
-                          (atelier-navigator-frame-buffer frame))))
-      (push (list frame
-                  (alist-get frame atelier-navigator-window-configurations nil nil #'eq)
-                  (alist-get frame atelier-navigator-selection-by-frame nil nil #'eq)
-                  navigator
-                  (and (buffer-live-p navigator)
-                       (copy-tree (buffer-local-value 'atelier-navigator-changed-views navigator))))
-            (atelier-operation-navigator-states atelier-operation-current)))
+    (push (list frame
+                (alist-get frame atelier-navigator-window-configurations nil nil #'eq)
+                (alist-get frame atelier-navigator-selection-by-frame nil nil #'eq))
+          (atelier-operation-navigator-states atelier-operation-current))
     (push (cons frame (current-window-configuration frame))
           (atelier-operation-windows atelier-operation-current))))
 
@@ -439,10 +432,7 @@ Record publication cannot undo already executed external process commands."
                 (when (nth 1 state)
                   (push (cons (car state) (nth 1 state)) atelier-navigator-window-configurations))
                 (when (nth 2 state)
-                  (push (cons (car state) (nth 2 state)) atelier-navigator-selection-by-frame))
-                (when (buffer-live-p (nth 3 state))
-                  (with-current-buffer (nth 3 state)
-                    (setq atelier-navigator-changed-views (nth 4 state))))))
+                  (push (cons (car state) (nth 2 state)) atelier-navigator-selection-by-frame))))
             (dolist (configuration (atelier-operation-windows operation))
               (when (frame-live-p (car configuration))
                 (set-window-configuration (cdr configuration))))))

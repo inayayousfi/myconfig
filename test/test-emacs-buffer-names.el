@@ -234,6 +234,88 @@ The naming timer is not started; BODY runs its work with `atelier-name-buffers'.
                  :name (concat "other | file | " (file-name-nondirectory file))))
     other))
 
+(ert-deftest atelier-navigator-shows-stack-type-once-before-bare-names ()
+  "A stack row names its type once; its buffers show only their NAME part.
+The workspace is already the row's heading."
+  (atelier-names-test
+    (let ((files (mapcar (lambda (name) (expand-file-name name root)) '("a.txt" "b.txt"))))
+      (dolist (file files)
+        (with-temp-file file (insert file))
+        (atelier-open-file file workspace))
+      (atelier-name-buffers)
+      (should (get-buffer "work | file | a.txt"))
+      (with-current-buffer (atelier-render-navigator)
+        (goto-char (point-min))
+        (should (search-forward "a.txt" nil t))
+        (should (equal (buffer-substring-no-properties
+                        (line-beginning-position) (line-end-position))
+                       "     ├─ file      b.txt  ·  a.txt"))))))
+
+(ert-deftest atelier-navigator-lists-every-detached-buffer ()
+  "Detached shows every buffer of its stacks and Emacs's own logs; a log
+opens in Detached without being stored."
+  (atelier-names-test
+    (let ((first (generate-new-buffer "*first-detached*"))
+          (second (generate-new-buffer "*second-detached*")))
+      (atelier-register-buffer first detached)
+      (atelier-register-buffer second detached)
+      (get-buffer-create "*Messages*")
+      (atelier-name-buffers)
+      (let ((contents (length (plist-get detached :contents))))
+        (with-current-buffer (atelier-render-navigator)
+          (goto-char (point-min))
+          (search-forward "DETACHED BUFFERS")
+          (forward-line 2)
+          (should (looking-at-p
+                   (regexp-quote "  •  buffer    *second-detached*  ·  *first-detached*")))
+          (forward-line 1)
+          (should (looking-at-p (regexp-quote "  •  logs      *Messages*")))
+          (search-forward "*Messages*")
+          (goto-char (match-beginning 0))
+          (atelier-navigator-open))
+        (should (eq (window-buffer) (get-buffer "*Messages*")))
+        (should (eq (atelier-current-workspace) detached))
+        (should (= contents (length (plist-get detached :contents))))))))
+
+(ert-deftest atelier-navigator-detached-shows-each-stack-once-and-closes-buffers ()
+  "Two Detached views of one stack give one row; x closes a stack buffer or a log."
+  (atelier-names-test
+    (let ((first (generate-new-buffer "*first-detached*"))
+          (second (generate-new-buffer "*second-detached*")))
+      (atelier-register-buffer first detached)
+      (atelier-register-buffer second detached)
+      (atelier-switch-workspace atelier-detached-workspace-name)
+      (atelier-show-buffer first detached)
+      (atelier-capture-current-workspace)
+      (atelier-split-right)
+      (atelier-show-buffer second detached)
+      (atelier-capture-current-workspace)
+      (get-buffer-create "*Messages*")
+      (atelier-name-buffers)
+      (cl-flet ((detached-section ()
+                  (with-current-buffer (atelier-render-navigator)
+                    (goto-char (point-min))
+                    (search-forward "DETACHED BUFFERS")
+                    (buffer-substring-no-properties
+                     (line-beginning-position) (search-forward "＋ New detached")))))
+        (let ((section (detached-section)))
+          (should (string-match-p "BUFFERS  3 total" section))
+          (should (= 1 (cl-count-if (lambda (line) (string-match-p "•  buffer" line))
+                                    (split-string section "\n")))))
+        (cl-letf (((symbol-function 'y-or-n-p) (lambda (&rest _) t)))
+          (dolist (name '("*second-detached*" "*Messages*"))
+            (atelier-navigator)
+            (goto-char (point-min))
+            (search-forward "DETACHED BUFFERS")
+            (search-forward name)
+            (goto-char (match-beginning 0))
+            (atelier-navigator-close)
+            (atelier-navigator-quit)))
+        (should-not (buffer-live-p second))
+        (should-not (get-buffer "*Messages*"))
+        (should (buffer-live-p first))
+        (should-not (string-match-p "second-detached" (detached-section)))))))
+
 (ert-deftest atelier-traveller-lists-every-workspace-buffer ()
   "Open, saved, star-named, log and panel buffers appear as WORKSPACE | TYPE | NAME."
   (atelier-names-test

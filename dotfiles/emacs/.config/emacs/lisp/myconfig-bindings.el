@@ -228,6 +228,8 @@ Eglot otherwise runs a single action at once when point is on its hint."
   (define-key myconfig-leader-map (kbd "u r") #'atelier-set-job-policy)
   (define-key myconfig-leader-map (kbd "w") #'atelier-traveller)
   (define-key myconfig-leader-map (kbd "W") #'atelier-navigator)
+  (define-key myconfig-leader-map (kbd ",") #'atelier-traveller-step-backward)
+  (define-key myconfig-leader-map (kbd ".") #'atelier-traveller-step-forward)
   (define-key myconfig-leader-map (kbd "g f") #'dape)
   (define-key myconfig-leader-map (kbd "g g") #'magit-status)
   (define-key myconfig-leader-map (kbd "g d") #'diff)

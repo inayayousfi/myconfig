@@ -24,6 +24,7 @@
 (declare-function atelier-show-buffer "atelier")
 (declare-function atelier-restore-entry-content "atelier")
 (declare-function atelier-main-window "atelier-navigator")
+(declare-function atelier-current-entry "atelier")
 (defvar orderless-matching-styles)
 (defvar orderless-component-separator)
 
@@ -316,6 +317,44 @@ match.")
    (or (atelier-traveller-read (atelier-traveller-by-recency (atelier-traveller-targets)
                                                              (current-buffer)))
        (user-error "No buffer chosen"))))
+
+(defvar atelier-traveller--step nil
+  "The stack walk in progress, as (WORKSPACE-ID CONTENT-IDS . INDEX), or nil.")
+
+(defun atelier-traveller-step (delta)
+  "Show the buffer DELTA places away in the current view's stack, wrapping.
+Consecutive steps walk the stack's order from the first step: showing a
+buffer moves it to the top of its stack, so a fresh order would only flip
+between two buffers."
+  (when (window-parameter nil 'window-side)
+    (select-window (atelier-main-window)))
+  (let* ((workspace (or (atelier-current-workspace) (user-error "No workspace is selected")))
+         (workspace-id (atelier-workspace-id workspace))
+         (entry (atelier-current-entry)))
+    (unless (and (memq last-command '(atelier-traveller-step-forward
+                                      atelier-traveller-step-backward))
+                 (equal (car atelier-traveller--step) workspace-id)
+                 (equal (nth (cddr atelier-traveller--step) (cadr atelier-traveller--step))
+                        (and entry (atelier-entry-field entry :content-id))))
+      (let ((ids (mapcar (lambda (content) (atelier-content-field content :id))
+                         (and entry (atelier-entry-stack entry workspace)))))
+        (unless ids (user-error "This view shows no workspace stack"))
+        (setq atelier-traveller--step (cons workspace-id (cons ids 0)))))
+    (pcase-let ((`(,_ ,ids . ,index) atelier-traveller--step))
+      (when (< (length ids) 2) (user-error "This stack holds only this buffer"))
+      (setq index (mod (+ index delta) (length ids)))
+      (setcdr (cdr atelier-traveller--step) index)
+      (atelier-traveller-show-content workspace-id (nth index ids)))))
+
+(defun atelier-traveller-step-forward ()
+  "Show the next buffer of the current view's stack."
+  (interactive)
+  (atelier-traveller-step 1))
+
+(defun atelier-traveller-step-backward ()
+  "Show the previous buffer of the current view's stack."
+  (interactive)
+  (atelier-traveller-step -1))
 
 (provide 'atelier-traveller)
 ;;; atelier-traveller.el ends here

@@ -130,6 +130,28 @@
         (should (equal (order) '("b.txt" "a.txt" "c.txt")))
         (should (equal (shown) '("b.txt" "a.txt" "c.txt")))))))
 
+;; Showing a buffer moves it to the top of its stack, yet consecutive steps
+;; must visit every buffer in the order of the first step, wrapping around.
+(ert-deftest atelier-workspace-stacks-step-walks-the-whole-stack ()
+  (atelier-stacks-test
+    (let ((files (mapcar (lambda (name) (expand-file-name name root))
+                         '("a.txt" "b.txt" "c.txt")))
+          (last-command nil))
+      (dolist (file files)
+        (with-temp-file file (insert file))
+        (atelier-open-file file workspace))
+      (cl-flet ((step (command)
+                  (funcall command)
+                  (setq last-command command)
+                  (file-name-nondirectory (buffer-file-name (window-buffer)))))
+        (should (equal (mapcar (lambda (_) (step #'atelier-traveller-step-forward)) '(1 2 3))
+                       '("b.txt" "a.txt" "c.txt")))
+        (should (equal (mapcar (lambda (_) (step #'atelier-traveller-step-backward)) '(1 2))
+                       '("a.txt" "b.txt")))
+        ;; Another command ends the walk; the next step starts from the new order.
+        (setq last-command 'ignore)
+        (should (equal (step #'atelier-traveller-step-forward) "a.txt"))))))
+
 ;; A stack past its limit closes its least recently used buffers, but keeps
 ;; any buffer a view still selects and any file with unsaved changes.
 (ert-deftest atelier-workspace-stacks-limit-closes-least-recent-buffers ()

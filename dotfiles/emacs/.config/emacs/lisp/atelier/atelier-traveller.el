@@ -35,21 +35,6 @@
 Traveller has already selected the buffer's workspace.  The first function
 returning non-nil has shown the buffer; otherwise Traveller switches to it.")
 
-(defun atelier-traveller-log-buffer-names ()
-  "Emacs's own log buffers; Detached owns them without storing them."
-  (remove "*Completions*" atelier-global-buffer-names))
-
-(defun atelier-traveller-content-name (content type buffer)
-  "Return the NAME part shown for CONTENT, live in BUFFER or only saved."
-  (cond
-   (buffer (atelier-buffer-strip-qualifier (buffer-name buffer) type))
-   ((and (eq type 'dired) (plist-get content :directory))
-    (atelier-buffer-folder-name (plist-get content :directory)))
-   ((plist-get content :name)
-    (atelier-buffer-strip-qualifier (plist-get content :name) type))
-   ((plist-get content :file) (file-name-nondirectory (plist-get content :file)))
-   (t "unnamed")))
-
 (defun atelier-traveller-segments (workspace type)
   "Return the lockable WORKSPACE and TYPE segments of a label."
   (list (plist-get workspace :name) (atelier-entry-buffer-name type)))
@@ -65,7 +50,7 @@ returning non-nil has shown the buffer; otherwise Traveller switches to it.")
                (buffer (and (buffer-live-p buffer) buffer)))
           (when buffer (push buffer held))
           (push (list :label (atelier-buffer-qualified-name
-                              workspace type (atelier-traveller-content-name content type buffer))
+                              workspace type (atelier-content-base-name content type buffer))
                       :segments (atelier-traveller-segments workspace type)
                       :workspace-id (atelier-workspace-id workspace)
                       :content-id (plist-get content :id)
@@ -74,7 +59,7 @@ returning non-nil has shown the buffer; otherwise Traveller switches to it.")
                 targets))))
     (dolist (buffer (buffer-list))
       (unless (memq buffer held)
-        (when-let* ((owner (if (member (buffer-name buffer) (atelier-traveller-log-buffer-names))
+        (when-let* ((owner (if (member (buffer-name buffer) (atelier-log-buffer-names))
                                (list (atelier-ensure-detached-workspace) 'buffer)
                              (atelier-buffer-owner buffer))))
           (let ((type (or (nth 1 owner) 'buffer)))

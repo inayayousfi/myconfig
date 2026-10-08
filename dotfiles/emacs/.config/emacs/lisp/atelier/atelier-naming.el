@@ -66,6 +66,21 @@ A legacy Atelier name such as \"*terminal:WORKSPACE*\" becomes its type label."
   (let ((name (file-name-nondirectory (directory-file-name (expand-file-name directory)))))
     (if (string-empty-p name) "/" name)))
 
+(defun atelier-log-buffer-names ()
+  "Emacs's own log buffers; Detached owns them without storing them."
+  (remove "*Completions*" atelier-global-buffer-names))
+
+(defun atelier-content-base-name (content type buffer)
+  "Return the NAME part of CONTENT, live in BUFFER or only saved."
+  (cond
+   (buffer (atelier-buffer-strip-qualifier (buffer-name buffer) type))
+   ((and (eq type 'dired) (plist-get content :directory))
+    (atelier-buffer-folder-name (plist-get content :directory)))
+   ((plist-get content :name)
+    (atelier-buffer-strip-qualifier (plist-get content :name) type))
+   ((plist-get content :file) (file-name-nondirectory (plist-get content :file)))
+   (t "unnamed")))
+
 (defun atelier-buffer-base (buffer type)
   "Return BUFFER's name without qualifier, remembering it on first use.
 A name given since Atelier last named BUFFER replaces it.  A Dired buffer

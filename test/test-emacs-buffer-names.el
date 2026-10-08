@@ -23,6 +23,8 @@
 (require 'ghostel-atelier)
 (require 'dired-atelier)
 (dired-atelier-setup)
+(require 'vertico-atelier)
+(vertico-atelier-setup)
 (aipanel-atelier-setup)
 
 (defmacro atelier-names-test (&rest body)

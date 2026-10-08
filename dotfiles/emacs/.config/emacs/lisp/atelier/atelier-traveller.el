@@ -24,9 +24,6 @@
 (declare-function atelier-show-buffer "atelier")
 (declare-function atelier-restore-entry-content "atelier")
 (declare-function atelier-main-window "atelier-navigator")
-(defvar vertico--base)
-(defvar vertico--candidates)
-(defvar vertico--index)
 (defvar orderless-matching-styles)
 (defvar orderless-component-separator)
 
@@ -217,12 +214,26 @@ buffer level every label appears."
           (push key seen)
           (push next inputs))))))
 
+(defvar atelier-traveller-highlighted-function nil
+  "Function returning the full label the completion list highlights, or nil.
+A completion interface supplies it; without one, TAB starts from the first
+match.")
+
+(defun atelier-traveller-matching-labels (input)
+  "Return the full labels matching INPUT, in the order the list shows them."
+  (let* ((table (atelier-traveller-table atelier-traveller--targets))
+         (matches (atelier-traveller-with-matching
+                   (lambda () (completion-all-completions input table nil (length input)))))
+         (base (substring input 0 (car (completion-boundaries input table nil "")))))
+    (when matches (setcdr (last matches) nil))
+    (mapcar (lambda (match) (concat base (substring-no-properties match))) matches)))
+
 (defun atelier-traveller-listed-labels ()
   "Return the full labels the completion list shows, from the highlighted one on."
-  (let ((labels (mapcar (lambda (candidate)
-                          (substring-no-properties (concat vertico--base candidate)))
-                        vertico--candidates))
-        (index (max vertico--index 0)))
+  (let* ((labels (atelier-traveller-matching-labels (minibuffer-contents-no-properties)))
+         (highlighted (and atelier-traveller-highlighted-function
+                           (funcall atelier-traveller-highlighted-function)))
+         (index (or (and highlighted (cl-position highlighted labels :test #'equal)) 0)))
     (append (nthcdr index labels) (take index labels))))
 
 (defun atelier-traveller-cycle (step)

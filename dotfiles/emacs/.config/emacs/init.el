@@ -138,6 +138,8 @@
 (require 'atelier-persist)
 (require 'xref-atelier)
 (require 'myconfig-editing)
+(require 'vertico-atelier)
+(vertico-atelier-setup)
 (require 'myconfig-terminal)
 (require 'ghostel-atelier)
 (ghostel-atelier-setup)

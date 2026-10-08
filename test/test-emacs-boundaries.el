@@ -19,7 +19,8 @@
 (ert-deftest atelier-loads-without-application-or-integration-packages ()
   "The core alone loads no adapter or the packages they adapt, and registers
 only the types it implements itself."
-  (dolist (feature '(myconfig-core ghostel evil aipan univers remot dired dired-atelier))
+  (dolist (feature '(myconfig-core ghostel evil aipan univers remot dired dired-atelier
+                     vertico vertico-atelier))
     (should-not (memq feature atelier-test-core-features)))
   (should (equal atelier-test-core-types '(file buffer)))
   (should-not atelier-close-without-asking)
@@ -31,8 +32,8 @@ only the types it implements itself."
   '("atelier/atelier-navigator.el" "atelier/atelier-traveller.el" "atelier/atelier-naming.el"
     "atelier/atelier-choice.el" "atelier/dired-atelier.el" "atelier/ghostel-atelier.el"
     "atelier/aipanel-atelier.el" "atelier/universel-atelier.el" "atelier/xref-atelier.el"
-    "atelier/remot-atelier.el" "myconfig-ui.el" "myconfig-editing.el" "myconfig-terminal.el"
-    "myconfig-bindings.el")
+    "atelier/remot-atelier.el" "atelier/vertico-atelier.el" "myconfig-ui.el" "myconfig-editing.el"
+    "myconfig-terminal.el" "myconfig-bindings.el")
   "Files outside the core that use Atelier.")
 
 (defconst atelier-test-private-patterns

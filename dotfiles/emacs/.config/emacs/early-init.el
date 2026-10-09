@@ -5,6 +5,11 @@
 (add-to-list 'load-path (expand-file-name "lisp" myconfig-early-config-directory))
 (require 'univers)
 
+;; Windows derives the default coding system from its Latin-1 code page, so
+;; saving text such as terminal titles with symbols prompts for a coding system.
+(when (eq system-type 'windows-nt)
+  (prefer-coding-system 'utf-8))
+
 (setq package-enable-at-startup nil
       frame-inhibit-implied-resize t
       inhibit-startup-message t

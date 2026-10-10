@@ -151,6 +151,8 @@
   (aipanel-atelier-setup)
   (myconfig-aipanel-setup))
 (require 'myconfig-git)
+(require 'jumel-atelier)
+(jumel-atelier-setup)
 (require 'myconfig-bindings)
 (require 'remot)
 (require 'remot-atelier)

@@ -3,13 +3,15 @@
 (require 'magit)
 (require 'transient)
 (require 'diff)
-(require 'ediff)
+(require 'jum)
 (require 'myconfig-core)
 (require 'filenotify)
 
 (declare-function diff-hl-dired-update "diff-hl-dired")
+(declare-function ediff-setup-windows-plain "ediff-wind")
+(defvar ediff-window-setup-function)
+(defvar ediff-split-window-function)
 
-(defvar-local myconfig-review-peer nil)
 
 (declare-function myconfig-emacs-diff "myconfig-git")
 (unless (fboundp 'myconfig-emacs-diff)
@@ -38,63 +40,6 @@
       (when (zerop (apply #'process-file "git" nil t nil arguments))
         (car (split-string (buffer-string) "\n" t))))))
 
-(defun myconfig-fontified-source (path text)
-  (with-temp-buffer
-    (insert text)
-    (setq-local buffer-file-name path)
-    (set-auto-mode)
-    (font-lock-ensure)
-    (buffer-substring (point-min) (point-max))))
-
-(defun myconfig-review-buffer (name entries side)
-  (let ((buffer (get-buffer-create name)))
-    (with-current-buffer buffer
-      (let ((inhibit-read-only t))
-        (fundamental-mode)
-        (font-lock-mode -1)
-        (erase-buffer)
-        (dolist (entry entries)
-          (let ((path (nth 0 entry))
-                (text (nth side entry)))
-            (insert (propertize (format "\n===== %s =====\n" path)
-                                'face 'font-lock-keyword-face))
-            (insert (myconfig-fontified-source path text))
-            (unless (bolp) (insert "\n"))))
-        (setq-local truncate-lines nil
-                    buffer-read-only t
-                    buffer-offer-save nil)
-        (set-buffer-modified-p nil)
-        (goto-char (point-min))))
-    buffer))
-
-(defun myconfig-review-cleanup (buffers window-configuration)
-  (dolist (buffer buffers)
-    (when (buffer-live-p buffer)
-      (kill-buffer buffer)))
-  (when (window-configuration-p window-configuration)
-    (set-window-configuration window-configuration)))
-
-(defun myconfig-show-review (title entries)
-  (let* ((window-configuration (current-window-configuration))
-         (left (myconfig-review-buffer (format "*%s:before*" title) entries 1))
-         (right (myconfig-review-buffer (format "*%s:after*" title) entries 2)))
-    (with-current-buffer left (setq myconfig-review-peer right))
-    (with-current-buffer right (setq myconfig-review-peer left))
-    (let ((ediff-window-setup-function #'ediff-setup-windows-plain)
-          (ediff-split-window-function #'split-window-horizontally)
-          (ediff-keep-variants t))
-      (ediff-buffers
-       left right
-       (list
-        (lambda ()
-          (add-hook
-           'ediff-after-quit-hook-internal
-           (lambda ()
-             (myconfig-review-cleanup (list left right) window-configuration))
-           nil t)))))
-    (message "%s: %d changed file%s" title (length entries)
-             (if (= (length entries) 1) "" "s"))))
-
 (defun myconfig-review-entries (root files left-revision right-revision)
   (mapcar
    (lambda (path)
@@ -113,7 +58,8 @@
                   (if (string-empty-p status)
                       (format "[Directory: %s]\n" path)
                     status)))
-               (t "")))))
+               (t ""))
+             (expand-file-name path root))))
    files))
 
 (defun myconfig-changed-files (root &rest arguments)
@@ -121,26 +67,32 @@
     (unless files (user-error "No changed files"))
     files))
 
+(defun myconfig-git-working-entries (root)
+  (let* ((tracked (myconfig-git-lines root "diff" "--name-only" "HEAD" "--"))
+         (untracked (myconfig-git-lines root "ls-files" "--others" "--exclude-standard"))
+         (files (delete-dups (append tracked untracked))))
+    (unless files (user-error "No changed files"))
+    (myconfig-review-entries root files "HEAD" nil)))
+
 (defun myconfig-git-review-working ()
   (interactive)
-  (let* ((root (myconfig-git-root))
-          (tracked (myconfig-git-lines root "diff" "--name-only" "HEAD" "--"))
-          (untracked (myconfig-git-lines root "ls-files" "--others" "--exclude-standard"))
-          (files (delete-dups (append tracked untracked))))
-    (unless files (user-error "No changed files"))
-    (myconfig-show-review "Working diff"
-                          (myconfig-review-entries root files "HEAD" nil))))
+  (let ((root (myconfig-git-root)))
+    (jumel-show "working" (myconfig-git-working-entries root)
+                (lambda () (myconfig-git-working-entries root)))))
 
-(defun diff-current-commit ()
-  (interactive)
-  (let* ((root (myconfig-git-root))
-         (revision (or (myconfig-git-first-line-quiet root "rev-parse" "--verify" "HEAD")
+(defun myconfig-git-commit-entries (root)
+  (let* ((revision (or (myconfig-git-first-line-quiet root "rev-parse" "--verify" "HEAD")
                        (user-error "The repository has no current commit")))
          (parent (myconfig-git-first-line-quiet root "rev-parse" "--verify" "HEAD^"))
          (files (myconfig-changed-files
                  root "diff-tree" "--root" "--no-commit-id" "--name-only" "-r" revision)))
-    (myconfig-show-review "Current commit"
-                          (myconfig-review-entries root files parent revision))))
+    (myconfig-review-entries root files parent revision)))
+
+(defun diff-current-commit ()
+  (interactive)
+  (let ((root (myconfig-git-root)))
+    (jumel-show "commit" (myconfig-git-commit-entries root)
+                (lambda () (myconfig-git-commit-entries root)))))
 
 (defun myconfig-default-branch (root)
   (or (myconfig-git-first-line-quiet
@@ -152,19 +104,26 @@
                   '("main" "master" "dev"))
       (user-error "Could not determine the default branch")))
 
+(defun myconfig-git-branch-fork (root)
+  (let ((base (myconfig-default-branch root)))
+    (or (myconfig-git-first-line-quiet root "merge-base" "--fork-point" base "HEAD")
+        (myconfig-git-first-line-quiet root "merge-base" base "HEAD")
+        (user-error "Could not compute a fork point or merge base from %s" base))))
+
+(defun myconfig-git-branch-entries (root fork)
+  (let* ((tracked (myconfig-git-lines root "diff" "--name-only" fork "--"))
+         (untracked (myconfig-git-lines root "ls-files" "--others" "--exclude-standard"))
+         (files (delete-dups (append tracked untracked))))
+    (unless files (user-error "No changed files"))
+    (myconfig-review-entries root files fork nil)))
+
 (defun diff-branch ()
   (interactive)
   (let* ((root (myconfig-git-root))
-         (base (myconfig-default-branch root))
-          (fork (or (myconfig-git-first-line-quiet root "merge-base" "--fork-point" base "HEAD")
-                    (myconfig-git-first-line-quiet root "merge-base" base "HEAD")
-                    (user-error "Could not compute a fork point or merge base from %s" base)))
-          (tracked (myconfig-git-lines root "diff" "--name-only" fork "--"))
-          (untracked (myconfig-git-lines root "ls-files" "--others" "--exclude-standard"))
-          (files (delete-dups (append tracked untracked))))
-    (unless files (user-error "No changed files"))
-    (myconfig-show-review (format "Branch diff from %s" fork)
-                          (myconfig-review-entries root files fork nil))))
+         (fork (myconfig-git-branch-fork root)))
+    (jumel-show "branch" (myconfig-git-branch-entries root fork)
+                (lambda ()
+                  (myconfig-git-branch-entries root (myconfig-git-branch-fork root))))))
 
 (transient-define-prefix myconfig-diff-menu ()
   "Choose the Git range to review."

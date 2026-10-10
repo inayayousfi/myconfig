@@ -127,6 +127,8 @@
    `(magit-diff-base-indicator ((t (:foreground ,pink))))
    `(diff-indicator-changed ((t (:background "#302600" :foreground ,pink))))
    `(diff-refine-changed ((t (:background "#4d1835"))))
+   `(diff-refine-removed ((t (:background "#4a1111"))))
+   `(diff-refine-added ((t (:background "#0d4a24"))))
    `(diff-changed-unspecified ((t (:background "#2a0016" :foreground ,text))))
    `(ediff-current-diff-C ((t (:background "#2a0016" :extend t))))
    `(ediff-fine-diff-C ((t (:background "#4d1835" :foreground ,heading :weight bold))))

@@ -25,6 +25,7 @@
 (declare-function atelier-set-job-policy "atelier-persist")
 (declare-function dape "dape")
 (declare-function magit-status "magit")
+(declare-function jumel-visit "jum")
 (declare-function myconfig-compile "myconfig-editing")
 
 (defvar myconfig-leader-map (make-sparse-keymap))
@@ -133,8 +134,15 @@ Eglot otherwise runs a single action at once when point is on its hint."
     (call-interactively #'evil-paste-after))
    (t (call-interactively #'yank))))
 
+(defun myconfig-jumel-keys ()
+  "Reload a side-by-side diff with r, as in Dired; open a row's file with RET."
+  (evil-local-set-key 'normal (kbd "r") #'revert-buffer)
+  (evil-local-set-key 'normal (kbd "RET") #'jumel-visit)
+  (evil-local-set-key 'normal (kbd "<return>") #'jumel-visit))
+
 (defun myconfig-bindings-setup ()
   (global-set-key myconfig-terminal-escape-key #'myconfig-normal-state)
+  (add-hook 'jumel-buffer-hook #'myconfig-jumel-keys)
   (evil-define-key '(normal insert visual motion operator replace emacs) 'global
     myconfig-terminal-escape-key #'myconfig-normal-state)
   (add-hook 'atelier-directory-chooser-mode-hook #'myconfig-directory-chooser-keymaps)

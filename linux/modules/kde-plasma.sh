@@ -38,6 +38,28 @@ configure_kde_plasma_desktops() {
     kwriteconfig6 --file kwinrc --group Effect-overview --key BorderActivate 9
 }
 
+configure_kde_plasma_window_rules() {
+    local rule=myconfig-picture-in-picture
+    local rules
+    rules="$(kreadconfig6 --file kwinrulesrc --group General --key rules)"
+    case ",$rules," in
+        *",$rule,"*) ;;
+        *) rules="${rules:+$rules,}$rule" ;;
+    esac
+    local rule_ids
+    IFS=, read -ra rule_ids <<<"$rules"
+
+    # KWin rule values: titlematch 3 is a regular expression, and a rule type
+    # of 2 forces the property. Firefox titles its French player "Incrustation vidéo".
+    kwriteconfig6 --file kwinrulesrc --group "$rule" --key Description "Hide picture-in-picture windows from screen capture"
+    kwriteconfig6 --file kwinrulesrc --group "$rule" --key title '(?i)picture[ -]?in[ -]?picture|incrustation vidéo'
+    kwriteconfig6 --file kwinrulesrc --group "$rule" --key titlematch 3
+    kwriteconfig6 --file kwinrulesrc --group "$rule" --key excludefromcapture true
+    kwriteconfig6 --file kwinrulesrc --group "$rule" --key excludefromcapturerule 2
+    kwriteconfig6 --file kwinrulesrc --group General --key rules "$rules"
+    kwriteconfig6 --file kwinrulesrc --group General --key count "${#rule_ids[@]}"
+}
+
 configure_kde_plasma_input() {
     local pointer_group=(--group Libinput --group Defaults --group Pointer)
     local touchpad_group=(--group Libinput --group Defaults --group Touchpad)
@@ -101,6 +123,7 @@ module_kde_plasma() {
     require_command plasma-apply-cursortheme
     require_command plasma-apply-lookandfeel
     require_command kwriteconfig6
+    require_command kreadconfig6
     require_command qdbus6
     require_command fc-match
     require_command desktop-file-validate
@@ -160,6 +183,7 @@ module_kde_plasma() {
     QT_QPA_PLATFORM=offscreen plasma-apply-lookandfeel --apply org.myconfig.blacknpink.desktop
     configure_kde_plasma_fonts
     configure_kde_plasma_desktops
+    configure_kde_plasma_window_rules
     configure_kde_plasma_input
     configure_kde_plasma_cursor_theme
     kwriteconfig6 --file kwinrc --group Plugins --key myconfig-plasma-panelsEnabled true

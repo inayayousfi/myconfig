@@ -794,6 +794,24 @@ systemd-analyze verify \
     "$REPO_ROOT/dotfiles/kde-plasma/.config/systemd/user/myconfig-kde-plasma-layout.service" \
     "$REPO_ROOT/dotfiles/kde-plasma/.config/systemd/user/myconfig-kde-plasma-glass.service"
 
+window_rules_config="$TEST_HOME/kwin-window-rules"
+mkdir -p "$window_rules_config"
+printf '[General]\ncount=1\nrules=user-rule\n\n[user-rule]\nDescription=User rule\n' \
+    >"$window_rules_config/kwinrulesrc"
+XDG_CONFIG_HOME="$window_rules_config" configure_kde_plasma_window_rules
+XDG_CONFIG_HOME="$window_rules_config" configure_kde_plasma_window_rules
+[ "$(XDG_CONFIG_HOME="$window_rules_config" kreadconfig6 --file kwinrulesrc --group General --key rules)" \
+    = user-rule,myconfig-picture-in-picture ] \
+    || myconfig_fail "KDE Plasma window rules did not add the picture-in-picture rule once beside existing rules"
+[ "$(XDG_CONFIG_HOME="$window_rules_config" kreadconfig6 --file kwinrulesrc --group General --key count)" = 2 ] \
+    || myconfig_fail "KDE Plasma window rules count does not match the rule list"
+[ "$(XDG_CONFIG_HOME="$window_rules_config" kreadconfig6 --file kwinrulesrc --group user-rule --key Description)" \
+    = 'User rule' ] \
+    || myconfig_fail "KDE Plasma window rules removed an existing rule"
+[ "$(XDG_CONFIG_HOME="$window_rules_config" kreadconfig6 --file kwinrulesrc --group myconfig-picture-in-picture --key excludefromcapture)" \
+    = true ] \
+    || myconfig_fail "KDE Plasma picture-in-picture rule does not exclude windows from capture"
+
 MYCONFIG_PROFILE=arch-wsl
 if module_kde_plasma >/dev/null 2>&1; then
     myconfig_fail "KDE Plasma module accepted a non-CachyOS profile"
@@ -915,6 +933,9 @@ plasma-apply-lookandfeel() {
 }
 kwriteconfig6() {
     printf 'config:%s\n' "$*" >>"$plasma_module_log"
+}
+kreadconfig6() {
+    :
 }
 gsettings() {
     case "$1" in

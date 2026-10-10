@@ -3,8 +3,10 @@
 (require 'ert)
 (require 'cl-lib)
 (require 'ls-lisp)
-;; The live configuration matches typed words separately through Orderless.
+;; The live configuration matches typed words separately through Orderless
+;; and lists them through Vertico.
 (require 'orderless)
+(require 'vertico)
 (defgroup myconfig nil "Test configuration." :group 'environment)
 (provide 'ghostel)
 (let ((lisp (expand-file-name "../dotfiles/emacs/.config/emacs/lisp/"
@@ -378,65 +380,59 @@ opens in Detached without being stored."
              (should (test-completion "work | file | example.txt" table)))))))))
 
 ;; Batch Emacs cannot type into a real prompt, so these tests type into a buffer
-;; set up as Traveller sets up its prompt.  Keys run through the command loop
-;; and Traveller's key map; after each key the list is recomputed from
-;; Traveller's completion table, in its order, as the completion list would.
-;; Enter and Down act as the completion list's keys do: Enter chooses the
-;; highlighted entry and Down highlights the next.  The Vim-style layer is not
-;; exercised.
-(defvar vertico--base)
-(defvar vertico--candidates)
-(defvar vertico--index)
-
-(defun atelier-traveller-test-exit ()
-  "Choose the highlighted entry, as the completion list's Enter does."
-  (interactive)
-  (atelier-traveller-replace-input (concat vertico--base (nth vertico--index vertico--candidates)))
-  (exit-minibuffer))
-
-(defun atelier-traveller-test-next ()
-  "Highlight the next entry, as the completion list's Down does."
-  (interactive)
-  (setq vertico--index (min (1+ vertico--index) (1- (length vertico--candidates)))))
-
+;; set up as Vertico and Traveller set up their prompt.  Keys run through the
+;; command loop, Vertico's commands and hooks and Traveller's key map; Down
+;; and Enter are Vertico's.  The Vim-style layer is not exercised.
 (defvar-keymap atelier-traveller-test-list-map
   :parent minibuffer-local-map
-  "RET" #'atelier-traveller-test-exit
-  "<down>" #'atelier-traveller-test-next)
+  "RET" #'vertico-exit
+  "<down>" #'vertico-next)
 
-(defun atelier-traveller-test-keys (targets keys)
+(defun atelier-traveller-test-keys (targets keys &optional lists)
   "Type KEYS into a simulated Traveller prompt over TARGETS.
 Return (INPUTS . CHOSEN): the input after each key that kept the prompt open,
-and the input Enter chose, or nil when the prompt stayed open."
+and the input Enter chose, or nil when the prompt stayed open.  With LISTS,
+each input is paired with the full entries listed, the highlighted one
+marked with a leading \">\"."
   (with-temp-buffer
-    (let* ((atelier-traveller--targets targets)
-           (table (atelier-traveller-table targets))
-           (inputs nil)
-           (shown nil)
-           (refresh (lambda ()
-                      (let* ((input (buffer-string))
-                             (matches (atelier-traveller-with-matching
-                                       (lambda () (completion-all-completions
-                                                   input table nil (length input))))))
-                        (when matches (setcdr (last matches) nil))
-                        (setq-local vertico--base
-                                    (substring input 0 (car (completion-boundaries
-                                                             input table nil ""))))
-                        (setq-local vertico--candidates
-                                    (mapcar #'substring-no-properties matches))
-                        ;; The highlight returns to the top only when the input changes.
-                        (unless (equal input shown)
-                          (setq-local vertico--index (if matches 0 -1))
-                          (setq shown input))))))
+    (let ((atelier-traveller--targets targets)
+          (inputs nil))
       (switch-to-buffer (current-buffer))
+      (setq-local minibuffer-completion-table (atelier-traveller-table targets)
+                  minibuffer-completion-predicate nil
+                  minibuffer--require-match t
+                  vertico--input t)
       (use-local-map atelier-traveller-test-list-map)
+      (add-hook 'pre-command-hook #'vertico--prepare nil t)
       (atelier-traveller-setup-prompt)
-      (funcall refresh)
-      (add-hook 'post-command-hook
-                (lambda () (funcall refresh) (push (buffer-string) inputs)) nil t)
-      (let ((open (catch 'exit (execute-kbd-macro (kbd keys)) t)))
-        ;; The command loop runs the hook once before the first key.
-        (cons (cdr (nreverse inputs)) (unless open (buffer-string)))))))
+      (atelier-traveller-with-matching
+       (lambda ()
+         (vertico--update)
+         (add-hook 'post-command-hook
+                   (lambda ()
+                     (vertico--update)
+                     (push (if lists
+                               (cons (buffer-string)
+                                     (seq-map-indexed
+                                      (lambda (candidate index)
+                                        (concat (if (= index vertico--index) ">" "")
+                                                vertico--base
+                                                (substring-no-properties candidate)))
+                                      vertico--candidates))
+                             (buffer-string))
+                           inputs))
+                   nil t)
+         (let ((open (catch 'exit (execute-kbd-macro (kbd keys)) t)))
+           ;; The command loop runs the hook once before the first key.
+           (cons (cdr (nreverse inputs)) (unless open (buffer-string)))))
+       t))))
+
+(defun atelier-traveller-test-targets (labels)
+  "Return targets for LABELS, written \"WORKSPACE | TYPE | NAME\", in order."
+  (mapcar (lambda (label)
+            (pcase-let ((`(,workspace ,type ,name) (split-string label " | ")))
+              (atelier-traveller-target (list :name workspace) (intern type) name)))
+          labels))
 
 (defun atelier-traveller-test-workspace (workspace root)
   "Open in WORKSPACE 2 files named like it under ROOT, and a saved workspace."
@@ -484,6 +480,96 @@ highlighted buffer without typing its name."
         (should (equal (car order) (funcall label "work.txt")))
         (should (equal (car (last order)) (funcall label "work-notes.txt")))
         (should (equal (nth (- (length order) 2) order) (funcall label "saved.txt")))))))
+
+(defconst atelier-traveller-test-ranked
+  '("work | file | notes.txt" "work | file | notes.md"
+    "notes | terminal | shell" "work | file | net-of-tests.el")
+  "The labels of `atelier-traveller-test-ranking-targets' ranked for \"notes\".")
+
+(defun atelier-traveller-test-ranking-targets ()
+  "Return targets by recency whose best match for \"notes\" is least recent."
+  (atelier-traveller-test-targets
+   '("work | file | net-of-tests.el" "notes | terminal | shell"
+     "work | file | notes.txt" "work | file | notes.md")))
+
+(ert-deftest atelier-traveller-ranks-close-letters-first ()
+  "Typed letters next to each other rank first, in the NAME part before the
+workspace; scattered letters rank last even when more recent, and equal
+matches keep the recency order.  Enter opens the first."
+  (let ((targets (atelier-traveller-test-ranking-targets)))
+    (let ((atelier-traveller--targets targets))
+      (should (equal (atelier-traveller-matching-labels "notes") atelier-traveller-test-ranked)))
+    (should (equal (cdr (atelier-traveller-test-keys targets "n o t e s RET"))
+                   "work | file | notes.txt"))))
+
+(ert-deftest atelier-traveller-ranks-every-word-wherever-the-cursor-is ()
+  "A word after the cursor still ranks: moving back over \"ft\" keeps
+report-draft.txt, where f and t touch, above the more recent report-final.txt."
+  (should (equal (cdr (car (last (car (atelier-traveller-test-keys
+                                       (atelier-traveller-test-targets
+                                        '("work | file | report-final.txt"
+                                          "work | file | report-draft.txt"))
+                                       "r e p o r t SPC f t <left> <left> <left>" t)))))
+                 '(">work | file | report-draft.txt" "work | file | report-final.txt"))))
+
+(ert-deftest atelier-traveller-ranks-without-orderless ()
+  "Without Orderless, Emacs's own matching lists in Traveller's ranking."
+  (let ((features (remq 'orderless features)))
+    (should (equal (cdr (car (last (car (atelier-traveller-test-keys
+                                         (atelier-traveller-test-ranking-targets)
+                                         "n o t e s" t)))))
+                   (cons (concat ">" (car atelier-traveller-test-ranked))
+                         (cdr atelier-traveller-test-ranked))))))
+
+(ert-deftest atelier-traveller-lists-the-tab-cycle ()
+  "While TAB cycles, the list shows the workspaces or types it goes through,
+the filled-in one highlighted; Down brings back the buffer list under what
+TAB filled in."
+  (atelier-names-test
+    (let ((targets (atelier-traveller-test-workspace workspace root)))
+      (should (equal (car (atelier-traveller-test-keys targets "TAB TAB <down>" t))
+                     '(("work | " ">work" "other" "Detached")
+                       ("other | " "work" ">other" "Detached")
+                       ("other | " ">other | file | saved.txt"))))
+      (should (equal (car (atelier-traveller-test-keys targets "w o TAB f TAB" t))
+                     '(("w" ">work | file | work-notes.txt" "work | file | work.txt")
+                       ("wo" ">work | file | work-notes.txt" "work | file | work.txt")
+                       ("work | " ">work")
+                       ("work | f" ">work | file | work-notes.txt" "work | file | work.txt")
+                       ("work | file | " ">file")))))))
+
+(ert-deftest atelier-traveller-highlights-the-cycled-value-wherever-listed ()
+  "A typed word left after TAB fills in a workspace can name another listed
+workspace, which the completion list moves to the top; the highlight stays
+on the filled-in workspace."
+  (let ((targets (atelier-traveller-test-targets
+                  '("dev | file | a.txt" "main | file | dev.txt"))))
+    (should (equal (car (atelier-traveller-test-keys targets "d e v TAB" t))
+                   '(("d" ">main | file | dev.txt" "dev | file | a.txt")
+                     ("de" ">main | file | dev.txt" "dev | file | a.txt")
+                     ("dev" ">main | file | dev.txt" "dev | file | a.txt")
+                     ("main | dev" "dev" ">main"))))))
+
+(ert-deftest atelier-traveller-cycles-without-a-list-refresh ()
+  "Without a completion interface that can refresh its list, TAB still fills
+in workspaces while the list keeps showing buffers, and Enter opens one."
+  (atelier-names-test
+    (let ((targets (atelier-traveller-test-workspace workspace root))
+          (atelier-traveller-list-refresh-function nil))
+      (should (equal (atelier-traveller-test-keys targets "TAB TAB RET" t)
+                     '((("work | " ">work | file | work-notes.txt" "work | file | work.txt")
+                        ("other | " ">other | file | saved.txt"))
+                       . "other | file | saved.txt"))))))
+
+(ert-deftest atelier-traveller-keeps-cycling-when-the-list-refresh-fails ()
+  "A failing list refresh is reported, and later keys still end each cycle,
+so the last TAB starts from what was typed instead of resuming a cycle."
+  (atelier-names-test
+    (let ((targets (atelier-traveller-test-workspace workspace root))
+          (atelier-traveller-list-refresh-function (lambda (_) (error "Refresh failed"))))
+      (should (equal (car (atelier-traveller-test-keys targets "TAB x TAB y TAB"))
+                     '("work | " "work | x" "work | file | x" "work | file | xy"
+                       "work | file | xy"))))))
 
 (ert-deftest atelier-traveller-tab-cycles-matching-workspaces ()
   "TAB visits each workspace holding a match once and Shift+TAB goes back;

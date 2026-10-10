@@ -12,7 +12,7 @@ permissions:
 jobs:
   format:
     name: Formatting
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
 
     steps:
       - name: Check out repository
@@ -110,7 +110,7 @@ jobs:
 
   test:
     name: Tests
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
 
     steps:
       - name: Check out repository
@@ -129,7 +129,7 @@ jobs:
           }
 
           retry sudo apt-get update
-          retry sudo apt-get install -y desktop-file-utils emacs-nox imagemagick lua5.4 rsync stow zsh
+          retry sudo apt-get install -y desktop-file-utils emacs-nox imagemagick libkf6config-bin lua5.4 rsync stow zsh
           retry cargo install resvg --version 0.48.1 --locked
 
       - name: Test Linux installers

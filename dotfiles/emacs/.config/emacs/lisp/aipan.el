@@ -25,22 +25,24 @@
 (defcustom aipanel-agents
   '((:id opencode :name "OpenCode" :program "opencode"
      :arguments ("--auto") :mini-arguments ("--mini")
-     :project-argument t :ready-delay 1.5)
+     :project-argument t :ready-delay 1.5
+     :skill-directory ".agents/skills")
     (:id claude :name "Claude Code" :program "claude"
-     :arguments nil :ready-delay 1.5)
+     :arguments nil :ready-delay 1.5 :skill-directory ".claude/skills")
     (:id pi :name "Pi" :program "pi"
-     :arguments nil :ready-delay 1.5)
+     :arguments nil :ready-delay 1.5 :skill-directory ".agents/skills")
     (:id codex :name "Codex" :program "codex"
-     :arguments nil :ready-delay 1.5)
+     :arguments nil :ready-delay 1.5 :skill-directory ".agents/skills")
     (:id fx :name "fx" :program "fx"
-     :arguments nil :ready-delay 1.5))
+     :arguments nil :ready-delay 1.5 :skill-directory ".agents/skills"))
   "Coding agents offered when their executable is installed.
 
 Each entry is a plist.  `:id', `:name', and `:program' are required.
 `:arguments' and `:mini-arguments' are specific to that agent.
 `:project-argument' adds the working directory as the first argument, and
 `:ready-delay' controls how long its terminal must be stable before context
-is pasted."
+is pasted.  `:skill-directory' is where the agent reads personal skills,
+relative to its home directory."
   :type '(repeat sexp)
   :group 'aipanel)
 
@@ -71,6 +73,15 @@ is pasted."
 Optional environment adapters can replace the Emacs file-handler default.")
 (defvar aipanel-process-command-function #'aipanel-default-process-command
   "Function called with owner, selection, and arguments to build a launch.")
+(defvar aipanel-skill-environments-function #'aipanel-default-skill-environments
+  "Function returning the environments whose agents receive skills.
+Each environment is an owner plist whose `:emacs-directory' is its home
+directory as Emacs reaches it.")
+(defvar aipanel-skills nil
+  "Registered skills, as (NAME . FUNCTION).
+FUNCTION receives an environment and returns the skill's files there: a
+string holding SKILL.md, a list of (PATH CONTENT [MODE]) with PATH relative
+to the skill's folder, or nil when the skill does not apply to it.")
 (defvar aipanel-buffer-created-hook nil)
 (defvar aipanel-buffer-exited-hook nil)
 (defvar aipanel-sessions (make-hash-table :test #'equal))
@@ -435,6 +446,110 @@ Optional environment adapters can replace the Emacs file-handler default.")
         (when-let* ((context (funcall aipanel-context-function owner buffer)))
           (aipanel-queue-context buffer context)))
       (aipanel-display-buffer buffer width))))
+
+;;; Skills
+
+(defun aipanel-default-skill-environments ()
+  "Return this computer's home as the only skill environment."
+  (let ((home (let ((default-directory temporary-file-directory))
+                (file-name-as-directory (expand-file-name "~/")))))
+    (list (list :location 'host :destination "local"
+                :directory home :emacs-directory home))))
+
+(defun aipanel-add-skill (name function)
+  "Register skill NAME, whose files FUNCTION returns for each environment.
+See `aipanel-skills' for what FUNCTION returns.  `aipanel-install-skills'
+writes them for every installed agent that has a `:skill-directory'."
+  (setf (alist-get name aipanel-skills nil nil #'equal) function))
+
+(defun aipanel-skill-fill (content substitutions)
+  "Replace each {{KEY}} in CONTENT bytes with its value from SUBSTITUTIONS."
+  (dolist (substitution substitutions)
+    (setq content (string-replace
+                   (format "{{%s}}" (car substitution))
+                   (encode-coding-string (cdr substitution) 'utf-8-unix)
+                   content)))
+  (when (string-match "{{[[:alnum:]-]+}}" content)
+    (error "Unfilled skill placeholder %s" (match-string 0 content)))
+  content)
+
+(defun aipanel-skill-folder (folder &optional substitutions)
+  "Return the files of FOLDER, a path relative to a `load-path' directory.
+Each file keeps its permissions.  SUBSTITUTIONS, an alist of (KEY . VALUE),
+fills the {{KEY}} placeholders of every file."
+  (let ((root (locate-file folder load-path nil
+                           (lambda (file) (and (file-directory-p file) 'dir-ok)))))
+    (unless root (error "Skill folder %s is not on `load-path'" folder))
+    (mapcar (lambda (file)
+              (let ((content (with-temp-buffer
+                               (set-buffer-multibyte nil)
+                               (insert-file-contents-literally file)
+                               (buffer-string))))
+                (list (file-relative-name file root)
+                      (if substitutions (aipanel-skill-fill content substitutions) content)
+                      (file-modes file))))
+            (directory-files-recursively root ""))))
+
+(defun aipanel-write-file-if-changed (file content &optional mode)
+  "Atomically replace FILE with CONTENT unless its SHA-256 already matches.
+MODE sets the new file's permissions.  Return non-nil when FILE was written."
+  (let ((bytes (if (multibyte-string-p content)
+                   (encode-coding-string content 'utf-8-unix)
+                 content)))
+    (unless (and (file-regular-p file)
+                 (equal (secure-hash 'sha256 bytes)
+                        (with-temp-buffer
+                          (set-buffer-multibyte nil)
+                          (insert-file-contents-literally file)
+                          (secure-hash 'sha256 (current-buffer)))))
+      (make-directory (file-name-directory file) t)
+      (let ((temporary (make-temp-file
+                        (expand-file-name ".aipanel-" (file-name-directory file)))))
+        (condition-case error
+            (let ((coding-system-for-write 'no-conversion))
+              (write-region bytes nil temporary nil 'silent)
+              (set-file-modes temporary (or mode (logand #o666 (default-file-modes))))
+              (rename-file temporary file t)
+              t)
+          (error
+           (ignore-errors (delete-file temporary))
+           (signal (car error) (cdr error))))))))
+
+(defun aipanel-install-skill (name files directory)
+  "Write skill NAME's FILES below DIRECTORY without deleting anything.
+Return non-nil when a file was written."
+  (let ((folder (file-name-as-directory (expand-file-name name directory)))
+        (written nil))
+    (dolist (file (if (stringp files) (list (list "SKILL.md" files)) files))
+      (let ((target (expand-file-name (car file) folder)))
+        (unless (string-prefix-p folder target)
+          (error "Skill %s file %s is outside its folder" name (car file)))
+        (when (aipanel-write-file-if-changed target (nth 1 file) (nth 2 file))
+          (setq written t))))
+    written))
+
+(defun aipanel-install-skills ()
+  "Write every registered skill for the agents installed in each environment."
+  (let* ((agents (cl-remove-if-not (lambda (agent) (plist-get agent :skill-directory))
+                                   aipanel-agents))
+         (programs (delete-dups (mapcar (lambda (agent) (plist-get agent :program))
+                                        agents))))
+    (dolist (environment (funcall aipanel-skill-environments-function))
+      (with-demoted-errors "AIPanel could not install skills: %S"
+        (let ((installed (plist-get (funcall aipanel-program-probe-function programs
+                                             environment aipanel-wsl-probe-timeout)
+                                    :programs)))
+          (dolist (agent agents)
+            (when (member (plist-get agent :program) installed)
+              (pcase-dolist (`(,name . ,function) aipanel-skills)
+                (when-let* ((files (funcall function environment)))
+                  (when (aipanel-install-skill
+                         name files
+                         (expand-file-name (plist-get agent :skill-directory)
+                                           (plist-get environment :emacs-directory)))
+                    (message "AIPanel wrote the %s skill for %s in %s" name
+                             (plist-get agent :name)
+                             (plist-get environment :destination))))))))))))
 
 (provide 'aipan)
 ;;; aipan.el ends here

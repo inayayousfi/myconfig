@@ -37,11 +37,28 @@
                       arguments (plist-get owner :directory)
                       (universel-aipanel-environment owner selection)))
 
+(defun universel-aipanel-skill-environments ()
+  "Return this computer and every WSL distribution that reports its home."
+  (let ((home (universel-home-directory)))
+    (cons (list :location 'host :platform (universel-host-platform)
+                :destination "local" :directory home :emacs-directory home)
+          (cl-loop for distribution in (universel-wsl-distributions)
+                   for home = (universel-wsl-home distribution)
+                   when home
+                   collect (list :location 'wsl :platform 'posix
+                                 :destination distribution :directory home
+                                 :emacs-directory
+                                 (universel-file-directory
+                                  home (list :platform 'posix :transport 'wsl
+                                             :destination distribution
+                                             :directory home)))))))
+
 (defun universel-aipanel-setup ()
   "Supply cross-platform execution without coupling AIPanel to Universel."
   (setq aipanel-source-owner-function #'universel-aipanel-source-owner
         aipanel-program-probe-function #'universel-aipanel-probe
-        aipanel-process-command-function #'universel-aipanel-command))
+        aipanel-process-command-function #'universel-aipanel-command
+        aipanel-skill-environments-function #'universel-aipanel-skill-environments))
 
 (provide 'universel-aipanel)
 ;;; universel-aipanel.el ends here

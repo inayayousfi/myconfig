@@ -506,6 +506,13 @@ STATE-DIRECTORY is required for the existing SSHFS Windows connection."
     (let ((process-environment (cons "WSL_UTF8=1" process-environment)))
       (mapcar #'string-trim (universel-run-command-lines (list wsl "-l" "-q") 10)))))
 
+(defun universel-wsl-home (distribution)
+  "Return DISTRIBUTION's home directory, or nil when it does not answer."
+  (when-let* ((answer (universel--wsl-request distribution "home"))
+              (home (string-trim answer))
+              ((string-prefix-p "/" home)))
+    (file-name-as-directory home)))
+
 (defconst universel--wsl-helper-script
   "while IFS= read -r request; do
   printf '\\nuniversel-begin\\n'
@@ -525,6 +532,7 @@ STATE-DIRECTORY is required for the existing SSHFS Windows connection."
       grep -lzxF -e \"${request#with }\" /proc/[0-9]*/environ 2>/dev/null |
         sed 's|^/proc/\\([0-9]*\\)/environ$|\\1|' ;;
     shell) getent passwd \"$(id -un)\" | cut -d: -f7 ;;
+    home) printf '%s\\n' \"$HOME\" ;;
     'realpath '*) realpath -m -- \"${request#realpath }\" 2>/dev/null ;;
     'programs '*)
       set -f

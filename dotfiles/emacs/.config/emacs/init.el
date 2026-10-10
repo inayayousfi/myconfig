@@ -167,3 +167,6 @@
 (require 'myconfig-init)
 (myconfig-initialize)
 (remot-setup)
+(when (featurep 'aipan)
+  (require 'remot-aipanel)
+  (remot-aipanel-setup))

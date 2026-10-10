@@ -611,6 +611,19 @@ once they are published."
       (atelier-entry-activate-content preferred-entry (plist-get reference :content-id)))
     reference))
 
+(defun atelier-drop-undisplayed-views (workspace buffer kept)
+  "Remove WORKSPACE's views of BUFFER that no window shows, except KEPT.
+A closed split leaves its view behind; once BUFFER shows in another view,
+that leftover would list BUFFER a second time.  BUFFER stays in its stack."
+  (let ((shown (delq nil (mapcar (lambda (window) (window-parameter window 'atelier-view-id))
+                                 (window-list-1 nil 'nomini t)))))
+    (dolist (view (atelier-workspace-view-entries workspace))
+      (when (and (not (eq view kept))
+                 (not (plist-get view :content-reference))
+                 (not (member (plist-get view :id) shown))
+                 (eq (atelier-entry-live-buffer view) buffer))
+        (atelier-entry-remove workspace view t)))))
+
 (defun atelier-view-record-buffer (buffer workspace window &optional type)
   "Register BUFFER in WORKSPACE and select it in WINDOW's view.
 Create the view when WINDOW has none."
@@ -624,6 +637,7 @@ Create the view when WINDOW has none."
                                   :content-id (plist-get reference :content-id)) t)))
     (atelier-entry-activate-content view (plist-get reference :content-id))
     (set-window-parameter window 'atelier-view-id (plist-get view :id))
+    (atelier-drop-undisplayed-views workspace buffer view)
     ;; Registration trims too, but before this view leaves its old buffer.
     (atelier-workspace-trim-stack workspace (plist-get reference :content-id))
     view))
@@ -1530,15 +1544,18 @@ INACTIVE-ONLY rechecks the timeout when an automatic request was queued."
       (user-error "Cancelled"))
     (atelier-delete-workspace-record workspace)))
 
-(atelier-define-operation atelier-split-right ()
+(atelier-define-operation atelier-split-right (&optional buffer)
     (list (atelier-current-workspace-id)) nil
+  "Split the current view, opening a view on its right.
+The new view shows BUFFER, or else the current content."
   (interactive)
-  (atelier-split-view 'right))
+  (atelier-split-view 'right buffer))
 
-(defun atelier-split-view (side)
-  "Create a view on SIDE, displaying the current content without creating any."
+(defun atelier-split-view (side &optional buffer)
+  "Create a view on SIDE, displaying BUFFER or else the current content.
+No content is created."
   (atelier-capture-current-workspace)
-  (let ((buffer (window-buffer))
+  (let ((buffer (or buffer (window-buffer)))
         (window (split-window nil nil side)))
     (set-window-parameter window 'atelier-view-id nil)
     (select-window window)

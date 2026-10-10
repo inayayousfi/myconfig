@@ -41,6 +41,29 @@
          (unless (memq buffer old-buffers) (kill-buffer buffer)))
        (delete-directory root t))))
 
+;; A split that closes leaves its view behind.  When the buffer comes back,
+;; in a new split or in another view, it is listed once, not twice.
+(ert-deftest atelier-workspace-stacks-returning-buffer-is-listed-once ()
+  (atelier-stacks-test
+    (let ((first (get-buffer-create "first"))
+          (second (get-buffer-create "second")))
+      (cl-flet ((listings ()
+                  (cl-count-if (lambda (entry) (eq (atelier-entry-live-buffer entry) second))
+                               (atelier-workspace-entries workspace)))
+                (close-right ()
+                  (with-selected-window (next-window (frame-first-window)) (atelier-close-split))))
+        (atelier-show-buffer first workspace)
+        (atelier-split-right second)
+        (close-right)
+        (let ((right (atelier-split-right second)))
+          (should (eq (window-buffer right) second))
+          (should (= (listings) 1)))
+        (close-right)
+        (atelier-show-buffer second workspace (frame-first-window))
+        (should (eq (window-buffer (frame-first-window)) second))
+        (should (= (listings) 1))
+        (should (buffer-live-p first))))))
+
 (ert-deftest atelier-workspace-stacks-file-browser-keeps-split-and-view ()
   (atelier-stacks-test
     (let* ((file (expand-file-name "example.txt" root))

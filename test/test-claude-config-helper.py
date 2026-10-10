@@ -37,7 +37,8 @@ class ClaudeConfigHelper(unittest.TestCase):
         )
         cli.chmod(0o700)
         # Only system programs and the fake claude, never the user's installed tools.
-        self.env = dict(os.environ, HOME=str(self.home), PATH=f"{self.bin}:/usr/bin:/bin")
+        # The plugin runs go, whose telemetry child would write into the home during cleanup.
+        self.env = dict(os.environ, HOME=str(self.home), PATH=f"{self.bin}:/usr/bin:/bin", GOTELEMETRY="off")
         self.env.pop("CLAUDE_CONFIG_DIR", None)
         self.project = self.root / "project with spaces"
         self.project.mkdir()

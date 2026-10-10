@@ -6,20 +6,8 @@
     "baseRef": "fresh"
   },
   "workflowKeywordTriggerEnabled": false,
-  "enabledPlugins": {
-    "posthog@claude-plugins-official": true,
-    "stripe@claude-plugins-official": true,
-    "cloudflare@cloudflare": true
-  },
-  "extraKnownMarketplaces": {
-    "cloudflare": {
-      "source": {
-        "source": "github",
-        "repo": "cloudflare/skills"
-      }
-    }
-  },
   "effortLevel": "medium",
+  "autoCompactWindow": 400000,
   "promptSuggestionEnabled": false,
   "awaySummaryEnabled": false,
   "skipDangerousModePermissionPrompt": true,

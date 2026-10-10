@@ -42,6 +42,12 @@ if $IS_LINUX && [ -z "$WSL_DISTRO_NAME" ] && has emacs; then
     # named remot. A new Emacs starts only when none is running.
     export EDITOR="emacsclient --socket-name=remot --alternate-editor=emacs"
     export VISUAL="$EDITOR"
+elif [ -n "$WSL_DISTRO_NAME" ] && [ -x "$HOME/.local/bin/windows-emacsclient" ] \
+    && "$HOME/.local/bin/windows-emacsclient" --check; then
+    # Windows Emacs edits WSL files through \\wsl.localhost paths. The full
+    # path works before PATH gains ~/.local/bin and for programs without it.
+    export EDITOR="$HOME/.local/bin/windows-emacsclient"
+    export VISUAL="$EDITOR"
 elif has vim; then
     export EDITOR="vim"
     export VISUAL="vim"

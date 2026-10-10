@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Edit files from WSL in the Windows Emacs that runs Remot's server.
+# File arguments become Windows paths; option values and --eval
+# expressions pass through unchanged. When the server does not answer,
+# Windows Emacs starts and the file opens once its server is up.
+# --check exits 0 when Windows Emacs is installed.
+set -euo pipefail
+
+windows_root="$(wslpath -u 'C:\')"
+bin="$(printf '%s\n' "${windows_root}Program Files/Emacs/"emacs-*/bin \
+    | sort -V | tail -n 1)"
+client="$bin/emacsclient.exe"
+
+if [ ! -f "$client" ]; then
+    [ "${1:-}" = "--check" ] && exit 1
+    echo "windows-emacsclient: Windows Emacs is not installed" >&2
+    exit 1
+fi
+[ "${1:-}" = "--check" ] && exit 0
+
+server=(--server-file=remot)
+
+# Windows programs started from a Linux folder print a UNC warning.
+answers() { (cd "$windows_root" && "$client" "${server[@]}" --eval t >/dev/null 2>&1); }
+
+if ! answers; then
+    (cd "$windows_root" && cmd.exe /c start "" "$(wslpath -w "$bin/runemacs.exe")" >/dev/null 2>&1)
+    for _ in $(seq 120); do
+        answers && break
+        sleep 0.5
+    done
+    answers || { echo "windows-emacsclient: Windows Emacs did not start its server" >&2; exit 1; }
+fi
+
+arguments=()
+literal=false
+value_next=false
+for argument in "$@"; do
+    if $literal || $value_next; then
+        value_next=false
+        arguments+=("$argument")
+    elif [[ $argument == -e || $argument == --eval ]]; then
+        literal=true
+        arguments+=("$argument")
+    elif [[ $argument == -[asfdTFw] ]]; then
+        value_next=true
+        arguments+=("$argument")
+    elif [[ $argument == -* || $argument == +* ]]; then
+        arguments+=("$argument")
+    else
+        arguments+=("$(wslpath -w "$(realpath -m -- "$argument")")")
+    fi
+done
+
+exec "$client" "${server[@]}" "${arguments[@]}"

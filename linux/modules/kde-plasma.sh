@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-source "$(dirname "${BASH_SOURCE[0]}")/kde-plasma-glass.sh"
-
 validate_kde_plasma_version() {
     local output="$1"
 
@@ -74,10 +72,8 @@ configure_kde_plasma_input() {
 }
 
 configure_kde_plasma_cursor_theme() {
-    local theme="${BLACKNPINK_CURSOR_THEME:-blacknpink-crosshair}"
+    local theme=glassy-blacknpink
     local size=40
-    [ -f "$HOME/.local/share/icons/$theme/cursors/default" ] \
-        || myconfig_fail "Black & Pink Crosshair cursor theme was not installed"
 
     kwriteconfig6 --file kcminputrc --group Mouse --key cursorSize "$size"
     QT_QPA_PLATFORM=offscreen plasma-apply-cursortheme --size "$size" "$theme" || return 1
@@ -117,8 +113,8 @@ module_kde_plasma_validate() {
 module_kde_plasma() {
     module_kde_plasma_validate || return 1
 
-    myconfig_log "Configuring KDE Plasma panels and Black & Pink appearance"
-    install_package_ids iosevka_font desktop_file_utils libinput
+    myconfig_log "Configuring KDE Plasma with Glassy Black & Pink"
+    install_package_ids iosevka_font libinput
 
     require_command plasma-apply-cursortheme
     require_command plasma-apply-lookandfeel
@@ -126,11 +122,19 @@ module_kde_plasma() {
     require_command kreadconfig6
     require_command qdbus6
     require_command fc-match
-    require_command desktop-file-validate
     require_command systemctl
     require_command sudo
 
-    install_kde_plasma_glass || return 1
+    local theme="$MYCONFIG_REPO_ROOT/linux/assets/glassy-blacknpink"
+    [ -f "$theme/install.sh" ] || {
+        myconfig_fail "Glassy Black & Pink is missing; run: git submodule update --init --recursive"
+        return 1
+    }
+    source "$theme/install.sh"
+    glassy_blacknpink_install || {
+        myconfig_fail "Glassy Black & Pink installation failed"
+        return 1
+    }
 
     local libinput_plugin libinput_plugins=("$MYCONFIG_REPO_ROOT"/linux/assets/libinput/*.lua)
     [ -f "${libinput_plugins[0]}" ] \
@@ -141,70 +145,35 @@ module_kde_plasma() {
             "/etc/libinput/plugins/${libinput_plugin##*/}"
     done
 
-    [ -x "$HOME/.local/bin/myconfig-kde-plasma-layout" ] \
-        || myconfig_fail "KDE Plasma layout command was not stowed"
-    [ -f "$HOME/.local/bin/myconfig-kde-plasma-glass-repair" ] \
-        || myconfig_fail "KDE Plasma Glass repair command was not stowed"
-    [ -f "$HOME/.local/share/color-schemes/BlackPink.colors" ] \
-        || myconfig_fail "Black & Pink KDE color scheme was not stowed"
-    [ -f "$HOME/.local/share/plasma/desktoptheme/blacknpink/metadata.json" ] \
-        || myconfig_fail "Black & Pink Plasma theme metadata was not stowed"
-    local background
-    for background in widgets/panel-background.svg dialogs/background.svg solid/dialogs/background.svg; do
-        [ -f "$HOME/.local/share/plasma/desktoptheme/blacknpink/$background" ] \
-            || {
-                myconfig_fail "Black & Pink Plasma background was not stowed: $background"
-                return 1
-            }
-    done
-    [ -f "$HOME/.local/share/plasma/look-and-feel/org.myconfig.blacknpink.desktop/metadata.json" ] \
-        || myconfig_fail "Black & Pink global theme metadata was not stowed"
-    [ -f "$HOME/.local/share/plasma/look-and-feel/org.myconfig.blacknpink.desktop/contents/defaults" ] \
-        || myconfig_fail "Black & Pink global theme defaults were not stowed"
-    local widget
-    for widget in overview session power island; do
-        [ -f "$HOME/.local/share/plasma/plasmoids/myconfig.$widget/metadata.json" ] \
-            || myconfig_fail "MyConfig $widget Plasma metadata was not stowed"
-        [ -f "$HOME/.local/share/plasma/plasmoids/myconfig.$widget/contents/ui/main.qml" ] \
-            || myconfig_fail "MyConfig $widget Plasma widget was not stowed"
-    done
-    [ -f "$HOME/.local/share/kwin/scripts/myconfig-plasma-panels/metadata.json" ] \
-        || myconfig_fail "MyConfig Plasma Panels KWin metadata was not stowed"
-    [ -f "$HOME/.local/share/kwin/scripts/myconfig-plasma-panels/contents/code/main.js" ] \
-        || myconfig_fail "MyConfig Plasma Panels KWin script was not stowed"
-    [ -f "$HOME/.config/systemd/user/myconfig-kde-plasma-layout.service" ] \
-        || myconfig_fail "KDE Plasma layout user service was not stowed"
-    [ -f "$HOME/.config/systemd/user/myconfig-kde-plasma-glass.service" ] \
-        || myconfig_fail "KDE Plasma Glass repair service was not stowed"
-    desktop-file-validate "$HOME/.config/autostart/myconfig-kde-plasma-layout.desktop"
     fc-match "Iosevka Nerd Font" | grep -Fq 'Iosevka' \
         || myconfig_fail "Iosevka Nerd Font is not available after installation"
 
-    QT_QPA_PLATFORM=offscreen plasma-apply-lookandfeel --apply org.myconfig.blacknpink.desktop
+    QT_QPA_PLATFORM=offscreen plasma-apply-lookandfeel --apply glassy-blacknpink.desktop
     configure_kde_plasma_fonts
     configure_kde_plasma_desktops
     configure_kde_plasma_window_rules
     configure_kde_plasma_input
     configure_kde_plasma_cursor_theme
-    kwriteconfig6 --file kwinrc --group Plugins --key myconfig-plasma-panelsEnabled true
 
     export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
     export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
     systemctl --user daemon-reload
-    systemctl --user enable myconfig-kde-plasma-glass.service
     if qdbus6 org.kde.KWin /KWin >/dev/null 2>&1; then
-        activate_kde_plasma_glass || return 1
+        glassy_blacknpink_activate || {
+            myconfig_fail "KWin could not load the Glassy Black & Pink glass"
+            return 1
+        }
         qdbus6 org.kde.KWin /KWin org.kde.KWin.reconfigure
     fi
 
     local layout_status=0
-    "$HOME/.local/bin/myconfig-kde-plasma-layout" || layout_status=$?
+    glassy-blacknpink-layout || layout_status=$?
     case "$layout_status" in
         0)
             systemctl --user try-restart plasma-plasmashell.service || return 1
-            myconfig_log "Applied and reloaded the KDE Plasma layout and Glass effect"
+            myconfig_log "Applied and reloaded the Glassy Black & Pink layout and glass"
             ;;
         75) myconfig_log "KDE Plasma is not active; the layout will apply at the next KDE Plasma login" ;;
-        *) myconfig_fail "KDE Plasma layout failed with status $layout_status" ;;
+        *) myconfig_fail "Glassy Black & Pink layout failed with status $layout_status" ;;
     esac
 }

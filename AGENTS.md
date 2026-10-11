@@ -38,7 +38,7 @@ The top-level areas have different jobs:
 
 Linux profiles currently select these dotfile packages:
 
-- CachyOS: `zsh`, `yazi`, `ai`, `ghostty`, `kanata`, `kanata-kde`, `handy`, `kde-plasma`, `emacs`, `phone`, and `pipewire`.
+- CachyOS: `zsh`, `yazi`, `ai`, `ghostty`, `kanata`, `kanata-kde`, `handy`, `emacs`, `phone`, and `pipewire`.
 
 - Arch WSL: `zsh`, `yazi`, and `ai`.
 
@@ -69,6 +69,12 @@ The `ai` package also ships `claude-config-helper`, a Python command shared by L
 The installer creates the OpenCode link during the agent configuration step. Do not add another stored `AGENTS.md` under the OpenCode configuration. The only instruction source is `dotfiles/ai/.agents/AGENTS.md`.
 
 The live global instruction file is different from this repository instruction file. This root `AGENTS.md` describes work inside this repository. `dotfiles/ai/.agents/AGENTS.md` supplies the user's global agent workflow after deployment.
+
+## Glassy Black & Pink
+
+The KDE Plasma theme is a separate repository, kept as the Git submodule `linux/assets/glassy-blacknpink`. Its own submodule `breeze/` holds the Breeze fork. Change the theme inside the submodule and test it with its `test/run.sh`; commit there before recording the new submodule commit here.
+
+The theme installs as the system package `glassy-blacknpink`, not through GNU Stow. `linux/modules/kde-plasma.sh` runs the theme's `install.sh`, applies the global theme, and keeps only personal settings such as fonts, input and window rules. Theme files under `/usr/share` come from the package; a copy under `~/.local/share` would override them.
 
 ## Emacs
 

@@ -134,7 +134,7 @@ for cleanup_profile in cachyos arch-wsl; do
         # Exercise the real profile and package modules without running services,
         # deploying dotfiles, or installing anything on the host.
         for unrelated_module in ssh ssh_server flatpak appimage zsh ghostty axidev_osk tailscale \
-            agents_packages dotfiles android_phone emacs cursor_theme refind \
+            agents_packages dotfiles android_phone emacs refind \
             kanata kde_plasma_validate kde_plasma kanata_kde handy pipewire \
             docker agents_configure authentication; do
             eval "module_${unrelated_module}() { :; }"
@@ -537,7 +537,6 @@ PY
 
 source "$REPO_ROOT/linux/modules/axidev-osk.sh"
 source "$REPO_ROOT/linux/modules/ghostty.sh"
-source "$REPO_ROOT/linux/modules/cursor-theme.sh"
 source "$REPO_ROOT/linux/modules/refind.sh"
 source "$REPO_ROOT/linux/modules/kde-plasma.sh"
 source "$REPO_ROOT/linux/modules/kanata.sh"
@@ -594,52 +593,6 @@ grep -Fq '"$MYCONFIG_REPO_ROOT"/linux/assets/libinput/*.lua' \
     && grep -Fq '"/etc/libinput/plugins/${libinput_plugin##*/}"' \
         "$REPO_ROOT/linux/modules/kde-plasma.sh" \
     || myconfig_fail "KDE Plasma module does not install the libinput plugins"
-grep -Fq 'panel.lengthMode = "fit";' \
-    "$REPO_ROOT/dotfiles/kde-plasma/.local/share/myconfig/kde-plasma/layout.js" \
-    || myconfig_fail "KDE Plasma dock does not fit its content"
-grep -Fq 'tasks.writeConfig("fill", false);' \
-    "$REPO_ROOT/dotfiles/kde-plasma/.local/share/myconfig/kde-plasma/layout.js" \
-    || myconfig_fail "KDE Plasma task manager still fills the dock"
-node "$REPO_ROOT/test/test-kde-plasma-panels.js" \
-    "$REPO_ROOT/dotfiles/kde-plasma/.local/share/kwin/scripts/myconfig-plasma-panels/contents/code/main.js"
-bash "$REPO_ROOT/test/test-kde-glass.sh"
-node "$REPO_ROOT/test/test-kde-plasma-layout.js" \
-    "$REPO_ROOT/dotfiles/kde-plasma/.local/share/myconfig/kde-plasma/layout.js"
-node -e 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"))' \
-    "$REPO_ROOT/dotfiles/kde-plasma/.local/share/kwin/scripts/myconfig-plasma-panels/metadata.json"
-plasma_plasmoid_root="$REPO_ROOT/dotfiles/kde-plasma/.local/share/plasma/plasmoids"
-for widget in overview session power island; do
-    node -e 'const metadata = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")); if (metadata.KPlugin.Id !== process.argv[2]) process.exit(1)' \
-        "$plasma_plasmoid_root/myconfig.$widget/metadata.json" "myconfig.$widget"
-    [ -f "$plasma_plasmoid_root/myconfig.$widget/contents/ui/main.qml" ] \
-        || myconfig_fail "MyConfig $widget Plasma widget has no QML entry point"
-done
-node -e '
-const fs = require("node:fs");
-const root = process.argv[1];
-const overview = fs.readFileSync(`${root}/myconfig.overview/contents/ui/main.qml`, "utf8");
-const session = fs.readFileSync(`${root}/myconfig.session/contents/ui/main.qml`, "utf8");
-const power = fs.readFileSync(`${root}/myconfig.power/contents/ui/main.qml`, "utf8");
-const island = fs.readFileSync(`${root}/myconfig.island/contents/ui/main.qml`, "utf8");
-if (!overview.includes(`text: qsTr("Overview")`) || !overview.includes("font.pointSize: 14") || !overview.includes("Layout.minimumWidth: implicitWidth") || !overview.includes("Layout.fillHeight: true") || !overview.includes("invokeShortcut Overview") || !overview.includes("CanFillArea")) process.exit(1);
-const ordered = (source, values) => values.every((value, index) => source.indexOf(value) >= 0 && (index === 0 || source.indexOf(values[index - 1]) < source.indexOf(value)));
-if (!ordered(session, [`qsTr("Lock")`, `qsTr("Log Out")`, `qsTr("Switch User")`])) process.exit(1);
-if (!session.includes("enabled: session.canSwitchUser")) process.exit(1);
-if (!ordered(power, [`qsTr("Restart")`, `qsTr("Shut Down")`, `qsTr("Sleep")`, `qsTr("Hibernate")`])) process.exit(1);
-if (session.includes("ToolTip") || power.includes("ToolTip")) process.exit(1);
-if (!session.includes("popupType: QQC2.Popup.Window") || !power.includes("popupType: QQC2.Popup.Window")) process.exit(1);
-if (island.includes("/tmp/") || island.includes("ISLAND_") || island.includes("configuration.readyWidgets") || island.includes("configuration.trayGroups")) process.exit(1);
-if (!island.includes("function closeAfterDeactivation()") || !island.includes("function onVisibleChanged() { if (!target.visible) island.closeAfterDeactivation(); }")) process.exit(1);
-for (const widget of ["systemmonitor.cpu", "systemmonitor.memory", "systemmonitor.net", "calendar", "notifications", "systemtray"]) {
-    if (!island.includes(`"org.kde.plasma.${widget}"`)) process.exit(1);
-}
-for (const capability of ["canLock", "canSwitchUser", "canLogout", "canSuspend", "canHibernate", "canReboot", "canShutdown"]) {
-    if (!island.includes(`enabled: session.${capability}`)) process.exit(1);
-}
-' "$plasma_plasmoid_root"
-plasma_theme_root="$REPO_ROOT/dotfiles/kde-plasma/.local/share/plasma/desktoptheme/blacknpink"
-plasma_global_theme_root="$REPO_ROOT/dotfiles/kde-plasma/.local/share/plasma/look-and-feel/org.myconfig.blacknpink.desktop"
-cursor_theme_root="$REPO_ROOT/linux/assets/cursors/blacknpink-crosshair"
 refind_asset_root="$REPO_ROOT/linux/assets/refind"
 refind_global_config="$refind_asset_root/global.conf"
 refind_theme_root="$refind_asset_root/themes/black-pink"
@@ -668,131 +621,6 @@ for selection in selection_big selection_small; do
     [ -s "$refind_theme_test_dir/$selection.png" ] \
         || myconfig_fail "Black & Pink rEFInd theme did not generate $selection"
 done
-grep -Fxq 'Inherits=breeze_cursors' "$cursor_theme_root/index.theme" \
-    || myconfig_fail "Black & Pink Crosshair cursor theme does not inherit Breeze"
-for cursor in default pointer progress text wait size_hor size_ver; do
-    [ -s "$cursor_theme_root/cursors/$cursor" ] \
-        || myconfig_fail "Black & Pink Crosshair cursor theme is missing $cursor"
-done
-node -e '
-const fs = require("node:fs");
-const path = require("node:path");
-const root = process.argv[1];
-for (const name of fs.readdirSync(root)) {
-    const file = path.join(root, name);
-    if (!fs.statSync(file).isFile() || fs.lstatSync(file).isSymbolicLink()) continue;
-    const data = fs.readFileSync(file);
-    const count = data.readUInt32LE(12);
-    if (!count || data.toString("ascii", 0, 4) !== "Xcur") process.exit(1);
-    for (let i = 0; i < count; i++) {
-        const slot = data.readUInt32LE(16 + i * 12 + 4);
-        const offset = data.readUInt32LE(16 + i * 12 + 8);
-        if (slot !== 40 || offset + 36 + 40 * 40 * 4 > data.length ||
-            data.readUInt32LE(offset + 8) !== 40 ||
-            data.readUInt32LE(offset + 16) !== 40 ||
-            data.readUInt32LE(offset + 20) !== 40) process.exit(1);
-    }
-}
-' "$cursor_theme_root/cursors" \
-    || myconfig_fail "Black & Pink Crosshair artwork and cursor slots must both be 40 px"
-cursor_build_dir="$TEST_HOME/cursor-build"
-python3 "$cursor_theme_root/build.py" --output-dir "$cursor_build_dir" \
-    || myconfig_fail "Black & Pink Crosshair SVG artwork did not build"
-for cursor in default crosshair help no-drop up-arrow person location size_hor size_ver size_fdiag size_bdiag progress wait; do
-    cmp -s "$cursor_theme_root/cursors/$cursor" "$cursor_build_dir/$cursor" \
-        || myconfig_fail "Black & Pink Crosshair $cursor does not match its SVG source"
-done
-python3 - "$cursor_theme_root/cursors/default" "$cursor_theme_root/cursors/crosshair" <<'PY' || myconfig_fail "Black & Pink Crosshair contours or centers are incorrect"
-import pathlib
-import struct
-import sys
-
-images = {}
-for file in sys.argv[1:]:
-    data = pathlib.Path(file).read_bytes()
-    offset = struct.unpack_from('<I', data, 24)[0]
-    pixels = struct.unpack_from('<1600I', data, offset + 36)
-    images[pathlib.Path(file).name] = pixels
-    for y in range(40):
-        for x in range(20):
-            assert pixels[y * 40 + x] == pixels[y * 40 + 39 - x]
-    if file.endswith('/default'):
-        for y in range(40):
-            for x in range(40):
-                assert pixels[y * 40 + x] == pixels[x * 40 + 39 - y]
-    for x, y in ((19, 19), (20, 19), (19, 20), (20, 20)):
-        pixel = pixels[y * 40 + x]
-        if file.endswith('/default'):
-            assert pixel == 0x66000000
-        else:
-            assert pixel >> 24 == 255 and (pixel >> 16) & 255 > (pixel >> 8) & 255
-for index, (normal, precision) in enumerate(zip(images['default'], images['crosshair'])):
-    if index % 40 in range(17, 23) and index // 40 in range(17, 23):
-        assert normal == 0x66000000
-        if index % 40 in (19, 20) and index // 40 in (19, 20):
-            assert precision == 0xffff4ead
-    else:
-        assert normal == precision
-PY
-python3 - "$cursor_theme_root/cursors" <<'PY' || myconfig_fail "Black & Pink resize arrows or shared cross are incorrect"
-import pathlib
-import struct
-import sys
-
-root = pathlib.Path(sys.argv[1])
-for name in ('size_hor', 'size_ver', 'size_fdiag', 'size_bdiag'):
-    data = (root / name).read_bytes()
-    assert struct.unpack_from('<I', data, 12)[0] == 2
-    for index in range(2):
-        offset = struct.unpack_from('<I', data, 24 + 12 * index)[0]
-        assert struct.unpack_from('<3I', data, offset + 24) == (20, 20, 167)
-        pixels = struct.unpack_from('<1600I', data, offset + 36)
-        for y in range(17, 23):
-            for x in range(17, 23):
-                assert pixels[y * 40 + x] == 0x66000000
-        if index == 0:
-            nw, ne, sw, se = (pixels[y * 40 + x] for x, y in
-                               ((11, 11), (28, 11), (11, 28), (28, 28)))
-            if name == 'size_fdiag':
-                assert nw and se and not ne and not sw
-            elif name == 'size_bdiag':
-                assert ne and sw and not nw and not se
-            else:
-                assert not (nw or ne or sw or se)
-PY
-for cursor in pointer grab grabbing move dnd-move dnd-copy text; do
-    [ "$(readlink "$cursor_theme_root/cursors/$cursor")" = crosshair ] \
-        || myconfig_fail "Black & Pink Crosshair cursor theme does not use Precision Select for $cursor"
-done
-node -e 'const metadata = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")); if (metadata.KPlugin.Id !== "blacknpink") process.exit(1)' \
-    "$plasma_theme_root/metadata.json"
-grep -Fxq 'FallbackTheme=default' "$plasma_theme_root/plasmarc" \
-    || myconfig_fail "Black & Pink Plasma theme does not inherit Breeze"
-node -e 'const metadata = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")); if (metadata.KPackageStructure !== "Plasma/LookAndFeel" || metadata.KPlugin.Id !== "org.myconfig.blacknpink.desktop") process.exit(1)' \
-    "$plasma_global_theme_root/metadata.json"
-grep -Fxq 'ColorScheme=BlackPink' "$plasma_global_theme_root/contents/defaults" \
-    || myconfig_fail "Black & Pink global theme does not select its color scheme"
-grep -Fxq 'name=blacknpink' "$plasma_global_theme_root/contents/defaults" \
-    || myconfig_fail "Black & Pink global theme does not select its Plasma theme"
-grep -Fxq 'cursorTheme=blacknpink-crosshair' "$plasma_global_theme_root/contents/defaults" \
-    || myconfig_fail "Black & Pink global theme does not select its cursor theme"
-grep -Fq 'id="thick-hint-right-margin" x="95" y="-56" width="4" height="4"' \
-    "$plasma_theme_root/widgets/panel-background.svg" \
-    || myconfig_fail "Black & Pink Plasma theme does not set a 4-pixel floating-panel trailing margin"
-grep -Fq 'id="thick-hint-left-margin" x="95" y="-20" width="4" height="8"' \
-    "$plasma_theme_root/widgets/panel-background.svg" \
-    || myconfig_fail "Black & Pink Plasma theme changed the Breeze floating-panel leading margin"
-grep -Fq 'id="hint-top-margin" x="20" y="10" width="4" height="4"' \
-    "$plasma_theme_root/widgets/panel-background.svg" \
-    || myconfig_fail "Black & Pink Plasma theme changed the top panel's vertical content margin"
-grep -Fq 'id="hint-left-margin" x="0" y="30" width=".00000001" height="4"' \
-    "$plasma_theme_root/widgets/panel-background.svg" \
-    || myconfig_fail "Black & Pink Plasma theme does not extend the Overview control to the screen left"
-resvg "$plasma_theme_root/widgets/panel-background.svg" \
-    "$TEST_HOME/panel-background.png"
-systemd-analyze verify \
-    "$REPO_ROOT/dotfiles/kde-plasma/.config/systemd/user/myconfig-kde-plasma-layout.service" \
-    "$REPO_ROOT/dotfiles/kde-plasma/.config/systemd/user/myconfig-kde-plasma-glass.service"
 
 window_rules_config="$TEST_HOME/kwin-window-rules"
 mkdir -p "$window_rules_config"
@@ -817,93 +645,22 @@ if module_kde_plasma >/dev/null 2>&1; then
     myconfig_fail "KDE Plasma module accepted a non-CachyOS profile"
 fi
 
-plasma_layout_test_root="$TEST_HOME/kde-plasma-layout"
+plasma_layout_test_root="$TEST_HOME/kde-plasma"
 plasma_layout_home="$plasma_layout_test_root/home"
 plasma_layout_bin="$plasma_layout_test_root/bin"
-mkdir -p \
-    "$plasma_layout_home/.config" \
-    "$plasma_layout_home/.local/bin" \
-    "$plasma_layout_home/.local/share/myconfig/kde-plasma" \
-    "$plasma_layout_bin"
-cp "$REPO_ROOT/dotfiles/kde-plasma/.local/bin/myconfig-kde-plasma-layout" \
-    "$plasma_layout_home/.local/bin/myconfig-kde-plasma-layout"
-cp "$REPO_ROOT/dotfiles/kde-plasma/.local/share/myconfig/kde-plasma/layout.js" \
-    "$plasma_layout_home/.local/share/myconfig/kde-plasma/layout.js"
-printf 'default panel configuration\n' \
-    >"$plasma_layout_home/.config/plasma-org.kde.plasma.desktop-appletsrc"
-
-cat >"$plasma_layout_bin/qdbus6" <<'EOF'
-#!/usr/bin/env bash
-if [ "$#" -eq 2 ]; then
-    exit "${MYCONFIG_PLASMA_DBUS_STATUS:-0}"
-fi
-printf '%s\n' "${MYCONFIG_PLASMA_EVALUATE_OUTPUT:-MYCONFIG_STATUS=ok:screens=2}"
+plasma_repo_root="$plasma_layout_test_root/repo"
+mkdir -p "$plasma_layout_home/.config" "$plasma_layout_bin" "$plasma_repo_root/linux/assets/glassy-blacknpink"
+ln -s "$REPO_ROOT/linux/assets/libinput" "$plasma_repo_root/linux/assets/libinput"
+# Stand-ins for the theme repository's install script and layout command.
+cat >"$plasma_repo_root/linux/assets/glassy-blacknpink/install.sh" <<'EOF'
+glassy_blacknpink_install() { printf '%s\n' theme:install >>"$plasma_module_log"; }
+glassy_blacknpink_activate() { printf '%s\n' theme:activate >>"$plasma_module_log"; }
 EOF
-chmod +x "$plasma_layout_bin/qdbus6"
-
-HOME="$plasma_layout_home" \
-    PATH="$plasma_layout_bin:/usr/bin:/bin" \
-    "$plasma_layout_home/.local/bin/myconfig-kde-plasma-layout"
-[ "$(<"$plasma_layout_home/.local/state/myconfig/kde-plasma-layout-version")" = 5 ] \
-    || myconfig_fail "KDE Plasma layout did not record its version"
-shopt -s nullglob
-plasma_backups=("$plasma_layout_home/.config/plasma-org.kde.plasma.desktop-appletsrc.backup."*)
-[ "${#plasma_backups[@]}" -eq 1 ] \
-    || myconfig_fail "KDE Plasma layout did not back up its initial panel configuration once"
-[ "$(<"${plasma_backups[0]}")" = 'default panel configuration' ] \
-    || myconfig_fail "KDE Plasma panel backup changed its contents"
-
-HOME="$plasma_layout_home" \
-    PATH="$plasma_layout_bin:/usr/bin:/bin" \
-    "$plasma_layout_home/.local/bin/myconfig-kde-plasma-layout"
-plasma_backups=("$plasma_layout_home/.config/plasma-org.kde.plasma.desktop-appletsrc.backup."*)
-[ "${#plasma_backups[@]}" -eq 1 ] \
-    || myconfig_fail "KDE Plasma layout repeated its first-run backup"
-
-if HOME="$plasma_layout_home" \
-    PATH="$plasma_layout_bin:/usr/bin:/bin" \
-    MYCONFIG_PLASMA_EVALUATE_OUTPUT='MYCONFIG_STATUS=missing:org.kde.plasma.icontasks' \
-    "$plasma_layout_home/.local/bin/myconfig-kde-plasma-layout" >/dev/null 2>&1; then
-    myconfig_fail "KDE Plasma layout accepted a missing required widget"
-fi
-
-layout_status=0
-HOME="$plasma_layout_home" \
-    PATH="$plasma_layout_bin:/usr/bin:/bin" \
-    MYCONFIG_PLASMA_DBUS_STATUS=1 \
-    "$plasma_layout_home/.local/bin/myconfig-kde-plasma-layout" || layout_status=$?
-[ "$layout_status" -eq 75 ] \
-    || myconfig_fail "KDE Plasma layout did not defer when Plasma was inactive"
-
-mkdir -p \
-    "$plasma_layout_home/.config/autostart" \
-    "$plasma_layout_home/.config/systemd/user" \
-    "$plasma_layout_home/.local/share/color-schemes" \
-    "$plasma_layout_home/.local/share/plasma/desktoptheme/blacknpink/widgets" \
-    "$plasma_layout_home/.local/share/plasma/look-and-feel" \
-    "$plasma_layout_home/.local/share/plasma/plasmoids" \
-    "$plasma_layout_home/.local/share/kwin/scripts/myconfig-plasma-panels/contents/code"
-cp "$REPO_ROOT/dotfiles/kde-plasma/.config/autostart/myconfig-kde-plasma-layout.desktop" \
-    "$plasma_layout_home/.config/autostart/myconfig-kde-plasma-layout.desktop"
-cp "$REPO_ROOT/dotfiles/kde-plasma/.local/share/color-schemes/BlackPink.colors" \
-    "$plasma_layout_home/.local/share/color-schemes/BlackPink.colors"
-cp -a "$plasma_theme_root/." "$plasma_layout_home/.local/share/plasma/desktoptheme/blacknpink/"
-cp -a "$plasma_global_theme_root" \
-    "$plasma_layout_home/.local/share/plasma/look-and-feel/org.myconfig.blacknpink.desktop"
-for widget in overview session power island; do
-    cp -a "$plasma_plasmoid_root/myconfig.$widget" \
-        "$plasma_layout_home/.local/share/plasma/plasmoids/myconfig.$widget"
-done
-cp "$REPO_ROOT/dotfiles/kde-plasma/.config/systemd/user/myconfig-kde-plasma-layout.service" \
-    "$plasma_layout_home/.config/systemd/user/myconfig-kde-plasma-layout.service"
-cp "$REPO_ROOT/dotfiles/kde-plasma/.config/systemd/user/myconfig-kde-plasma-glass.service" \
-    "$plasma_layout_home/.config/systemd/user/myconfig-kde-plasma-glass.service"
-cp "$REPO_ROOT/dotfiles/kde-plasma/.local/bin/myconfig-kde-plasma-glass-repair" \
-    "$plasma_layout_home/.local/bin/myconfig-kde-plasma-glass-repair"
-cp "$REPO_ROOT/dotfiles/kde-plasma/.local/share/kwin/scripts/myconfig-plasma-panels/metadata.json" \
-    "$plasma_layout_home/.local/share/kwin/scripts/myconfig-plasma-panels/metadata.json"
-cp "$REPO_ROOT/dotfiles/kde-plasma/.local/share/kwin/scripts/myconfig-plasma-panels/contents/code/main.js" \
-    "$plasma_layout_home/.local/share/kwin/scripts/myconfig-plasma-panels/contents/code/main.js"
+cat >"$plasma_layout_bin/glassy-blacknpink-layout" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' layout:apply >>"$plasma_layout_test_root/module.log"
+EOF
+chmod +x "$plasma_layout_bin/glassy-blacknpink-layout"
 
 mkdir -p "$plasma_layout_home/.config/gtk-3.0" "$plasma_layout_home/.config/gtk-4.0" "$plasma_layout_home/.config/xsettingsd"
 for file in "$plasma_layout_home/.gtkrc-2.0" "$plasma_layout_home/.config/gtk-3.0/settings.ini" "$plasma_layout_home/.config/gtk-4.0/settings.ini"; do
@@ -947,9 +704,6 @@ gsettings() {
 fc-match() {
     printf 'IosevkaNerdFont-Regular.ttf: Iosevka Nerd Font\n'
 }
-desktop-file-validate() {
-    /usr/bin/desktop-file-validate "$@"
-}
 systemctl() {
     printf 'systemctl:%s\n' "$*" >>"$plasma_module_log"
 }
@@ -961,12 +715,8 @@ sudo() {
 }
 
 MYCONFIG_PROFILE=cachyos
-HOME="$plasma_layout_home" \
-    PATH="$plasma_layout_bin:/usr/bin:/bin" \
-    module_cursor_theme
 (
-    install_kde_plasma_glass() { printf '%s\n' 'glass:install' >>"$plasma_module_log"; }
-    activate_kde_plasma_glass() { printf '%s\n' 'glass:activate' >>"$plasma_module_log"; }
+    MYCONFIG_REPO_ROOT="$plasma_repo_root"
     HOME="$plasma_layout_home" PATH="$plasma_layout_bin:/usr/bin:/bin" module_kde_plasma
 )
 for file in "$plasma_layout_home/.gtkrc-2.0" "$plasma_layout_home/.config/gtk-3.0/settings.ini" "$plasma_layout_home/.config/gtk-4.0/settings.ini"; do
@@ -981,18 +731,19 @@ grep -Fxq 'Other/Setting 1' "$plasma_layout_home/.config/xsettingsd/xsettingsd.c
     || myconfig_fail "KDE Plasma module overwrote unrelated XSettings"
 grep -Fxq 'gsettings:set org.gnome.desktop.interface cursor-size 40' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not synchronize GNOME cursor size"
-grep -Fxq 'glass:install' "$plasma_module_log" || myconfig_fail "Plasma module omitted Glass installation"
-grep -Fxq 'glass:activate' "$plasma_module_log" || myconfig_fail "Plasma module omitted Glass activation"
+grep -Fxq 'theme:install' "$plasma_module_log" || myconfig_fail "Plasma module omitted the Glassy Black & Pink installation"
+grep -Fxq 'theme:activate' "$plasma_module_log" || myconfig_fail "Plasma module omitted the glass activation"
+grep -Fxq 'layout:apply' "$plasma_module_log" || myconfig_fail "Plasma module did not apply the theme's panel layout"
 grep -Fxq 'systemctl:--user try-restart plasma-plasmashell.service' "$plasma_module_log" \
     || myconfig_fail "Plasma module did not reload the installed widgets"
-grep -Fxq 'packages:iosevka_font desktop_file_utils libinput' "$plasma_module_log" \
+grep -Fxq 'packages:iosevka_font libinput' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module omitted its appearance dependencies"
-grep -Fxq "sudo:install -Dm644 $pointer_plugin /etc/libinput/plugins/90-myconfig-pointer-sensitivity.lua" \
+grep -Fxq "sudo:install -Dm644 $plasma_repo_root/linux/assets/libinput/${pointer_plugin##*/} /etc/libinput/plugins/90-myconfig-pointer-sensitivity.lua" \
     "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not install the libinput plugin"
-grep -Fxq 'global-theme:--apply org.myconfig.blacknpink.desktop' "$plasma_module_log" \
+grep -Fxq 'global-theme:--apply glassy-blacknpink.desktop' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not apply its global theme headlessly"
-grep -Fxq 'cursors:--size 40 blacknpink-crosshair' "$plasma_module_log" \
+grep -Fxq 'cursors:--size 40 glassy-blacknpink' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not apply its cursor theme headlessly"
 grep -Fxq 'config:--file kwinrc --group Windows --key ElectricBorderPushbackPixels 0' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not remove KWin edge pushback"
@@ -1020,16 +771,11 @@ grep -Fxq 'config:--file kcminputrc --group Libinput --group Defaults --group To
     || myconfig_fail "KDE Plasma module did not enable touchpad drag lock"
 grep -Fxq 'config:--file kcminputrc --group Libinput --group Defaults --group Touchpad --key ClickMethod 2' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not configure touchpad clickfinger mode"
-grep -Fxq 'config:--file kwinrc --group Plugins --key myconfig-plasma-panelsEnabled true' "$plasma_module_log" \
-    || myconfig_fail "KDE Plasma module did not enable MyConfig Plasma Panels"
 grep -Fxq 'systemctl:--user daemon-reload' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not reload user services"
 grep -Fxq 'qdbus:org.kde.KWin /KWin org.kde.KWin.reconfigure' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not reload active KWin configuration"
 unset -f sudo
-
-desktop-file-validate \
-    "$REPO_ROOT/dotfiles/kde-plasma/.config/autostart/myconfig-kde-plasma-layout.desktop"
 
 PYTHONPYCACHEPREFIX="$TEST_HOME/pycache" \
     python "$REPO_ROOT/test/test-kanata-tray.py"
@@ -1479,8 +1225,6 @@ done
     || myconfig_fail "CachyOS profile does not include Ghostty"
 [[ "$cachyos_profile" == *module_kde_plasma* ]] \
     || myconfig_fail "CachyOS profile does not include KDE Plasma configuration"
-[[ "$cachyos_profile" == *module_cursor_theme* ]] \
-    || myconfig_fail "CachyOS profile does not include the cursor theme"
 [[ "$cachyos_profile" == *module_refind* ]] \
     || myconfig_fail "CachyOS profile does not include the rEFInd theme"
 [[ "$cachyos_profile" == *module_kanata* ]] \
@@ -1507,8 +1251,6 @@ done
     || myconfig_fail "Arch WSL profile still includes Neovim"
 [[ "$arch_wsl_profile" != *module_kde_plasma* ]] \
     || myconfig_fail "Arch WSL profile includes KDE Plasma configuration"
-[[ "$arch_wsl_profile" != *module_cursor_theme* ]] \
-    || myconfig_fail "Arch WSL profile includes the desktop cursor theme"
 [[ "$arch_wsl_profile" != *module_refind* ]] \
     || myconfig_fail "Arch WSL profile includes the rEFInd configuration"
 [[ "$arch_wsl_profile" != *module_kanata* ]] \
@@ -1523,8 +1265,6 @@ done
     || myconfig_fail "Ubuntu Server profile includes Ghostty"
 [[ "$ubuntu_profile" != *module_kde_plasma* ]] \
     || myconfig_fail "Ubuntu Server profile includes KDE Plasma configuration"
-[[ "$ubuntu_profile" != *module_cursor_theme* ]] \
-    || myconfig_fail "Ubuntu Server profile includes the desktop cursor theme"
 [[ "$ubuntu_profile" != *module_refind* ]] \
     || myconfig_fail "Ubuntu Server profile includes the rEFInd configuration"
 [[ "$ubuntu_profile" != *module_kanata* ]] \
@@ -1630,7 +1370,7 @@ grep -Fq 'http://HOSTNAME.local:18080' "$HOME/environment.md" \
     || myconfig_fail "CachyOS inventory omitted the Emacs workbench"
 grep -Fq 'Axidev OSK with desktop and login-screen startup' "$HOME/environment.md" \
     || myconfig_fail "CachyOS inventory omitted Axidev OSK"
-grep -Fq 'Black & Pink panels and application dock for KDE Plasma 6.7 through 6.x' "$HOME/environment.md" \
+grep -Fq 'Glassy Black & Pink theme, panels and application dock for KDE Plasma 6.7 through 6.x' "$HOME/environment.md" \
     || myconfig_fail "CachyOS inventory omitted KDE Plasma configuration"
 grep -Fq 'Kanata keyboard remapping with a KDE tray profile selector' "$HOME/environment.md" \
     || myconfig_fail "CachyOS inventory omitted Kanata"

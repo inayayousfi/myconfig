@@ -1,3 +1,3 @@
-[submodule "linux/assets/glassy-blacknpink"]
-	path = linux/assets/glassy-blacknpink
-	url = https://github.com/inayayousfi/glassy-blacknpink.git
+[submodule "linux/assets/glassy-blacknpink-plasma"]
+	path = linux/assets/glassy-blacknpink-plasma
+	url = https://github.com/inayayousfi/glassy-blacknpink-plasma.git

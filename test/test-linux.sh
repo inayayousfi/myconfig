@@ -649,10 +649,10 @@ plasma_layout_test_root="$TEST_HOME/kde-plasma"
 plasma_layout_home="$plasma_layout_test_root/home"
 plasma_layout_bin="$plasma_layout_test_root/bin"
 plasma_repo_root="$plasma_layout_test_root/repo"
-mkdir -p "$plasma_layout_home/.config" "$plasma_layout_bin" "$plasma_repo_root/linux/assets/glassy-blacknpink"
+mkdir -p "$plasma_layout_home/.config" "$plasma_layout_bin" "$plasma_repo_root/linux/assets/glassy-blacknpink-plasma"
 ln -s "$REPO_ROOT/linux/assets/libinput" "$plasma_repo_root/linux/assets/libinput"
 # Stand-ins for the theme repository's install script and layout command.
-cat >"$plasma_repo_root/linux/assets/glassy-blacknpink/install.sh" <<'EOF'
+cat >"$plasma_repo_root/linux/assets/glassy-blacknpink-plasma/install.sh" <<'EOF'
 glassy_blacknpink_install() { printf '%s\n' theme:install >>"$plasma_module_log"; }
 glassy_blacknpink_activate() { printf '%s\n' theme:activate >>"$plasma_module_log"; }
 EOF

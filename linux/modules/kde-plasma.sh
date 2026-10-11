@@ -125,9 +125,9 @@ module_kde_plasma() {
     require_command systemctl
     require_command sudo
 
-    local theme="$MYCONFIG_REPO_ROOT/linux/assets/glassy-blacknpink"
+    local theme="$MYCONFIG_REPO_ROOT/linux/assets/glassy-blacknpink-plasma"
     [ -f "$theme/install.sh" ] || {
-        myconfig_fail "Glassy Black & Pink is missing; run: git submodule update --init --recursive"
+        myconfig_fail "Glassy Black & Pink is missing; run: git submodule update --init"
         return 1
     }
     source "$theme/install.sh"

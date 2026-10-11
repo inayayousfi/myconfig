@@ -72,7 +72,7 @@ The live global instruction file is different from this repository instruction f
 
 ## Glassy Black & Pink
 
-The KDE Plasma theme is a separate repository, kept as the Git submodule `linux/assets/glassy-blacknpink`. Its own submodule `breeze/` holds the Breeze fork. Change the theme inside the submodule and test it with its `test/run.sh`; commit there before recording the new submodule commit here.
+The KDE Plasma theme is a separate repository, kept as the Git submodule `linux/assets/glassy-blacknpink-plasma`. The theme repository holds its Breeze fork at its root; its `breeze-upstream` branch carries the unmodified KDE Breeze sources, one squashed commit per import, and its README gives the update steps. Change the theme inside the submodule and test it with its `test/run.sh`; commit there before recording the new submodule commit here.
 
 The theme installs as the system package `glassy-blacknpink`, not through GNU Stow. `linux/modules/kde-plasma.sh` runs the theme's `install.sh`, applies the global theme, and keeps only personal settings such as fonts, input and window rules. Theme files under `/usr/share` come from the package; a copy under `~/.local/share` would override them.
 

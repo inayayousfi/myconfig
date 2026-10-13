@@ -1,0 +1,16 @@
+{
+  "default_pack": "plain",
+  "volume": 0.8,
+  "linux_audio_player": "paplay",
+  "desktop_notifications": false,
+  "terminal_tab_title": false,
+  "categories": {
+    "session.start": false,
+    "task.acknowledge": false,
+    "task.complete": true,
+    "task.error": true,
+    "input.required": true,
+    "resource.limit": true,
+    "user.spam": false
+  }
+}

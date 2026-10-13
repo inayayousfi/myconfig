@@ -231,6 +231,20 @@ function Remove-WslAutostart {
 # ============================================================================
 
 function Remove-AIConfig {
+    # peon-ping's own uninstaller removes its hooks, skills, command and files.
+    $peonUninstaller = Join-Path $env:USERPROFILE ".claude\hooks\peon-ping\uninstall.ps1"
+    if (Test-Path $peonUninstaller) {
+        Write-Log "Removing peon-ping..."
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $peonUninstaller -Force
+        if ($LASTEXITCODE -eq 0) {
+            Write-Log "peon-ping removed" -Level 'OK'
+        } else {
+            Write-Log "peon-ping uninstaller failed; run $peonUninstaller by hand" -Level 'WARNING'
+        }
+    } else {
+        Write-Log "peon-ping not found, skipping"
+    }
+
     # One source of truth, several places each tool reads it from.
     $ruleFiles = @(
         (Join-Path $env:USERPROFILE ".agents\AGENTS.md"),

@@ -1,0 +1,31 @@
+{
+  "cesp_version": "1.0",
+  "name": "plain",
+  "display_name": "Plain",
+  "version": "1.0.0",
+  "author": { "name": "freedesktop.org sound theme contributors" },
+  "license": "See CREDITS",
+  "language": "en",
+  "categories": {
+    "task.complete": {
+      "sounds": [
+        { "file": "sounds/done.wav", "label": "Done" }
+      ]
+    },
+    "input.required": {
+      "sounds": [
+        { "file": "sounds/needs-you.wav", "label": "Needs you" }
+      ]
+    },
+    "task.error": {
+      "sounds": [
+        { "file": "sounds/error.wav", "label": "Error" }
+      ]
+    },
+    "resource.limit": {
+      "sounds": [
+        { "file": "sounds/limit.wav", "label": "Limit" }
+      ]
+    }
+  }
+}

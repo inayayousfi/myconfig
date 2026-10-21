@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Open the running graphical Emacs in this terminal through Remot's server.
+# The terminal frame shares every buffer and workspace and opens on the
+# graphical frame's current workspace. When no Emacs runs, graphical Emacs
+# starts first. An Emacs without Remot's server, such as one started
+# before this configuration or with another one, stops emt: a second
+# Emacs would overwrite the same saved workspaces.
+set -euo pipefail
+
+server=(--socket-name=remot)
+
+answers() { emacsclient "${server[@]}" --eval t >/dev/null 2>&1; }
+
+if ! answers; then
+    if pgrep -u "$(id -u)" -x emacs >/dev/null; then
+        echo "emt: an Emacs without the remot server is running;" \
+            "close it, then run emt again to start graphical Emacs" >&2
+        exit 1
+    fi
+    if [ -z "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ]; then
+        echo "emt: no Emacs is running and there is no desktop session to start one" >&2
+        exit 1
+    fi
+    kstart --application emacs >/dev/null 2>&1
+    for _ in $(seq 120); do
+        answers && break
+        sleep 0.5
+    done
+    answers || { echo "emt: Emacs did not start the remot server" >&2; exit 1; }
+fi
+
+exec emacsclient "${server[@]}" --tty --eval '(remot-show-in-terminal-frame)'

@@ -13,6 +13,9 @@ module_emacs() {
     [ -f "$config/early-init.el" ] || myconfig_fail "Emacs early init was not stowed"
     [ -f "$config/init.el" ] || myconfig_fail "Emacs init was not stowed"
     [ -d "$config/lisp" ] || myconfig_fail "Emacs modules were not stowed"
+    [ -x "$HOME/.local/bin/emt" ] || myconfig_fail "Emacs terminal command emt was not stowed"
+    [ -f "$HOME/.config/environment.d/emacs.conf" ] \
+        || myconfig_fail "Emacs client socket environment was not stowed"
 
     if [ -e "$HOME/.emacs.d" ] || [ -L "$HOME/.emacs.d" ]; then
         local legacy_backup

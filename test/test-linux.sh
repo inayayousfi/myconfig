@@ -506,11 +506,15 @@ PY
 
     mkdir -p \
         "$HOME/.config/emacs/lisp" \
+        "$HOME/.config/environment.d" \
+        "$HOME/.local/bin" \
         "$HOME/.emacs.d"
     touch \
         "$HOME/.config/emacs/early-init.el" \
         "$HOME/.config/emacs/init.el" \
+        "$HOME/.config/environment.d/emacs.conf" \
         "$HOME/.emacs.d/legacy"
+    install -m 755 /dev/null "$HOME/.local/bin/emt"
 
     install_package_ids() {
         printf '%s\n' "$@" >>"$package_log"
@@ -533,6 +537,60 @@ PY
     if module_emacs >/dev/null 2>&1; then
         myconfig_fail "Emacs module accepted a non-CachyOS profile"
     fi
+)
+
+# emt joins the graphical Emacs through Remot's server, starts graphical
+# Emacs when none runs, and refuses to start a second Emacs beside one
+# that lacks the server, since both would save the same workspaces.
+(
+    emt_bin="$TEST_HOME/emt-bin"
+    emt_log="$TEST_HOME/emt.log"
+    mkdir -p "$emt_bin"
+    cat >"$emt_bin/emacsclient" <<'SH'
+#!/usr/bin/env bash
+printf 'emacsclient %s\n' "$*" >>"$EMT_LOG"
+[ -e "$EMT_STATE/remot" ]
+SH
+    cat >"$emt_bin/pgrep" <<'SH'
+#!/usr/bin/env bash
+[ -e "$EMT_STATE/other-emacs" ]
+SH
+    cat >"$emt_bin/kstart" <<'SH'
+#!/usr/bin/env bash
+printf 'kstart %s\n' "$*" >>"$EMT_LOG"
+touch "$EMT_STATE/remot"
+SH
+    chmod +x "$emt_bin"/*
+    export PATH="$emt_bin:$PATH" EMT_LOG="$emt_log" EMT_STATE="$TEST_HOME/emt-state"
+    emt="$REPO_ROOT/dotfiles/emacs/.local/bin/emt"
+    open_line='emacsclient --socket-name=remot --tty --eval (remot-show-in-terminal-frame)'
+
+    reset_emt() { rm -rf "$EMT_STATE" "$EMT_LOG"; mkdir -p "$EMT_STATE"; }
+
+    reset_emt
+    touch "$EMT_STATE/remot"
+    "$emt"
+    [ "$(tail -n 1 "$EMT_LOG")" = "$open_line" ] && ! grep -q kstart "$EMT_LOG" \
+        || myconfig_fail "emt did not open a terminal frame in the running Remot Emacs"
+
+    reset_emt
+    touch "$EMT_STATE/other-emacs"
+    if WAYLAND_DISPLAY=wayland-0 "$emt" 2>/dev/null; then
+        myconfig_fail "emt accepted an Emacs without the remot server"
+    fi
+    ! grep -q -e kstart -e -- --tty "$EMT_LOG" \
+        || myconfig_fail "emt started a second Emacs beside one without the remot server"
+
+    reset_emt
+    if env -u WAYLAND_DISPLAY -u DISPLAY "$emt" 2>/dev/null; then
+        myconfig_fail "emt succeeded without Emacs or a desktop session"
+    fi
+
+    reset_emt
+    WAYLAND_DISPLAY=wayland-0 "$emt"
+    grep -qx 'kstart --application emacs' "$EMT_LOG" \
+        && [ "$(tail -n 1 "$EMT_LOG")" = "$open_line" ] \
+        || myconfig_fail "emt did not start graphical Emacs and then open a terminal frame"
 )
 
 source "$REPO_ROOT/linux/modules/axidev-osk.sh"

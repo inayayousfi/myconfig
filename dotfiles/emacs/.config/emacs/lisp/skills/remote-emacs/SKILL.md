@@ -5,7 +5,7 @@ description: "Use whenever something could be done in the user's running Emacs: 
 
 # Running Emacs
 
-The user's graphical Emacs runs a server named `remot`. `emacsclient` sends it Lisp expressions and files, and they act on the Emacs the user is looking at.
+The user's Emacs runs a server named `remot`. `emacsclient` sends it Lisp expressions and files, and they act on the Emacs the user is looking at.
 
 {{environment-note}}
 

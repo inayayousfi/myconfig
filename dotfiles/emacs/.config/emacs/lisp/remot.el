@@ -330,6 +330,17 @@ Its return value is passed unchanged to `remot-initialize-frame-function'."
       (funcall remot-initialize-frame-function
                remot-context (selected-frame)))))
 
+(defun remot-show-in-terminal-frame ()
+  "Show the graphical frame's context in the selected text frame.
+The `emt' command calls this through emacsclient once its terminal
+frame exists, so the frame opens where the browser terminal would.
+Without a graphical frame, the text frame's own context is used."
+  (when-let* ((source-frame (or (remot-source-frame) (selected-frame)))
+              ((and remot-context-function remot-initialize-frame-function)))
+    (funcall remot-initialize-frame-function
+             (funcall remot-context-function source-frame)
+             (selected-frame))))
+
 (defun remot-websocket-open (websocket)
   (if (not (remot-origin-p (websocket-origin websocket)))
       (websocket-close websocket)
@@ -568,10 +579,11 @@ key file goes where emacsclient finds it by name alone."
          (signal (car error) (cdr error)))))))
 
 (defun remot-setup ()
-  "Start Remot's local server in a graphical Emacs.
-On GNU/Linux, also configure the browser terminal and graphical-window
+  "Start Remot's local server in every interactive Emacs.
+A daemon or terminal-only Emacs needs no browser password for it.  On
+GNU/Linux, also configure the browser terminal and graphical-window
 shutdown."
-  (when (display-graphic-p)
+  (unless noninteractive
     (remot-start-local-server))
   (when (eq system-type 'gnu/linux)
     (add-hook 'delete-frame-functions

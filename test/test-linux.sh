@@ -698,6 +698,13 @@ XDG_CONFIG_HOME="$window_rules_config" configure_kde_plasma_window_rules
     = true ] \
     || myconfig_fail "KDE Plasma picture-in-picture rule does not exclude windows from capture"
 
+notifications_config="$TEST_HOME/kde-notifications"
+mkdir -p "$notifications_config"
+XDG_CONFIG_HOME="$notifications_config" configure_kde_plasma_notifications
+[ "$(XDG_CONFIG_HOME="$notifications_config" kreadconfig6 --file plasmanotifyrc --group DoNotDisturb --key WhenFullscreen)" \
+    = false ] \
+    || myconfig_fail "KDE Plasma still turns on Do Not Disturb for fullscreen windows"
+
 MYCONFIG_PROFILE=arch-wsl
 if module_kde_plasma >/dev/null 2>&1; then
     myconfig_fail "KDE Plasma module accepted a non-CachyOS profile"

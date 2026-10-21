@@ -58,6 +58,12 @@ configure_kde_plasma_window_rules() {
     kwriteconfig6 --file kwinrulesrc --group General --key count "${#rule_ids[@]}"
 }
 
+configure_kde_plasma_notifications() {
+    # Plasma turns on Do Not Disturb while a window is fullscreen, which hides
+    # every notification until the window leaves fullscreen.
+    kwriteconfig6 --file plasmanotifyrc --group DoNotDisturb --key WhenFullscreen false
+}
+
 configure_kde_plasma_input() {
     local pointer_group=(--group Libinput --group Defaults --group Pointer)
     local touchpad_group=(--group Libinput --group Defaults --group Touchpad)
@@ -152,6 +158,7 @@ module_kde_plasma() {
     configure_kde_plasma_fonts
     configure_kde_plasma_desktops
     configure_kde_plasma_window_rules
+    configure_kde_plasma_notifications
     configure_kde_plasma_input
     configure_kde_plasma_cursor_theme
 

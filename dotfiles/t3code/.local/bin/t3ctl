@@ -1,0 +1,252 @@
+#!/usr/bin/env bash
+
+# Manage the T3 Code server on this machine: its install, its background
+# service, and the two remote routes (T3 Connect and Tailscale Serve).
+set -u
+
+T3_PREFIX="$HOME/.local"
+T="$T3_PREFIX/bin/t3"
+T3_HOME="${T3CODE_HOME:-$HOME/.t3}"
+SERVICE_ENV="$T3_HOME/service.env"
+SERVICE=t3code.service
+# The server listens only on this machine; each route reaches it from here.
+LOCAL_HOST=127.0.0.1
+LOCAL_PORT=3773
+TAILSCALE_PORT=10000
+
+if [[ -t 1 ]]; then
+    BOLD=$'\e[1m'; RED=$'\e[31m'; GREEN=$'\e[32m'; YELLOW=$'\e[33m'; BLUE=$'\e[34m'; RESET=$'\e[0m'
+else
+    BOLD=""; RED=""; GREEN=""; YELLOW=""; BLUE=""; RESET=""
+fi
+
+info() { printf '%s→%s %s\n' "$BLUE" "$RESET" "$*"; }
+ok() { printf '%s✓%s %s\n' "$GREEN" "$RESET" "$*"; }
+warn() { printf '%s!%s %s\n' "$YELLOW" "$RESET" "$*" >&2; }
+die() { printf '%s✗%s %s\n' "$RED" "$RESET" "$*" >&2; exit 1; }
+section() { printf '\n%s%s%s\n' "$BOLD" "$1" "$RESET"; }
+
+usage() {
+    cat <<EOF
+Usage: t3ctl <command>
+
+  status    Show the server, its version and both remote routes.
+  remote    Turn T3 Connect or Tailscale on or off, signing in and pairing as needed.
+  update    Install the newest t3 from npm and move the service to it.
+  repair    Reinstall what is missing and recreate the background service.
+EOF
+}
+
+require() {
+    command -v "$1" >/dev/null 2>&1 || die "$1 is not installed or is not in PATH."
+}
+
+ask_yes() {
+    local answer
+    read -r -p "$1 [Y/n] " answer
+    [[ ! "$answer" =~ ^[Nn]([Oo])?$ ]]
+}
+
+# t3 pair and t3 connect find the server through its runtime file, which it
+# writes only once it is ready.
+wait_for_server() {
+
+    for _ in {1..60}; do
+        if [ -f "$T3_HOME/userdata/server-runtime.json" ] \
+            && curl -fs -o /dev/null "http://$LOCAL_HOST:$LOCAL_PORT/"; then
+            return 0
+        fi
+        sleep 1
+    done
+    die "T3 Code did not answer on $LOCAL_HOST:$LOCAL_PORT within 60 seconds. See: t3 service status"
+}
+
+restart_service() {
+    info "Restarting $SERVICE"
+    systemctl --user restart "$SERVICE" || die "$SERVICE did not restart."
+    wait_for_server
+}
+
+# The server installs the relay client version pinned to its release and
+# replaces any other managed version when it starts.
+check_relay() {
+    local status
+    info "Waiting for the T3 Connect tunnel"
+    for _ in {1..60}; do
+        status="$("$T" connect status --json --log-level error 2>/dev/null)"
+        [ "$(jq -r '.reachability.status' <<<"$status")" = reachable ] && break
+        sleep 1
+    done
+    [ "$(jq -r '.relayClient.status' <<<"$status")" = available ] \
+        || die "The T3 relay client is not available. See: t3 connect status"
+    [ "$(jq -r '.relayClient.source' <<<"$status")" = managed ] \
+        || die "The T3 relay client is not the one T3 installs. See: t3 connect status"
+    [ "$(jq -r '.reachability.status' <<<"$status")" = reachable ] \
+        || die "T3 Connect is not reachable from other devices. See: t3 connect status"
+    ok "T3 Connect is reachable through relay client $(jq -r '.relayClient.version' <<<"$status")"
+}
+
+connect_field() {
+    "$T" connect status --json --log-level error 2>/dev/null | jq -r ".$1"
+}
+
+connect_enabled() {
+    [ "$(connect_field desired)" = true ]
+}
+
+tailscale_enabled() {
+    tailscale serve status --json 2>/dev/null \
+        | jq -e --arg port "$TAILSCALE_PORT" '.TCP[$port] != null' >/dev/null
+}
+
+tailscale_url() {
+    local name
+    name="$(tailscale status --self --json 2>/dev/null | jq -r '.Self.DNSName // empty')"
+    [ -n "$name" ] && printf 'https://%s:%s/\n' "${name%.}" "$TAILSCALE_PORT"
+}
+
+on_off() {
+    if "$@"; then printf '%son%s' "$GREEN" "$RESET"; else printf 'off'; fi
+}
+
+set_service_env() {
+    local key="$1" value="$2"
+    mkdir -p "$T3_HOME"
+    touch "$SERVICE_ENV"
+    chmod 600 "$SERVICE_ENV"
+    if grep -q "^$key=" "$SERVICE_ENV"; then
+        sed -i "s|^$key=.*|$key=$value|" "$SERVICE_ENV"
+    else
+        printf '%s=%s\n' "$key" "$value" >>"$SERVICE_ENV"
+    fi
+}
+
+cmd_status() {
+    require jq
+    [ -x "$T" ] || die "t3 is not installed at $T. Run: t3ctl repair"
+
+    section "T3 Code"
+    printf '  Version: %s\n' "$("$T" --version 2>/dev/null)"
+    printf '  Service: %s\n' "$(systemctl --user is-active "$SERVICE" 2>/dev/null)"
+    printf '  Local:   http://%s:%s/\n' "$LOCAL_HOST" "$LOCAL_PORT"
+
+    section "Remote routes"
+    printf '  T3 Connect: %s\n' "$(on_off connect_enabled)"
+    printf '  Tailscale:  %s' "$(on_off tailscale_enabled)"
+    if tailscale_enabled; then
+        printf '  %s' "$(tailscale_url)"
+    fi
+    printf '\n'
+
+    section "T3 Connect details"
+    "$T" connect status --log-level error
+}
+
+enable_connect() {
+    if [ "$(connect_field authenticated)" != true ]; then
+        info "Signing in to T3 Connect. Approve the code from any device."
+        "$T" connect login --headless || die "T3 Connect sign-in failed."
+    fi
+    "$T" connect link --headless || die "T3 Connect could not link this machine."
+    restart_service
+    check_relay
+    section "Pairing"
+    "$T" pair --log-level error
+}
+
+disable_connect() {
+    "$T" connect unlink || die "T3 Connect could not unlink this machine."
+    restart_service
+    ok "T3 Connect is off. The sign-in is kept for next time."
+}
+
+enable_tailscale() {
+    if ! tailscale status >/dev/null 2>&1; then
+        info "This machine is not connected to Tailscale. Signing in."
+        tailscale up || die "Tailscale sign-in failed."
+    fi
+    section "Pairing"
+    "$T" pair --tailscale --tailscale-serve-port "$TAILSCALE_PORT" --log-level error \
+        || die "T3 could not publish itself through Tailscale Serve."
+}
+
+disable_tailscale() {
+    tailscale serve --https="$TAILSCALE_PORT" off || die "Tailscale Serve did not remove port $TAILSCALE_PORT."
+    ok "Tailscale route is off."
+}
+
+cmd_remote() {
+    require jq
+    require tailscale
+    [ -x "$T" ] || die "t3 is not installed at $T. Run: t3ctl repair"
+    systemctl --user --quiet is-active "$SERVICE" || die "$SERVICE is not running. Run: t3ctl repair"
+
+    section "Remote routes"
+    printf '  1) T3 Connect  %s\n' "$(on_off connect_enabled)"
+    printf '  2) Tailscale   %s\n' "$(on_off tailscale_enabled)"
+    local choice
+    read -r -p "Which route do you want to change? [1/2] " choice
+
+    case "$choice" in
+        1)
+            if connect_enabled; then
+                ask_yes "Turn T3 Connect off?" && disable_connect
+            else
+                ask_yes "Turn T3 Connect on?" && enable_connect
+            fi
+            ;;
+        2)
+            if tailscale_enabled; then
+                ask_yes "Turn the Tailscale route off?" && disable_tailscale
+            else
+                ask_yes "Turn the Tailscale route on?" && enable_tailscale
+            fi
+            ;;
+        *) die "No route chosen." ;;
+    esac
+}
+
+install_t3() {
+    require npm
+    info "Installing $1 from npm into $T3_PREFIX"
+    npm install -g --prefix "$T3_PREFIX" "$1" || die "npm could not install $1."
+    [ -x "$T" ] || die "npm did not install t3 at $T."
+}
+
+install_service() {
+    if [ "$(loginctl show-user "$(id -un)" -p Linger --value 2>/dev/null)" != yes ]; then
+        info "Keeping user services running at boot and after logout"
+        loginctl enable-linger "$(id -un)" || die "Could not enable lingering."
+    fi
+    set_service_env T3CODE_HOST "$LOCAL_HOST"
+    set_service_env T3CODE_PORT "$LOCAL_PORT"
+    "$T" service install || die "t3 could not install its background service."
+    # The service reads service.env only when it starts.
+    restart_service
+    systemctl --user --quiet is-active "$SERVICE" || die "$SERVICE is not running after installation."
+    ok "$SERVICE is running on http://$LOCAL_HOST:$LOCAL_PORT/"
+    if connect_enabled; then
+        check_relay
+    fi
+}
+
+cmd_update() {
+    install_t3 t3@latest
+    # t3 update cannot repoint an npm install, so the service is reinstalled
+    # from the new npm version instead.
+    install_service
+}
+
+cmd_repair() {
+    [ -x "$T" ] || install_t3 t3
+    install_service
+}
+
+case "${1:-}" in
+    status) cmd_status ;;
+    remote) cmd_remote ;;
+    update) cmd_update ;;
+    repair) cmd_repair ;;
+    -h | --help | help) usage ;;
+    *) usage >&2; exit 2 ;;
+esac

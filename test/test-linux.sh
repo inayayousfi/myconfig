@@ -136,7 +136,7 @@ for cleanup_profile in cachyos arch-wsl; do
         for unrelated_module in ssh ssh_server flatpak appimage zsh ghostty axidev_osk tailscale \
             agents_packages dotfiles android_phone emacs refind \
             kanata kde_plasma_validate kde_plasma kanata_kde handy pipewire \
-            docker agents_configure authentication; do
+            docker agents_configure t3code authentication; do
             eval "module_${unrelated_module}() { :; }"
         done
         write_environment_inventory() { :; }
@@ -1197,6 +1197,87 @@ if grep -Fq 'curl:' "$osk_test_log"; then
     myconfig_fail "Axidev OSK rerun downloaded a bootstrap installer"
 fi
 
+source "$REPO_ROOT/linux/modules/tailscale.sh"
+tailscale_test_log="$TEST_HOME/tailscale-module.log"
+: >"$tailscale_test_log"
+(
+    install_package_ids() { :; }
+    sudo() {
+        printf 'sudo:%s\n' "$*" >>"$tailscale_test_log"
+    }
+    systemctl() {
+        printf 'active\n'
+    }
+    tailscale() {
+        printf '{"OperatorUser":"%s"}\n' "$(id -un)"
+    }
+    module_tailscale
+)
+grep -Fxq "sudo:tailscale set --operator=$(id -un)" "$tailscale_test_log" \
+    || myconfig_fail "Tailscale module did not make the installing user the operator"
+
+source "$REPO_ROOT/linux/modules/t3code.sh"
+t3_test_home="$TEST_HOME/t3code-home"
+t3_test_bin="$TEST_HOME/t3code-bin"
+t3_test_log="$TEST_HOME/t3code.log"
+mkdir -p "$t3_test_home/.local/bin" "$t3_test_home/.t3" "$t3_test_bin"
+ln -s "$REPO_ROOT/dotfiles/t3code/.local/bin/t3ctl" "$t3_test_home/.local/bin/t3ctl"
+printf 'OPENAI_API_KEY=kept\nT3CODE_PORT=4000\n' >"$t3_test_home/.t3/service.env"
+: >"$t3_test_log"
+cat >"$t3_test_bin/npm" <<'EOF'
+#!/usr/bin/env bash
+printf 'npm:%s\n' "$*" >>"$T3_TEST_LOG"
+mkdir -p "$HOME/.local/bin"
+printf '#!/usr/bin/env bash\nprintf "t3:%%s\\n" "$*" >>"$T3_TEST_LOG"\n' >"$HOME/.local/bin/t3"
+chmod +x "$HOME/.local/bin/t3"
+EOF
+cat >"$t3_test_bin/systemctl" <<'EOF'
+#!/usr/bin/env bash
+printf 'systemctl:%s\n' "$*" >>"$T3_TEST_LOG"
+case "$*" in
+    *is-active*) [ -z "${T3_TEST_INACTIVE:-}" ] ;;
+esac
+EOF
+cat >"$t3_test_bin/loginctl" <<'EOF'
+#!/usr/bin/env bash
+case "$1" in
+    show-user) printf 'no\n' ;;
+    *) printf 'loginctl:%s\n' "$*" >>"$T3_TEST_LOG" ;;
+esac
+EOF
+# The server writes its runtime file once it is ready.
+mkdir -p "$t3_test_home/.t3/userdata"
+: >"$t3_test_home/.t3/userdata/server-runtime.json"
+printf '#!/usr/bin/env bash\n' >"$t3_test_bin/curl"
+printf '#!/usr/bin/env bash\nprintf "sudo:%%s\\n" "$*" >>"$T3_TEST_LOG"\n' >"$t3_test_bin/sudo"
+chmod +x "$t3_test_bin"/*
+(
+    # Earlier checks leave shell functions with these names behind.
+    unset -f npm systemctl loginctl sudo curl
+    export HOME="$t3_test_home" PATH="$t3_test_bin:/usr/bin:/bin" T3_TEST_LOG="$t3_test_log"
+    MYCONFIG_PROFILE=cachyos
+    module_t3code
+)
+grep -Fxq "npm:install -g --prefix $t3_test_home/.local t3" "$t3_test_log" \
+    || myconfig_fail "T3 Code module did not install t3 from npm into ~/.local"
+grep -Fxq "loginctl:enable-linger $(id -un)" "$t3_test_log" \
+    || myconfig_fail "T3 Code module did not keep the service running at boot"
+grep -Fxq 't3:service install' "$t3_test_log" \
+    || myconfig_fail "T3 Code module did not install the T3 Code service"
+grep -Fxq 'systemctl:--user restart t3code.service' "$t3_test_log" \
+    || myconfig_fail "T3 Code module did not restart the service to apply service.env"
+[ "$(sort "$t3_test_home/.t3/service.env")" = "$(printf 'OPENAI_API_KEY=kept\nT3CODE_HOST=127.0.0.1\nT3CODE_PORT=3773')" ] \
+    || myconfig_fail "T3 Code service.env does not bind 127.0.0.1:3773 while keeping other settings"
+if (
+    # Earlier checks leave shell functions with these names behind.
+    unset -f npm systemctl loginctl sudo curl
+    export HOME="$t3_test_home" PATH="$t3_test_bin:/usr/bin:/bin" T3_TEST_LOG="$t3_test_log" T3_TEST_INACTIVE=1
+    MYCONFIG_PROFILE=cachyos
+    module_t3code
+) >/dev/null 2>&1; then
+    myconfig_fail "T3 Code module succeeded without an active service"
+fi
+
 cachyos_profile="$(
     source "$REPO_ROOT/linux/profiles/cachyos.sh"
     declare -f run_profile
@@ -1233,6 +1314,16 @@ done
     || myconfig_fail "CachyOS profile does not include the Kanata KDE tray"
 [[ "$cachyos_profile" == *module_handy* ]] \
     || myconfig_fail "CachyOS profile does not include Handy"
+for profile_source in "$cachyos_profile" "$arch_wsl_profile"; do
+    [[ "$profile_source" == *module_t3code* ]] \
+        || myconfig_fail "a Linux workstation profile does not include the T3 Code server"
+done
+[[ "$ubuntu_profile" != *module_t3code* ]] \
+    || myconfig_fail "Ubuntu Server profile includes the T3 Code server"
+for t3_profile in cachyos arch-wsl; do
+    MYCONFIG_PROFILE="$t3_profile" dotfile_packages_for_profile | grep -Fxq t3code \
+        || myconfig_fail "$t3_profile does not deploy the t3code package"
+done
 for app_module in module_flatpak module_appimage; do
     [[ "$cachyos_profile" == *"$app_module"* ]] \
         || myconfig_fail "CachyOS profile does not include $app_module"

@@ -238,6 +238,8 @@ function Install-WingetPackages {
         Write-Log "Skipping winget Supplementary packages"
     }
 
+    $installT3Code = Confirm-InstallPackageGroup -Name "T3 Code" -Description "T3 Code server started at boot, with Tailscale, Node.js when npm is missing, and t3ctl"
+
     if (Confirm-InstallPackageGroup -Name "Arch WSL" -Description "fresh Arch Linux WSL distro named after this computer; unregisters an existing distro with that name first") {
         $archWslScript = Join-Path $ScriptDir "setup-arch-wsl.ps1"
         if (Test-Path $archWslScript) {
@@ -251,6 +253,7 @@ function Install-WingetPackages {
 
     return @{
         DevTools = $installedDevTools
+        T3Code = $installT3Code
     }
 }
 
@@ -533,6 +536,37 @@ function Install-AIConfig {
     Write-Log "AI config installed" -Level 'OK'
 }
 
+# ============================================================================
+# T3 Code
+# ============================================================================
+
+function Update-SessionPath {
+    # winget installs change the stored PATH, not this session's copy.
+    $env:Path = @(
+        [Environment]::GetEnvironmentVariable("Path", "Machine"),
+        [Environment]::GetEnvironmentVariable("Path", "User")
+    ) -join ";"
+}
+
+function Install-T3Code {
+    winget install --id Tailscale.Tailscale --exact --accept-source-agreements --accept-package-agreements | ForEach-Object { Write-Host $_ }
+    # nvm for Windows owns node and npm where it is installed; a second Node
+    # from winget would compete with it on PATH.
+    Update-SessionPath
+    if (-not (Test-CommandExists "npm")) {
+        winget install --id OpenJS.NodeJS.LTS --exact --accept-source-agreements --accept-package-agreements | ForEach-Object { Write-Host $_ }
+        Update-SessionPath
+    }
+    if (-not (Test-CommandExists "npm")) { throw "npm is still missing after installing Node.js" }
+    if (-not (Test-CommandExists "tailscale")) { throw "tailscale is missing after installing Tailscale" }
+
+    $t3ctl = Join-Path $env:USERPROFILE ".local\bin\t3ctl.ps1"
+    Copy-DotfileSafe -Source (Join-Path $WindowsDotfilesDir "T3Code\t3ctl.ps1") -Destination $t3ctl -Required
+    & $t3ctl repair
+    if ($LASTEXITCODE -ne 0) { throw "t3ctl could not install the T3 Code server" }
+    Write-Log "T3 Code server installed; t3ctl remote turns its routes on" -Level 'OK'
+}
+
 function Merge-JsonObject {
     # Copies every value of Source into Target, descending into nested objects.
     param($Target, $Source)
@@ -753,6 +787,9 @@ function Main {
     Invoke-InstallStep "AutoHotkey scripts" { Install-AHKScripts }
     Invoke-InstallStep "AI config" { Install-AIConfig }
     Invoke-InstallStep "peon-ping sounds" { Install-PeonPing }
+    if ($installedPackages.T3Code) {
+        Invoke-InstallStep "T3 Code" { Install-T3Code }
+    }
 
     # Install the supporting tools and modules that the dotfiles expect.
     Invoke-InstallStep "PSReadLine module" { Install-PSReadLineModule }

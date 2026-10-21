@@ -204,6 +204,7 @@ This file describes the capabilities installed for the $platform.
 - **Agent sounds**: peon-ping, installed from its main branch into \`~/.claude/hooks/peon-ping\`, plays the plain pack from \`~/.config/peon-ping\` when Claude Code finishes, needs approval, hits an error or reaches a limit. Its \`peon\` command and \`/peon-ping-*\` skills control it.
 - **Claude configuration**: \`claude-config-helper\` trusts projects, marks Claude's first-run setup as finished, lists or clears saved approvals, applies the MCP servers listed in \`~/.config/claude-config-helper/mcp-servers.json\`, and checks files for tokens, email addresses and home paths.
 - **Remote access**: OpenSSH server and Tailscale service with optional login during setup.
+- **T3 Code**: the \`t3\` server from npm in \`~/.local/bin/t3\`, run at boot by the user service \`t3code.service\` on \`127.0.0.1:3773\`. \`t3ctl status\`, \`remote\`, \`update\` and \`repair\` manage it; \`remote\` turns T3 Connect or the Tailscale route (HTTPS port 10000) on or off. Both routes start off.
 EOF
 
     if [ "$MYCONFIG_PROFILE" = cachyos ]; then

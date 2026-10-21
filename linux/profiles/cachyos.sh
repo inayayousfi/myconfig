@@ -26,6 +26,7 @@ run_profile() {
     module_pipewire
     module_docker
     module_agents_configure
+    module_t3code
     module_ssh_server
     module_authentication
     write_environment_inventory

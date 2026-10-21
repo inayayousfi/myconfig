@@ -28,7 +28,7 @@
     "paste": "full"
   },
   "attention": {
-    "notifications": true,
-    "sound": true
+    "notifications": false,
+    "sound": false
   }
 }

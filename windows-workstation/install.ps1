@@ -567,69 +567,17 @@ function Install-T3Code {
     Write-Log "T3 Code server installed; t3ctl remote turns its routes on" -Level 'OK'
 }
 
-function Merge-JsonObject {
-    # Copies every value of Source into Target, descending into nested objects.
-    param($Target, $Source)
-    foreach ($property in $Source.PSObject.Properties) {
-        $existing = $Target.PSObject.Properties[$property.Name]
-        if ($existing -and $existing.Value -is [pscustomobject] -and $property.Value -is [pscustomobject]) {
-            Merge-JsonObject -Target $existing.Value -Source $property.Value
-        } else {
-            $Target | Add-Member -NotePropertyName $property.Name -NotePropertyValue $property.Value -Force
-        }
-    }
-}
-
-function Install-PeonPing {
-    # peon-ping plays a sound when Claude Code finishes or needs the user. Its
-    # installer writes its hooks into the settings.json copied by Install-AIConfig.
-    $sourceDir = Join-Path $SharedDotfilesDir "ai\.config\peon-ping"
-    $peonDir = Join-Path $env:USERPROFILE ".claude\hooks\peon-ping"
-    $settingsPath = Join-Path $env:USERPROFILE ".claude\settings.json"
-
-    # A separate process: the installer calls exit, which would end this script.
-    # A script block built from text has no $PSScriptRoot, so the installer
-    # downloads its helper files instead of looking beside itself.
-    $installerUrl = "https://raw.githubusercontent.com/PeonPing/peon-ping/main/install.ps1"
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create((Invoke-RestMethod '$installerUrl'))) -Global -Packs plain"
+function Remove-PeonPing {
+    # T3 Code plays its own sound when an agent finishes, so peon-ping is
+    # removed through its own uninstaller, which also clears its hooks.
+    $peonUninstaller = Join-Path $env:USERPROFILE ".claude\hooks\peon-ping\uninstall.ps1"
+    if (-not (Test-Path $peonUninstaller)) { return }
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $peonUninstaller -Force
     if ($LASTEXITCODE -ne 0) {
-        Write-Log "peon-ping installer failed" -Level 'ERROR'
+        Write-Log "peon-ping uninstaller failed; run $peonUninstaller by hand" -Level 'ERROR'
         return
     }
-
-    # Only Claude Code gets the sounds; the installer also registers other agents it finds.
-    Remove-Item -Path (Join-Path $env:USERPROFILE ".copilot\hooks\peon-ping.json") -Force -ErrorAction SilentlyContinue
-    $codexConfig = Join-Path $env:USERPROFILE ".codex\config.toml"
-    if (Test-Path $codexConfig) {
-        $inBlock = $false
-        $kept = foreach ($line in [System.IO.File]::ReadAllLines($codexConfig)) {
-            if ($line.Trim() -eq '# peon-ping Codex hooks begin') { $inBlock = $true; continue }
-            if ($line.Trim() -eq '# peon-ping Codex hooks end') { $inBlock = $false; continue }
-            if (-not $inBlock) { $line }
-        }
-        [System.IO.File]::WriteAllLines($codexConfig, [string[]]@($kept), (New-Object System.Text.UTF8Encoding $false))
-    }
-
-    $packDir = Join-Path $peonDir "packs\plain"
-    Remove-Item -Path $packDir -Recurse -Force -ErrorAction SilentlyContinue
-    Copy-DotfileSafe -Source (Join-Path $sourceDir "packs\plain") -Destination $packDir -Recurse -Required
-
-    $configPath = Join-Path $peonDir "config.json"
-    $config = [System.IO.File]::ReadAllText($configPath).TrimStart([char]0xFEFF) | ConvertFrom-Json
-    $overrides = Get-Content -Path (Join-Path $sourceDir "config.json") -Raw | ConvertFrom-Json
-    Merge-JsonObject -Target $config -Source $overrides
-    [System.IO.File]::WriteAllText($configPath, ($config | ConvertTo-Json -Depth 10), (New-Object System.Text.UTF8Encoding $false))
-
-    $settings = [System.IO.File]::ReadAllText($settingsPath).TrimStart([char]0xFEFF) | ConvertFrom-Json
-    foreach ($hookEvent in @('Stop', 'PermissionRequest')) {
-        $commands = @($settings.hooks.$hookEvent | ForEach-Object { $_.hooks } | ForEach-Object { $_.command })
-        if (-not ($commands | Where-Object { $_ -like '*peon-ping*' })) {
-            Write-Log "peon-ping did not register its $hookEvent hook in $settingsPath" -Level 'ERROR'
-            return
-        }
-    }
-
-    Write-Log "peon-ping sounds installed" -Level 'OK'
+    Write-Log "peon-ping removed" -Level 'OK'
 }
 
 # ============================================================================
@@ -786,7 +734,7 @@ function Main {
     Invoke-InstallStep "Emacs as editor" { Set-EmacsAsEditor }
     Invoke-InstallStep "AutoHotkey scripts" { Install-AHKScripts }
     Invoke-InstallStep "AI config" { Install-AIConfig }
-    Invoke-InstallStep "peon-ping sounds" { Install-PeonPing }
+    Invoke-InstallStep "peon-ping removal" { Remove-PeonPing }
     if ($installedPackages.T3Code) {
         Invoke-InstallStep "T3 Code" { Install-T3Code }
     }

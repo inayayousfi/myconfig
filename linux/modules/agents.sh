@@ -123,55 +123,20 @@ link_agent_config() {
         || myconfig_fail "Pi AGENTS bridge was not created"
 }
 
-configure_peon_ping() {
-    myconfig_log "Installing peon-ping sounds for Claude Code"
-    require_command curl
-    require_command jq
-    require_command python3
-    require_command sha256sum
-
-    local source_dir="$HOME/.config/peon-ping"
+# T3 Code plays its own sound when an agent finishes, so peon-ping is removed.
+remove_peon_ping() {
     local peon_dir="$HOME/.claude/hooks/peon-ping"
-    local pack_dir="$peon_dir/packs/plain"
-    local settings="$HOME/.claude/settings.json"
-    [ -f "$source_dir/config.json" ] && [ -f "$source_dir/packs/plain/openpeon.json" ] \
-        || myconfig_fail "peon-ping configuration was not stowed from the ai package"
-
-    # The installer stops on a pack missing from its online catalog, but skips a
-    # pack whose sounds match its .checksums file, so the plain pack goes first.
-    rm -rf "$pack_dir"
-    mkdir -p "$peon_dir/packs"
-    cp -RL "$source_dir/packs/plain" "$pack_dir"
-    local sound
-    for sound in "$pack_dir"/sounds/*; do
-        printf '%s %s\n' "$(basename "$sound")" "$(sha256sum "$sound" | cut -d ' ' -f 1)"
-    done >"$pack_dir/.checksums"
-
-    # --no-rc keeps the installer out of the stowed shell files.
-    local peon_installer
-    peon_installer="$(curl -fsSL https://raw.githubusercontent.com/PeonPing/peon-ping/main/install.sh)" \
-        || myconfig_fail "Could not download the peon-ping installer"
-    bash -c "$peon_installer" peon-ping-install --global --no-rc --packs=plain </dev/null \
-        || myconfig_fail "peon-ping installer failed"
-
-    # Only Claude Code gets the sounds; the installer also registers other agents it finds.
-    rm -f "$HOME/.copilot/hooks/peon-ping.json"
-    if [ -f "$HOME/.codex/config.toml" ]; then
-        sed -i '/^# peon-ping Codex hooks begin$/,/^# peon-ping Codex hooks end$/d' "$HOME/.codex/config.toml"
+    if [ -f "$peon_dir/uninstall.sh" ]; then
+        myconfig_log "Removing peon-ping"
+        bash "$peon_dir/uninstall.sh" </dev/null || myconfig_fail "peon-ping uninstaller failed"
     fi
-
-    local merged_config
-    merged_config="$(jq -s '.[0] * .[1]' "$peon_dir/config.json" "$source_dir/config.json")" \
-        || myconfig_fail "Could not merge the peon-ping configuration"
-    printf '%s\n' "$merged_config" >"$peon_dir/config.json"
-
-    [ "$(jq -r '.default_pack' "$peon_dir/config.json")" = plain ] \
-        || myconfig_fail "peon-ping does not use the plain sound pack"
-    [ -f "$pack_dir/sounds/done.wav" ] && [ -f "$pack_dir/sounds/needs-you.wav" ] \
-        || myconfig_fail "The plain peon-ping pack was not installed"
-    jq -e '[.hooks.Stop[]?.hooks[]?.command, .hooks.PermissionRequest[]?.hooks[]?.command]
-            | map(select(endswith("/peon-ping/peon.sh"))) | length == 2' "$settings" >/dev/null \
-        || myconfig_fail "peon-ping hooks are missing from Claude's settings"
+    # Its uninstaller leaves these behind, and a hook still running from an open
+    # Claude session can write its state file again afterwards.
+    rm -rf "$peon_dir" "$HOME/.claude/skills/peon-ping-create-pack" "$HOME/.claude/skills/peon-ping-remix"
+    if [ "$(readlink "$HOME/.local/bin/peon" 2>/dev/null)" = "$peon_dir/peon.sh" ]; then
+        rm -f "$HOME/.local/bin/peon"
+    fi
+    [ ! -d "$HOME/.claude/hooks" ] || rmdir --ignore-fail-on-non-empty "$HOME/.claude/hooks"
 }
 
 write_environment_inventory() {
@@ -201,7 +166,6 @@ This file describes the capabilities installed for the $platform.
 - **Terminal tools**: Yazi, ripgrep, jq, and btop.
 - **Coding agents**: Claude Code, installed by Anthropic's installer in \`~/.local/bin/claude\` and updated by itself. Pi, installed globally by Bun in \`~/.bun/bin/pi\`.
 - **Agent browser tools**: Playwright MCP.
-- **Agent sounds**: peon-ping, installed from its main branch into \`~/.claude/hooks/peon-ping\`, plays the plain pack from \`~/.config/peon-ping\` when Claude Code finishes, needs approval, hits an error or reaches a limit. Its \`peon\` command and \`/peon-ping-*\` skills control it.
 - **Claude configuration**: \`claude-config-helper\` trusts projects, marks Claude's first-run setup as finished, lists or clears saved approvals, applies the MCP servers listed in \`~/.config/claude-config-helper/mcp-servers.json\`, and checks files for tokens, email addresses and home paths.
 - **Remote access**: OpenSSH server and Tailscale service with optional login during setup.
 - **T3 Code**: the \`t3\` server from npm in \`~/.local/bin/t3\`, run at boot by the user service \`t3code.service\` on \`127.0.0.1:3773\`. \`t3ctl status\`, \`remote\`, \`update\` and \`repair\` manage it; \`remote\` turns T3 Connect or the Tailscale route (HTTPS port 10000) on or off. Both routes start off.
@@ -242,7 +206,7 @@ module_agents_configure() {
         || myconfig_fail "claude-config-helper was not stowed as an executable"
     "$HOME/.local/bin/claude-config-helper" mcp apply \
         || myconfig_fail "Could not apply Claude MCP servers"
-    configure_peon_ping
+    remove_peon_ping
 
     if [ "$MYCONFIG_PROFILE" = cachyos ]; then
         require_command ydotool

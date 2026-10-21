@@ -1319,10 +1319,14 @@ chmod +x "$t3_test_bin"/*
 grep -Fxq "npm:install -g --prefix $t3_test_home/.local t3" "$t3_test_log" \
     || myconfig_fail "T3 Code module did not install t3 from npm into ~/.local"
 grep -Fxq "loginctl:enable-linger $(id -un)" "$t3_test_log" \
+    unset T3CODE_HOME
     || myconfig_fail "T3 Code module did not keep the service running at boot"
+    install_package_ids() { printf 'packages:%s\n' "$*" >>"$T3_TEST_LOG"; }
 grep -Fxq 't3:service install' "$t3_test_log" \
     || myconfig_fail "T3 Code module did not install the T3 Code service"
 grep -Fxq 'systemctl:--user restart t3code.service' "$t3_test_log" \
+grep -Fxq 'packages:qrencode' "$t3_test_log" \
+    || myconfig_fail "T3 Code module did not install qrencode for pairing QR codes"
     || myconfig_fail "T3 Code module did not restart the service to apply service.env"
 [ "$(sort "$t3_test_home/.t3/service.env")" = "$(printf 'OPENAI_API_KEY=kept\nT3CODE_HOST=127.0.0.1\nT3CODE_PORT=3773')" ] \
     || myconfig_fail "T3 Code service.env does not bind 127.0.0.1:3773 while keeping other settings"
@@ -1333,10 +1337,23 @@ if (
     MYCONFIG_PROFILE=cachyos
     module_t3code
 ) >/dev/null 2>&1; then
+sed -i 's/^T3CODE_HOST=.*/T3CODE_HOST=0.0.0.0/' "$t3_test_home/.t3/service.env"
+(
+    unset -f npm systemctl loginctl sudo curl
+    unset T3CODE_HOME
+    export HOME="$t3_test_home" PATH="$t3_test_bin:/usr/bin:/bin" T3_TEST_LOG="$t3_test_log"
+    install_package_ids() { printf 'packages:%s\n' "$*" >>"$T3_TEST_LOG"; }
+    MYCONFIG_PROFILE=cachyos
+    module_t3code
+)
+grep -Fxq 'T3CODE_HOST=0.0.0.0' "$t3_test_home/.t3/service.env" \
+    || myconfig_fail "T3 Code repair turned the LAN route off"
     myconfig_fail "T3 Code module succeeded without an active service"
 fi
 
+    unset T3CODE_HOME
 cachyos_profile="$(
+    install_package_ids() { printf 'packages:%s\n' "$*" >>"$T3_TEST_LOG"; }
     source "$REPO_ROOT/linux/profiles/cachyos.sh"
     declare -f run_profile
 )"

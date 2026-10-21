@@ -6,6 +6,8 @@ module_t3code() {
     myconfig_log "Installing the T3 Code server"
     require_command npm
     require_command systemctl
+    # t3ctl draws pairing links as QR codes.
+    install_package_ids qrencode
 
     local t3ctl="$HOME/.local/bin/t3ctl"
     [ -x "$t3ctl" ] || myconfig_fail "t3ctl was not stowed from the t3code package"

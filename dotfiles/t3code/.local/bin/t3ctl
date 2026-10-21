@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
 # Manage the T3 Code server on this machine: its install, its background
-# service, and the two remote routes (T3 Connect and Tailscale Serve).
+# service, its remote routes (T3 Connect, Tailscale Serve and the local
+# network) and pairing from this machine.
 set -u
 
 T3_PREFIX="$HOME/.local"
@@ -9,10 +10,14 @@ T="$T3_PREFIX/bin/t3"
 T3_HOME="${T3CODE_HOME:-$HOME/.t3}"
 SERVICE_ENV="$T3_HOME/service.env"
 SERVICE=t3code.service
-# The server listens only on this machine; each route reaches it from here.
+# The server listens only on this machine unless the LAN route is on; the
+# other routes reach it from here.
 LOCAL_HOST=127.0.0.1
+ANY_HOST=0.0.0.0
 LOCAL_PORT=3773
 TAILSCALE_PORT=10000
+LAN_SUBNETS=(10.0.0.0/8 172.16.0.0/12 192.168.0.0/16)
+LAN_RULE_COMMENT='myconfig T3 Code LAN'
 
 if [[ -t 1 ]]; then
     BOLD=$'\e[1m'; RED=$'\e[31m'; GREEN=$'\e[32m'; YELLOW=$'\e[33m'; BLUE=$'\e[34m'; RESET=$'\e[0m'
@@ -30,8 +35,9 @@ usage() {
     cat <<EOF
 Usage: t3ctl <command>
 
-  status    Show the server, its version and both remote routes.
-  remote    Turn T3 Connect or Tailscale on or off, signing in and pairing as needed.
+  status    Show the server, its version and its remote routes.
+  remote    Turn T3 Connect, Tailscale or the LAN route on or off, signing in and
+            pairing as needed, or print a pairing link for this machine.
   update    Install the newest t3 from npm and move the service to it.
   repair    Reinstall what is missing and recreate the background service.
 EOF
@@ -105,6 +111,21 @@ tailscale_url() {
     [ -n "$name" ] && printf 'https://%s:%s/\n' "${name%.}" "$TAILSCALE_PORT"
 }
 
+service_host() {
+    local host
+    host="$(sed -n 's/^T3CODE_HOST=//p' "$SERVICE_ENV" 2>/dev/null | tail -n 1)"
+    printf '%s\n' "${host:-$LOCAL_HOST}"
+}
+
+lan_enabled() {
+    [ "$(service_host)" = "$ANY_HOST" ]
+}
+
+# The address other devices use is the one this machine sends from.
+lan_address() {
+    ip -4 -o route get 1.1.1.1 2>/dev/null | sed -n 's/.* src \([0-9.]*\).*/\1/p'
+}
+
 on_off() {
     if "$@"; then printf '%son%s' "$GREEN" "$RESET"; else printf 'off'; fi
 }
@@ -135,6 +156,11 @@ cmd_status() {
     printf '  Tailscale:  %s' "$(on_off tailscale_enabled)"
     if tailscale_enabled; then
         printf '  %s' "$(tailscale_url)"
+    fi
+    printf '\n'
+    printf '  LAN:        %s' "$(on_off lan_enabled)"
+    if lan_enabled; then
+        printf '  http://%s:%s/' "$(lan_address)" "$LOCAL_PORT"
     fi
     printf '\n'
 
@@ -175,17 +201,71 @@ disable_tailscale() {
     ok "Tailscale route is off."
 }
 
+print_pairing() {
+    local base_url="$1" label="$2" issued url
+    issued="$("$T" auth pairing create --base-url "$base_url" --label "$label" --ttl 5m \
+        --json --log-level error)" || die "t3 could not create a pairing link."
+    url="$(jq -r '.pairUrl' <<<"$issued")"
+    [ -n "$url" ] && [ "$url" != null ] || die "t3 did not return a pairing link."
+    section "Pairing"
+    qrencode -t ANSIUTF8 "$url" || die "qrencode could not draw the QR code."
+    printf 'Pairing URL: %s\n' "$url"
+    printf 'Expires: %s\n' "$(jq -r '.expiresAt' <<<"$issued")"
+}
+
+pair_local() {
+    print_pairing "http://$LOCAL_HOST:$LOCAL_PORT/" "t3ctl this machine"
+}
+
+pair_lan() {
+    local address
+    address="$(lan_address)"
+    [ -n "$address" ] || die "This machine has no LAN address."
+    print_pairing "http://$address:$LOCAL_PORT/" "t3ctl LAN"
+}
+
+# The server reads its address from service.env only when it starts.
+enable_lan() {
+    set_service_env T3CODE_HOST "$ANY_HOST"
+    if command -v ufw >/dev/null 2>&1; then
+        local subnet
+        for subnet in "${LAN_SUBNETS[@]}"; do
+            sudo ufw allow in proto tcp from "$subnet" to any port "$LOCAL_PORT" \
+                comment "$LAN_RULE_COMMENT" || die "ufw did not open port $LOCAL_PORT to $subnet."
+        done
+    fi
+    restart_service
+    pair_lan
+}
+
+disable_lan() {
+    set_service_env T3CODE_HOST "$LOCAL_HOST"
+    if command -v ufw >/dev/null 2>&1; then
+        local subnet
+        for subnet in "${LAN_SUBNETS[@]}"; do
+            sudo ufw delete allow in proto tcp from "$subnet" to any port "$LOCAL_PORT" \
+                || die "ufw did not close port $LOCAL_PORT to $subnet."
+        done
+    fi
+    restart_service
+    ok "LAN route is off. T3 Code listens only on this machine."
+}
+
 cmd_remote() {
     require jq
     require tailscale
+    require qrencode
+    require ip
     [ -x "$T" ] || die "t3 is not installed at $T. Run: t3ctl repair"
     systemctl --user --quiet is-active "$SERVICE" || die "$SERVICE is not running. Run: t3ctl repair"
 
     section "Remote routes"
     printf '  1) T3 Connect  %s\n' "$(on_off connect_enabled)"
     printf '  2) Tailscale   %s\n' "$(on_off tailscale_enabled)"
+    printf '  3) LAN         %s\n' "$(on_off lan_enabled)"
+    printf '  4) This machine (pairing link only)\n'
     local choice
-    read -r -p "Which route do you want to change? [1/2] " choice
+    read -r -p "Which route do you want to change? [1/2/3/4] " choice
 
     case "$choice" in
         1)
@@ -202,6 +282,18 @@ cmd_remote() {
                 ask_yes "Turn the Tailscale route on?" && enable_tailscale
             fi
             ;;
+        3)
+            if lan_enabled; then
+                if ask_yes "Print a new LAN pairing link?"; then
+                    pair_lan
+                else
+                    ask_yes "Turn the LAN route off?" && disable_lan
+                fi
+            else
+                ask_yes "Turn the LAN route on?" && enable_lan
+            fi
+            ;;
+        4) pair_local ;;
         *) die "No route chosen." ;;
     esac
 }
@@ -218,13 +310,14 @@ install_service() {
         info "Keeping user services running at boot and after logout"
         loginctl enable-linger "$(id -un)" || die "Could not enable lingering."
     fi
-    set_service_env T3CODE_HOST "$LOCAL_HOST"
+    # Keeping the current address keeps the LAN route as it was.
+    set_service_env T3CODE_HOST "$(service_host)"
     set_service_env T3CODE_PORT "$LOCAL_PORT"
     "$T" service install || die "t3 could not install its background service."
     # The service reads service.env only when it starts.
     restart_service
     systemctl --user --quiet is-active "$SERVICE" || die "$SERVICE is not running after installation."
-    ok "$SERVICE is running on http://$LOCAL_HOST:$LOCAL_PORT/"
+    ok "$SERVICE is running on http://$(service_host):$LOCAL_PORT/"
     if connect_enabled; then
         check_relay
     fi

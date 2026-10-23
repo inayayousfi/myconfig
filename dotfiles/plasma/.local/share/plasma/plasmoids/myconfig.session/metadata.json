@@ -1,0 +1,13 @@
+{
+  "KPlugin": {
+    "Name": "Session",
+    "Description": "About this system, settings, system monitor, force quit, sleep, restart, shut down, lock, log out, or switch user",
+    "Icon": "start-here-kde",
+    "Id": "myconfig.session",
+    "Version": "1.0",
+    "License": "MIT",
+    "EnabledByDefault": true
+  },
+  "X-Plasma-API-Minimum-Version": "6.0",
+  "KPackageStructure": "Plasma/Applet"
+}

@@ -6,7 +6,7 @@ module_ssh() {
     [ -d /run/systemd/system ] || myconfig_fail "systemd is not running"
     install_package_ids openssh
 
-    local config_tmp backup_dir had_config=false had_legacy=false
+    local config_tmp backup_dir had_config=false
     config_tmp="$(mktemp)"
     backup_dir="$(mktemp -d)"
     trap 'rm -f -- "$config_tmp"; rm -rf -- "$backup_dir"' RETURN
@@ -24,23 +24,13 @@ EOF
         cp /etc/ssh/sshd_config.d/10-myconfig.conf "$backup_dir/10-myconfig.conf"
         had_config=true
     fi
-    if [ -e /etc/ssh/sshd_config.d/10-local-only.conf ]; then
-        cp /etc/ssh/sshd_config.d/10-local-only.conf "$backup_dir/10-local-only.conf"
-        had_legacy=true
-    fi
 
     sudo install -Dm644 "$config_tmp" /etc/ssh/sshd_config.d/10-myconfig.conf
-    sudo rm -f /etc/ssh/sshd_config.d/10-local-only.conf
 
     if ! sudo sshd -t; then
-        sudo rm -f \
-            /etc/ssh/sshd_config.d/10-myconfig.conf \
-            /etc/ssh/sshd_config.d/10-local-only.conf
+        sudo rm -f /etc/ssh/sshd_config.d/10-myconfig.conf
         if $had_config; then
             sudo install -Dm644 "$backup_dir/10-myconfig.conf" /etc/ssh/sshd_config.d/10-myconfig.conf
-        fi
-        if $had_legacy; then
-            sudo install -Dm644 "$backup_dir/10-local-only.conf" /etc/ssh/sshd_config.d/10-local-only.conf
         fi
         myconfig_fail "OpenSSH rejected its new configuration; the previous one was restored"
         return 1

@@ -2,17 +2,10 @@
 
 dotfile_packages_for_profile() {
     case "$MYCONFIG_PROFILE" in
-        cachyos) printf '%s\n' zsh yazi ai t3code ghostty kanata kanata-kde handy emacs phone pipewire ;;
+        cachyos) printf '%s\n' zsh yazi ai t3code ghostty kanata kanata-kde handy emacs phone pipewire plasma ;;
         arch-wsl) printf '%s\n' zsh yazi ai t3code ;;
         ubuntu-server) printf '%s\n' zsh ;;
         *) myconfig_fail "dotfile packages are undefined for $MYCONFIG_PROFILE" ;;
-    esac
-}
-
-retired_dotfile_packages_for_profile() {
-    case "$MYCONFIG_PROFILE" in
-        cachyos) printf '%s\n' hunk lazygit nvim tmux zed ;;
-        arch-wsl) printf '%s\n' hunk lazygit nvim tmux ;;
     esac
 }
 
@@ -136,9 +129,7 @@ module_dotfiles() {
     local dotfiles_dir="$HOME/dotfiles"
     local staging_dir
     local packages=()
-    local retired_packages=()
     mapfile -t packages < <(dotfile_packages_for_profile)
-    mapfile -t retired_packages < <(retired_dotfile_packages_for_profile)
 
     [ -d "$source_dir" ] || myconfig_fail "dotfiles source not found: $source_dir"
     validate_dotfile_packages "$source_dir" "${packages[@]}"
@@ -160,11 +151,6 @@ module_dotfiles() {
     fi
 
     if [ -e "$dotfiles_dir" ] || [ -L "$dotfiles_dir" ]; then
-        for package in "${retired_packages[@]}"; do
-            [ -d "$dotfiles_dir/$package" ] || continue
-            stow --dir "$dotfiles_dir" --target "$HOME" --delete "$package"
-        done
-
         local dotfiles_backup
         dotfiles_backup="$(unique_backup_path "$dotfiles_dir")"
         myconfig_log "Backing up existing dotfiles to $dotfiles_backup"
@@ -178,8 +164,11 @@ module_dotfiles() {
     backup_dotfile_conflicts "$dotfiles_dir" "${packages[@]}"
 
     # Real directories keep Stow from folding these into one package, where
-    # programs and Claude data written later would land inside the deployed tree.
+    # programs, Claude data, KWin scripts and Plasma widgets written later would
+    # land inside the deployed tree.
     mkdir -p "$HOME/.local/bin" "$HOME/.claude"
+    [ ! -d "$dotfiles_dir/plasma" ] \
+        || mkdir -p "$HOME/.local/share/kwin/scripts" "$HOME/.local/share/plasma/plasmoids"
     for package in "${packages[@]}"; do
         stow --dir "$dotfiles_dir" --target "$HOME" --restow "$package"
     done

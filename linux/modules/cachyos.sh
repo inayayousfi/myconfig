@@ -11,5 +11,6 @@ module_cachyos() {
         cachyos_emerald_kde_theme cachyos_iridescent_kde cachyos_nord_kde_theme \
         kate micro cachyos_micro_settings nano nano_syntax_highlighting meld \
         glances duf tealdeer filelight pavucontrol kcalc shelly \
-        cachyos_packageinstaller expac cachyos_wallpapers hwdetect qtscrcpy
+        cachyos_packageinstaller expac cachyos_wallpapers hwdetect qtscrcpy \
+        fzf bat eza
 }

@@ -108,21 +108,23 @@ cachyos_actions="$({
     }
     module_cachyos
 })"
-[ "$cachyos_actions" = $'[myconfig][cachyos] Configuring CachyOS stable kernel tools\ninstall:cachyos_kernel_manager linux_cachyos noto_fonts_cjk\nremove:konsole alacritty cachyos_hello cachyos_zsh_config vim fish cachyos_fish_config fish_autopair fish_pure_prompt fisher firefox firefox_i18n_fr meslo_font cachyos_emerald_kde_theme cachyos_iridescent_kde cachyos_nord_kde_theme kate micro cachyos_micro_settings nano nano_syntax_highlighting meld glances duf tealdeer filelight pavucontrol kcalc shelly cachyos_packageinstaller expac cachyos_wallpapers hwdetect qtscrcpy' ] \
+[ "$cachyos_actions" = $'[myconfig][cachyos] Configuring CachyOS stable kernel tools\ninstall:cachyos_kernel_manager linux_cachyos noto_fonts_cjk\nremove:konsole alacritty cachyos_hello cachyos_zsh_config vim fish cachyos_fish_config fish_autopair fish_pure_prompt fisher firefox firefox_i18n_fr meslo_font cachyos_emerald_kde_theme cachyos_iridescent_kde cachyos_nord_kde_theme kate micro cachyos_micro_settings nano nano_syntax_highlighting meld glances duf tealdeer filelight pavucontrol kcalc shelly cachyos_packageinstaller expac cachyos_wallpapers hwdetect qtscrcpy fzf bat eza' ] \
     || myconfig_fail "CachyOS module did not configure the stable kernel tools and removals"
 
 source "$REPO_ROOT/linux/modules/cli.sh"
 source "$REPO_ROOT/linux/modules/terminal-tools.sh"
 source "$REPO_ROOT/linux/modules/runtimes.sh"
+# Packages that CachyOS installs itself, which its profile removes.
 removed_packages=(
+    konsole alacritty cachyos-hello cachyos-zsh-config vim
+    fish cachyos-fish-config fish-autopair fish-pure-prompt fisher
     firefox firefox-i18n-fr ttf-meslo-nerd
     cachyos-emerald-kde-theme-git cachyos-iridescent-kde cachyos-nord-kde-theme-git
     kate micro cachyos-micro-settings nano nano-syntax-highlighting meld
-    glances duf tealdeer eza filelight pavucontrol kcalc shelly
-    cachyos-packageinstaller expac cachyos-wallpapers fd hwdetect fzf bat
-    hunk-bin neovim lazygit tmux qtscrcpy zoxide
+    glances duf tealdeer filelight pavucontrol kcalc shelly
+    cachyos-packageinstaller expac cachyos-wallpapers hwdetect qtscrcpy
+    fzf bat eza cachy-update
 )
-retired_cli_packages=(fd fzf zoxide eza bat hunk-bin neovim lazygit tmux)
 
 for cleanup_profile in cachyos arch-wsl; do
     profile_actions="$(
@@ -144,20 +146,19 @@ for cleanup_profile in cachyos arch-wsl; do
         source "$REPO_ROOT/linux/profiles/$cleanup_profile.sh"
         run_profile
     )"
-    profile_removed_packages=("${retired_cli_packages[@]}")
+    # Only CachyOS removes packages, and only the defaults it ships.
     if [ "$cleanup_profile" = cachyos ]; then
-        profile_removed_packages=("${removed_packages[@]}")
+        for package in "${removed_packages[@]}"; do
+            grep -Eq "^remove:(official|aur):${package}$" <<<"$profile_actions" \
+                || myconfig_fail "$cleanup_profile did not request removal of $package"
+        done
     fi
-    for package in "${profile_removed_packages[@]}"; do
-        grep -Eq "^remove:(official|aur):${package}$" <<<"$profile_actions" \
-            || myconfig_fail "$cleanup_profile did not request removal of $package"
-    done
+    while IFS= read -r removal; do
+        package="${removal#remove:*:}"
+        [ "$cleanup_profile" = cachyos ] && [[ " ${removed_packages[*]} " == *" $package "* ]] \
+            || myconfig_fail "$cleanup_profile requested removal of $package, which it does not ship"
+    done < <(grep '^remove:' <<<"$profile_actions" || true)
     for package in "${removed_packages[@]}"; do
-        if [ "$cleanup_profile" = arch-wsl ] \
-            && [[ " ${retired_cli_packages[*]} " != *" $package "* ]] \
-            && grep -Eq "^remove:(official|aur):${package}$" <<<"$profile_actions"; then
-            myconfig_fail "Arch WSL requested CachyOS-specific removal of $package"
-        fi
         if grep -Eq "^install:(official|aur):${package}$" <<<"$profile_actions"; then
             myconfig_fail "$cleanup_profile still requested installation of $package"
         fi
@@ -389,19 +390,7 @@ profile_home="$TEST_HOME/profile-home"
 HOME="$profile_home"
 MYCONFIG_PROFILE=arch-wsl
 MYCONFIG_DOTFILES_SOURCE="$REPO_ROOT/dotfiles"
-mkdir -p "$HOME/.config" "$HOME/dotfiles/nvim/.config/nvim"
-printf 'retired\n' >"$HOME/dotfiles/nvim/.config/nvim/init.lua"
-stow --dir "$HOME/dotfiles" --target "$HOME" nvim
-[ -L "$HOME/.config/nvim" ] \
-    || myconfig_fail "retired Neovim fixture was not stowed"
-
-module_dotfiles
-[ ! -e "$HOME/.config/nvim" ] && [ ! -L "$HOME/.config/nvim" ] \
-    || myconfig_fail "Arch WSL migration preserved a retired Neovim dotfile link"
-shopt -s nullglob
-retired_backups=("$HOME"/dotfiles.backup.*/nvim/.config/nvim/init.lua)
-[ "${#retired_backups[@]}" -eq 1 ] \
-    || myconfig_fail "Arch WSL migration did not back up its retired Neovim package"
+mkdir -p "$HOME/.config"
 module_dotfiles
 [ "$(readlink -f "$HOME/.local/bin")" = "$(readlink -f "$HOME")/.local/bin" ] \
     || myconfig_fail "Arch WSL folded ~/.local/bin into a deployed package"
@@ -714,18 +703,18 @@ plasma_layout_test_root="$TEST_HOME/kde-plasma"
 plasma_layout_home="$plasma_layout_test_root/home"
 plasma_layout_bin="$plasma_layout_test_root/bin"
 plasma_repo_root="$plasma_layout_test_root/repo"
-mkdir -p "$plasma_layout_home/.config" "$plasma_layout_bin" "$plasma_repo_root/linux/assets/glassy-blacknpink-plasma"
+plasma_module_log="$plasma_layout_test_root/module.log"
+mkdir -p "$plasma_layout_home/.config" "$plasma_layout_bin" "$plasma_repo_root/linux/assets" \
+    "$plasma_layout_home/.local/bin" "$plasma_layout_home/.local/share/kwin/scripts/myconfig-panels"
 ln -s "$REPO_ROOT/linux/assets/libinput" "$plasma_repo_root/linux/assets/libinput"
-# Stand-ins for the theme repository's install script and layout command.
-cat >"$plasma_repo_root/linux/assets/glassy-blacknpink-plasma/install.sh" <<'EOF'
-glassy_blacknpink_install() { printf '%s\n' theme:install >>"$plasma_module_log"; }
-glassy_blacknpink_activate() { printf '%s\n' theme:activate >>"$plasma_module_log"; }
-EOF
-cat >"$plasma_layout_bin/glassy-blacknpink-layout" <<EOF
+# A stand-in for the deployed layout command.
+cat >"$plasma_layout_home/.local/bin/myconfig-plasma-layout" <<EOF
 #!/usr/bin/env bash
-printf '%s\n' layout:apply >>"$plasma_layout_test_root/module.log"
+printf 'layout:apply:%s\n' "\${MYCONFIG_PLASMA_ENSURE_OVERVIEW:-}" >>"$plasma_module_log"
 EOF
-chmod +x "$plasma_layout_bin/glassy-blacknpink-layout"
+chmod +x "$plasma_layout_home/.local/bin/myconfig-plasma-layout"
+cp "$REPO_ROOT/dotfiles/plasma/.local/share/kwin/scripts/myconfig-panels/metadata.json" \
+    "$plasma_layout_home/.local/share/kwin/scripts/myconfig-panels/metadata.json"
 
 mkdir -p "$plasma_layout_home/.config/gtk-3.0" "$plasma_layout_home/.config/gtk-4.0" "$plasma_layout_home/.config/xsettingsd"
 for file in "$plasma_layout_home/.gtkrc-2.0" "$plasma_layout_home/.config/gtk-3.0/settings.ini" "$plasma_layout_home/.config/gtk-4.0/settings.ini"; do
@@ -733,7 +722,6 @@ for file in "$plasma_layout_home/.gtkrc-2.0" "$plasma_layout_home/.config/gtk-3.
 done
 printf 'Gtk/CursorThemeSize 32\nOther/Setting 1\n' >"$plasma_layout_home/.config/xsettingsd/xsettingsd.conf"
 
-plasma_module_log="$plasma_layout_test_root/module.log"
 : >"$plasma_module_log"
 install_package_ids() {
     printf 'packages:%s\n' "$*" >>"$plasma_module_log"
@@ -742,8 +730,14 @@ plasmashell() {
     myconfig_fail "headless KDE Plasma validation executed plasmashell"
 }
 pacman() {
-    [ "$*" = '-Q plasma-workspace' ] || return 1
-    printf 'plasma-workspace 6.7.4-3.1\n'
+    case "$*" in
+        '-Q plasma-workspace') printf 'plasma-workspace 6.7.4-3.1\n' ;;
+        *) return 1 ;;
+    esac
+}
+plasma-apply-colorscheme() {
+    [ "${QT_QPA_PLATFORM:-}" = offscreen ] || return 1
+    printf 'colors:%s\n' "$*" >>"$plasma_module_log"
 }
 plasma-apply-cursortheme() {
     [ "${QT_QPA_PLATFORM:-}" = offscreen ] || return 1
@@ -782,33 +776,41 @@ sudo() {
 MYCONFIG_PROFILE=cachyos
 (
     MYCONFIG_REPO_ROOT="$plasma_repo_root"
-    HOME="$plasma_layout_home" PATH="$plasma_layout_bin:/usr/bin:/bin" module_kde_plasma
+    HOME="$plasma_layout_home" XDG_CONFIG_HOME="$plasma_layout_home/.config" \
+        XDG_STATE_HOME="$plasma_layout_home/.local/state" PATH="$plasma_layout_bin:/usr/bin:/bin" module_kde_plasma
 )
 for file in "$plasma_layout_home/.gtkrc-2.0" "$plasma_layout_home/.config/gtk-3.0/settings.ini" "$plasma_layout_home/.config/gtk-4.0/settings.ini"; do
-    grep -Fxq 'gtk-cursor-theme-size=40' "$file" \
+    grep -Fxq 'gtk-cursor-theme-size=24' "$file" \
         || myconfig_fail "KDE Plasma module did not synchronize GTK cursor size in $file"
     grep -Fxq 'other-setting=preserved' "$file" \
         || myconfig_fail "KDE Plasma module overwrote unrelated GTK settings in $file"
 done
-grep -Fxq 'Gtk/CursorThemeSize 40' "$plasma_layout_home/.config/xsettingsd/xsettingsd.conf" \
+grep -Fxq 'Gtk/CursorThemeSize 24' "$plasma_layout_home/.config/xsettingsd/xsettingsd.conf" \
     || myconfig_fail "KDE Plasma module did not synchronize XSettings cursor size"
 grep -Fxq 'Other/Setting 1' "$plasma_layout_home/.config/xsettingsd/xsettingsd.conf" \
     || myconfig_fail "KDE Plasma module overwrote unrelated XSettings"
-grep -Fxq 'gsettings:set org.gnome.desktop.interface cursor-size 40' "$plasma_module_log" \
+grep -Fxq 'gsettings:set org.gnome.desktop.interface cursor-size 24' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not synchronize GNOME cursor size"
-grep -Fxq 'theme:install' "$plasma_module_log" || myconfig_fail "Plasma module omitted the Glassy Black & Pink installation"
-grep -Fxq 'theme:activate' "$plasma_module_log" || myconfig_fail "Plasma module omitted the glass activation"
-grep -Fxq 'layout:apply' "$plasma_module_log" || myconfig_fail "Plasma module did not apply the theme's panel layout"
-grep -Fxq 'systemctl:--user try-restart plasma-plasmashell.service' "$plasma_module_log" \
-    || myconfig_fail "Plasma module did not reload the installed widgets"
+grep -Fxq 'layout:apply:1' "$plasma_module_log" \
+    || myconfig_fail "KDE Plasma module did not apply the top bar and dock with the Overview icon"
+grep -Fxq 'systemctl:--user enable myconfig-plasma-layout.service' "$plasma_module_log" \
+    || myconfig_fail "KDE Plasma module did not enable the login layout service"
+grep -Fxq 'config:--file kwinrc --group Plugins --key myconfig-panelsEnabled true' "$plasma_module_log" \
+    || myconfig_fail "KDE Plasma module did not enable the panel script"
 grep -Fxq 'packages:iosevka_font libinput' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module omitted its appearance dependencies"
 grep -Fxq "sudo:install -Dm644 $plasma_repo_root/linux/assets/libinput/${pointer_plugin##*/} /etc/libinput/plugins/90-myconfig-pointer-sensitivity.lua" \
     "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not install the libinput plugin"
-grep -Fxq 'global-theme:--apply glassy-blacknpink.desktop' "$plasma_module_log" \
+grep -Fxq 'global-theme:--apply org.kde.breezedark.desktop' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not apply its global theme headlessly"
-grep -Fxq 'cursors:--size 40 glassy-blacknpink' "$plasma_module_log" \
+grep -Fxq 'colors:--accent-color #ff4ead' "$plasma_module_log" \
+    || myconfig_fail "KDE Plasma module did not keep the pink accent color"
+for setting in 'AccentColor 255,78,173' 'LastUsedCustomAccentColor 255,78,173'; do
+    grep -Fxq "config:--file kdeglobals --group General --key $setting" "$plasma_module_log" \
+        || myconfig_fail "KDE Plasma module did not record the accent setting $setting"
+done
+grep -Fxq 'cursors:--size 24 breeze_cursors' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not apply its cursor theme headlessly"
 grep -Fxq 'config:--file kwinrc --group Windows --key ElectricBorderPushbackPixels 0' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not remove KWin edge pushback"
@@ -820,7 +822,7 @@ grep -Fxq 'config:--file kwinrc --group Effect-overview --key BorderActivate 9' 
     || myconfig_fail "KDE Plasma module did not disable the Overview hot corner"
 grep -Fxq 'config:--file kwinrc --group Windows --key PerOutputVirtualDesktops true' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not isolate virtual desktops per screen"
-grep -Fxq 'config:--file kcminputrc --group Mouse --key cursorSize 40' "$plasma_module_log" \
+grep -Fxq 'config:--file kcminputrc --group Mouse --key cursorSize 24' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not configure the cursor size"
 grep -Fxq 'config:--file kcminputrc --group Libinput --group Defaults --group Pointer --key PointerAcceleration 1.000' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not configure pointer sensitivity"
@@ -1501,7 +1503,6 @@ agents_configure_source="$(declare -f module_agents_configure)"
 agents_home="$TEST_HOME/agents-home"
 mkdir -p "$agents_home/.agents/skills/demo" "$agents_home/.claude/skills" "$agents_home/.config/opencode"
 printf '%s\n' '# Test global instructions' >"$agents_home/.agents/AGENTS.md"
-ln -s "../../.agents/skills/stale" "$agents_home/.claude/skills/stale"
 HOME="$agents_home"
 link_agent_config
 [[ "$(readlink "$HOME/.config/opencode/AGENTS.md")" == "$HOME/.agents/AGENTS.md" ]] \
@@ -1530,8 +1531,6 @@ jq -e --arg command "$HOME/.bun/bin/playwright-mcp" '
     || myconfig_fail "fx MCP configuration is not private"
 [[ -L "$HOME/.claude/skills/demo" ]] \
     || myconfig_fail "Claude skill bridge was not created"
-[[ ! -L "$HOME/.claude/skills/stale" ]] \
-    || myconfig_fail "stale shared Claude skill bridge was not removed"
 inventory_home="$TEST_HOME/inventory-home"
 mkdir -p "$inventory_home"
 HOME="$inventory_home"
@@ -1543,7 +1542,7 @@ grep -Fq 'http://HOSTNAME.local:18080' "$HOME/environment.md" \
     || myconfig_fail "CachyOS inventory omitted the Emacs workbench"
 grep -Fq 'Axidev OSK with desktop and login-screen startup' "$HOME/environment.md" \
     || myconfig_fail "CachyOS inventory omitted Axidev OSK"
-grep -Fq 'Glassy Black & Pink theme, panels and application dock for KDE Plasma 6.7 through 6.x' "$HOME/environment.md" \
+grep -Fq 'Breeze Dark with a pink accent color, a top bar holding a session menu and the global menu, and an application dock on every display' "$HOME/environment.md" \
     || myconfig_fail "CachyOS inventory omitted KDE Plasma configuration"
 grep -Fq 'Kanata keyboard remapping with a KDE tray profile selector' "$HOME/environment.md" \
     || myconfig_fail "CachyOS inventory omitted Kanata"

@@ -87,18 +87,7 @@ link_agent_config() {
 
     mkdir -p "$HOME/.claude/skills" "$HOME/.config/opencode" "$HOME/.fx" "$HOME/.pi/agent"
 
-    local linked_skill linked_target skill_dir skill opencode_agents fx_agents
-    for linked_skill in "$HOME/.claude/skills"/*; do
-        [ -L "$linked_skill" ] || continue
-        linked_target="$(readlink "$linked_skill")"
-        case "$linked_target" in
-            ../../.agents/skills/*)
-                skill="$(basename "$linked_skill")"
-                [ -d "$skills_dir/$skill" ] || rm "$linked_skill"
-                ;;
-        esac
-    done
-
+    local skill_dir skill opencode_agents fx_agents
     for skill_dir in "$skills_dir"/*; do
         [ -d "$skill_dir" ] || continue
         skill="$(basename "$skill_dir")"
@@ -121,22 +110,6 @@ link_agent_config() {
     ln -sfnT "$HOME/.agents/AGENTS.md" "$HOME/.pi/agent/AGENTS.md"
     [ "$(readlink -f "$HOME/.pi/agent/AGENTS.md")" = "$(readlink -f "$HOME/.agents/AGENTS.md")" ] \
         || myconfig_fail "Pi AGENTS bridge was not created"
-}
-
-# T3 Code plays its own sound when an agent finishes, so peon-ping is removed.
-remove_peon_ping() {
-    local peon_dir="$HOME/.claude/hooks/peon-ping"
-    if [ -f "$peon_dir/uninstall.sh" ]; then
-        myconfig_log "Removing peon-ping"
-        bash "$peon_dir/uninstall.sh" </dev/null || myconfig_fail "peon-ping uninstaller failed"
-    fi
-    # Its uninstaller leaves these behind, and a hook still running from an open
-    # Claude session can write its state file again afterwards.
-    rm -rf "$peon_dir" "$HOME/.claude/skills/peon-ping-create-pack" "$HOME/.claude/skills/peon-ping-remix"
-    if [ "$(readlink "$HOME/.local/bin/peon" 2>/dev/null)" = "$peon_dir/peon.sh" ]; then
-        rm -f "$HOME/.local/bin/peon"
-    fi
-    [ ! -d "$HOME/.claude/hooks" ] || rmdir --ignore-fail-on-non-empty "$HOME/.claude/hooks"
 }
 
 write_environment_inventory() {
@@ -177,12 +150,12 @@ EOF
 - **On-screen keyboard**: Axidev OSK with desktop and login-screen startup.
 - **Keyboard remapping**: Kanata keyboard remapping with a KDE tray profile selector.
 - **Dictation**: Handy offline push-to-talk dictation on Ctrl+Space.
-- **KDE Plasma**: Glassy Black & Pink theme, panels and application dock for KDE Plasma 6.7 through 6.x.
+- **KDE Plasma**: Breeze Dark with a pink accent color, a top bar holding a session menu and the global menu, and an application dock on every display, for KDE Plasma 6.7 through 6.x.
 - **Desktop automation**: ydotool with a persistent user service for virtual keyboard and pointer input.
 EOF
     elif [ "$MYCONFIG_PROFILE" = arch-wsl ]; then
         cat >>"$HOME/environment.md" <<'EOF'
-- **Editor**: This profile does not install an editor. The shell uses an available Vim or Vi fallback; Neovim, tmux, Lazygit, and Hunk are removed.
+- **Editor**: This profile does not install an editor. The shell uses an available Vim or Vi fallback.
 EOF
     fi
 
@@ -206,7 +179,6 @@ module_agents_configure() {
         || myconfig_fail "claude-config-helper was not stowed as an executable"
     "$HOME/.local/bin/claude-config-helper" mcp apply \
         || myconfig_fail "Could not apply Claude MCP servers"
-    remove_peon_ping
 
     if [ "$MYCONFIG_PROFILE" = cachyos ]; then
         require_command ydotool

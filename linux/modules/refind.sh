@@ -50,7 +50,6 @@ module_refind() {
 
     myconfig_log "Installing the restored Black & Pink rEFInd theme"
     "$theme_source/generate-theme-assets.sh" "$theme_tmp"
-    sudo rm -rf -- "$refind_dir/themes/blacknpink"
     sudo install -d "$theme_dir"
     sudo install -m 0644 "$theme_source/theme.conf" "$theme_dir/theme.conf"
     sudo install -m 0644 "$theme_tmp/banner.png" "$theme_dir/banner.png"
@@ -59,8 +58,8 @@ module_refind() {
     sudo install -m 0644 "$source/global.conf" "$refind_dir/managed.conf"
 
     sudo awk '
-        $0 == "# BEGIN MYCONFIG BLACKNPINK" || $0 == "# BEGIN MYCONFIG REFIND" { managed = 1; next }
-        $0 == "# END MYCONFIG BLACKNPINK" || $0 == "# END MYCONFIG REFIND" { managed = 0; next }
+        $0 == "# BEGIN MYCONFIG REFIND" { managed = 1; next }
+        $0 == "# END MYCONFIG REFIND" { managed = 0; next }
         !managed { print }
     ' "$config" >"$config_tmp"
     printf '\n' >>"$config_tmp"

@@ -22,7 +22,7 @@ The top-level areas have different jobs:
 
 - `dotfiles/` contains packages whose paths mirror their destination under the home directory. Linux selects and stows these packages. `dotfiles/old/` contains retired packages and is not installed by current profiles.
 
-- `linux/modules/` contains component installers and validators. A module owns the packages, files, services, checks, and cleanup for one concern.
+- `linux/modules/` contains component installers and validators. A module owns the packages, files, services, and checks for one concern.
 
 - `linux/profiles/` composes modules for a platform profile. Do not put profile-specific branching into a shared module when the profile composition can express it.
 
@@ -38,13 +38,15 @@ The top-level areas have different jobs:
 
 Linux profiles currently select these dotfile packages:
 
-- CachyOS: `zsh`, `yazi`, `ai`, `t3code`, `ghostty`, `kanata`, `kanata-kde`, `handy`, `emacs`, `phone`, and `pipewire`.
+- CachyOS: `zsh`, `yazi`, `ai`, `t3code`, `ghostty`, `kanata`, `kanata-kde`, `handy`, `emacs`, `phone`, `pipewire`, and `plasma`.
 
 - Arch WSL: `zsh`, `yazi`, `ai`, and `t3code`.
 
 - Ubuntu Server: `zsh` only.
 
 The installer uses `MYCONFIG_DOTFILES_SOURCE` when set. Otherwise it reads from the repository's `dotfiles/` directory. It stages selected packages, validates the staged copy, replaces `~/dotfiles` with a backed-up tree, and restows the selected packages into `$HOME`.
+
+The installer targets a computer that has never run it. A module only installs and configures: it never undoes what an earlier run of this repository installed, such as retired packages, files, links or services. Removing what the distribution itself installs on a fresh machine, such as CachyOS's default applications, is part of setting that machine up and stays allowed. Uninstalling belongs to a separate uninstall script, which does not exist yet.
 
 When adding a Linux-managed configuration:
 
@@ -70,11 +72,11 @@ The installer creates the OpenCode link during the agent configuration step. Do 
 
 The live global instruction file is different from this repository instruction file. This root `AGENTS.md` describes work inside this repository. `dotfiles/ai/.agents/AGENTS.md` supplies the user's global agent workflow after deployment.
 
-## Glassy Black & Pink
+## KDE Plasma
 
-The KDE Plasma theme is a separate repository, kept as the Git submodule `linux/assets/glassy-blacknpink-plasma`. The theme repository holds its Breeze fork at its root; its `breeze-upstream` branch carries the unmodified KDE Breeze sources, one squashed commit per import, and its README gives the update steps. Change the theme inside the submodule and test it with its `test/run.sh`; commit there before recording the new submodule commit here.
+The CachyOS profile uses KDE's stock Breeze Dark global theme. `linux/modules/kde-plasma.sh` applies it with personal settings such as the pink accent color, fonts, input and window rules. The earlier Glassy Black & Pink theme now lives only in its own repository, `inayayousfi/glassy-blacknpink-plasma`.
 
-The theme installs as the system package `glassy-blacknpink`, not through GNU Stow. `linux/modules/kde-plasma.sh` runs the theme's `install.sh`, applies the global theme, and keeps only personal settings such as fonts, input and window rules. Theme files under `/usr/share` come from the package; a copy under `~/.local/share` would override them.
+The `plasma` package owns the panel layout. `myconfig-plasma-layout` sends `~/.local/share/myconfig-plasma/layout.js` to Plasma to create a top bar with a KDE session menu (the `myconfig.session` widget) and the global menu, and a dock, on every display; the first run backs up and replaces every existing panel, and later runs only add bars for new displays and reset the managed ones. `myconfig-plasma-layout.service` runs it at each Plasma login. The KWin script `myconfig-panels` starts that service when displays change, shows the bars while the pointer is near their edge, even over fullscreen windows, and closes Overview after a desktop switch. Plasma 6.8 crashes when a panel of an unplugged display is changed, so both scripts leave those panels alone.
 
 ## Emacs
 

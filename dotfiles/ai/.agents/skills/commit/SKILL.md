@@ -27,13 +27,12 @@ Drafts the intended result early when a request includes future work, establishe
    - No emojis, no filler, no restating the diff line-by-line.
 
 5. **Ask for confirmation with the full message inside the question.** You HAVE to call the question tool, and the complete final message MUST be inside that call. Text in the chat or in hidden reasoning never counts as showing it, and never refer to the message as shown above or elsewhere.
-   - If the question tool can attach a preview to its options, put the full message, in a fenced code block tagged `text`, in the preview of every option so it stays visible whichever option is focused. Use the subject line as the question text.
-   - Otherwise, the question text is the full message itself.
+   - The question text is the full message itself. Never move it into an option preview, because some harnesses do not display previews.
    - The question text needs no question sentence. For this confirmation, this overrides the global rule that every question field contains one.
    - Options: Confirm, I can't see the full message, and the global explain-more option. The user requests changes or cancels through the free-text answer. If the question tool offers no free-text answer, also add Request changes and Cancel.
 
 6. **Handle the answer.** Do not run `git commit` until the user confirms the final message. The provisional message from step 1 never counts as this confirmation.
-   - "I can't see the full message": write the full message as visible text in the chat response, then repeat step 5 with the full message as the question text.
+   - "I can't see the full message": write the full message as visible text in the chat response, then repeat step 5.
    - Changes: redraft, then repeat step 5.
    - Cancel: stop without committing.
 

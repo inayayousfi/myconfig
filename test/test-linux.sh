@@ -554,7 +554,10 @@ SH
     emt="$REPO_ROOT/dotfiles/emacs/.local/bin/emt"
     open_line='emacsclient --socket-name=remot --tty --eval (remot-show-in-terminal-frame)'
 
-    reset_emt() { rm -rf "$EMT_STATE" "$EMT_LOG"; mkdir -p "$EMT_STATE"; }
+    reset_emt() {
+        rm -rf "$EMT_STATE" "$EMT_LOG"
+        mkdir -p "$EMT_STATE"
+    }
 
     reset_emt
     touch "$EMT_STATE/remot"

@@ -9,11 +9,11 @@ Premise: the code works, but may be built wrong. The primary goal is readable, m
 
 Approach every file assuming something is wrong with it. Guilty until proven innocent, not the reverse: don't extend the code the benefit of the doubt because it compiles, passes CI, or looks like someone was careful. Maximum skepticism, every file, every pass — the default read is "what's wrong here", not "does anything jump out". If a pass turns up nothing, that's a fact about the code, not a sign to relax scrutiny on the next one.
 
-Go deep, not wide. A surface pass that skims every file and understands none is worth nothing. This skill is often the last read before code reaches a stranger, so take the time a careful human reviewer would take.
+Go deep, not wide. A surface pass that skims every file and understands none is worth nothing. This skill is often the last read before code reaches a stranger, so take the time a careful human reviewer would take. Depth comes after the map from Step 2: the map shows where to go deep.
 
 Read the surrounding code before calling anything a defect. A line that looks wrong on its own often matches a convention two files away.
 
-Say when you are guessing. A finding you cannot prove is still worth raising, but it arrives labelled as a guess, never as a fact.
+Say when you are guessing. A finding you cannot prove is still worth raising, but it arrives labelled as a guess, never as a fact, and goes through the rating in Step 7 like any other finding.
 
 The design checks test invariants: properties that must hold whatever shape the code takes. A finding names the invariant that breaks and the evidence that it breaks. If the code keeps the invariant by another means, there is no finding. Never require a particular structure, pattern or style to satisfy an invariant; existing projects reach these properties in their own ways. When a repository convention itself breaks an invariant, report that conflict as its own finding under the invariant's category, show both sides, and let the person decide.
 
@@ -33,7 +33,7 @@ A critical bug may interrupt and lead the review only when it threatens security
 
 ## Step 1: Decide what to review
 
-Honor the target exactly as the caller names it before applying any branch default. A target may describe changes or name current files, modules or the whole repository. Derive the target from the repository state yourself; never require the caller to construct or paste a diff. When the caller limits their changes to named paths, never broaden the review beyond those paths. Do not try to attribute individual lines within a named path to different sessions; any overlap inside that path belongs to the review.
+Honor the target exactly as the caller names it before applying any branch default. A target may describe changes or name current files, modules or the whole repository. Derive the target from the repository state yourself; never require the caller to construct or paste a diff. When the caller limits their changes to named paths, never broaden the review beyond those paths, except for the structural findings described at the end of this step. Do not try to attribute individual lines within a named path to different sessions; any overlap inside that path belongs to the review.
 
 If the caller names staged, unstaged or untracked changes, they must also name the exact paths. Inspect that state regardless of the current branch. If the caller names committed changes, review the latest commit. If the caller names current files or modules, inspect their complete on-disk state. Use the branch defaults below only when the caller gives no more precise target.
 
@@ -50,9 +50,15 @@ Resolve the default branch: `git symbolic-ref refs/remotes/origin/HEAD` (strip t
 
 Before calling anything a defect, discover how this repository expresses its style. Inspect nearby code. When a credible one exists, find a similarly sized module in the same architectural layer that does something different; compare nonblank code lines when choosing it. Use that module only as supplemental calibration; never let its size outweigh relevance or stronger evidence. Read any written repository style guidance. Search the target directory first, then its architectural layer, then the repository.
 
-Use the strongest credible source as evidence. If written guidance conflicts with repeated repository code, report that conflict instead of silently choosing either side. Code outside the named target is evidence only, never an additional source of findings.
+Use the strongest credible source as evidence. If written guidance conflicts with repeated repository code, report that conflict instead of silently choosing either side. Code outside the named target is evidence. It becomes a source of findings only for a structural problem that the target creates or makes worse, and such a finding names the target lines that cause it.
 
-## Step 2: Build the simpler counterfactual
+## Step 2: Map the system
+
+Before reading any file in detail, map the parts that the target touches and the parts around them. For each part, state its role in one sentence, who calls it, what it calls, which state it owns and which outside effects it causes. Then place the target on that map.
+
+Test the map with three questions. Given a behavior, can you find the one part responsible for it? Can you see why each dependency exists? Can you predict which parts a change will touch before making it? Each place where the answer is no is a candidate finding for the checks in Step 4. A finding that spans several parts cites every location involved, not one line.
+
+## Step 3: Build the simpler counterfactual
 
 Complete this pass before line-level review. Produce four things, even when the current design is sound:
 
@@ -82,7 +88,7 @@ Inspect the complete shape for these signals:
 
 Measure where possible. Compare nonblank lines, ownership transfers, representations of one fact, public units, implementations per interface, setup paths per behavior, and failure paths before and after. Counts support judgment; they never replace it.
 
-## Step 3: Run every check
+## Step 4: Run every check
 
 Run all eight design checks against the counterfactual before the bug check. Do not stop because one category produced findings. A clean category is still a completed internal pass.
 
@@ -90,29 +96,39 @@ Use **Failure** for failure behavior that breaks an invariant. Use **Naive edge 
 
 Then inspect correctness. Handle a critical bug immediately. Record ordinary bugs for the final section and continue structural work first.
 
-## Step 4: Confidence + cross-verify
+## Step 5: Confidence + cross-verify
 
-Every finding gets LOW, MEDIUM or HIGH confidence. Anything below HIGH gets a second opinion: a fresh subagent running the same model you are, handed only the file path and line range plus "something may be off around here, what do you see?" — no category hint, no first-pass reasoning. Agrees → upgrade. Disagrees or sees nothing → downgrade. Never drop a finding; ship it at whatever confidence it lands on.
+Every finding gets LOW, MEDIUM or HIGH confidence. Anything below HIGH gets a second opinion: a fresh subagent running the same model you are, handed only the file path and line range plus "something may be off around here, what do you see?" — no category hint, no first-pass reasoning. Agrees → upgrade. Disagrees or sees nothing → downgrade. Confidence never drops a finding; only the rating in Step 7 does.
 
-## Step 5: Verify empirically where possible
+## Step 6: Verify empirically where possible
 
 Wherever a finding's validity can be checked by running something — tests, a small repro, a snippet — do it for any check, not just bugs. Never leave artifacts in the repo: delete scratch or temporary files after, or work in `/tmp` to begin with.
 
-## Step 6: Report
+## Step 7: Rate and drop
 
-Use plain markdown in the conversation. Do not create a file, artifact or report tool output. The result must be copy-pasteable into a fresh context with nothing else attached. Report generously; tag confidence honestly instead of suppressing.
+Rate every finding, design findings included, on three scales:
 
-Critical bugs lead only when present. Always report a **Whole design** section containing the four counterfactual items and a clear verdict. Then report only categories that contain at least one finding, in this order: Ownership, Hidden effects, Independence, Coordination and scale, Failure, Pattern drift, Naive edge cases, Dead weight, ordinary Bugs. Never emit an empty category heading or a `No findings` placeholder. If no category contains a finding, the Whole design verdict is the complete review.
+- **User impact**: how much an end user of the result is bothered. High: wrong results, lost data, a blocked task or a security exposure. Medium: a visible annoyance or a needed workaround. Low: nothing the user notices. Impact counts only when you show a realistic path from a real starting point, such as a user action, an input or an existing caller, to the failure, and nothing elsewhere in the code already blocks that path. Without that path, impact is low.
+- **Debt**: how much harder the code becomes to understand, change or extend while the finding stays. High: every future change in the area pays for it, or the pattern spreads by copying. Medium: one area is harder to change. Low: no future change gets harder.
+- **Fix cost**: how much code the fix changes. Low: a few lines in one place. Medium: one unit, or several places. High: several units, a contract, or its callers.
 
-Each finding must include `file:line`, what is wrong, why it is wrong for this codebase, the directional fix in words, a confidence tag, and the cross-verification result if one ran. Point at the actual convention or example it violates.
+Drop every finding whose user impact and debt are both low. Do not report it, not even as a summary line. Fix cost never drops a finding; it travels with the findings that remain.
+
+## Step 8: Report
+
+Use plain markdown in the conversation. Do not create a file, artifact or report tool output. The result must be copy-pasteable into a fresh context with nothing else attached. Report every finding that survives Step 7 and nothing that does not. Tag confidence honestly.
+
+Critical bugs lead only when present. Always report a **Whole design** section containing a short summary of the map, the four counterfactual items and a clear verdict. Then report only categories that contain at least one finding, in this order: Ownership, Hidden effects, Independence, Coordination and scale, Failure, Pattern drift, Naive edge cases, Dead weight, ordinary Bugs. Never emit an empty category heading or a `No findings` placeholder. If no category contains a finding, the Whole design verdict is the complete review.
+
+Each finding must include `file:line` for every location involved, what is wrong, why it is wrong for this codebase, the directional fix in words, its three ratings, a confidence tag, and the cross-verification result if one ran. Point at the actual convention or example it violates.
 
 Each invariant finding must name the invariant that breaks, the evidence, and the direction of the fix, without requiring a particular shape. Each Dead weight finding must name the smaller shape and the concrete machinery it removes. A complaint without that reduction is taste, not a KISS finding. When the reduction removes invalid states, edge cases or failure paths, name those removals explicitly.
 
-For pattern-drift findings, cite the strongest credible repository evidence. Keep uncertain readability concerns and label their confidence honestly.
+For pattern-drift findings, cite the strongest credible repository evidence. Uncertain readability concerns go through the same rating; label their confidence honestly.
 
 Do not repeat one finding merely to fill several categories. Put it under the category that best explains the mechanism. Cross-reference another consequence only when it changes the recommended decision.
 
-## Step 7: Offer to fix, never start unprompted
+## Step 9: Offer to fix, never start unprompted
 
 Never fix anything yourself. Not even a finding that looks critical. Absolute rule, not a judgment call.
 

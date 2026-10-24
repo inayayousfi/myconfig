@@ -12,7 +12,7 @@ The repository source is `/home/iy/Projets/myconfig` in this workspace. On Linux
 
 `~/dotfiles` is the deployed package tree used by the live Linux environment. It is not an independent source tree. Do not edit it as the primary fix. Trace the package back to `dotfiles/<package>/`, change the repository source, then redeploy or restow it when the task requires a live change.
 
-The repository currently uses `~/dotfiles`, not `~/.files`. If a task mentions a home-directory file tree, check `~/dotfiles` and the relevant links under `$HOME` before assuming another path.
+The deployed package tree is `~/dotfiles`, not `~/.files`. If a task mentions a home-directory file tree, check `~/dotfiles` and the relevant links under `$HOME` before assuming another path.
 
 Some home paths point into `~/dotfiles`. A change or deletion inside the deployed tree can therefore change the live configuration even when the visible path is under `~/.config` or `~`. Check both the visible target and its resolved path with `readlink -f`.
 
@@ -32,21 +32,15 @@ The top-level areas have different jobs:
 
 - `windows-workstation/` is a separate Windows installer and owns Windows-specific files, package setup, PowerShell configuration, and direct-copy behavior. It is not a Linux Stow target.
 
+- `docs/` contains documents that each describe one module or package. Read the document for a module before changing it.
+
 - `test/` contains installer and workbench tests. Run the narrowest relevant test after a change, then run the broader platform test when the change affects shared installer behavior.
 
 ## Linux installation model
 
-Linux profiles currently select these dotfile packages:
-
-- CachyOS: `zsh`, `yazi`, `ai`, `t3code`, `ghostty`, `kanata`, `kanata-kde`, `handy`, `emacs`, `phone`, `pipewire`, and `plasma`.
-
-- Arch WSL: `zsh`, `yazi`, `ai`, and `t3code`.
-
-- Ubuntu Server: `zsh` only.
-
 The installer uses `MYCONFIG_DOTFILES_SOURCE` when set. Otherwise it reads from the repository's `dotfiles/` directory. It stages selected packages, validates the staged copy, replaces `~/dotfiles` with a backed-up tree, and restows the selected packages into `$HOME`.
 
-The installer targets a computer that has never run it. A module only installs and configures: it never undoes what an earlier run of this repository installed, such as retired packages, files, links or services. Removing what the distribution itself installs on a fresh machine, such as CachyOS's default applications, is part of setting that machine up and stays allowed. Uninstalling belongs to a separate uninstall script, which does not exist yet.
+The installer targets a computer that has never run it. A module only installs and configures: it never undoes what an earlier run of this repository installed. Removing what the distribution itself installs on a fresh machine is part of setting that machine up and stays allowed. Uninstalling belongs to a separate uninstall script, never to a module.
 
 When adding a Linux-managed configuration:
 
@@ -66,7 +60,7 @@ After a Linux source change, inspect both the repository path and the deployed p
 
 The `ai` package owns the shared agent source, Claude configuration, and OpenCode configuration. On Linux, Stow deploys it through `~/.agents/`, `~/.claude/`, and `~/.config/opencode/`. OpenCode also needs the generated link at `~/.config/opencode/AGENTS.md`, which points to `~/.agents/AGENTS.md`.
 
-The `ai` package also ships `claude-config-helper`, a Python command shared by Linux and Windows. It trusts projects, marks Claude's first-run setup as finished, lists or clears Claude's saved approvals, applies the MCP servers listed in `dotfiles/ai/.config/claude-config-helper/mcp-servers.json` through Claude's own commands, and checks tracked files for tokens, email addresses and home paths. Only trust, setup and approval changes edit `~/.claude.json` directly.
+The `ai` package also ships `claude-config-helper`, a Python command shared by Linux and Windows. `docs/agent-config.md` describes it.
 
 The installer creates the OpenCode link during the agent configuration step. Do not add another stored `AGENTS.md` under the OpenCode configuration. The only instruction source is `dotfiles/ai/.agents/AGENTS.md`.
 
@@ -74,15 +68,17 @@ The live global instruction file is different from this repository instruction f
 
 ## KDE Plasma
 
-The CachyOS profile uses KDE's stock Breeze Dark global theme. `linux/modules/kde-plasma.sh` applies it with personal settings such as the pink accent color, fonts, input and window rules. The earlier Glassy Black & Pink theme now lives only in its own repository, `inayayousfi/glassy-blacknpink-plasma`.
+`docs/kde-plasma.md` describes the KDE module and the `plasma` package.
 
-The `plasma` package owns the panel layout. `myconfig-plasma-layout` sends `~/.local/share/myconfig-plasma/layout.js` to Plasma to create a top bar with a KDE session menu (the `myconfig.session` widget) and the global menu, and a dock, on every display; the first run backs up and replaces every existing panel, and later runs only add bars for new displays and reset the managed ones. `myconfig-plasma-layout.service` runs it at each Plasma login. The KWin script `myconfig-panels` starts that service when displays change, shows the bars while the pointer is near their edge, even over fullscreen windows, and closes Overview after a desktop switch. Plasma 6.8 crashes when a panel of an unplugged display is changed, so both scripts leave those panels alone. The package also hides the launcher entries of development tools that required packages install, such as Qt Designer, the OpenJDK console and CMake, through `myconfig-launcher-hide`: KDE ignores `Hidden=true` overrides, so the command copies each installed entry into `~/.local/share/applications/` with `NoDisplay=true`. The KDE module and the zsh `update` command run it so the copies follow package updates.
+Plasma 6.8 crashes when a panel of an unplugged display is changed. A script that changes panels must leave the panels of unplugged displays alone.
+
+KDE ignores `Hidden=true` overrides of launcher entries. To hide a launcher entry, add it to `myconfig-launcher-hide`.
 
 ## Emacs
 
-Linux manages the Emacs package through GNU Stow. A normal directory such as `~/.config/emacs` can contain generated runtime state, while tracked configuration files or a tracked subdirectory may resolve through links into the deployed `emacs` package. Do not mistake a regular folded directory or generated cache for an unmanaged configuration.
+Linux manages the Emacs package through GNU Stow. A normal directory can contain generated runtime state while tracked configuration files or a tracked subdirectory inside it resolve through links into the deployed `emacs` package. Do not mistake a regular folded directory or generated cache for an unmanaged configuration.
 
-The CachyOS Emacs module validates the stowed configuration, requests the native Wayland package explicitly, and manages the private-LAN browser-terminal firewall policy. Inspect `linux/modules/emacs.sh` and the package contents before changing startup or state paths.
+`docs/emacs.md` describes the CachyOS Emacs module. Inspect `linux/modules/emacs.sh` and the package contents before changing startup or state paths.
 
 Windows uses a separate direct-copy installer for Emacs. Do not assume that Linux Stow links, Linux service files, or Linux paths apply to the Windows installation.
 

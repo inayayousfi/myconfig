@@ -8,6 +8,7 @@ dotfiles/kanata/** text=auto eol=lf
 dotfiles/kanata-kde/** text=auto eol=lf
 dotfiles/old/** text=auto eol=lf
 dotfiles/opencode/** text=auto eol=lf
+dotfiles/vscodium/** text=auto eol=lf
 dotfiles/yazi/** text=auto eol=lf
 dotfiles/zsh/** text=auto eol=lf
 

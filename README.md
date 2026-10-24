@@ -58,6 +58,10 @@ The bootstrap script will:
 4. Copy Linux dotfiles into `~/dotfiles`, back up conflicts, and link them with GNU Stow
 5. Install the packages for the selected platform
 
+### Editor Settings Only (Windows)
+
+On a Windows machine that should receive only the VSCodium or VS Code settings, theme and extensions, right-click `windows-workstation\install-editor.ps1` in a clone of this repository and choose **Run with PowerShell**. It configures every editor installed at that moment; run it again after installing the other editor.
+
 ### CachyOS Virtual Machine Testing
 
 The [CachyOS VM harness](vm/README.md) installs the Desktop ISO interactively, preserves a clean base system, and tests the current working tree without a commit or release.

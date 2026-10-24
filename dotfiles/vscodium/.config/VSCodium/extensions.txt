@@ -1,0 +1,15 @@
+nifty.nifty-format-on-save
+rust-lang.rust-analyzer
+vadimcn.vscode-lldb
+llvm-vs-code-extensions.vscode-clangd
+ziglang.vscode-zig
+golang.go
+ms-python.python
+ms-python.debugpy
+detachhead.basedpyright
+ms-vscode.powershell
+mads-hartmann.bash-ide-vscode
+tamasfe.even-better-toml
+bradlc.vscode-tailwindcss
+oxc.oxc-vscode
+github.vscode-github-actions

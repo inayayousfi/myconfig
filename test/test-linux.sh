@@ -138,7 +138,7 @@ for cleanup_profile in cachyos arch-wsl; do
         # Exercise the real profile and package modules without running services,
         # deploying dotfiles, or installing anything on the host.
         for unrelated_module in ssh ssh_server flatpak appimage zsh ghostty axidev_osk tailscale \
-            agents_packages dotfiles android_phone emacs refind \
+            agents_packages dotfiles android_phone emacs vscodium refind \
             kanata kde_plasma_validate kde_plasma kanata_kde handy pipewire \
             docker agents_configure t3code authentication; do
             eval "module_${unrelated_module}() { :; }"
@@ -402,6 +402,26 @@ validate_staged_dotfiles "$powershell_source" "$powershell_staging" ai
         || myconfig_fail "CachyOS rerun retired the active Ghostty configuration"
     cmp "$REPO_ROOT/dotfiles/ghostty/.config/ghostty/config" "$ghostty_config" \
         || myconfig_fail "CachyOS rerun changed the Ghostty configuration"
+)
+
+(
+    HOME="$TEST_HOME/vscodium-profile-home"
+    MYCONFIG_PROFILE=cachyos
+    MYCONFIG_DOTFILES_SOURCE="$REPO_ROOT/dotfiles"
+    mkdir -p "$HOME"
+
+    module_dotfiles
+    vscodium_user=".config/VSCodium/User"
+    for vscodium_folder in .config/VSCodium "$vscodium_user"; do
+        [ -d "$HOME/$vscodium_folder" ] && [ ! -L "$HOME/$vscodium_folder" ] \
+            || myconfig_fail "CachyOS linked $vscodium_folder, which receives editor state"
+    done
+    for vscodium_file in "$vscodium_user/settings.json" "$vscodium_user/keybindings.json" \
+        .config/VSCodium/extensions.txt .config/VSCodium/blacknpink-theme; do
+        [ -L "$HOME/$vscodium_file" ] \
+            && [ "$(readlink -f "$HOME/$vscodium_file")" = "$HOME/dotfiles/vscodium/$vscodium_file" ] \
+            || myconfig_fail "CachyOS did not link $vscodium_file into its deployed package"
+    done
 )
 
 profile_home="$TEST_HOME/profile-home"

@@ -19,6 +19,7 @@ run_profile() {
     module_dotfiles
     module_android_phone
     module_emacs
+    module_vscodium
     module_refind
     module_kanata
     module_kde_plasma

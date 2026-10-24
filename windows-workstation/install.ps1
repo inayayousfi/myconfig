@@ -745,6 +745,10 @@ function Main {
     if ($installedPackages.DevTools) {
         Invoke-InstallStep "LLVM PATH" { Install-LLVMPath }
     }
+    Invoke-InstallStep "Editor configuration" {
+        Update-SessionPath
+        & (Join-Path $ScriptDir "install-editor.ps1") -FromInstaller
+    }
 
     # Apply the Windows shell and Start menu tweaks last.
     Invoke-InstallStep "Registry preferences" { Install-RegistryTweaks }

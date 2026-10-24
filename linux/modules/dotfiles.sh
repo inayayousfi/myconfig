@@ -2,7 +2,7 @@
 
 dotfile_packages_for_profile() {
     case "$MYCONFIG_PROFILE" in
-        cachyos) printf '%s\n' zsh yazi ai t3code ghostty kanata kanata-kde handy emacs phone pipewire plasma ;;
+        cachyos) printf '%s\n' zsh yazi ai t3code ghostty kanata kanata-kde handy emacs vscodium phone pipewire plasma ;;
         arch-wsl) printf '%s\n' zsh yazi ai t3code ;;
         ubuntu-server) printf '%s\n' zsh ;;
         *) myconfig_fail "dotfile packages are undefined for $MYCONFIG_PROFILE" ;;
@@ -170,6 +170,8 @@ module_dotfiles() {
     [ ! -d "$dotfiles_dir/plasma" ] \
         || mkdir -p "$HOME/.local/share/kwin/scripts" "$HOME/.local/share/plasma/plasmoids" \
             "$HOME/.local/share/kio/servicemenus"
+    # VSCodium keeps its history and workspace storage beside its settings.
+    [ ! -d "$dotfiles_dir/vscodium" ] || mkdir -p "$HOME/.config/VSCodium/User"
     for package in "${packages[@]}"; do
         stow --dir "$dotfiles_dir" --target "$HOME" --restow "$package"
     done

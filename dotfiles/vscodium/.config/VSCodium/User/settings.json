@@ -1,0 +1,44 @@
+{
+  "chat.disableAIFeatures": true,
+  "telemetry.telemetryLevel": "off",
+  "workbench.enableExperiments": false,
+  "workbench.settings.enableNaturalLanguageSearch": false,
+  "workbench.welcomePage.extraAnnouncements": false,
+
+  "workbench.colorTheme": "Black and Pink",
+  "editor.fontFamily": "'Iosevka Nerd Font Mono', 'Iosevka NFM', monospace",
+
+  "files.autoSave": "afterDelay",
+  "files.autoSaveDelay": 500,
+  // VSCodium formats only explicit saves; Nifty formats the auto saves too.
+  "editor.formatOnSave": false,
+  "nifty.format-on-save.formatOnAutoSave": true,
+
+  // basedpyright is the Python language server; this keeps Jedi or Pylance off.
+  "python.languageServer": "None",
+
+  "git.blame.editorDecoration.enabled": true,
+  "security.promptForRemoteFileProtocolHandling": false,
+  "workbench.accounts.showAvatar": false,
+  "workbench.commandPalette.preserveInput": true,
+  "workbench.list.smoothScrolling": true,
+  "workbench.startupEditor": "none",
+  "workbench.welcomePage.walkthroughs.openOnInstall": false,
+  "workbench.activityBar.location": "top",
+  "workbench.preferredDarkColorTheme": "Black and Pink",
+  "workbench.sideBar.location": "right",
+  "workbench.tips.enabled": false,
+  "window.openWithoutArgumentsInNewWindow": "off",
+  "window.openFoldersInNewWindow": "off",
+  "chat.agent.enabled": false,
+  "inlineChat.askInChat": false,
+  "inlineChat.fixDiagnostics": false,
+  "editor.fontSize": 16,
+  "editor.acceptSuggestionOnEnter": "off",
+  "diffEditor.codeLens": true,
+  "diffEditor.maxComputationTime": 0,
+  "editor.formatOnPaste": true,
+  "workbench.editor.splitSizing": "distribute",
+  "workbench.editor.limit.enabled": true,
+  "workbench.editor.limit.value": 5
+}

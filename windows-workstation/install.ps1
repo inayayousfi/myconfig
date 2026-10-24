@@ -253,7 +253,7 @@ function Install-WingetPackages {
 
     return @{
         DevTools = $installedDevTools
-        T3Code = $installT3Code
+        T3Code   = $installT3Code
     }
 }
 

@@ -33,11 +33,8 @@
   (custom-theme-set-faces
    'myconfig-blacknpink
    `(default ((t (:background ,black :foreground ,text
-                              :family ,(universel-select
-                                        '((windows . "Iosevka NFM")
-                                          (t . "Iosevka Nerd Font Mono"))
-                                        (universel-host-platform))
-                              :height 150))))
+                              :family "BlexMono Nerd Font Mono" :height 150))))
+   `(variable-pitch ((t (:family "IBM Plex Serif"))))
    `(cursor ((t (:background ,pink))))
    `(fringe ((t (:background ,black :foreground ,disabled))))
    `(region ((t (:background "#2a0016" :extend t))))

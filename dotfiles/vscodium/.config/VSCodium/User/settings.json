@@ -6,7 +6,7 @@
   "workbench.welcomePage.extraAnnouncements": false,
 
   "workbench.colorTheme": "Black and Pink",
-  "editor.fontFamily": "'Iosevka Nerd Font Mono', 'Iosevka NFM', monospace",
+  "editor.fontFamily": "'BlexMono Nerd Font Mono', monospace",
 
   "files.autoSave": "afterDelay",
   "files.autoSaveDelay": 500,

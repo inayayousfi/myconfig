@@ -164,12 +164,12 @@ module_dotfiles() {
     backup_dotfile_conflicts "$dotfiles_dir" "${packages[@]}"
 
     # Real directories keep Stow from folding these into one package, where
-    # programs, Claude data, KWin scripts, Plasma widgets and Dolphin menus
-    # written later would land inside the deployed tree.
+    # programs, Claude data, KWin scripts, Plasma widgets, Dolphin menus and
+    # KDE's font settings written later would land inside the deployed tree.
     mkdir -p "$HOME/.local/bin" "$HOME/.claude"
     [ ! -d "$dotfiles_dir/plasma" ] \
         || mkdir -p "$HOME/.local/share/kwin/scripts" "$HOME/.local/share/plasma/plasmoids" \
-            "$HOME/.local/share/kio/servicemenus"
+            "$HOME/.local/share/kio/servicemenus" "$HOME/.config/fontconfig/conf.d"
     # VSCodium keeps its history and workspace storage beside its settings.
     [ ! -d "$dotfiles_dir/vscodium" ] || mkdir -p "$HOME/.config/VSCodium/User"
     for package in "${packages[@]}"; do

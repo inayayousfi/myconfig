@@ -4,7 +4,9 @@ This document describes the CachyOS KDE Plasma setup: the `linux/modules/kde-pla
 
 ## Theme and settings
 
-The module applies KDE's stock Breeze Dark global theme with personal settings: the pink accent color, Iosevka fonts, input settings and window rules.
+The module applies KDE's stock Breeze Dark global theme with personal settings: the pink accent color, IBM Plex fonts, input settings and window rules.
+
+The interface uses IBM Plex Sans and the fixed-width font is BlexMono Nerd Font Mono, the IBM Plex Mono copy with Nerd Font icons. The `plasma` package's fontconfig file makes IBM Plex Sans, IBM Plex Serif and BlexMono Nerd Font Mono the defaults for programs that ask for sans-serif, serif or monospace text.
 
 ## Panel layout
 

@@ -85,8 +85,10 @@ MYCONFIG_PROFILE=cachyos
     || myconfig_fail "CachyOS Fish configuration package did not resolve"
 [ "$(resolve_package kde_utilities_meta)" = official:kde-utilities-meta ] \
     || myconfig_fail "KDE utilities metadata package did not resolve"
-[ "$(resolve_package iosevka_font)" = official:ttf-iosevka-nerd ] \
-    || myconfig_fail "KDE Plasma Iosevka font package did not resolve"
+[ "${MYCONFIG_PACKAGE_DEFAULTS[plex_fonts]}" = aur:otf-ibm-plex ] \
+    || myconfig_fail "IBM Plex font package did not resolve from the AUR"
+[ "$(resolve_package blex_mono_font)" = official:ttf-ibmplex-mono-nerd ] \
+    || myconfig_fail "BlexMono Nerd Font package did not resolve"
 [ "$(resolve_package desktop_file_utils)" = official:desktop-file-utils ] \
     || myconfig_fail "KDE Plasma desktop-entry validation package did not resolve"
 [ "$(resolve_package ydotool)" = official:ydotool ] \
@@ -554,7 +556,7 @@ PY
     source "$REPO_ROOT/linux/modules/emacs.sh"
     module_emacs
 
-    [ "$(cat "$package_log")" = $'emacs_wayland\nsshfs\niosevka_font\nufw' ] \
+    [ "$(cat "$package_log")" = $'emacs_wayland\nsshfs\nplex_fonts\nblex_mono_font\nufw' ] \
         || myconfig_fail "Emacs module installed unexpected packages"
     [ "$(kreadconfig6 --file "$XDG_CONFIG_HOME/mimeapps.list" --group "Default Applications" --key text/markdown)" \
         = emacs.desktop ] || myconfig_fail "Emacs module did not make Emacs the default text editor"
@@ -808,7 +810,11 @@ gsettings() {
     esac
 }
 fc-match() {
-    printf 'IosevkaNerdFont-Regular.ttf: Iosevka Nerd Font\n'
+    case "$3" in
+        sans-serif) printf 'IBM Plex Sans' ;;
+        serif) printf 'IBM Plex Serif' ;;
+        monospace) printf 'BlexMono Nerd Font Mono' ;;
+    esac
 }
 systemctl() {
     printf 'systemctl:%s\n' "$*" >>"$plasma_module_log"
@@ -912,7 +918,7 @@ for type in image/png image/svg+xml; do
 done
 [ "$(kreadconfig6 --file "$default_apps_config/mimeapps.list" --group "Default Applications" --key text/html)" \
     = browser.desktop ] || myconfig_fail "setting a default application replaced another file type's default"
-grep -Fxq 'packages:iosevka_font libinput' "$plasma_module_log" \
+grep -Fxq 'packages:plex_fonts blex_mono_font libinput' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module omitted its appearance dependencies"
 grep -Fxq "sudo:install -Dm644 $plasma_repo_root/linux/assets/libinput/${pointer_plugin##*/} /etc/libinput/plugins/90-myconfig-pointer-sensitivity.lua" \
     "$plasma_module_log" \

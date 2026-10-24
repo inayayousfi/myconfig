@@ -441,18 +441,55 @@ function Set-EmacsAsEditor {
 }
 
 # ============================================================================
-# Iosevka Mono Font
+# IBM Plex Fonts
 # ============================================================================
 
-function Install-IosevkaMonoFont {
+function Install-BlexMonoFont {
     if (-not (Test-CommandExists "oh-my-posh")) {
         Write-Log "oh-my-posh not found, skipping font installation" -Level 'WARNING'
         return
     }
 
-    Write-Log "Installing Iosevka Mono font..."
-    oh-my-posh font install Iosevka
-    Write-Log "Iosevka Mono font installed" -Level 'OK'
+    Write-Log "Installing BlexMono Nerd Font..."
+    oh-my-posh font install IBMPlexMono
+    Write-Log "BlexMono Nerd Font installed" -Level 'OK'
+}
+
+function Install-PlexSerifFont {
+    # Emacs reads proportional text in Plex Serif. Winget has no IBM Plex
+    # package, so the fonts come from IBM's release and install for this user.
+    $release = "https://github.com/IBM/plex/releases/download/@ibm/plex-serif@2.0.0/ibm-plex-serif.zip"
+    $fontsDir = Join-Path $env:LOCALAPPDATA "Microsoft\Windows\Fonts"
+    $registryPath = "HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Fonts"
+    $workDir = Join-Path ([System.IO.Path]::GetTempPath()) "myconfig-plex-serif"
+    $archive = "$workDir.zip"
+
+    Write-Log "Installing IBM Plex Serif..."
+    Remove-Item -LiteralPath $workDir, $archive -Recurse -Force -ErrorAction SilentlyContinue
+    try {
+        Invoke-WebRequest -Uri $release -OutFile $archive -ErrorAction Stop
+        Expand-Archive -LiteralPath $archive -DestinationPath $workDir -ErrorAction Stop
+        $fonts = @(Get-ChildItem -Path (Join-Path $workDir "ibm-plex-serif\fonts\complete\ttf") -Filter "*.ttf" -ErrorAction Stop)
+        if (-not $fonts) {
+            throw "The IBM Plex Serif release contains no TrueType fonts"
+        }
+
+        New-Item -ItemType Directory -Path $fontsDir -Force -ErrorAction Stop | Out-Null
+        New-Item -Path $registryPath -Force -ErrorAction Stop | Out-Null
+        foreach ($font in $fonts) {
+            # Windows locks a font file that a program has loaded, and the
+            # release version is fixed, so a present file is already current.
+            $target = Join-Path $fontsDir $font.Name
+            if (-not (Test-Path -LiteralPath $target)) {
+                Copy-Item -LiteralPath $font.FullName -Destination $target -ErrorAction Stop
+            }
+            Set-ItemProperty -Path $registryPath -Name "$($font.BaseName) (TrueType)" -Value $target -ErrorAction Stop
+        }
+    } finally {
+        Remove-Item -LiteralPath $workDir, $archive -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    Write-Log "IBM Plex Serif installed to $fontsDir" -Level 'OK'
 }
 
 # ============================================================================
@@ -741,7 +778,8 @@ function Main {
 
     # Install the supporting tools and modules that the dotfiles expect.
     Invoke-InstallStep "PSReadLine module" { Install-PSReadLineModule }
-    Invoke-InstallStep "Iosevka Mono font" { Install-IosevkaMonoFont }
+    Invoke-InstallStep "BlexMono Nerd Font" { Install-BlexMonoFont }
+    Invoke-InstallStep "IBM Plex Serif" { Install-PlexSerifFont }
     if ($installedPackages.DevTools) {
         Invoke-InstallStep "LLVM PATH" { Install-LLVMPath }
     }

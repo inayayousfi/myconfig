@@ -17,15 +17,18 @@ validate_kde_plasma_version() {
 }
 
 configure_kde_plasma_fonts() {
-    local font="Iosevka Nerd Font,12,-1,5,50,0,0,0,0,0"
-    local small_font="Iosevka Nerd Font,10,-1,5,50,0,0,0,0,0"
+    local font="IBM Plex Sans,12,-1,5,50,0,0,0,0,0"
+    local fixed_font="BlexMono Nerd Font Mono,12,-1,5,50,0,0,0,0,0"
+    local small_font="IBM Plex Sans,10,-1,5,50,0,0,0,0,0"
 
-    kwriteconfig6 --file kdeglobals --group General --key font "$font"
-    kwriteconfig6 --file kdeglobals --group General --key fixed "$font"
-    kwriteconfig6 --file kdeglobals --group General --key menuFont "$font"
-    kwriteconfig6 --file kdeglobals --group General --key toolBarFont "$font"
-    kwriteconfig6 --file kdeglobals --group General --key smallestReadableFont "$small_font"
-    kwriteconfig6 --file kdeglobals --group WM --key activeFont "$font"
+    # --notify makes the running Plasma, KWin and KDE's GTK settings bridge
+    # apply the fonts without a new login.
+    kwriteconfig6 --notify --file kdeglobals --group General --key font "$font"
+    kwriteconfig6 --notify --file kdeglobals --group General --key fixed "$fixed_font"
+    kwriteconfig6 --notify --file kdeglobals --group General --key menuFont "$font"
+    kwriteconfig6 --notify --file kdeglobals --group General --key toolBarFont "$font"
+    kwriteconfig6 --notify --file kdeglobals --group General --key smallestReadableFont "$small_font"
+    kwriteconfig6 --notify --file kdeglobals --group WM --key activeFont "$font"
 }
 
 configure_kde_plasma_accent() {
@@ -156,7 +159,7 @@ module_kde_plasma() {
     module_kde_plasma_validate || return 1
 
     myconfig_log "Configuring KDE Plasma with Breeze Dark, a top bar and a dock"
-    install_package_ids iosevka_font libinput
+    install_package_ids plex_fonts blex_mono_font libinput
 
     require_command plasma-apply-colorscheme
     require_command plasma-apply-cursortheme
@@ -185,8 +188,14 @@ module_kde_plasma() {
             "/etc/libinput/plugins/${libinput_plugin##*/}"
     done
 
-    fc-match "Iosevka Nerd Font" | grep -Fq 'Iosevka' \
-        || myconfig_fail "Iosevka Nerd Font is not available after installation"
+    # The plasma package's fonts.conf makes these the defaults for programs that
+    # ask for a kind of font instead of naming one.
+    local kind family
+    for kind in sans-serif:"IBM Plex Sans" serif:"IBM Plex Serif" monospace:"BlexMono Nerd Font Mono"; do
+        family="$(fc-match -f '%{family[0]}' "${kind%%:*}")"
+        [ "$family" = "${kind#*:}" ] \
+            || myconfig_fail "${kind%%:*} resolves to $family instead of ${kind#*:}"
+    done
 
     QT_QPA_PLATFORM=offscreen plasma-apply-lookandfeel --apply org.kde.breezedark.desktop
     configure_kde_plasma_accent

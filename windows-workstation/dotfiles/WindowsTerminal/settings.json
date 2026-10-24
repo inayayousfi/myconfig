@@ -108,7 +108,7 @@
     "defaults": {
       "colorScheme": "BlackPink",
       "font": {
-        "face": "Iosevka NF",
+        "face": "BlexMono Nerd Font",
         "size": 16
       },
       "opacity": 100,

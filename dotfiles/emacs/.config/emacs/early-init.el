@@ -25,10 +25,6 @@
 (tool-bar-mode -1)
 (scroll-bar-mode -1)
 
-(add-to-list 'default-frame-alist
-             `(font . ,(universel-select
-                        '((windows . "Iosevka NFM-15")
-                          (t . "Iosevka Nerd Font Mono-15"))
-                        (universel-host-platform))))
+(add-to-list 'default-frame-alist '(font . "BlexMono Nerd Font Mono-15"))
 (add-to-list 'default-frame-alist '(background-color . "#000000"))
 (add-to-list 'default-frame-alist '(foreground-color . "#d0d6e0"))

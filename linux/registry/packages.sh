@@ -129,7 +129,8 @@ register_package qt6_wayland official:qt6-wayland
 register_package layer_shell_qt official:layer-shell-qt
 register_package libinput official:libinput
 register_package systemd official:systemd
-register_package iosevka_font official:ttf-iosevka-nerd
+register_package plex_fonts aur:otf-ibm-plex
+register_package blex_mono_font official:ttf-ibmplex-mono-nerd
 register_package desktop_file_utils official:desktop-file-utils
 register_package wsl_ssh_agent aur:wsl2-ssh-agent
 register_package tailscale official:tailscale

@@ -397,6 +397,10 @@ validate_staged_dotfiles "$powershell_source" "$powershell_staging" ai
     [ -f "$HOME/.config/ghostty/config.ghostty" ] \
         && [ ! -s "$HOME/.config/ghostty/config.ghostty" ] \
         || myconfig_fail "Ghostty deployment changed the existing empty config.ghostty"
+    ghostty_dropin=".config/systemd/user/app-com.mitchellh.ghostty.service.d/myconfig.conf"
+    [ ! -L "$HOME/${ghostty_dropin%/*}" ] \
+        && [ "$(readlink -f "$HOME/$ghostty_dropin")" = "$HOME/dotfiles/ghostty/$ghostty_dropin" ] \
+        || myconfig_fail "CachyOS did not link the Ghostty service override into its deployed package"
 
     module_dotfiles
     [ -L "$ghostty_config" ] \

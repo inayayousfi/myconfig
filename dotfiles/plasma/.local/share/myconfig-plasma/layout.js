@@ -92,7 +92,7 @@ if (missingWidgetTypes.length > 0) {
         panel.alignment = "left";
         panel.lengthMode = "fill";
         panel.height = 32;
-        panel.hiding = "autohide";
+        panel.hiding = "none";
         panel.floating = false;
         panel.opacity = "translucent";
         markPanel(panel, "top", screen);

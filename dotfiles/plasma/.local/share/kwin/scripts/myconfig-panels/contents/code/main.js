@@ -1,10 +1,12 @@
-// Shows the myconfig bars while the pointer is near their screen edge, also
-// over fullscreen windows, and hides them again once the pointer and their
+// Keeps the top bar visible unless its display shows a fullscreen window.
+// Shows the dock, and the top bar over a fullscreen window, while the pointer
+// is near their screen edge, and hides them again once the pointer and their
 // menus are gone.
 const activationDepth = 24;
 const hideDelay = 400;
 const visibleMode = "windowsgobelow";
 const hiddenMode = "autohide";
+const alwaysMode = "none";
 const states = new Map();
 const fullscreenKeepBelow = new Map();
 
@@ -29,6 +31,18 @@ function pointInRect(point, rect) {
 
 function stateKey(output, role) {
     return `${output.name}:${role}`;
+}
+
+function centerOf(output) {
+    const geometry = output.geometry;
+    return {
+        x: geometry.x + Math.floor(geometry.width / 2),
+        y: geometry.y + Math.floor(geometry.height / 2),
+    };
+}
+
+function desiredMode(state) {
+    return state.desiredVisible ? visibleMode : state.restMode;
 }
 
 function panelModeScript(state, mode) {
@@ -85,8 +99,7 @@ function requestMode(state, mode) {
                 state.currentMode = mode;
             }
 
-            const desiredMode = state.desiredVisible ? visibleMode : hiddenMode;
-            if (state.currentMode !== desiredMode) {
+            if (state.currentMode !== desiredMode(state)) {
                 state.requestTimer.start();
             }
         },
@@ -94,16 +107,14 @@ function requestMode(state, mode) {
 }
 
 function createState(output, role) {
-    const geometry = output.geometry;
     const state = {
         outputName: output.name,
         role,
-        point: {
-            x: geometry.x + Math.floor(geometry.width / 2),
-            y: geometry.y + Math.floor(geometry.height / 2),
-        },
+        point: centerOf(output),
         desiredVisible: false,
-        currentMode: hiddenMode,
+        restMode: hiddenMode,
+        // The top bar's mode is unknown until the script sets it.
+        currentMode: role === "top" ? null : hiddenMode,
         pendingMode: null,
         popupWasOpen: false,
         hideTimer: null,
@@ -114,7 +125,7 @@ function createState(output, role) {
     state.requestTimer = newTimer(1000, () => {
         state.pendingMode = null;
         state.currentMode = null;
-        requestMode(state, state.desiredVisible ? visibleMode : hiddenMode);
+        requestMode(state, desiredMode(state));
     });
     states.set(stateKey(output, role), state);
     return state;
@@ -186,16 +197,15 @@ function hideWhenReady(state) {
     }
 
     state.desiredVisible = false;
-    requestMode(state, hiddenMode);
+    requestMode(state, state.restMode);
 }
 
 function reveal(output, role) {
     const state = getState(output, role);
-    const geometry = output.geometry;
-    state.point = {
-        x: geometry.x + Math.floor(geometry.width / 2),
-        y: geometry.y + Math.floor(geometry.height / 2),
-    };
+    if (state.restMode === alwaysMode) {
+        return;
+    }
+    state.point = centerOf(output);
     state.desiredVisible = true;
     state.hideTimer.stop();
     requestMode(state, visibleMode);
@@ -233,6 +243,46 @@ function updatePointerState() {
     });
 }
 
+function onCurrentDesktop(window) {
+    return (window.onAllDesktops || window.desktops.includes(workspace.currentDesktop))
+        && (window.activities.length === 0 || window.activities.includes(workspace.currentActivity));
+}
+
+function fullscreenOn(output) {
+    return workspace.windowList().some(window => window.fullScreen
+        && !window.minimized
+        && !window.hidden
+        && !isFullscreenException(window)
+        && window.output
+        && window.output.name === output.name
+        && onCurrentDesktop(window));
+}
+
+function updateTopBars() {
+    workspace.screens.forEach(output => {
+        const state = getState(output, "top");
+        const restMode = fullscreenOn(output) ? hiddenMode : alwaysMode;
+        if (state.restMode === restMode && state.currentMode !== null) {
+            return;
+        }
+        state.restMode = restMode;
+        state.point = centerOf(output);
+        if (restMode === alwaysMode) {
+            state.desiredVisible = false;
+            state.hideTimer.stop();
+        }
+        requestMode(state, desiredMode(state));
+    });
+}
+
+// The layout command resets the bars, so their modes are set again after it.
+const resyncTimer = newTimer(3000, () => {
+    states.forEach(state => {
+        state.currentMode = null;
+        requestMode(state, desiredMode(state));
+    });
+});
+
 function startLayoutUnit() {
     callDBus(
         "org.freedesktop.systemd1",
@@ -249,6 +299,7 @@ let layoutChangePending = false;
 const layoutRetryTimer = newTimer(1000, () => {
     layoutChangePending = false;
     startLayoutUnit();
+    resyncTimer.start();
 });
 function screensChanged() {
     const outputNames = new Set(workspace.screens.map(output => output.name));
@@ -264,6 +315,7 @@ function screensChanged() {
         startLayoutUnit();
     }
     layoutRetryTimer.start();
+    updateTopBars();
 }
 
 function closeOverviewAfterDesktopSwitch() {
@@ -299,8 +351,18 @@ function updateFullscreenLayer(window) {
 }
 
 function watchWindow(window) {
-    window.fullScreenChanged.connect(() => updateFullscreenLayer(window));
-    window.closed.connect(() => fullscreenKeepBelow.delete(window));
+    window.fullScreenChanged.connect(() => {
+        updateFullscreenLayer(window);
+        updateTopBars();
+    });
+    window.minimizedChanged.connect(updateTopBars);
+    window.outputChanged.connect(updateTopBars);
+    window.desktopsChanged.connect(updateTopBars);
+    window.activitiesChanged.connect(updateTopBars);
+    window.closed.connect(() => {
+        fullscreenKeepBelow.delete(window);
+        updateTopBars();
+    });
     updateFullscreenLayer(window);
 }
 
@@ -308,5 +370,8 @@ workspace.cursorPosChanged.connect(updatePointerState);
 workspace.screensChanged.connect(screensChanged);
 workspace.screenOrderChanged.connect(screensChanged);
 workspace.currentDesktopChanged.connect(closeOverviewAfterDesktopSwitch);
+workspace.currentDesktopChanged.connect(updateTopBars);
+workspace.currentActivityChanged.connect(updateTopBars);
 workspace.windowAdded.connect(watchWindow);
 workspace.windowList().forEach(watchWindow);
+updateTopBars();

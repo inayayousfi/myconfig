@@ -10,7 +10,7 @@ module_cachyos() {
         firefox firefox_i18n_fr meslo_font \
         cachyos_emerald_kde_theme cachyos_iridescent_kde cachyos_nord_kde_theme \
         kate micro cachyos_micro_settings nano nano_syntax_highlighting meld \
-        glances duf tealdeer filelight pavucontrol kcalc shelly \
+        glances duf btop tealdeer filelight pavucontrol kcalc shelly \
         cachyos_packageinstaller expac cachyos_wallpapers hwdetect qtscrcpy \
-        fzf bat eza
+        fzf bat eza haruna mpvqt mpv kdeconnect partitionmanager ark gwenview
 }

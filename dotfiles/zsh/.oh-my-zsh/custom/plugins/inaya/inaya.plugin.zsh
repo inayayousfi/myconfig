@@ -252,6 +252,13 @@ elif $IS_LINUX; then
             echo ""
         fi
 
+        # Package updates can change the launcher entries that myconfig hides.
+        if command -v myconfig-launcher-hide &>/dev/null; then
+            echo "Hiding development tools from the launcher..."
+            myconfig-launcher-hide
+            echo ""
+        fi
+
         echo "Update process completed."
     }
 fi

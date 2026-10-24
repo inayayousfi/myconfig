@@ -119,10 +119,13 @@ write_environment_inventory() {
         return 0
     fi
 
-    local platform
+    local platform terminal_tools="Yazi, ripgrep, and jq"
     case "$MYCONFIG_PROFILE" in
         cachyos) platform="CachyOS development workstation" ;;
-        arch-wsl) platform="Arch WSL development environment" ;;
+        arch-wsl)
+            platform="Arch WSL development environment"
+            terminal_tools="Yazi, ripgrep, jq, and btop"
+            ;;
         *) platform="$MYCONFIG_PROFILE" ;;
     esac
 
@@ -136,7 +139,7 @@ This file describes the capabilities installed for the $platform.
 - **Shell**: Zsh with Oh My Zsh and the shared Black & Pink configuration.
 - **Runtimes**: Rust, Go, Bun, Node.js, Python, Java, LLVM, Make, and CMake.
 - **Repository tools**: Git, GitHub CLI, and GNU Stow.
-- **Terminal tools**: Yazi, ripgrep, jq, and btop.
+- **Terminal tools**: $terminal_tools.
 - **Coding agents**: Claude Code, installed by Anthropic's installer in \`~/.local/bin/claude\` and updated by itself. Pi, installed globally by Bun in \`~/.bun/bin/pi\`.
 - **Agent browser tools**: Playwright MCP.
 - **Claude configuration**: \`claude-config-helper\` trusts projects, marks Claude's first-run setup as finished, lists or clears saved approvals, applies the MCP servers listed in \`~/.config/claude-config-helper/mcp-servers.json\`, and checks files for tokens, email addresses and home paths.

@@ -4,6 +4,7 @@ run_profile() {
     module_base
     module_ssh
     module_cli
+    module_system_monitor
     module_runtimes
     module_zsh
     module_terminal_tools

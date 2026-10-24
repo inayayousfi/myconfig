@@ -50,6 +50,15 @@ register_package expac official:expac
 register_package cachyos_wallpapers official:cachyos-wallpapers
 register_package hwdetect official:hwdetect
 register_package qtscrcpy official:qtscrcpy
+register_package haruna official:haruna
+register_package mpvqt official:mpvqt
+register_package mpv official:mpv
+register_package kdeconnect official:kdeconnect
+register_package partitionmanager official:partitionmanager
+register_package ark official:ark
+register_package gwenview official:gwenview
+register_package vlc official:vlc
+register_package loupe official:loupe
 
 register_package ripgrep official:ripgrep
 register_package fd official:fd ubuntu-server=official:fd-find

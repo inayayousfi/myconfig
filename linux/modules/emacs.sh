@@ -16,6 +16,9 @@ module_emacs() {
     [ -x "$HOME/.local/bin/emt" ] || myconfig_fail "Emacs terminal command emt was not stowed"
     [ -f "$HOME/.config/environment.d/emacs.conf" ] \
         || myconfig_fail "Emacs client socket environment was not stowed"
+    set_default_application emacs.desktop \
+        text/plain text/markdown application/json application/x-yaml text/x-cmake application/x-docbook+xml \
+        || myconfig_fail "could not make Emacs the default text editor"
 
     if [ -e "$HOME/.emacs.d" ] || [ -L "$HOME/.emacs.d" ]; then
         local legacy_backup

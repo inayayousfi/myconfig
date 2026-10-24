@@ -85,7 +85,7 @@ PlasmoidItem {
             PlasmaExtras.MenuItem {
                 text: i18n("About This System")
                 icon: "help-about"
-                onClicked: root.launch("kcm_about-distro")
+                onClicked: root.launch("org.kde.kinfocenter")
             }
             PlasmaExtras.MenuItem {
                 separator: true

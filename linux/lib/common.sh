@@ -80,3 +80,23 @@ unique_backup_path() {
 
     printf '%s\n' "$candidate"
 }
+
+# Prints the file types that an installed desktop entry declares, one a line.
+desktop_entry_mime_types() {
+    [ -f "$1" ] || {
+        myconfig_fail "desktop entry not found: $1"
+        return 1
+    }
+    sed -n 's/^MimeType=//p' "$1" | head -n 1 | tr ';' '\n' | sed '/^$/d'
+}
+
+# Makes APPLICATION the default for each file type that follows it. Defaults
+# for other file types stay.
+set_default_application() {
+    local application="$1" type
+    shift
+    for type in "$@"; do
+        kwriteconfig6 --file "${XDG_CONFIG_HOME:-$HOME/.config}/mimeapps.list" \
+            --group "Default Applications" --key "$type" "$application" || return 1
+    done
+}

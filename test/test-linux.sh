@@ -108,10 +108,12 @@ cachyos_actions="$({
     }
     module_cachyos
 })"
-[ "$cachyos_actions" = $'[myconfig][cachyos] Configuring CachyOS stable kernel tools\ninstall:cachyos_kernel_manager linux_cachyos noto_fonts_cjk\nremove:konsole alacritty cachyos_hello cachyos_zsh_config vim fish cachyos_fish_config fish_autopair fish_pure_prompt fisher firefox firefox_i18n_fr meslo_font cachyos_emerald_kde_theme cachyos_iridescent_kde cachyos_nord_kde_theme kate micro cachyos_micro_settings nano nano_syntax_highlighting meld glances duf tealdeer filelight pavucontrol kcalc shelly cachyos_packageinstaller expac cachyos_wallpapers hwdetect qtscrcpy fzf bat eza' ] \
+[ "$cachyos_actions" = $'[myconfig][cachyos] Configuring CachyOS stable kernel tools\ninstall:cachyos_kernel_manager linux_cachyos noto_fonts_cjk\nremove:konsole alacritty cachyos_hello cachyos_zsh_config vim fish cachyos_fish_config fish_autopair fish_pure_prompt fisher firefox firefox_i18n_fr meslo_font cachyos_emerald_kde_theme cachyos_iridescent_kde cachyos_nord_kde_theme kate micro cachyos_micro_settings nano nano_syntax_highlighting meld glances duf btop tealdeer filelight pavucontrol kcalc shelly cachyos_packageinstaller expac cachyos_wallpapers hwdetect qtscrcpy fzf bat eza haruna mpvqt mpv kdeconnect partitionmanager ark gwenview' ] \
     || myconfig_fail "CachyOS module did not configure the stable kernel tools and removals"
 
 source "$REPO_ROOT/linux/modules/cli.sh"
+source "$REPO_ROOT/linux/modules/system-monitor.sh"
+source "$REPO_ROOT/linux/modules/media.sh"
 source "$REPO_ROOT/linux/modules/terminal-tools.sh"
 source "$REPO_ROOT/linux/modules/runtimes.sh"
 # Packages that CachyOS installs itself, which its profile removes.
@@ -121,9 +123,9 @@ removed_packages=(
     firefox firefox-i18n-fr ttf-meslo-nerd
     cachyos-emerald-kde-theme-git cachyos-iridescent-kde cachyos-nord-kde-theme-git
     kate micro cachyos-micro-settings nano nano-syntax-highlighting meld
-    glances duf tealdeer filelight pavucontrol kcalc shelly
+    glances duf btop tealdeer filelight pavucontrol kcalc shelly
     cachyos-packageinstaller expac cachyos-wallpapers hwdetect qtscrcpy
-    fzf bat eza cachy-update
+    fzf bat eza cachy-update haruna mpvqt mpv kdeconnect partitionmanager ark gwenview
 )
 
 for cleanup_profile in cachyos arch-wsl; do
@@ -142,6 +144,8 @@ for cleanup_profile in cachyos arch-wsl; do
             eval "module_${unrelated_module}() { :; }"
         done
         write_environment_inventory() { :; }
+        desktop_entry_mime_types() { :; }
+        set_default_application() { :; }
         source "$REPO_ROOT/linux/modules/base.sh"
         source "$REPO_ROOT/linux/profiles/$cleanup_profile.sh"
         run_profile
@@ -159,13 +163,27 @@ for cleanup_profile in cachyos arch-wsl; do
             || myconfig_fail "$cleanup_profile requested removal of $package, which it does not ship"
     done < <(grep '^remove:' <<<"$profile_actions" || true)
     for package in "${removed_packages[@]}"; do
+        # Arch WSL keeps btop, which KDE System Monitor replaces on CachyOS.
+        [ "$cleanup_profile" = arch-wsl ] && [ "$package" = btop ] && continue
         if grep -Eq "^install:(official|aur):${package}$" <<<"$profile_actions"; then
             myconfig_fail "$cleanup_profile still requested installation of $package"
         fi
     done
-    for package in ripgrep jq fastfetch btop tokei jdk-openjdk maven; do
+    for package in ripgrep jq fastfetch tokei jdk-openjdk maven; do
         grep -Fxq "install:official:$package" <<<"$profile_actions" \
             || myconfig_fail "$cleanup_profile omitted retained package $package"
+    done
+    if [ "$cleanup_profile" = arch-wsl ]; then
+        grep -Fxq 'install:official:btop' <<<"$profile_actions" \
+            || myconfig_fail "Arch WSL omitted the btop system monitor"
+    fi
+    for package in vlc loupe; do
+        if [ "$cleanup_profile" = cachyos ]; then
+            grep -Fxq "install:official:$package" <<<"$profile_actions" \
+                || myconfig_fail "CachyOS omitted the media package $package"
+        elif grep -Fxq "install:official:$package" <<<"$profile_actions"; then
+            myconfig_fail "Arch WSL requested the CachyOS media package $package"
+        fi
     done
     if [ "$cleanup_profile" = cachyos ]; then
         grep -Fxq 'install:official:noto-fonts-cjk' <<<"$profile_actions" \
@@ -489,6 +507,7 @@ PY
 
 (
     HOME="$TEST_HOME/emacs-module-home"
+    XDG_CONFIG_HOME="$HOME/.config"
     MYCONFIG_PROFILE=cachyos
     package_log="$TEST_HOME/emacs-packages.log"
     ufw_log="$TEST_HOME/emacs-ufw.log"
@@ -517,6 +536,8 @@ PY
 
     [ "$(cat "$package_log")" = $'emacs_wayland\nsshfs\niosevka_font\nufw' ] \
         || myconfig_fail "Emacs module installed unexpected packages"
+    [ "$(kreadconfig6 --file "$XDG_CONFIG_HOME/mimeapps.list" --group "Default Applications" --key text/markdown)" \
+        = emacs.desktop ] || myconfig_fail "Emacs module did not make Emacs the default text editor"
     [ -f "$HOME/.emacs.d.backup."*/legacy ] \
         || myconfig_fail "Emacs module did not preserve the legacy Emacs directory"
     [ "$(cat "$ufw_log")" = $'ufw allow in proto tcp from 10.0.0.0/8 to any port 18080,18081 comment myconfig Emacs browser terminal\nufw allow in proto tcp from 172.16.0.0/12 to any port 18080,18081 comment myconfig Emacs browser terminal\nufw allow in proto tcp from 192.168.0.0/16 to any port 18080,18081 comment myconfig Emacs browser terminal\nufw --force enable' ] \
@@ -716,6 +737,9 @@ cat >"$plasma_layout_home/.local/bin/myconfig-plasma-layout" <<EOF
 printf 'layout:apply:%s\n' "\${MYCONFIG_PLASMA_ENSURE_OVERVIEW:-}" >>"$plasma_module_log"
 EOF
 chmod +x "$plasma_layout_home/.local/bin/myconfig-plasma-layout"
+printf '#!/usr/bin/env bash\nprintf "launcher-hide\\n" >>"%s"\n' "$plasma_module_log" \
+    >"$plasma_layout_home/.local/bin/myconfig-launcher-hide"
+chmod +x "$plasma_layout_home/.local/bin/myconfig-launcher-hide"
 cp "$REPO_ROOT/dotfiles/plasma/.local/share/kwin/scripts/myconfig-panels/metadata.json" \
     "$plasma_layout_home/.local/share/kwin/scripts/myconfig-panels/metadata.json"
 
@@ -800,6 +824,74 @@ grep -Fxq 'systemctl:--user enable myconfig-plasma-layout.service' "$plasma_modu
     || myconfig_fail "KDE Plasma module did not enable the login layout service"
 grep -Fxq 'config:--file kwinrc --group Plugins --key myconfig-panelsEnabled true' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not enable the panel script"
+grep -Fxq 'config:--file dolphinrc --group General --key BrowseThroughArchives true' "$plasma_module_log" \
+    || myconfig_fail "KDE Plasma module did not let Dolphin open archives as folders"
+for setting in \
+    'kdeglobals --group KDE --key AnimationDurationFactor 0.25' \
+    'kdeglobals --group KDE --key SingleClick true' \
+    $'kglobalshortcutsrc --group services --group org.kde.krunner.desktop --key _launch Search\tAlt+F2\tMeta+Space' \
+    'baloofilerc --group Basic Settings --key Indexing-Enabled false' \
+    'plasmaparc --group General --key RaiseMaximumVolume true' \
+    'powerdevilrc --group LowBattery --group SuspendAndShutdown --key InhibitLidActionWhenExternalMonitorPresent false'; do
+    grep -Fxq "config:--file $setting" "$plasma_module_log" \
+        || myconfig_fail "KDE Plasma module did not set $setting"
+done
+grep -Fxq 'launcher-hide' "$plasma_module_log" \
+    || myconfig_fail "KDE Plasma module did not hide the development tools' launcher entries"
+
+# The launcher command hides installed entries, follows their changes, removes
+# copies of uninstalled ones, and leaves files it did not write.
+launcher_test_root="$TEST_HOME/launcher-hide"
+mkdir -p "$launcher_test_root/system/applications" "$launcher_test_root/home/applications"
+printf '[Desktop Entry]\nName=Qt Assistant\nNoDisplay=false\nExec=assistant\n\n[Desktop Action new]\nNoDisplay=false\n' \
+    >"$launcher_test_root/system/applications/assistant.desktop"
+printf '[Desktop Entry]\nName=Designer\n' >"$launcher_test_root/system/applications/designer.desktop"
+printf '[Desktop Entry]\nName=Mine\n' >"$launcher_test_root/home/applications/designer.desktop"
+printf '# Generated by myconfig-launcher-hide from /old/lstopo.desktop\n[Desktop Entry]\n' \
+    >"$launcher_test_root/home/applications/lstopo.desktop"
+run_launcher_hide() {
+    XDG_DATA_DIRS="$launcher_test_root/system" XDG_DATA_HOME="$launcher_test_root/home" PATH=/usr/bin:/bin \
+        "$REPO_ROOT/dotfiles/plasma/.local/bin/myconfig-launcher-hide" 2>/dev/null
+}
+run_launcher_hide || myconfig_fail "launcher hiding command failed"
+[ "$(cat "$launcher_test_root/home/applications/assistant.desktop")" = "# Generated by myconfig-launcher-hide from $launcher_test_root/system/applications/assistant.desktop
+[Desktop Entry]
+NoDisplay=true
+Name=Qt Assistant
+Exec=assistant
+
+[Desktop Action new]
+NoDisplay=false" ] || myconfig_fail "launcher hiding command did not hide an installed entry"
+[ "$(cat "$launcher_test_root/home/applications/designer.desktop")" = $'[Desktop Entry]\nName=Mine' ] \
+    || myconfig_fail "launcher hiding command replaced a file it did not write"
+[ ! -e "$launcher_test_root/home/applications/lstopo.desktop" ] \
+    || myconfig_fail "launcher hiding command kept the copy of an uninstalled entry"
+sed -i 's/Exec=assistant/Exec=assistant6/' "$launcher_test_root/system/applications/assistant.desktop"
+run_launcher_hide || myconfig_fail "launcher hiding command failed on its second run"
+grep -Fxq 'Exec=assistant6' "$launcher_test_root/home/applications/assistant.desktop" \
+    || myconfig_fail "launcher hiding command did not follow a changed installed entry"
+
+# An installed application becomes the default for the file types it declares,
+# and the defaults of other file types stay.
+# The KDE module test above replaced the KDE config tools with stand-ins.
+unset -f kwriteconfig6 kreadconfig6
+default_apps_config="$TEST_HOME/default-apps"
+mkdir -p "$default_apps_config"
+printf '[Default Applications]\ntext/html=browser.desktop\n' >"$default_apps_config/mimeapps.list"
+printf '[Desktop Entry]\nName=Viewer\nMimeType=image/png;image/svg+xml;\n' >"$default_apps_config/viewer.desktop"
+[ "$(desktop_entry_mime_types "$default_apps_config/viewer.desktop")" = $'image/png\nimage/svg+xml' ] \
+    || myconfig_fail "desktop entry file types were not read"
+(
+    XDG_CONFIG_HOME="$default_apps_config"
+    # shellcheck disable=SC2046
+    set_default_application viewer.desktop $(desktop_entry_mime_types "$default_apps_config/viewer.desktop")
+) || myconfig_fail "default application could not be set"
+for type in image/png image/svg+xml; do
+    [ "$(kreadconfig6 --file "$default_apps_config/mimeapps.list" --group "Default Applications" --key "$type")" \
+        = viewer.desktop ] || myconfig_fail "default application was not set for $type"
+done
+[ "$(kreadconfig6 --file "$default_apps_config/mimeapps.list" --group "Default Applications" --key text/html)" \
+    = browser.desktop ] || myconfig_fail "setting a default application replaced another file type's default"
 grep -Fxq 'packages:iosevka_font libinput' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module omitted its appearance dependencies"
 grep -Fxq "sudo:install -Dm644 $plasma_repo_root/linux/assets/libinput/${pointer_plugin##*/} /etc/libinput/plugins/90-myconfig-pointer-sensitivity.lua" \
@@ -1539,7 +1631,7 @@ mkdir -p "$inventory_home"
 HOME="$inventory_home"
 MYCONFIG_PROFILE=cachyos
 write_environment_inventory
-grep -Fxq -- '- **Terminal tools**: Yazi, ripgrep, jq, and btop.' "$HOME/environment.md" \
+grep -Fxq -- '- **Terminal tools**: Yazi, ripgrep, and jq.' "$HOME/environment.md" \
     || myconfig_fail "CachyOS inventory still advertises removed terminal tools"
 grep -Fq 'http://HOSTNAME.local:18080' "$HOME/environment.md" \
     || myconfig_fail "CachyOS inventory omitted the Emacs workbench"

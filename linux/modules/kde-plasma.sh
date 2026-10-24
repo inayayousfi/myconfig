@@ -73,6 +73,33 @@ configure_kde_plasma_notifications() {
     kwriteconfig6 --file plasmanotifyrc --group DoNotDisturb --key WhenFullscreen false
 }
 
+configure_kde_plasma_behavior() {
+    kwriteconfig6 --file kdeglobals --group KDE --key AnimationDurationFactor 0.25
+    kwriteconfig6 --file kdeglobals --group KDE --key SingleClick true
+}
+
+configure_kde_plasma_shortcuts() {
+    kwriteconfig6 --file kglobalshortcutsrc --group services --group org.kde.krunner.desktop \
+        --key _launch $'Search\tAlt+F2\tMeta+Space'
+}
+
+configure_kde_plasma_system() {
+    local power_state
+    kwriteconfig6 --file baloofilerc --group "Basic Settings" --key Indexing-Enabled false
+    kwriteconfig6 --file plasmaparc --group General --key RaiseMaximumVolume true
+    # Closing the lid sleeps even while an external display is connected.
+    for power_state in AC Battery LowBattery; do
+        kwriteconfig6 --file powerdevilrc --group "$power_state" --group SuspendAndShutdown --key LidAction 1
+        kwriteconfig6 --file powerdevilrc --group "$power_state" --group SuspendAndShutdown \
+            --key InhibitLidActionWhenExternalMonitorPresent false
+    done
+}
+
+configure_kde_plasma_dolphin() {
+    # Without Ark, Dolphin opens zip, tar and 7z archives as folders.
+    kwriteconfig6 --file dolphinrc --group General --key BrowseThroughArchives true
+}
+
 configure_kde_plasma_input() {
     local pointer_group=(--group Libinput --group Defaults --group Pointer)
     local touchpad_group=(--group Libinput --group Defaults --group Touchpad)
@@ -142,8 +169,9 @@ module_kde_plasma() {
     require_command sudo
 
     local layout_command="$HOME/.local/bin/myconfig-plasma-layout"
+    local launcher_hide_command="$HOME/.local/bin/myconfig-launcher-hide"
     local panel_script="$HOME/.local/share/kwin/scripts/myconfig-panels/metadata.json"
-    [ -x "$layout_command" ] && [ -f "$panel_script" ] || {
+    [ -x "$layout_command" ] && [ -x "$launcher_hide_command" ] && [ -f "$panel_script" ] || {
         myconfig_fail "the plasma dotfiles package is not deployed"
         return 1
     }
@@ -166,9 +194,14 @@ module_kde_plasma() {
     configure_kde_plasma_desktops
     configure_kde_plasma_window_rules
     configure_kde_plasma_notifications
+    configure_kde_plasma_dolphin
+    configure_kde_plasma_behavior
+    configure_kde_plasma_shortcuts
+    configure_kde_plasma_system
     configure_kde_plasma_input
     configure_kde_plasma_cursor_theme
     kwriteconfig6 --file kwinrc --group Plugins --key myconfig-panelsEnabled true
+    "$launcher_hide_command" || myconfig_fail "could not hide the development tools' launcher entries"
 
     export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
     export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"

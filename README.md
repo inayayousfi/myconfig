@@ -16,7 +16,7 @@ Run this after completing the CachyOS graphical installer:
 curl -fsSL https://raw.githubusercontent.com/inayayousfi/myconfig/main/bootstrap.sh | bash -s -- cachyos
 ```
 
-The CachyOS profile requires KDE Plasma 6.7 through 6.x and applies Breeze Dark with a pink accent color and a macOS-style layout: a top bar holding a KDE session menu, the global menu, tray and clock, and an application dock with a one-click Overview icon, on every display. It installs a normal-process native Wayland Emacs workbench with restorable workspaces for splits, native buffers, terminals, and Git review. AIPanel coding-agent processes run in side windows attached to source buffers, outside saved workspace jobs. Closing the final frame stops Emacs, and reopening starts fresh recorded workspace jobs. The profile also installs the Black & Pink rEFInd theme, installs Axidev OSK, Kanata with an independent KDE tray, and Handy offline dictation with either-side `Ctrl+Shift` push-to-talk. Log out and back in so new input-device group memberships apply, then restart the selected login manager or reboot to activate login-screen startup.
+The CachyOS profile requires KDE Plasma 6.7 through 6.x and applies Breeze Dark with a pink accent color and a macOS-style layout: a top bar holding a KDE session menu, the global menu, tray and clock, and an application dock with a one-click Overview icon, on every display. It installs VSCodium as the text editor. The profile also installs the Black & Pink rEFInd theme, installs Axidev OSK, Kanata with an independent KDE tray, and Handy offline dictation with either-side `Ctrl+Shift` push-to-talk. Log out and back in so new input-device group memberships apply, then restart the selected login manager or reboot to activate login-screen startup.
 
 The final authentication step offers GitHub and Tailscale login. Declining either prompt prints the command for later.
 
@@ -60,7 +60,7 @@ The bootstrap script will:
 
 ### Editor Settings Only (Windows)
 
-On a Windows machine that should receive only the VSCodium or VS Code settings, theme and extensions, right-click `windows-workstation\install-editor.ps1` in a clone of this repository and choose **Run with PowerShell**. It configures every editor installed at that moment; run it again after installing the other editor.
+On a Windows machine that should receive only the VSCodium or VS Code settings, theme and extensions, right-click `windows-workstation\install-editor.ps1` in a clone of this repository and choose **Run with PowerShell**. It configures every editor installed at that moment; run it again after installing the other editor. It also makes the first installed of VSCodium and VS Code, or Notepad when neither is installed, the editor that Git and other programs open.
 
 ### CachyOS Virtual Machine Testing
 

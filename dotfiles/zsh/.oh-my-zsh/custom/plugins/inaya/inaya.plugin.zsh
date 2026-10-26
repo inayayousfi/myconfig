@@ -37,16 +37,15 @@ export LC_ALL=en_US.UTF-8
 
 export VI_MODE_SET_CURSOR=true
 
-if $IS_LINUX && [ -z "$WSL_DISTRO_NAME" ] && has emacs; then
-    # The running graphical Emacs opens the file as a buffer; its server is
-    # named remot. A new Emacs starts only when none is running.
-    export EDITOR="emacsclient --socket-name=remot --alternate-editor=emacs"
+if $IS_LINUX && [ -z "$WSL_DISTRO_NAME" ] && has codium; then
+    # Programs wait for the editor to close the file before reading it.
+    export EDITOR="codium --wait"
     export VISUAL="$EDITOR"
-elif [ -n "$WSL_DISTRO_NAME" ] && [ -x "$HOME/.local/bin/windows-emacsclient" ] \
-    && "$HOME/.local/bin/windows-emacsclient" --check; then
-    # Windows Emacs edits WSL files through \\wsl.localhost paths. The full
+elif [ -n "$WSL_DISTRO_NAME" ] && [ -x "$HOME/.local/bin/windows-codium" ] \
+    && "$HOME/.local/bin/windows-codium" --check; then
+    # Windows VSCodium edits WSL files through \\wsl.localhost paths. The full
     # path works before PATH gains ~/.local/bin and for programs without it.
-    export EDITOR="$HOME/.local/bin/windows-emacsclient"
+    export EDITOR="$HOME/.local/bin/windows-codium"
     export VISUAL="$EDITOR"
 elif has vim; then
     export EDITOR="vim"
@@ -81,14 +80,6 @@ alias ll='ls -la'
 alias gcb='git fetch --prune && git branch -vv | grep ": gone]" | awk "{print \$1}" | xargs -n 1 git branch -d'
 
 alias please='sudo'
-
-# Tool aliases
-case "$EDITOR" in
-    emacs*)
-        alias vi='emacs'
-        alias v='emacs'
-        ;;
-esac
 
 if has bun; then
     alias npm='bun'

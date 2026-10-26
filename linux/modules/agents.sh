@@ -149,7 +149,7 @@ EOF
 
     if [ "$MYCONFIG_PROFILE" = cachyos ]; then
         cat >>"$HOME/environment.md" <<'EOF'
-- **Editor and terminal Atelier**: Native Wayland graphical Emacs with restorable workspace layouts, native buffers, splits, libghostty-powered Ghostel terminals, Git review, and workspace-owned AIPanel coding agents. `M-x remot-set-password` enables its plaintext private-LAN browser terminal at `http://HOSTNAME.local:18080`. Closing its final graphical frame ends the process; reopening starts fresh recorded jobs.
+- **Editor**: VSCodium with the Black & Pink theme and Open Remote SSH. It opens text files from the desktop, and `EDITOR` is `codium --wait`.
 - **On-screen keyboard**: Axidev OSK with desktop and login-screen startup.
 - **Keyboard remapping**: Kanata keyboard remapping with a KDE tray profile selector.
 - **Dictation**: Handy offline push-to-talk dictation on Ctrl+Space.
@@ -158,7 +158,7 @@ EOF
 EOF
     elif [ "$MYCONFIG_PROFILE" = arch-wsl ]; then
         cat >>"$HOME/environment.md" <<'EOF'
-- **Editor**: This profile does not install an editor. The shell uses an available Vim or Vi fallback.
+- **Editor**: This profile does not install an editor. When Windows VSCodium is installed, `EDITOR` is `~/.local/bin/windows-codium`, which opens files in it and waits until they are closed. Otherwise the shell uses an available Vim or Vi fallback.
 EOF
     fi
 

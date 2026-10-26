@@ -358,89 +358,6 @@ function Install-WindowsTerminalConfig {
 }
 
 # ============================================================================
-# Emacs Configuration
-# ============================================================================
-
-function Find-EmacsExecutable {
-    $emacsCommand = Get-Command emacs.exe -ErrorAction SilentlyContinue
-    if ($emacsCommand) {
-        return $emacsCommand.Source
-    }
-
-    # The GNU Emacs installer from winget does not add its bin folder to PATH,
-    # and the folder name carries the version: Program Files\Emacs\emacs-30.1\bin.
-    $installed = Get-ChildItem -Path "$env:ProgramFiles\Emacs\emacs-*\bin\emacs.exe" -ErrorAction SilentlyContinue |
-        Sort-Object { ($_.Directory.Parent.Name -replace '^emacs-', '') -as [version] } -Descending |
-        Select-Object -First 1
-    if (-not $installed) {
-        return $null
-    }
-
-    # Replace the bin folder of an older Emacs so an upgrade leaves no stale entry.
-    $binDir = $installed.DirectoryName
-    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-    $entries = @($userPath -split ';' | Where-Object { $_ -and $_ -notlike "*\Emacs\emacs-*\bin" })
-    [Environment]::SetEnvironmentVariable("Path", (($entries + $binDir) -join ';'), "User")
-    $env:Path = "$env:Path;$binDir"
-    Write-Log "Added $binDir to the user PATH" -Level 'OK'
-
-    return $installed.FullName
-}
-
-function Install-EmacsConfig {
-    $source = Join-Path $SharedDotfilesDir "emacs\.config\emacs"
-    $emacsPath = Find-EmacsExecutable
-    if (-not $emacsPath) {
-        throw "Emacs executable was not found after package installation"
-    }
-
-    $emacsHome = (& $emacsPath --batch -Q --eval '(princ (expand-file-name "~/"))' | Out-String).Trim()
-    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($emacsHome)) {
-        throw "Could not resolve Emacs home directory with Emacs itself"
-    }
-
-    $destination = Join-Path $emacsHome ".config\emacs"
-    $loader = Join-Path $emacsHome ".emacs"
-
-    if (-not (Test-Path $source)) {
-        throw "Emacs configuration source not found: $source"
-    }
-
-    Copy-DotfileSafe -Source $source -Destination $destination -Recurse -Required
-
-    if (-not (Test-Path $loader)) {
-        $initPath = (Join-Path $destination "init.el").Replace('\', '/')
-        $earlyInitPath = (Join-Path $destination "early-init.el").Replace('\', '/')
-        Set-Content -LiteralPath $loader -Value @(
-            "(load-file `"$earlyInitPath`")"
-            "(load-file `"$initPath`")"
-        ) -Encoding utf8NoBOM -ErrorAction Stop
-        Write-Log "Installed Emacs startup loader at $loader" -Level 'OK'
-    } else {
-        Write-Log "Existing Emacs startup file preserved: $loader" -Level 'WARNING'
-    }
-
-    Write-Log "Emacs configuration installed to $destination" -Level 'OK'
-}
-
-function Set-EmacsAsEditor {
-    # Remot's server in the running Emacs is named remot; emacsclient finds its
-    # key file by name. A new Emacs starts only when none is running.
-    $editor = "emacsclient --server-file=remot --alternate-editor=emacs"
-    foreach ($name in @('EDITOR', 'VISUAL')) {
-        [Environment]::SetEnvironmentVariable($name, $editor, "User")
-        Set-Item -Path "env:$name" -Value $editor
-    }
-
-    git config --global core.editor $editor
-    if ($LASTEXITCODE -ne 0) {
-        throw "Could not set Git's editor"
-    }
-
-    Write-Log "Files from Git and other programs open in the running Emacs" -Level 'OK'
-}
-
-# ============================================================================
 # IBM Plex Fonts
 # ============================================================================
 
@@ -456,8 +373,8 @@ function Install-BlexMonoFont {
 }
 
 function Install-PlexSerifFont {
-    # Emacs reads proportional text in Plex Serif. Winget has no IBM Plex
-    # package, so the fonts come from IBM's release and install for this user.
+    # Long reading text uses Plex Serif. Winget has no IBM Plex package, so
+    # the fonts come from IBM's release and install for this user.
     $release = "https://github.com/IBM/plex/releases/download/@ibm/plex-serif@2.0.0/ibm-plex-serif.zip"
     $fontsDir = Join-Path $env:LOCALAPPDATA "Microsoft\Windows\Fonts"
     $registryPath = "HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Fonts"
@@ -767,8 +684,6 @@ function Main {
     Invoke-InstallStep "PowerShell profile" { Install-PowerShellProfile }
     Invoke-InstallStep "Oh My Posh configuration" { Install-OhMyPoshConfig }
     Invoke-InstallStep "Windows Terminal configuration" { Install-WindowsTerminalConfig }
-    Invoke-InstallStep "Emacs configuration" { Install-EmacsConfig }
-    Invoke-InstallStep "Emacs as editor" { Set-EmacsAsEditor }
     Invoke-InstallStep "AutoHotkey scripts" { Install-AHKScripts }
     Invoke-InstallStep "AI config" { Install-AIConfig }
     Invoke-InstallStep "peon-ping removal" { Remove-PeonPing }

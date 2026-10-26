@@ -32,7 +32,7 @@ configure_kde_plasma_fonts() {
 }
 
 configure_kde_plasma_accent() {
-    # The pink that Black & Pink uses in the terminal, Zsh and Emacs. Plasma's
+    # The pink that Black & Pink uses in the terminal and Zsh. Plasma's
     # tool derives the colors from it but leaves the accent setting that System
     # Settings shows unset, so these keys record it.
     kwriteconfig6 --file kdeglobals --group General --key AccentColor 255,78,173

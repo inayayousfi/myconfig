@@ -19,6 +19,9 @@
 
   "git.blame.editorDecoration.enabled": true,
   "security.promptForRemoteFileProtocolHandling": false,
+  "security.workspace.trust.enabled": false,
+  // Windows: lets windows-codium open \\wsl.localhost paths without asking.
+  "security.restrictUNCAccess": false,
   "workbench.accounts.showAvatar": false,
   "workbench.commandPalette.preserveInput": true,
   "workbench.list.smoothScrolling": true,

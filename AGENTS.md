@@ -74,14 +74,6 @@ Plasma 6.8 crashes when a panel of an unplugged display is changed. A script tha
 
 KDE ignores `Hidden=true` overrides of launcher entries. To hide a launcher entry, add it to `myconfig-launcher-hide`.
 
-## Emacs
-
-Linux manages the Emacs package through GNU Stow. A normal directory can contain generated runtime state while tracked configuration files or a tracked subdirectory inside it resolve through links into the deployed `emacs` package. Do not mistake a regular folded directory or generated cache for an unmanaged configuration.
-
-`docs/emacs.md` describes the CachyOS Emacs module. Inspect `linux/modules/emacs.sh` and the package contents before changing startup or state paths.
-
-Windows uses a separate direct-copy installer for Emacs. Do not assume that Linux Stow links, Linux service files, or Linux paths apply to the Windows installation.
-
 ## Windows boundary
 
 Windows Workstation is intentionally a separate deployment model. Its installer uses PowerShell, Winget, direct copies, Windows-specific files, and separate handling for the agent configuration. It does not provide the same Linux package tree or GNU Stow ownership model.
@@ -98,6 +90,6 @@ test/test-linux.sh
 git diff --check
 ```
 
-For Emacs changes, also run the relevant Emacs workbench test from `test/` and check that tracked configuration files still resolve to the intended package. For OpenCode or agent changes, verify both the repository bridge and the live resolved global file.
+For OpenCode or agent changes, verify both the repository bridge and the live resolved global file.
 
 Do not overwrite unrelated user changes. Before editing, inspect `git status` and keep pre-existing modifications separate from the task.

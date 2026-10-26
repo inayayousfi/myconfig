@@ -9,6 +9,9 @@ module_vscodium() {
     [ -L "$config/User/keybindings.json" ] || myconfig_fail "VSCodium key bindings were not stowed"
     [ -f "$config/extensions.txt" ] || myconfig_fail "VSCodium extension list was not stowed"
     [ -L "$config/blacknpink-theme" ] || myconfig_fail "VSCodium Black and Pink theme was not stowed"
+    set_default_application vscodium.desktop \
+        text/plain text/markdown application/json application/x-yaml text/x-cmake application/x-docbook+xml \
+        || myconfig_fail "could not make VSCodium the default text editor"
 
     # VSCodium forgets extension folders it did not install itself, so the
     # theme goes in as a package: a zip with the extension under extension/.

@@ -92,13 +92,10 @@ register_package fish_autopair official:fish-autopair
 register_package fish_pure_prompt official:fish-pure-prompt
 register_package fisher official:fisher
 register_package neovim official:neovim
-register_package emacs_wayland official:emacs-wayland
 register_package vscodium official:vscodium
-register_package ufw official:ufw
 register_package qrencode official:qrencode
 register_package flatpak official:flatpak
 register_package fuse2 official:fuse2
-register_package sshfs official:sshfs
 register_package ghostty official:ghostty
 register_package kitty official:kitty
 register_package alacritty official:alacritty

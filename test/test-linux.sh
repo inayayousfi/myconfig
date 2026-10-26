@@ -61,12 +61,6 @@ MYCONFIG_PROFILE=cachyos
     || myconfig_fail "Axidev OSK LayerShellQt dependency did not resolve"
 [ "$(resolve_package ghostty)" = official:ghostty ] \
     || myconfig_fail "Ghostty package did not resolve"
-[ "$(resolve_package emacs_wayland)" = official:emacs-wayland ] \
-    || myconfig_fail "Native Wayland Emacs package did not resolve"
-[ "$(resolve_package ufw)" = official:ufw ] \
-    || myconfig_fail "UFW package did not resolve"
-[ "$(resolve_package sshfs)" = official:sshfs ] \
-    || myconfig_fail "SSHFS package did not resolve"
 [ "$(resolve_package cachy_update)" = official:cachy-update ] \
     || myconfig_fail "Cachy Update package did not resolve"
 [ "$(resolve_package cachyos_hello)" = official:cachyos-hello ] \
@@ -140,7 +134,7 @@ for cleanup_profile in cachyos arch-wsl; do
         # Exercise the real profile and package modules without running services,
         # deploying dotfiles, or installing anything on the host.
         for unrelated_module in ssh ssh_server flatpak appimage zsh ghostty axidev_osk tailscale \
-            agents_packages dotfiles android_phone emacs vscodium refind \
+            agents_packages dotfiles android_phone vscodium refind \
             kanata kde_plasma_validate kde_plasma kanata_kde handy pipewire \
             docker agents_configure t3code authentication; do
             eval "module_${unrelated_module}() { :; }"
@@ -464,17 +458,23 @@ zsh -n "$REPO_ROOT/dotfiles/zsh/.zshrc"
 zsh -n "$REPO_ROOT/dotfiles/zsh/.oh-my-zsh/custom/plugins/inaya/inaya.plugin.zsh"
 zsh -n "$REPO_ROOT/dotfiles/zsh/.oh-my-zsh/custom/themes/blacknpink.zsh-theme"
 
-for editor_case in emacs vim vi; do
-    HOME="$TEST_HOME/editor-$editor_case" MYCONFIG_EDITOR_CASE="$editor_case" \
+for editor_case in codium windows-codium vim vi; do
+    editor_home="$TEST_HOME/editor-$editor_case"
+    mkdir -p "$editor_home/.local/bin"
+    if [[ "$editor_case" = windows-codium ]]; then
+        printf '#!/bin/sh\n[ "$1" = --check ]\n' >"$editor_home/.local/bin/windows-codium"
+        chmod +x "$editor_home/.local/bin/windows-codium"
+    fi
+    HOME="$editor_home" MYCONFIG_EDITOR_CASE="$editor_case" \
         zsh -f -c '
         # Simulate command availability, including a retired editor, without
         # launching programs or using the host shell configuration.
         command() {
             if [[ "$1" = -v ]]; then
                 case "$2" in
-                    emacs) [[ "$MYCONFIG_EDITOR_CASE" = emacs ]] ;;
+                    codium) [[ "$MYCONFIG_EDITOR_CASE" = codium ]] ;;
                     vim) [[ "$MYCONFIG_EDITOR_CASE" = vim ]] ;;
-                    nvim) return 0 ;;
+                    emacs|nvim) return 0 ;;
                     *) return 1 ;;
                 esac
             else
@@ -484,152 +484,45 @@ for editor_case in emacs vim vi; do
         uname() { print Linux; }
         go() { print "$HOME/go"; }
         bun() { print "$HOME/.bun/bin"; }
-        if [[ "$MYCONFIG_EDITOR_CASE" = emacs ]]; then
+        if [[ "$MYCONFIG_EDITOR_CASE" = codium ]]; then
             unset WSL_DISTRO_NAME
         else
             export WSL_DISTRO_NAME=Arch
         fi
         source "$1" || exit 1
-        expected="$MYCONFIG_EDITOR_CASE"
-        if [[ "$MYCONFIG_EDITOR_CASE" = emacs ]]; then
-            expected="emacsclient --socket-name=remot --alternate-editor=emacs"
-        fi
+        case "$MYCONFIG_EDITOR_CASE" in
+            codium) expected="codium --wait" ;;
+            windows-codium) expected="$HOME/.local/bin/windows-codium" ;;
+            *) expected="$MYCONFIG_EDITOR_CASE" ;;
+        esac
         [[ "$EDITOR" = "$expected" && "$VISUAL" = "$expected" ]] || exit 1
-        if [[ "$MYCONFIG_EDITOR_CASE" = emacs ]]; then
-            (( ! $+aliases[vim] )) && [[ "${aliases[vi]}" = emacs && "${aliases[v]}" = emacs ]] \
-                || exit 1
-        else
-            (( ! $+aliases[vim] && ! $+aliases[vi] && ! $+aliases[v] )) || exit 1
-        fi
+        (( ! $+aliases[vim] && ! $+aliases[vi] && ! $+aliases[v] )) || exit 1
         ' editor-selection "$REPO_ROOT/dotfiles/zsh/.oh-my-zsh/custom/plugins/inaya/inaya.plugin.zsh" \
         || myconfig_fail "shell did not select the $editor_case editor without retired-tool aliases"
 done
 
-python - "$REPO_ROOT/dotfiles/emacs/.config/emacs/lisp/remot.el" <<'PY' || myconfig_fail "Pinned embedded ghostty-web 0.4.0 assets changed"
-import base64
-import hashlib
-import re
-import sys
-
-source = open(sys.argv[1], encoding="utf-8").read()
-expected = {
-    "ghostty-web-js": "078b3fe37e4ef469d3f3d7772ee263070f8613e5a6f5ff305c85778907f45e72",
-    "ghostty-vt-wasm": "d6f0326f1874ad2ce9f289e3a4a0c5f3507d4cb38d8747e4b287def470a0c60a",
-    "ghostty-web-license": "5eccd0eeca906db6d661b64dd05e1d4a4b2e49d37d43bbcfd2c8cce4d7832920",
-}
-for name, digest in expected.items():
-    match = re.search(
-        rf"\(defconst remot--{name}-base64\n  \(concat\n(.*?)\n   \)\)",
-        source,
-        re.DOTALL,
-    )
-    if match is None:
-        raise SystemExit(f"missing embedded asset: {name}")
-    encoded = "".join(re.findall(r'"([A-Za-z0-9+/=]+)"', match.group(1)))
-    actual = hashlib.sha256(base64.b64decode(encoded, validate=True)).hexdigest()
-    if actual != digest:
-        raise SystemExit(f"checksum mismatch for embedded asset: {name}")
-PY
-
+# Text files from the desktop open in VSCodium.
 (
-    HOME="$TEST_HOME/emacs-module-home"
+    HOME="$TEST_HOME/vscodium-module-home"
     XDG_CONFIG_HOME="$HOME/.config"
-    MYCONFIG_PROFILE=cachyos
-    package_log="$TEST_HOME/emacs-packages.log"
-    ufw_log="$TEST_HOME/emacs-ufw.log"
+    config="$HOME/.config/VSCodium"
+    mkdir -p "$config/User" "$HOME/stowed/blacknpink-theme"
+    touch "$HOME/stowed/settings.json" "$HOME/stowed/keybindings.json" "$config/extensions.txt"
+    ln -s "$HOME/stowed/settings.json" "$config/User/settings.json"
+    ln -s "$HOME/stowed/keybindings.json" "$config/User/keybindings.json"
+    ln -s "$HOME/stowed/blacknpink-theme" "$config/blacknpink-theme"
 
-    mkdir -p \
-        "$HOME/.config/emacs/lisp" \
-        "$HOME/.config/environment.d" \
-        "$HOME/.local/bin" \
-        "$HOME/.emacs.d"
-    touch \
-        "$HOME/.config/emacs/early-init.el" \
-        "$HOME/.config/emacs/init.el" \
-        "$HOME/.config/environment.d/emacs.conf" \
-        "$HOME/.emacs.d/legacy"
-    install -m 755 /dev/null "$HOME/.local/bin/emt"
+    install_package_ids() { :; }
+    bsdtar() { :; }
+    codium() { :; }
 
-    install_package_ids() {
-        printf '%s\n' "$@" >>"$package_log"
-    }
-    sudo() {
-        printf '%s\n' "$*" >>"$ufw_log"
-    }
+    source "$REPO_ROOT/linux/modules/vscodium.sh"
+    module_vscodium
 
-    source "$REPO_ROOT/linux/modules/emacs.sh"
-    module_emacs
-
-    [ "$(cat "$package_log")" = $'emacs_wayland\nsshfs\nplex_fonts\nblex_mono_font\nufw' ] \
-        || myconfig_fail "Emacs module installed unexpected packages"
-    [ "$(kreadconfig6 --file "$XDG_CONFIG_HOME/mimeapps.list" --group "Default Applications" --key text/markdown)" \
-        = emacs.desktop ] || myconfig_fail "Emacs module did not make Emacs the default text editor"
-    [ -f "$HOME/.emacs.d.backup."*/legacy ] \
-        || myconfig_fail "Emacs module did not preserve the legacy Emacs directory"
-    [ "$(cat "$ufw_log")" = $'ufw allow in proto tcp from 10.0.0.0/8 to any port 18080,18081 comment myconfig Emacs browser terminal\nufw allow in proto tcp from 172.16.0.0/12 to any port 18080,18081 comment myconfig Emacs browser terminal\nufw allow in proto tcp from 192.168.0.0/16 to any port 18080,18081 comment myconfig Emacs browser terminal\nufw --force enable' ] \
-        || myconfig_fail "Emacs module did not enforce the private-LAN browser firewall policy"
-
-    MYCONFIG_PROFILE=arch-wsl
-    if module_emacs >/dev/null 2>&1; then
-        myconfig_fail "Emacs module accepted a non-CachyOS profile"
-    fi
-)
-
-# emt joins the graphical Emacs through Remot's server, starts graphical
-# Emacs when none runs, and refuses to start a second Emacs beside one
-# that lacks the server, since both would save the same workspaces.
-(
-    emt_bin="$TEST_HOME/emt-bin"
-    emt_log="$TEST_HOME/emt.log"
-    mkdir -p "$emt_bin"
-    cat >"$emt_bin/emacsclient" <<'SH'
-#!/usr/bin/env bash
-printf 'emacsclient %s\n' "$*" >>"$EMT_LOG"
-[ -e "$EMT_STATE/remot" ]
-SH
-    cat >"$emt_bin/pgrep" <<'SH'
-#!/usr/bin/env bash
-[ -e "$EMT_STATE/other-emacs" ]
-SH
-    cat >"$emt_bin/kstart" <<'SH'
-#!/usr/bin/env bash
-printf 'kstart %s\n' "$*" >>"$EMT_LOG"
-touch "$EMT_STATE/remot"
-SH
-    chmod +x "$emt_bin"/*
-    export PATH="$emt_bin:$PATH" EMT_LOG="$emt_log" EMT_STATE="$TEST_HOME/emt-state"
-    emt="$REPO_ROOT/dotfiles/emacs/.local/bin/emt"
-    open_line='emacsclient --socket-name=remot --tty --eval (remot-show-in-terminal-frame)'
-
-    reset_emt() {
-        rm -rf "$EMT_STATE" "$EMT_LOG"
-        mkdir -p "$EMT_STATE"
-    }
-
-    reset_emt
-    touch "$EMT_STATE/remot"
-    "$emt"
-    [ "$(tail -n 1 "$EMT_LOG")" = "$open_line" ] && ! grep -q kstart "$EMT_LOG" \
-        || myconfig_fail "emt did not open a terminal frame in the running Remot Emacs"
-
-    reset_emt
-    touch "$EMT_STATE/other-emacs"
-    if WAYLAND_DISPLAY=wayland-0 "$emt" 2>/dev/null; then
-        myconfig_fail "emt accepted an Emacs without the remot server"
-    fi
-    ! grep -q -e kstart -e -- --tty "$EMT_LOG" \
-        || myconfig_fail "emt started a second Emacs beside one without the remot server"
-
-    reset_emt
-    if env -u WAYLAND_DISPLAY -u DISPLAY "$emt" 2>/dev/null; then
-        myconfig_fail "emt succeeded without Emacs or a desktop session"
-    fi
-
-    reset_emt
-    WAYLAND_DISPLAY=wayland-0 "$emt"
-    grep -qx 'kstart --application emacs' "$EMT_LOG" \
-        && [ "$(tail -n 1 "$EMT_LOG")" = "$open_line" ] \
-        || myconfig_fail "emt did not start graphical Emacs and then open a terminal frame"
+    for text_type in text/plain text/markdown application/json; do
+        [ "$(kreadconfig6 --file "$XDG_CONFIG_HOME/mimeapps.list" --group "Default Applications" --key "$text_type")" \
+            = vscodium.desktop ] || myconfig_fail "VSCodium module did not make VSCodium open $text_type"
+    done
 )
 
 source "$REPO_ROOT/linux/modules/axidev-osk.sh"
@@ -1505,8 +1398,8 @@ for profile_source in "$cachyos_profile" "$arch_wsl_profile"; do
 done
 [[ "$cachyos_profile" == *module_axidev_osk* ]] \
     || myconfig_fail "CachyOS profile does not include Axidev OSK"
-[[ "$cachyos_profile" == *module_emacs* ]] \
-    || myconfig_fail "CachyOS profile does not include Emacs"
+[[ "$cachyos_profile" == *module_vscodium* ]] \
+    || myconfig_fail "CachyOS profile does not include VSCodium"
 [[ "$cachyos_profile" != *module_neovim* ]] \
     || myconfig_fail "CachyOS profile still includes Neovim"
 [[ "$cachyos_profile" != *module_tmux* ]] \
@@ -1545,8 +1438,6 @@ done
     || myconfig_fail "Arch WSL profile includes Ghostty"
 [[ "$arch_wsl_profile" != *module_tmux* ]] \
     || myconfig_fail "Arch WSL profile still includes tmux"
-[[ "$arch_wsl_profile" != *module_emacs* ]] \
-    || myconfig_fail "Arch WSL profile includes Emacs"
 [[ "$arch_wsl_profile" != *module_neovim* ]] \
     || myconfig_fail "Arch WSL profile still includes Neovim"
 [[ "$arch_wsl_profile" != *module_kde_plasma* ]] \
@@ -1663,8 +1554,8 @@ MYCONFIG_PROFILE=cachyos
 write_environment_inventory
 grep -Fxq -- '- **Terminal tools**: Yazi, ripgrep, and jq.' "$HOME/environment.md" \
     || myconfig_fail "CachyOS inventory still advertises removed terminal tools"
-grep -Fq 'http://HOSTNAME.local:18080' "$HOME/environment.md" \
-    || myconfig_fail "CachyOS inventory omitted the Emacs workbench"
+grep -Fq '`EDITOR` is `codium --wait`' "$HOME/environment.md" \
+    || myconfig_fail "CachyOS inventory omitted the VSCodium editor"
 grep -Fq 'Axidev OSK with desktop and login-screen startup' "$HOME/environment.md" \
     || myconfig_fail "CachyOS inventory omitted Axidev OSK"
 grep -Fq 'Breeze Dark with a pink accent color, a top bar holding a session menu and the global menu, and an application dock on every display' "$HOME/environment.md" \

@@ -59,6 +59,24 @@ try {
     }
 
     Remove-Item -Path $ThemeDir -Recurse -Force
+
+    # --wait keeps Git and other programs waiting until the file is closed.
+    $editor = "notepad"
+    foreach ($candidate in $Editors) {
+        if (Get-Command $candidate.Command -ErrorAction SilentlyContinue) {
+            $editor = "$($candidate.Command) --wait"
+            break
+        }
+    }
+    foreach ($name in @('EDITOR', 'VISUAL')) {
+        [Environment]::SetEnvironmentVariable($name, $editor, "User")
+        Set-Item -Path "env:$name" -Value $editor
+    }
+    git config --global core.editor $editor
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not set Git's editor"
+    }
+    Write-Host "[OK] Files from Git and other programs open with $editor" -ForegroundColor Green
 } catch {
     if ($FromInstaller) {
         throw

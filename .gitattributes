@@ -3,7 +3,6 @@
 
 # Linux dotfiles should use LF while preserving automatic binary detection
 dotfiles/ai/** text=auto eol=lf
-dotfiles/emacs/** text=auto eol=lf
 dotfiles/kanata/** text=auto eol=lf
 dotfiles/kanata-kde/** text=auto eol=lf
 dotfiles/old/** text=auto eol=lf

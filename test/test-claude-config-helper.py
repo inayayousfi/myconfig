@@ -36,9 +36,15 @@ class ClaudeConfigHelper(unittest.TestCase):
             "    log.write(json.dumps(sys.argv[1:]) + '\\n')\n"
         )
         cli.chmod(0o700)
-        # Only system programs and the fake claude, never the user's installed tools.
         # The plugin runs go, whose telemetry child would write into the home during cleanup.
-        self.env = dict(os.environ, HOME=str(self.home), PATH=f"{self.bin}:/usr/bin:/bin", GOTELEMETRY="off")
+        # Go ignores a GOTELEMETRY variable and reads only this mode file.
+        config_home = self.home / ".config"
+        (config_home / "go/telemetry").mkdir(parents=True)
+        (config_home / "go/telemetry/mode").write_text("off")
+        # Only system programs and the fake claude, never the user's installed tools.
+        self.env = dict(
+            os.environ, HOME=str(self.home), XDG_CONFIG_HOME=str(config_home), PATH=f"{self.bin}:/usr/bin:/bin"
+        )
         self.env.pop("CLAUDE_CONFIG_DIR", None)
         self.project = self.root / "project with spaces"
         self.project.mkdir()

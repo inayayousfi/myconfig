@@ -11,14 +11,14 @@ register_package stow official:stow
 register_package tar official:tar
 register_package unzip official:unzip
 register_package zip official:zip
-register_package xz official:xz
+register_package xz official:xz ubuntu-devbox=official:xz-utils
 register_package file official:file
 register_package man_db official:man-db
-register_package man_pages official:man-pages
-register_package base_devel official:base-devel
+register_package man_pages official:man-pages ubuntu-devbox=official:manpages
+register_package base_devel official:base-devel ubuntu-devbox=official:build-essential
 register_package rustup official:rustup
 register_package openssh official:openssh
-register_package polkit official:polkit
+register_package polkit official:polkit ubuntu-devbox=official:polkitd
 register_package cachy_update official:cachy-update
 register_package cachyos_hello official:cachyos-hello
 register_package cachyos_kernel_manager official:cachyos-kernel-manager
@@ -61,7 +61,7 @@ register_package vlc official:vlc
 register_package loupe official:loupe
 
 register_package ripgrep official:ripgrep
-register_package fd official:fd ubuntu-server=official:fd-find
+register_package fd official:fd ubuntu-devbox=official:fd-find
 register_package fzf official:fzf
 register_package zoxide official:zoxide
 register_package eza official:eza
@@ -70,13 +70,14 @@ register_package jq official:jq
 register_package fastfetch official:fastfetch
 register_package btop official:btop
 register_package tokei official:tokei
-register_package github_cli aur:github-cli-git
+register_package github_cli aur:github-cli-git ubuntu-devbox=github:gh
 register_package hunk aur:hunk-bin
 
-register_package go official:go
+register_package go official:go ubuntu-devbox=official:golang-go
 register_package bun official:bun
-register_package python official:python
-register_package jdk official:jdk-openjdk
+register_package python official:python ubuntu-devbox=official:python3
+register_package python_venv official:python ubuntu-devbox=official:python3-venv
+register_package jdk official:jdk-openjdk ubuntu-devbox=official:default-jdk
 register_package maven official:maven
 register_package llvm official:llvm
 register_package make official:make
@@ -103,10 +104,10 @@ register_package wezterm official:wezterm
 register_package konsole official:konsole
 register_package kde_utilities_meta official:kde-utilities-meta
 
-register_package yazi aur:yazi-git
+register_package yazi aur:yazi-git ubuntu-devbox=yazi:yazi
 register_package ffmpeg official:ffmpeg
 register_package seven_zip official:7zip
-register_package poppler official:poppler
+register_package poppler official:poppler ubuntu-devbox=official:poppler-utils
 register_package resvg official:resvg
 register_package imagemagick official:imagemagick
 register_package lazygit official:lazygit
@@ -117,10 +118,10 @@ register_package ydotool official:ydotool
 register_package kanata aur:kanata-bin
 register_package handy aur:handy-bin
 register_package at_spi2_core official:at-spi2-core
-register_package libxcomposite official:libxcomposite
-register_package libxdamage official:libxdamage
-register_package libxrandr official:libxrandr
-register_package libxkbcommon official:libxkbcommon
+register_package libxcomposite official:libxcomposite ubuntu-devbox=official:libxcomposite1
+register_package libxdamage official:libxdamage ubuntu-devbox=official:libxdamage1
+register_package libxrandr official:libxrandr ubuntu-devbox=official:libxrandr2
+register_package libxkbcommon official:libxkbcommon ubuntu-devbox=official:libxkbcommon0
 register_package pyside6 official:pyside6
 register_package qt6_wayland official:qt6-wayland
 register_package layer_shell_qt official:layer-shell-qt
@@ -130,12 +131,13 @@ register_package plex_fonts aur:otf-ibm-plex
 register_package blex_mono_font official:ttf-ibmplex-mono-nerd
 register_package desktop_file_utils official:desktop-file-utils
 register_package wsl_ssh_agent aur:wsl2-ssh-agent
-register_package tailscale official:tailscale
+register_package tailscale official:tailscale ubuntu-devbox=tailscale:tailscale
 register_package android_sdk_platform_tools official:android-sdk-platform-tools
 register_package scrcpy official:scrcpy
 
-register_package docker official:docker
-register_package docker_buildx official:docker-buildx
-register_package docker_compose official:docker-compose
-register_package docker_rootless_extras aur:docker-rootless-extras
+register_package docker official:docker ubuntu-devbox=docker:docker-ce
+register_package docker_buildx official:docker-buildx ubuntu-devbox=docker:docker-buildx-plugin
+register_package docker_compose official:docker-compose ubuntu-devbox=docker:docker-compose-plugin
+register_package docker_rootless_extras aur:docker-rootless-extras ubuntu-devbox=docker:docker-ce-rootless-extras
 register_package slirp4netns official:slirp4netns
+register_package uidmap official:shadow ubuntu-devbox=official:uidmap

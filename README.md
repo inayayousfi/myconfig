@@ -2,7 +2,7 @@
 
 > A modular configuration bank for building reproducible development environments across platforms.
 
-This repository provides automated setup scripts and dotfiles for CachyOS, Ubuntu Server, and Windows Workstation. CachyOS installs the complete development profile. Ubuntu Server installs only the shared Zsh setup.
+This repository provides automated setup scripts and dotfiles for CachyOS, Ubuntu Devbox, and Windows Workstation. CachyOS installs the complete development profile. Ubuntu Devbox sets up a personal Ubuntu machine for coding and long-running agents.
 
 ## Quick Start
 
@@ -20,11 +20,15 @@ The CachyOS profile requires KDE Plasma 6.7 through 6.x and applies Breeze Dark 
 
 The final authentication step offers GitHub and Tailscale login. Declining either prompt prints the command for later.
 
-### Ubuntu Server
+### Ubuntu Devbox
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/inayayousfi/myconfig/main/bootstrap.sh | bash -s -- ubuntu
+curl -fsSL https://raw.githubusercontent.com/inayayousfi/myconfig/main/bootstrap.sh | bash -s -- ubuntu-devbox
 ```
+
+The Ubuntu Devbox profile installs the development runtimes, the command-line tools, rootless Docker, Tailscale, the coding agents, and the T3 Code server, which keeps running after logout. It leaves the machine's SSH configuration as it is. VSCodium and VS Code open folders on the machine over SSH with their remote SSH extensions.
+
+The final authentication step offers GitHub and Tailscale login. Declining either prompt prints the command for later.
 
 ### Windows Workstation (PowerShell)
 
@@ -78,7 +82,6 @@ The [CachyOS VM harness](vm/README.md) installs the Desktop ISO interactively, p
 Available uninstall scripts:
 
 ```bash
-./ubuntu-server/uninstall.sh  # Ubuntu Server
 ./windows-workstation/uninstall.ps1  # Windows Workstation
 ```
 
@@ -86,7 +89,7 @@ Available uninstall scripts:
 
 Minimal requirements - the bootstrap script handles everything else:
 
-**CachyOS and Ubuntu Server:**
+**CachyOS and Ubuntu Devbox:**
 
 - `curl` - for downloading
 - Internet connection

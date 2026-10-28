@@ -4,7 +4,7 @@ dotfile_packages_for_profile() {
     case "$MYCONFIG_PROFILE" in
         cachyos) printf '%s\n' zsh yazi ai t3code ghostty kanata kanata-kde handy vscodium phone pipewire plasma ;;
         arch-wsl) printf '%s\n' zsh yazi ai t3code ;;
-        ubuntu-server) printf '%s\n' zsh ;;
+        ubuntu-devbox) printf '%s\n' zsh yazi ai t3code ;;
         *) myconfig_fail "dotfile packages are undefined for $MYCONFIG_PROFILE" ;;
     esac
 }

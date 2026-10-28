@@ -69,7 +69,9 @@ if $IS_MACOS; then
     export PATH="$HOME/.local/bin:$PATH:$(go env GOPATH 2>/dev/null)/bin:$JAVA_HOME/bin:$(bun pm bin -g 2>/dev/null)"
     export VCPKG_ROOT="$HOME/vcpkg"
 elif $IS_LINUX; then
-    export PATH="$HOME/.local/bin:$PATH:$(go env GOPATH 2>/dev/null)/bin:$(bun pm bin -g 2>/dev/null)"
+    # Bun's global programs live in $BUN_INSTALL/bin, which is also where Bun's
+    # own installer puts bun when no package provides it.
+    export PATH="$HOME/.local/bin:$PATH:$(go env GOPATH 2>/dev/null)/bin:$BUN_INSTALL/bin"
 fi
 
 # ============================================================================

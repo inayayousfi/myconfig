@@ -13,7 +13,10 @@ user_is_in_group() {
 }
 
 module_docker() {
-    [ "$MYCONFIG_PROFILE" = cachyos ] || myconfig_fail "Docker is supported only on CachyOS" || return 1
+    case "$MYCONFIG_PROFILE" in
+        cachyos | ubuntu-devbox) ;;
+        *) myconfig_fail "Docker is supported only on CachyOS and Ubuntu Devbox" || return 1 ;;
+    esac
 
     require_command id || return 1
     require_command systemctl || return 1
@@ -26,10 +29,14 @@ module_docker() {
 
     myconfig_log "Installing rootless Docker Engine, CLI, Buildx, and Compose"
     install_package_ids docker docker_buildx docker_compose \
-        docker_rootless_extras slirp4netns
+        docker_rootless_extras slirp4netns uidmap
 
     myconfig_log "Disabling the system Docker daemon"
     sudo systemctl disable --now docker.service docker.socket
+
+    if [ "$MYCONFIG_PROFILE" = ubuntu-devbox ]; then
+        docker_install_ubuntu_rootless_unit || return 1
+    fi
 
     myconfig_log "Starting the rootless Docker daemon"
     systemctl --user daemon-reload
@@ -45,4 +52,16 @@ module_docker() {
 
     docker info --format '{{.SecurityOptions}}' | grep -Fq 'name=rootless' \
         || myconfig_fail "the selected Docker daemon is not rootless"
+}
+
+# Arch's docker-rootless-extras ships the user unit. Docker's Ubuntu package
+# ships a setup tool that writes it, copying the PATH it runs with into the unit.
+docker_install_ubuntu_rootless_unit() {
+    [ -f "$HOME/.config/systemd/user/docker.service" ] && return 0
+
+    require_command dockerd-rootless-setuptool.sh || return 1
+    myconfig_log "Creating the rootless Docker user service"
+    env PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+        dockerd-rootless-setuptool.sh install \
+        || myconfig_fail "Docker's rootless setup tool failed"
 }

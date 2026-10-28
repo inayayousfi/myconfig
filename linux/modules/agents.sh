@@ -126,6 +126,10 @@ write_environment_inventory() {
             platform="Arch WSL development environment"
             terminal_tools="Yazi, ripgrep, jq, and btop"
             ;;
+        ubuntu-devbox)
+            platform="Ubuntu development machine for coding and long-running agents"
+            terminal_tools="Yazi, ripgrep, jq, and btop"
+            ;;
         *) platform="$MYCONFIG_PROFILE" ;;
     esac
 
@@ -159,6 +163,12 @@ EOF
     elif [ "$MYCONFIG_PROFILE" = arch-wsl ]; then
         cat >>"$HOME/environment.md" <<'EOF'
 - **Editor**: This profile does not install an editor. When Windows VSCodium is installed, `EDITOR` is `~/.local/bin/windows-codium`, which opens files in it and waits until they are closed. Otherwise the shell uses an available Vim or Vi fallback.
+EOF
+    elif [ "$MYCONFIG_PROFILE" = ubuntu-devbox ]; then
+        cat >>"$HOME/environment.md" <<'EOF'
+- **Editor**: This profile does not install an editor. VSCodium and VS Code open folders here over SSH with their remote SSH extensions. The shell uses an available Vim or Vi.
+- **Containers**: rootless Docker with Buildx and Compose. The Docker daemon runs as the user service `docker.service` and the `rootless` Docker context is selected.
+- **Package sources**: Tailscale, GitHub CLI, Yazi and Docker come from their vendors' apt repositories. Bun is in `~/.bun` and updates with `bun upgrade`.
 EOF
     fi
 

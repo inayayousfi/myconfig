@@ -10,4 +10,4 @@ if [[ "$(uname -s)" != Linux ]] || ! command -v apt-get >/dev/null 2>&1; then
     exit 1
 fi
 
-exec "$REPO_ROOT/linux/install.sh" ubuntu-server
+exec "$REPO_ROOT/linux/install.sh" ubuntu-devbox

@@ -4,7 +4,7 @@
 # Downloads and installs the complete development environment
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/inayayousfi/myconfig/main/bootstrap.sh | bash
-#   curl -fsSL https://raw.githubusercontent.com/inayayousfi/myconfig/main/bootstrap.sh | bash -s -- ubuntu
+#   curl -fsSL https://raw.githubusercontent.com/inayayousfi/myconfig/main/bootstrap.sh | bash -s -- ubuntu-devbox
 #   curl -fsSL https://raw.githubusercontent.com/inayayousfi/myconfig/main/bootstrap.sh | bash -s -- cachyos
 
 # set -e (Disabled to ensure script continues even if some steps fail)
@@ -62,7 +62,7 @@ detect_platform() {
         if [ -r /etc/os-release ] && grep -q '^ID=cachyos$' /etc/os-release; then
             echo "cachyos"
         elif command -v apt-get &>/dev/null; then
-            echo "ubuntu"
+            echo "ubuntu-devbox"
         else
             echo "unknown"
         fi
@@ -77,7 +77,7 @@ prompt_platform() {
     echo -e "${BOLD}Select your platform:${NC}" >&2
     echo "" >&2
     echo "  1) CachyOS Workstation" >&2
-    echo "  2) Ubuntu Server" >&2
+    echo "  2) Ubuntu Devbox" >&2
     echo "  3) Exit" >&2
     echo "" >&2
 
@@ -89,7 +89,7 @@ prompt_platform() {
                 return 0
                 ;;
             2)
-                echo "ubuntu"
+                echo "ubuntu-devbox"
                 return 0
                 ;;
             3)
@@ -158,7 +158,7 @@ download_and_extract() {
     local extracted_dir=""
 
     # 1. Try to find a directory containing known platform directories (repo root markers)
-    extracted_dir=$(find . -maxdepth 2 -type d \( -name "ubuntu-server" -o -name "windows-workstation" -o -name "cachyos" \) -exec dirname {} \; | head -n 1)
+    extracted_dir=$(find . -maxdepth 2 -type d \( -name "ubuntu-devbox" -o -name "windows-workstation" -o -name "cachyos" \) -exec dirname {} \; | head -n 1)
 
     # 2. If not found, check if there's exactly one subdirectory
     if [ -z "$extracted_dir" ] || [ "$extracted_dir" = "." ]; then
@@ -201,7 +201,7 @@ run_installation() {
     cp -a "$source_dir"/. "$INSTALL_DIR/"
 
     # Verify copy
-    if [ ! -d "$INSTALL_DIR/ubuntu-server" ] || [ ! -d "$INSTALL_DIR/cachyos" ] || [ ! -d "$INSTALL_DIR/linux" ]; then
+    if [ ! -d "$INSTALL_DIR/ubuntu-devbox" ] || [ ! -d "$INSTALL_DIR/cachyos" ] || [ ! -d "$INSTALL_DIR/linux" ]; then
         log_error "File copy failed or source directory was empty. Check $source_dir"
         exit 1
     fi
@@ -218,12 +218,12 @@ run_installation() {
     local install_status=0
 
     case $platform in
-        ubuntu)
-            if [ ! -f "$INSTALL_DIR/ubuntu-server/install.sh" ]; then
-                log_error "Ubuntu install script not found at $INSTALL_DIR/ubuntu-server/install.sh"
+        ubuntu-devbox)
+            if [ ! -f "$INSTALL_DIR/ubuntu-devbox/install.sh" ]; then
+                log_error "Ubuntu Devbox install script not found at $INSTALL_DIR/ubuntu-devbox/install.sh"
                 exit 1
             fi
-            cd "$INSTALL_DIR/ubuntu-server"
+            cd "$INSTALL_DIR/ubuntu-devbox"
             ./install.sh || install_status=$?
             ;;
         cachyos)
@@ -271,7 +271,7 @@ ensure_dependencies() {
     log_info "Missing required dependencies: ${missing_deps[*]}"
 
     case $platform in
-        ubuntu)
+        ubuntu-devbox)
             log_info "Installing missing dependencies via apt-get..."
             sudo apt-get update
             sudo apt-get install -y "${missing_deps[@]}"
@@ -315,8 +315,8 @@ main() {
         # Normalize platform argument
         platform=$(echo "$platform" | tr '[:upper:]' '[:lower:]')
         case "$platform" in
-            ubuntu | linux | server)
-                platform="ubuntu"
+            ubuntu-devbox | ubuntu | linux)
+                platform="ubuntu-devbox"
                 ;;
             cachyos)
                 platform="cachyos"
@@ -326,7 +326,7 @@ main() {
                 ;;
             *)
                 log_error "Unknown platform: $platform"
-                log_info "Supported platforms: cachyos, ubuntu"
+                log_info "Supported platforms: cachyos, ubuntu-devbox"
                 exit 1
                 ;;
         esac

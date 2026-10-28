@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This repository builds configuration environments for CachyOS, Arch WSL, Ubuntu Server, and Windows Workstation. The repository is the source of truth. Inspect the source here before changing a deployed configuration.
+This repository builds configuration environments for CachyOS, Arch WSL, Ubuntu Devbox, and Windows Workstation. The repository is the source of truth. Inspect the source here before changing a deployed configuration.
 
 `README.md` gives the supported entry points and bootstrap commands.
 

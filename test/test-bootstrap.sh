@@ -76,7 +76,7 @@ required_files=(
     "myconfig-main/bootstrap.sh"
     "myconfig-main/cachyos/install.sh"
     "myconfig-main/linux/install.sh"
-    "myconfig-main/ubuntu-server/install.sh"
+    "myconfig-main/ubuntu-devbox/install.sh"
     "myconfig-main/windows-workstation/install.ps1"
     "myconfig-main/dotfiles"
     "myconfig-main/vm/cachyos.sh"
@@ -104,8 +104,8 @@ fi
 echo "" >&2
 log_info "Testing install script syntax..."
 
-if [ -f "myconfig-main/ubuntu-server/install.sh" ]; then
-    bash -n "myconfig-main/ubuntu-server/install.sh" && log_success "Ubuntu install.sh: syntax OK"
+if [ -f "myconfig-main/ubuntu-devbox/install.sh" ]; then
+    bash -n "myconfig-main/ubuntu-devbox/install.sh" && log_success "Ubuntu Devbox install.sh: syntax OK"
 fi
 
 if [ -f "myconfig-main/cachyos/install.sh" ]; then

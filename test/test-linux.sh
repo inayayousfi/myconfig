@@ -7,7 +7,7 @@ TEST_HOME="$(mktemp -d)"
 trap 'rm -rf "$TEST_HOME"' EXIT
 
 export HOME="$TEST_HOME/home"
-export MYCONFIG_PROFILE=ubuntu-server
+export MYCONFIG_PROFILE=ubuntu-devbox
 export MYCONFIG_ADAPTER=test
 export MYCONFIG_REPO_ROOT="$REPO_ROOT"
 mkdir -p "$HOME"
@@ -357,7 +357,7 @@ mkdir -p "$validation_home/dotfiles" "$validation_source/zsh"
 printf 'keep\n' >"$validation_home/dotfiles/keep"
 printf 'bad\r\n' >"$validation_source/zsh/.zshrc"
 HOME="$validation_home"
-MYCONFIG_PROFILE=ubuntu-server
+MYCONFIG_PROFILE=ubuntu-devbox
 MYCONFIG_DOTFILES_SOURCE="$validation_source"
 
 if module_dotfiles >/dev/null 2>&1; then
@@ -1132,7 +1132,7 @@ docker_test_log="$TEST_HOME/docker-module.log"
 
     module_docker
 )
-grep -Fxq 'packages:docker docker_buildx docker_compose docker_rootless_extras slirp4netns' "$docker_test_log" \
+grep -Fxq 'packages:docker docker_buildx docker_compose docker_rootless_extras slirp4netns uidmap' "$docker_test_log" \
     || myconfig_fail "Docker module did not install the rootless Docker packages"
 grep -Fxq 'sudo:systemctl disable --now docker.service docker.socket' "$docker_test_log" \
     || myconfig_fail "Docker module did not disable the system Docker daemon"
@@ -1389,7 +1389,7 @@ arch_wsl_profile="$(
     declare -f run_profile
 )"
 ubuntu_profile="$(
-    source "$REPO_ROOT/linux/profiles/ubuntu-server.sh"
+    source "$REPO_ROOT/linux/profiles/ubuntu-devbox.sh"
     declare -f run_profile
 )"
 for profile_source in "$cachyos_profile" "$arch_wsl_profile"; do
@@ -1416,13 +1416,11 @@ done
     || myconfig_fail "CachyOS profile does not include the Kanata KDE tray"
 [[ "$cachyos_profile" == *module_handy* ]] \
     || myconfig_fail "CachyOS profile does not include Handy"
-for profile_source in "$cachyos_profile" "$arch_wsl_profile"; do
+for profile_source in "$cachyos_profile" "$arch_wsl_profile" "$ubuntu_profile"; do
     [[ "$profile_source" == *module_t3code* ]] \
-        || myconfig_fail "a Linux workstation profile does not include the T3 Code server"
+        || myconfig_fail "a Linux profile does not include the T3 Code server"
 done
-[[ "$ubuntu_profile" != *module_t3code* ]] \
-    || myconfig_fail "Ubuntu Server profile includes the T3 Code server"
-for t3_profile in cachyos arch-wsl; do
+for t3_profile in cachyos arch-wsl ubuntu-devbox; do
     MYCONFIG_PROFILE="$t3_profile" dotfile_packages_for_profile | grep -Fxq t3code \
         || myconfig_fail "$t3_profile does not deploy the t3code package"
 done
@@ -1451,19 +1449,19 @@ done
 [[ "$arch_wsl_profile" != *module_handy* ]] \
     || myconfig_fail "Arch WSL profile includes Handy"
 [[ "$ubuntu_profile" != *module_axidev_osk* ]] \
-    || myconfig_fail "Ubuntu Server profile includes Axidev OSK"
+    || myconfig_fail "Ubuntu Devbox profile includes Axidev OSK"
 [[ "$ubuntu_profile" != *module_ghostty* ]] \
-    || myconfig_fail "Ubuntu Server profile includes Ghostty"
+    || myconfig_fail "Ubuntu Devbox profile includes Ghostty"
 [[ "$ubuntu_profile" != *module_kde_plasma* ]] \
-    || myconfig_fail "Ubuntu Server profile includes KDE Plasma configuration"
+    || myconfig_fail "Ubuntu Devbox profile includes KDE Plasma configuration"
 [[ "$ubuntu_profile" != *module_refind* ]] \
-    || myconfig_fail "Ubuntu Server profile includes the rEFInd configuration"
+    || myconfig_fail "Ubuntu Devbox profile includes the rEFInd configuration"
 [[ "$ubuntu_profile" != *module_kanata* ]] \
-    || myconfig_fail "Ubuntu Server profile includes Kanata"
+    || myconfig_fail "Ubuntu Devbox profile includes Kanata"
 [[ "$ubuntu_profile" != *module_kanata_kde* ]] \
-    || myconfig_fail "Ubuntu Server profile includes the Kanata KDE tray"
+    || myconfig_fail "Ubuntu Devbox profile includes the Kanata KDE tray"
 [[ "$ubuntu_profile" != *module_handy* ]] \
-    || myconfig_fail "Ubuntu Server profile includes Handy"
+    || myconfig_fail "Ubuntu Devbox profile includes Handy"
 
 module_source="$(declare -f module_axidev_osk)"
 [[ "$module_source" == *'/usr/local/sbin/axidev-osk-install'* ]] \

@@ -3,11 +3,6 @@
 module_base() {
     myconfig_log "Installing base packages"
 
-    if [ "$MYCONFIG_PROFILE" = ubuntu-server ]; then
-        install_package_ids ca_certificates curl git rsync stow
-        return
-    fi
-
     if [ "$MYCONFIG_PROFILE" = cachyos ]; then
         remove_package_ids cachy_update
     fi

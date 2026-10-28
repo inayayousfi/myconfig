@@ -8,7 +8,7 @@ MYCONFIG_PROFILE="${1:-}"
 
 case "$MYCONFIG_PROFILE" in
     cachyos | arch-wsl) MYCONFIG_ADAPTER=arch ;;
-    ubuntu-server) MYCONFIG_ADAPTER=apt ;;
+    ubuntu-devbox) MYCONFIG_ADAPTER=apt ;;
     *)
         printf 'Unsupported internal profile: %s\n' "$MYCONFIG_PROFILE" >&2
         exit 1

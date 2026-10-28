@@ -14,7 +14,7 @@ body:
       label: Platform
       description: Which platform are you installing on?
       options:
-        - Ubuntu Server
+        - Ubuntu Devbox
         - Windows
         - Other Linux
         - Other (please specify)

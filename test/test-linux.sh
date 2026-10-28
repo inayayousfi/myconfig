@@ -136,7 +136,7 @@ for cleanup_profile in cachyos arch-wsl; do
         for unrelated_module in ssh ssh_server flatpak appimage zsh ghostty axidev_osk tailscale \
             agents_packages dotfiles android_phone vscodium refind \
             kanata kde_plasma_validate kde_plasma kanata_kde handy pipewire \
-            docker agents_configure t3code authentication; do
+            docker agents_configure t3code t3code_desktop authentication; do
             eval "module_${unrelated_module}() { :; }"
         done
         write_environment_inventory() { :; }
@@ -422,6 +422,15 @@ validate_staged_dotfiles "$powershell_source" "$powershell_staging" ai
             && [ "$(readlink -f "$HOME/$vscodium_file")" = "$HOME/dotfiles/vscodium/$vscodium_file" ] \
             || myconfig_fail "CachyOS did not link $vscodium_file into its deployed package"
     done
+
+    t3_settings=".t3/userdata/client-settings.json"
+    for t3_folder in .t3 .t3/userdata; do
+        [ -d "$HOME/$t3_folder" ] && [ ! -L "$HOME/$t3_folder" ] \
+            || myconfig_fail "CachyOS linked $t3_folder, which receives the T3 Code database and secrets"
+    done
+    [ -L "$HOME/$t3_settings" ] \
+        && [ "$(readlink -f "$HOME/$t3_settings")" = "$HOME/dotfiles/t3code-desktop/$t3_settings" ] \
+        || myconfig_fail "CachyOS did not link the T3 Code client settings into its deployed package"
 )
 
 profile_home="$TEST_HOME/profile-home"
@@ -1416,14 +1425,21 @@ done
     || myconfig_fail "CachyOS profile does not include the Kanata KDE tray"
 [[ "$cachyos_profile" == *module_handy* ]] \
     || myconfig_fail "CachyOS profile does not include Handy"
-for profile_source in "$cachyos_profile" "$arch_wsl_profile" "$ubuntu_profile"; do
-    [[ "$profile_source" == *module_t3code* ]] \
-        || myconfig_fail "a Linux profile does not include the T3 Code server"
+# The desktop app runs its own server on ~/.t3, which the background service
+# would hold, so CachyOS gets the app and the other profiles get the server.
+for profile_source in "$arch_wsl_profile" "$ubuntu_profile"; do
+    [[ "$profile_source" == *"module_t3code;"* ]] \
+        || myconfig_fail "a server profile does not include the T3 Code server"
 done
-for t3_profile in cachyos arch-wsl ubuntu-devbox; do
+for t3_profile in arch-wsl ubuntu-devbox; do
     MYCONFIG_PROFILE="$t3_profile" dotfile_packages_for_profile | grep -Fxq t3code \
         || myconfig_fail "$t3_profile does not deploy the t3code package"
 done
+[[ "$cachyos_profile" == *module_t3code_desktop* && "$cachyos_profile" != *"module_t3code;"* ]] \
+    || myconfig_fail "CachyOS profile does not install the T3 Code desktop app instead of the server"
+cachyos_packages="$(MYCONFIG_PROFILE=cachyos dotfile_packages_for_profile)"
+grep -Fxq t3code-desktop <<<"$cachyos_packages" && ! grep -Fxq t3code <<<"$cachyos_packages" \
+    || myconfig_fail "CachyOS does not deploy t3code-desktop instead of the t3code package"
 for app_module in module_flatpak module_appimage; do
     [[ "$cachyos_profile" == *"$app_module"* ]] \
         || myconfig_fail "CachyOS profile does not include $app_module"

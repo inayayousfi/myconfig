@@ -2,7 +2,7 @@
 
 dotfile_packages_for_profile() {
     case "$MYCONFIG_PROFILE" in
-        cachyos) printf '%s\n' zsh yazi ai t3code ghostty kanata kanata-kde handy vscodium phone pipewire plasma ;;
+        cachyos) printf '%s\n' zsh yazi ai t3code-desktop ghostty kanata kanata-kde handy vscodium phone pipewire plasma ;;
         arch-wsl) printf '%s\n' zsh yazi ai t3code ;;
         ubuntu-devbox) printf '%s\n' zsh yazi ai t3code ;;
         *) myconfig_fail "dotfile packages are undefined for $MYCONFIG_PROFILE" ;;
@@ -176,6 +176,8 @@ module_dotfiles() {
         || mkdir -p "$HOME/.config/systemd/user/app-com.mitchellh.ghostty.service.d"
     # VSCodium keeps its history and workspace storage beside its settings.
     [ ! -d "$dotfiles_dir/vscodium" ] || mkdir -p "$HOME/.config/VSCodium/User"
+    # T3 Code keeps its database and secrets beside its client settings.
+    [ ! -d "$dotfiles_dir/t3code-desktop" ] || mkdir -p "$HOME/.t3/userdata"
     for package in "${packages[@]}"; do
         stow --dir "$dotfiles_dir" --target "$HOME" --restow "$package"
     done

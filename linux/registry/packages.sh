@@ -117,6 +117,7 @@ register_package wl_clipboard official:wl-clipboard
 register_package ydotool official:ydotool
 register_package kanata aur:kanata-bin
 register_package handy aur:handy-bin
+register_package t3code_desktop aur:t3code-bin
 register_package at_spi2_core official:at-spi2-core
 register_package libxcomposite official:libxcomposite ubuntu-devbox=official:libxcomposite1
 register_package libxdamage official:libxdamage ubuntu-devbox=official:libxdamage1

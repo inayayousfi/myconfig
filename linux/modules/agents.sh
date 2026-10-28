@@ -120,8 +120,12 @@ write_environment_inventory() {
     fi
 
     local platform terminal_tools="Yazi, ripgrep, and jq"
+    local t3_code="the \`t3\` server from npm in \`~/.local/bin/t3\`, run at boot by the user service \`t3code.service\` on \`127.0.0.1:3773\`. \`t3ctl status\`, \`remote\`, \`update\` and \`repair\` manage it; \`remote\` turns T3 Connect or the Tailscale route (HTTPS port 10000) on or off. Both routes start off."
     case "$MYCONFIG_PROFILE" in
-        cachyos) platform="CachyOS development workstation" ;;
+        cachyos)
+            platform="CachyOS development workstation"
+            t3_code="the desktop app (AUR package \`t3code-bin\`), which runs its own server on \`127.0.0.1:3773\` while it is open. Its CLI is \`~/.t3/bin/t3\`. \`~/.t3/userdata/client-settings.json\` links into the deployed \`t3code-desktop\` package."
+            ;;
         arch-wsl)
             platform="Arch WSL development environment"
             terminal_tools="Yazi, ripgrep, jq, and btop"
@@ -148,7 +152,7 @@ This file describes the capabilities installed for the $platform.
 - **Agent browser tools**: Playwright MCP.
 - **Claude configuration**: \`claude-config-helper\` trusts projects, marks Claude's first-run setup as finished, lists or clears saved approvals, applies the MCP servers listed in \`~/.config/claude-config-helper/mcp-servers.json\`, and checks files for tokens, email addresses and home paths.
 - **Remote access**: OpenSSH server and Tailscale service with optional login during setup.
-- **T3 Code**: the \`t3\` server from npm in \`~/.local/bin/t3\`, run at boot by the user service \`t3code.service\` on \`127.0.0.1:3773\`. \`t3ctl status\`, \`remote\`, \`update\` and \`repair\` manage it; \`remote\` turns T3 Connect or the Tailscale route (HTTPS port 10000) on or off. Both routes start off.
+- **T3 Code**: $t3_code
 EOF
 
     if [ "$MYCONFIG_PROFILE" = cachyos ]; then

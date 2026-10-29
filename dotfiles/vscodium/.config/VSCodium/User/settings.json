@@ -9,6 +9,7 @@
   "editor.formatOnPaste": true,
   // VSCodium formats only explicit saves; Nifty formats the auto saves too.
   "editor.formatOnSave": false,
+  "editor.wordWrap": "on",
   "files.autoSave": "afterDelay",
   "files.autoSaveDelay": 500,
   "git.blame.editorDecoration.enabled": true,

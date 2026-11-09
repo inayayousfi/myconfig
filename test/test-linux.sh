@@ -865,6 +865,8 @@ grep -Fxq 'config:--file kcminputrc --group Libinput --group Defaults --group To
     || myconfig_fail "KDE Plasma module did not enable touchpad drag lock"
 grep -Fxq 'config:--file kcminputrc --group Libinput --group Defaults --group Touchpad --key ClickMethod 2' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not configure touchpad clickfinger mode"
+grep -Fxq "config:--file kcminputrc --group Libinput --group 12771 --group 4657 --group Wooting Wooting Two HE (ARM) Mouse --key ScrollMethod 0" "$plasma_module_log" \
+    || myconfig_fail "KDE Plasma module did not turn off Wooting middle-button scrolling"
 grep -Fxq 'systemctl:--user daemon-reload' "$plasma_module_log" \
     || myconfig_fail "KDE Plasma module did not reload user services"
 grep -Fxq 'qdbus:org.kde.KWin /KWin org.kde.KWin.reconfigure' "$plasma_module_log" \

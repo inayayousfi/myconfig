@@ -114,6 +114,12 @@ configure_kde_plasma_input() {
     kwriteconfig6 --file kcminputrc "${touchpad_group[@]}" --key NaturalScroll true
     kwriteconfig6 --file kcminputrc "${touchpad_group[@]}" --key TapDragLock true
     kwriteconfig6 --file kcminputrc "${touchpad_group[@]}" --key ClickMethod 2
+
+    # libinput enables button scrolling on the Wooting Two HE mouse device by
+    # default. It holds every middle-button press until release, so no program
+    # ever sees the middle button held down.
+    kwriteconfig6 --file kcminputrc --group Libinput --group 12771 --group 4657 \
+        --group 'Wooting Wooting Two HE (ARM) Mouse' --key ScrollMethod 0
 }
 
 configure_kde_plasma_cursor_theme() {

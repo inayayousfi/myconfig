@@ -8,6 +8,7 @@
   "workflowKeywordTriggerEnabled": false,
   "effortLevel": "medium",
   "autoCompactWindow": 400000,
+  "cleanupPeriodDays": 400,
   "promptSuggestionEnabled": false,
   "awaySummaryEnabled": false,
   "skipDangerousModePermissionPrompt": true,

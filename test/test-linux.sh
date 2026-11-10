@@ -95,7 +95,37 @@ MYCONFIG_PROFILE=cachyos
     || myconfig_fail "package removal identifiers did not resolve"
 
 source "$REPO_ROOT/linux/modules/cachyos.sh"
+
+# The boot files exactly as the CachyOS installer writes them.
+cachyos_boot_root="$TEST_HOME/cachyos-boot"
+write_cachyos_boot_fixture() {
+    mkdir -p "$cachyos_boot_root"
+    printf '%s\n' \
+        '# vim:set ft=sh' \
+        'MODULES=()' \
+        'HOOKS=(base systemd autodetect microcode kms modconf block keyboard sd-vconsole plymouth filesystems fsck)' \
+        >"$cachyos_boot_root/mkinitcpio.conf"
+    printf '%s\n' \
+        '"Boot with standard options"    "quiet nowatchdog splash rw root=UUID=31f4 resume=UUID=31f4 resume_offset=244412416 efi_pstore.pstore_disable=0"' \
+        '"Boot to single-user mode"    "quiet nowatchdog splash rw root=UUID=31f4 resume=UUID=31f4 resume_offset=244412416" single' \
+        '"Boot with minimal options"   "ro root=/dev/nvme0n1p2 resume=UUID=31f4 resume_offset=244412416"' \
+        >"$cachyos_boot_root/refind_linux.conf"
+}
+use_cachyos_boot_fixture() {
+    cachyos_mkinitcpio_config() { printf '%s\n' "$cachyos_boot_root/mkinitcpio.conf"; }
+    cachyos_refind_linux_config() { printf '%s\n' "$cachyos_boot_root/refind_linux.conf"; }
+    sudo() {
+        if [ "$1" = mkinitcpio ]; then
+            printf 'sudo:%s\n' "$*"
+        else
+            "$@"
+        fi
+    }
+}
+
+write_cachyos_boot_fixture
 cachyos_actions="$({
+    use_cachyos_boot_fixture
     install_package_ids() {
         printf 'install:%s\n' "$*"
     }
@@ -104,8 +134,94 @@ cachyos_actions="$({
     }
     module_cachyos
 })"
-[ "$cachyos_actions" = $'[myconfig][cachyos] Configuring CachyOS stable kernel tools\ninstall:cachyos_kernel_manager linux_cachyos noto_fonts_cjk\nremove:konsole alacritty cachyos_hello cachyos_zsh_config vim fish cachyos_fish_config fish_autopair fish_pure_prompt fisher firefox firefox_i18n_fr meslo_font cachyos_emerald_kde_theme cachyos_iridescent_kde cachyos_nord_kde_theme kate micro cachyos_micro_settings nano nano_syntax_highlighting meld glances duf btop tealdeer filelight pavucontrol kcalc shelly cachyos_packageinstaller expac cachyos_wallpapers hwdetect qtscrcpy fzf bat eza haruna mpvqt mpv kdeconnect partitionmanager ark gwenview' ] \
+[ "$cachyos_actions" = $'[myconfig][cachyos] Configuring CachyOS stable kernel tools\ninstall:cachyos_kernel_manager linux_cachyos noto_fonts_cjk\nremove:konsole alacritty cachyos_hello cachyos_zsh_config vim fish cachyos_fish_config fish_autopair fish_pure_prompt fisher firefox firefox_i18n_fr meslo_font cachyos_emerald_kde_theme cachyos_iridescent_kde cachyos_nord_kde_theme kate micro cachyos_micro_settings nano nano_syntax_highlighting meld glances duf btop tealdeer filelight pavucontrol kcalc shelly cachyos_packageinstaller expac cachyos_wallpapers hwdetect qtscrcpy fzf bat eza haruna mpvqt mpv kdeconnect partitionmanager ark gwenview\n[myconfig][cachyos] Removing the CachyOS boot splash\nremove:plymouth_kcm cachyos_plymouth_bootanimation cachyos_plymouth_theme plymouth\nsudo:mkinitcpio -P' ] \
     || myconfig_fail "CachyOS module did not configure the stable kernel tools and removals"
+
+# The CachyOS boot splash leaves the boot as plain Arch shows it.
+write_cachyos_boot_fixture
+cachyos_splash_actions="$({
+    use_cachyos_boot_fixture
+    remove_package_ids() {
+        if grep -q '^HOOKS=.*plymouth' "$cachyos_boot_root/mkinitcpio.conf"; then
+            printf 'removed packages while the plymouth hook remained\n'
+        fi
+    }
+    cachyos_remove_boot_splash
+    cachyos_remove_boot_splash
+})"
+[ "$cachyos_splash_actions" = $'[myconfig][cachyos] Removing the CachyOS boot splash\nsudo:mkinitcpio -P\n[myconfig][cachyos] Removing the CachyOS boot splash' ] \
+    || myconfig_fail "CachyOS boot splash removal did not drop the hook first and rebuild the initramfs once"
+[ "$(cat "$cachyos_boot_root/mkinitcpio.conf")" = $'# vim:set ft=sh\nMODULES=()\nHOOKS=(base systemd autodetect microcode kms modconf block keyboard sd-vconsole filesystems fsck)' ] \
+    || myconfig_fail "CachyOS boot splash removal did not drop only the plymouth hook"
+[ "$(cat "$cachyos_boot_root/refind_linux.conf")" = '"Boot with standard options"    "rw root=UUID=31f4 resume=UUID=31f4 resume_offset=244412416 efi_pstore.pstore_disable=0"
+"Boot to single-user mode"    "rw root=UUID=31f4 resume=UUID=31f4 resume_offset=244412416" single
+"Boot with minimal options"   "ro root=/dev/nvme0n1p2 resume=UUID=31f4 resume_offset=244412416"' ] \
+    || myconfig_fail "CachyOS boot splash removal did not drop only quiet, nowatchdog and splash"
+
+# bootvine on top of the clean slate: built, hooked into the initramfs before
+# pacman installs it, enabled, and the default entry quiet.
+source "$REPO_ROOT/linux/modules/bootvine.sh"
+use_bootvine_fixture() {
+    use_cachyos_boot_fixture
+    bootvine_mkinitcpio_config() { printf '%s\n' "$cachyos_boot_root/mkinitcpio.conf"; }
+    bootvine_refind_linux_config() { printf '%s\n' "$cachyos_boot_root/refind_linux.conf"; }
+    pacman() {
+        [ -n "${bootvine_installed:-}" ] && printf '%s\n' "$bootvine_installed"
+    }
+    makepkg() {
+        if [ "${1:-}" = --packagelist ]; then
+            printf '%s\n' "$PWD/bootvine-0.1.3-1-x86_64.pkg.tar.zst"
+        else
+            printf 'makepkg:%s\n' "$*"
+        fi
+    }
+    sudo() {
+        case "$1" in
+            pacman)
+                grep -q '^HOOKS=.* sd-bootvine ' "$cachyos_boot_root/mkinitcpio.conf" \
+                    || printf 'installed the package before its hook\n'
+                printf 'sudo:%s %s %s\n' "$1" "$2" "$3"
+                ;;
+            mkinitcpio | systemctl) printf 'sudo:%s\n' "$*" ;;
+            *) "$@" ;;
+        esac
+    }
+}
+write_cachyos_boot_fixture
+bootvine_actions="$({
+    use_bootvine_fixture
+    remove_package_ids() { :; }
+    cachyos_remove_boot_splash >/dev/null
+    module_bootvine
+    bootvine_installed='bootvine 0.1.3-1'
+    module_bootvine
+})"
+[ "$bootvine_actions" = $'[myconfig][cachyos] Showing the boot as a live bootvine tree\nmakepkg:--noconfirm\nsudo:pacman -U --noconfirm\nsudo:systemctl enable bootvine.service bootvine-shutdown.service\n[myconfig][cachyos] Showing the boot as a live bootvine tree\nsudo:systemctl enable bootvine.service bootvine-shutdown.service' ] \
+    || myconfig_fail "bootvine module did not build, hook, install and enable it in order"
+grep -Fxq 'HOOKS=(base systemd sd-bootvine autodetect microcode kms modconf block keyboard sd-vconsole filesystems fsck)' \
+    "$cachyos_boot_root/mkinitcpio.conf" \
+    || myconfig_fail "bootvine module did not run its hook right after systemd"
+[ "$(cat "$cachyos_boot_root/refind_linux.conf")" = '"Boot with standard options"    "quiet rw root=UUID=31f4 resume=UUID=31f4 resume_offset=244412416 efi_pstore.pstore_disable=0"
+"Boot to single-user mode"    "rw root=UUID=31f4 resume=UUID=31f4 resume_offset=244412416" single
+"Boot with minimal options"   "ro root=/dev/nvme0n1p2 resume=UUID=31f4 resume_offset=244412416"' ] \
+    || myconfig_fail "bootvine module did not make only the default boot entry quiet"
+
+write_cachyos_boot_fixture
+bootvine_rebuild_actions="$({
+    use_bootvine_fixture
+    bootvine_installed='bootvine 0.1.3-1'
+    module_bootvine
+})"
+[[ "$bootvine_rebuild_actions" == *$'\nsudo:mkinitcpio -P\n'* ]] \
+    || myconfig_fail "bootvine module did not rebuild the initramfs after adding its hook to an installed package"
+
+sed -i 's/^HOOKS=.*/HOOKS=(base udev autodetect filesystems)/' "$cachyos_boot_root/mkinitcpio.conf"
+if (
+    use_bootvine_fixture
+    module_bootvine
+) >/dev/null 2>&1; then
+    myconfig_fail "bootvine module accepted an initramfs without the systemd hook"
+fi
 
 source "$REPO_ROOT/linux/modules/cli.sh"
 source "$REPO_ROOT/linux/modules/system-monitor.sh"
@@ -122,11 +238,14 @@ removed_packages=(
     glances duf btop tealdeer filelight pavucontrol kcalc shelly
     cachyos-packageinstaller expac cachyos-wallpapers hwdetect qtscrcpy
     fzf bat eza cachy-update haruna mpvqt mpv kdeconnect partitionmanager ark gwenview
+    plymouth-kcm cachyos-plymouth-bootanimation cachyos-plymouth-theme plymouth
 )
 
 for cleanup_profile in cachyos arch-wsl; do
+    write_cachyos_boot_fixture
     profile_actions="$(
         MYCONFIG_PROFILE="$cleanup_profile"
+        use_cachyos_boot_fixture
         adapter_supports_source() { return 0; }
         adapter_install_specs() { printf 'install:%s\n' "$@"; }
         adapter_remove_specs() { printf 'remove:%s\n' "$@"; }
@@ -134,7 +253,7 @@ for cleanup_profile in cachyos arch-wsl; do
         # Exercise the real profile and package modules without running services,
         # deploying dotfiles, or installing anything on the host.
         for unrelated_module in ssh ssh_server flatpak appimage zsh ghostty axidev_osk tailscale \
-            agents_packages dotfiles android_phone vscodium refind \
+            agents_packages dotfiles android_phone vscodium refind bootvine \
             kanata kde_plasma_validate kde_plasma kanata_kde handy pipewire \
             docker agents_configure t3code t3code_desktop authentication; do
             eval "module_${unrelated_module}() { :; }"
@@ -1421,6 +1540,8 @@ done
     || myconfig_fail "CachyOS profile does not include KDE Plasma configuration"
 [[ "$cachyos_profile" == *module_refind* ]] \
     || myconfig_fail "CachyOS profile does not include the rEFInd theme"
+[[ "$cachyos_profile" == *module_bootvine* ]] \
+    || myconfig_fail "CachyOS profile does not include bootvine"
 [[ "$cachyos_profile" == *module_kanata* ]] \
     || myconfig_fail "CachyOS profile does not include Kanata"
 [[ "$cachyos_profile" == *module_kanata_kde* ]] \
@@ -1460,6 +1581,8 @@ done
     || myconfig_fail "Arch WSL profile includes KDE Plasma configuration"
 [[ "$arch_wsl_profile" != *module_refind* ]] \
     || myconfig_fail "Arch WSL profile includes the rEFInd configuration"
+[[ "$arch_wsl_profile" != *module_bootvine* ]] \
+    || myconfig_fail "Arch WSL profile includes bootvine"
 [[ "$arch_wsl_profile" != *module_kanata* ]] \
     || myconfig_fail "Arch WSL profile includes Kanata"
 [[ "$arch_wsl_profile" != *module_kanata_kde* ]] \

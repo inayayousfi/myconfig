@@ -1,0 +1,31 @@
+pkgname=bootvine
+pkgver=0.1.3
+pkgrel=1
+pkgdesc='Live tree of systemd jobs on the boot console'
+arch=(x86_64)
+url='https://codeberg.org/wvhulle/bootvine'
+license=(GPL-3.0-or-later)
+depends=(dbus gcc-libs glibc systemd-libs)
+makedepends=(cargo)
+source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
+sha256sums=('89d53d937f818ec80b54c9f9d8c501f7254f8b776e549543bb39a87da264ca0b')
+
+# The source pins a nightly toolchain for its own tooling; the program itself
+# builds on stable Rust.
+export RUSTUP_TOOLCHAIN=stable
+
+prepare() {
+    cd "$pkgname"
+    cargo fetch --locked --target "$(rustc --print host-tuple)"
+}
+
+build() {
+    cd "$pkgname"
+    cargo build --frozen --release --package bootvine
+}
+
+package() {
+    cd "$pkgname"
+    # Upstream's installer stages its own binary, units and mkinitcpio hook.
+    target/release/bootvine install --destdir "$pkgdir" --initrd mkinitcpio
+}

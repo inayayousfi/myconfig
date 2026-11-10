@@ -57,6 +57,10 @@ register_package kdeconnect official:kdeconnect
 register_package partitionmanager official:partitionmanager
 register_package ark official:ark
 register_package gwenview official:gwenview
+register_package plymouth official:plymouth
+register_package plymouth_kcm official:plymouth-kcm
+register_package cachyos_plymouth_theme official:cachyos-plymouth-theme
+register_package cachyos_plymouth_bootanimation official:cachyos-plymouth-bootanimation
 register_package vlc official:vlc
 register_package loupe official:loupe
 

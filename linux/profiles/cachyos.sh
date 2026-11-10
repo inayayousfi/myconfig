@@ -20,6 +20,7 @@ run_profile() {
     module_android_phone
     module_vscodium
     module_refind
+    module_bootvine
     module_kanata
     module_kde_plasma
     module_kanata_kde

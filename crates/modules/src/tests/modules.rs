@@ -171,9 +171,7 @@ fn every_linux_module_package_has_a_name_on_its_package_manager() {
             unwanted: &[Package::CachyUpdate],
         },
         &CachyosSetup,
-        &Cli {
-            retired_config: &[],
-        },
+        &Cli,
         &Runtimes,
         &crate::KdePlasma,
     ];
@@ -222,21 +220,11 @@ fn every_linux_module_package_has_a_name_on_its_package_manager() {
 }
 
 #[test]
-fn cachyos_replaces_its_defaults_and_the_cli_retires_old_tools() {
+fn cachyos_replaces_its_defaults() {
     let sandbox = Sandbox::new("cachyos-packages");
     install_everything(
         &sandbox,
-        &[
-            "konsole",
-            "firefox",
-            "fish",
-            "kate",
-            "fd",
-            "neovim",
-            "tmux",
-            "cachy-update",
-            "vim",
-        ],
+        &["konsole", "firefox", "fish", "kate", "cachy-update", "vim"],
     );
     let modules: [&dyn Module; 4] = [
         &Base {
@@ -244,9 +232,7 @@ fn cachyos_replaces_its_defaults_and_the_cli_retires_old_tools() {
             unwanted: &[Package::CachyUpdate],
         },
         &CachyosSetup,
-        &Cli {
-            retired_config: &[],
-        },
+        &Cli,
         &Runtimes,
     ];
     sandbox.fake(
@@ -257,17 +243,7 @@ fn cachyos_replaces_its_defaults_and_the_cli_retires_old_tools() {
     sandbox
         .with(&io, |ctx| runner::install(ctx, &modules))
         .unwrap();
-    for removed in [
-        "konsole",
-        "firefox",
-        "fish",
-        "kate",
-        "fd",
-        "neovim",
-        "tmux",
-        "cachy-update",
-        "vim",
-    ] {
+    for removed in ["konsole", "firefox", "fish", "kate", "cachy-update", "vim"] {
         assert!(!sandbox.installed(removed), "{removed} is still installed");
     }
     for kept in [
@@ -408,33 +384,6 @@ fn the_agent_package_keeps_bin_and_claude_as_real_folders() {
         )
         .unwrap()
     );
-}
-
-#[test]
-fn the_cli_unlinks_retired_config_and_remove_can_link_it_again() {
-    let sandbox = Sandbox::new("retired");
-    let retired = sandbox.home.join("dotfiles/nvim/.config/nvim");
-    fs::create_dir_all(&retired).unwrap();
-    fs::write(retired.join("init.lua"), "retired\n").unwrap();
-    fs::create_dir_all(sandbox.home.join(".config")).unwrap();
-    std::process::Command::new("stow")
-        .args(["--dir", "dotfiles", "--target", ".", "nvim"])
-        .current_dir(&sandbox.home)
-        .status()
-        .unwrap();
-    assert!(sandbox.home.join(".config/nvim/init.lua").exists());
-    let cli = Cli {
-        retired_config: &["nvim"],
-    };
-    let io = Answers::new(Some(true));
-    sandbox
-        .with(&io, |ctx| runner::install(ctx, &[&cli]))
-        .unwrap();
-    assert!(fs::symlink_metadata(sandbox.home.join(".config/nvim")).is_err());
-    sandbox
-        .with(&io, |ctx| runner::remove(ctx, &[&cli], &[&cli], false))
-        .unwrap();
-    assert!(sandbox.home.join(".config/nvim/init.lua").exists());
 }
 
 #[test]
@@ -677,7 +626,7 @@ SCRIPT"#,
 }
 
 #[test]
-fn agent_links_share_one_instruction_file_and_prune_old_skills() {
+fn agent_links_share_one_instruction_file_and_leave_other_skill_links() {
     let sandbox = Sandbox::new("agent-links");
     let home = &sandbox.home;
     fs::create_dir_all(home.join(".agents/skills/demo")).unwrap();
@@ -722,7 +671,8 @@ fn agent_links_share_one_instruction_file_and_prune_old_skills() {
             .file_type()
             .is_symlink()
     );
-    assert!(fs::symlink_metadata(home.join(".claude/skills/stale")).is_err());
+    // Install never undoes an earlier run, so a link to a skill that is gone stays.
+    assert!(fs::symlink_metadata(home.join(".claude/skills/stale")).is_ok());
     let json: serde_json::Value =
         serde_json::from_slice(&fs::read(home.join(".fx/mcp.json")).unwrap()).unwrap();
     assert_eq!(
@@ -1089,4 +1039,93 @@ fn kde_plasma_applies_breeze_dark_with_the_pink_accent_and_remove_puts_it_back()
         )
         .is_none()
     );
+}
+
+/// A systemctl stand-in whose sshd.service is active only while `units/sshd-active`
+/// exists, and whose start fails while `units/sshd-broken` exists.
+fn sshd(sandbox: &Sandbox, active: bool, broken: bool) {
+    system(sandbox);
+    let units = sandbox.root.join("units");
+    if active {
+        fs::write(units.join("sshd-active"), "").unwrap();
+    }
+    if broken {
+        fs::write(units.join("sshd-broken"), "").unwrap();
+    }
+    sandbox.fake(
+        "systemctl",
+        r#"printf 'systemctl %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+units="$MYCONFIG_TEST_ROOT/units"
+case "$*" in
+    "is-active --quiet sshd.service") [ -e "$units/sshd-active" ] ;;
+    "is-enabled sshd.service") if [ -e "$units/sshd.service" ]; then echo enabled; else echo disabled; exit 1; fi ;;
+    "enable sshd.service") : > "$units/sshd.service" ;;
+    "disable sshd.service") rm -f "$units/sshd.service" ;;
+    "start sshd.service" | "restart sshd.service") [ ! -e "$units/sshd-broken" ] ;;
+esac"#,
+    );
+}
+
+#[test]
+fn a_stopped_ssh_server_stays_off_unless_you_turn_it_on() {
+    let without_terminal = Sandbox::new("ssh-server-off");
+    sshd(&without_terminal, false, false);
+    let io = Answers::new(None);
+    without_terminal
+        .with(&io, |ctx| runner::install(ctx, &[&crate::SshServer]))
+        .unwrap();
+    assert!(!enabled(&without_terminal, "sshd.service"));
+    assert!(
+        io.notes
+            .borrow()
+            .iter()
+            .any(|note| note.contains("Run: sudo systemctl enable --now sshd.service"))
+    );
+
+    let declined = Sandbox::new("ssh-server-declined");
+    sshd(&declined, false, false);
+    declined
+        .with(&Answers::new(Some(false)), |ctx| {
+            runner::install(ctx, &[&crate::SshServer])
+        })
+        .unwrap();
+    assert!(!enabled(&declined, "sshd.service"));
+
+    let accepted = Sandbox::new("ssh-server-on");
+    sshd(&accepted, false, false);
+    accepted
+        .with(&Answers::new(Some(true)), |ctx| {
+            runner::install(ctx, &[&crate::SshServer])
+        })
+        .unwrap();
+    assert!(enabled(&accepted, "sshd.service"));
+    assert_eq!(accepted.calls("sudo systemctl start sshd.service"), 1);
+}
+
+#[test]
+fn a_failed_ssh_server_start_warns_without_stopping_the_install() {
+    let sandbox = Sandbox::new("ssh-server-broken");
+    sshd(&sandbox, false, true);
+    let io = Answers::new(Some(true));
+    sandbox
+        .with(&io, |ctx| runner::install(ctx, &[&crate::SshServer]))
+        .unwrap();
+    assert!(
+        io.notes
+            .borrow()
+            .iter()
+            .any(|note| note.starts_with("WARNING: the OpenSSH server did not start"))
+    );
+}
+
+#[test]
+fn a_running_ssh_server_restarts_without_a_question() {
+    let sandbox = Sandbox::new("ssh-server-running");
+    sshd(&sandbox, true, false);
+    let io = Answers::new(None);
+    sandbox
+        .with(&io, |ctx| runner::install(ctx, &[&crate::SshServer]))
+        .unwrap();
+    assert!(io.questions.borrow().is_empty());
+    assert_eq!(sandbox.calls("sudo systemctl restart sshd.service"), 1);
 }

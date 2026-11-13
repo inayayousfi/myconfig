@@ -20,6 +20,7 @@ use crate::{
 pub(crate) struct Answers {
     reply: Option<bool>,
     pub(crate) questions: RefCell<Vec<String>>,
+    pub(crate) notes: RefCell<Vec<String>>,
 }
 
 impl Answers {
@@ -27,13 +28,16 @@ impl Answers {
         Self {
             reply,
             questions: RefCell::new(Vec::new()),
+            notes: RefCell::new(Vec::new()),
         }
     }
 }
 
 impl Interaction for Answers {
     fn output(&self, _line: &str) {}
-    fn note(&self, _message: &str) {}
+    fn note(&self, message: &str) {
+        self.notes.borrow_mut().push(message.to_owned());
+    }
     fn confirm(&self, question: &str) -> Result<bool, Unanswered> {
         self.questions.borrow_mut().push(question.to_owned());
         self.reply.ok_or_else(|| Unanswered {

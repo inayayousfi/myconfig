@@ -18,9 +18,7 @@ static MODULES: &[&dyn Module] = &[
         unwanted: &[],
     },
     &Ssh,
-    &Cli {
-        retired_config: &["hunk", "lazygit", "nvim", "tmux"],
-    },
+    &Cli,
     &Runtimes,
     &Zsh {
         set_login_shell: false,
@@ -31,6 +29,7 @@ static MODULES: &[&dyn Module] = &[
         extra: &[Package::WslSshAgent],
     },
     &AgentConfigStowed { ydotool: false },
+    &SshServer,
     &GitConfig { windows_ssh: true },
     &EnvironmentInventory::ARCH_WSL,
 ];

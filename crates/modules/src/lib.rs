@@ -85,7 +85,7 @@ pub use shared_desktop::SharedDesktop;
 pub mod internal {
     pub use crate::shared_desktop::{elevated_move, elevated_move_back};
 }
-pub use ssh::Ssh;
+pub use ssh::{Ssh, SshServer};
 pub use tailscale::Tailscale;
 pub use taskbar_auto_hide::TaskbarAutoHide;
 pub use terminal_tools::TerminalTools;

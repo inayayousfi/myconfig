@@ -705,11 +705,6 @@ impl<'a> Context<'a> {
         crate::deploy::stow_package(self, package)
     }
 
-    /// Unstows a retired config package, keeping its deployed directory for `remove`.
-    pub fn unstow_retired(&self, package: &str) -> ModuleResult {
-        crate::deploy::unstow_retired(self, package)
-    }
-
     pub fn find_program(&self, name: &str) -> ModuleResult<PathBuf> {
         Ok(find_program(self.shell, name)?)
     }

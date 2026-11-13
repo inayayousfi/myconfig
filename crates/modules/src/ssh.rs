@@ -1,4 +1,4 @@
-//! The OpenSSH server, listening on every address for the current user only.
+//! The OpenSSH server configuration, listening on every address for the current user only.
 use std::path::{Path, PathBuf};
 
 use xshell::cmd;
@@ -8,11 +8,16 @@ use crate::{
     support::{current_user, verify_packages, with_temporary_directory},
 };
 
+/// Writes the server configuration without starting or stopping the server.
 pub struct Ssh;
 
+/// Restarts a running server with the new configuration, and offers to turn on a server
+/// that is off. It comes late in a profile, so its question waits until the rest is done.
+pub struct SshServer;
+
 const CONFIG: &str = "/etc/ssh/sshd_config.d/10-myconfig.conf";
-/// Written by an earlier version of this setup.
-const LEGACY: &str = "/etc/ssh/sshd_config.d/10-local-only.conf";
+const SERVICE: &str = "sshd.service";
+const START_COMMAND: &str = "sudo systemctl enable --now sshd.service";
 
 fn config(user: &str) -> String {
     format!("ListenAddress 0.0.0.0\nListenAddress ::\nAllowUsers {user}\n")
@@ -60,39 +65,26 @@ impl Module for Ssh {
             ctx.run(cmd!(sh, "sudo sshd -t -f {proposed}"))
         })?;
 
-        let previous_config = ctx.read_unchecked(cmd!(sh, "sudo cat {CONFIG}"))?;
-        let previous_legacy = ctx.read_unchecked(cmd!(sh, "sudo cat {LEGACY}"))?;
-        let applied = (|| -> ModuleResult {
-            ctx.write_system_file(Path::new(CONFIG), contents.as_bytes(), "0644")?;
-            ctx.delete_system_file(Path::new(LEGACY))?;
-            ctx.run(cmd!(sh, "sudo sshd -t"))?;
-            ctx.enable_service("sshd.service", ServiceScope::System)?;
-            ctx.run(cmd!(sh, "sudo systemctl restart sshd.service"))
-        })();
-        let Err(failure) = applied else {
+        let (existed, previous) = ctx.read_unchecked(cmd!(sh, "sudo cat {CONFIG}"))?;
+        ctx.write_system_file(Path::new(CONFIG), contents.as_bytes(), "0644")?;
+        let Err(failure) = ctx.run(cmd!(sh, "sudo sshd -t")) else {
             return Ok(());
         };
         // Put the working configuration back before reporting, so SSH access survives.
-        let restored = (|| -> ModuleResult {
-            for (path, (existed, previous)) in
-                [(CONFIG, previous_config), (LEGACY, previous_legacy)]
-            {
-                if existed {
-                    ctx.run_with_input(
-                        cmd!(sh, "sudo tee {path}").ignore_stdout(),
-                        format!("{previous}\n").as_bytes(),
-                    )?;
-                } else {
-                    ctx.run(cmd!(sh, "sudo rm -f -- {path}"))?;
-                }
-            }
-            ctx.run(cmd!(sh, "sudo sshd -t"))?;
-            ctx.run(cmd!(sh, "sudo systemctl restart sshd.service"))
-        })();
+        let restored = if existed {
+            ctx.run_with_input(
+                cmd!(sh, "sudo tee {CONFIG}").ignore_stdout(),
+                format!("{previous}\n").as_bytes(),
+            )
+        } else {
+            ctx.run(cmd!(sh, "sudo rm -f -- {CONFIG}"))
+        };
         Err(match restored {
-            Ok(()) => format!("OpenSSH setup failed, previous configuration restored: {failure}"),
+            Ok(()) => format!(
+                "OpenSSH rejected its new configuration; the previous one was restored: {failure}"
+            ),
             Err(error) => format!(
-                "OpenSSH setup failed: {failure}; previous configuration could not be restored: {error}"
+                "OpenSSH rejected its new configuration: {failure}; the previous one could not be restored: {error}"
             ),
         }
         .into())
@@ -106,11 +98,59 @@ impl Module for Ssh {
         if format!("{installed}\n") != config(&user) {
             return Err(format!("{CONFIG} differs from the expected configuration").into());
         }
-        ctx.run(cmd!(sh, "sudo sshd -t"))?;
-        let status = ctx.read(cmd!(sh, "systemctl is-active sshd.service"))?;
-        if status != "active" {
-            return Err(format!("sshd.service is not active: {status}").into());
+        ctx.run(cmd!(sh, "sudo sshd -t"))
+    }
+
+    fn remove(&self, _ctx: &Context) -> ModuleResult {
+        Ok(())
+    }
+}
+
+impl Module for SshServer {
+    fn name(&self) -> &'static str {
+        "ssh-server"
+    }
+
+    fn footprint(&self, _ctx: &Context) -> Footprint {
+        Footprint {
+            packages: vec![Package::Openssh],
+            settings: Vec::new(),
         }
+    }
+
+    fn install(&self, ctx: &Context) -> ModuleResult {
+        let sh = ctx.shell;
+        // Another program on port 22, such as a second WSL distribution sharing the same
+        // network, must not stop the rest of the install, so a failed start only warns.
+        if ctx.succeeds(cmd!(sh, "systemctl is-active --quiet {SERVICE}"))? {
+            ctx.note("Restarting the OpenSSH server with its new configuration");
+            if ctx
+                .run(cmd!(sh, "sudo systemctl restart {SERVICE}"))
+                .is_err()
+            {
+                ctx.note(
+                    "WARNING: the OpenSSH server did not restart. See: journalctl -u sshd.service",
+                );
+            }
+            return Ok(());
+        }
+        match ctx.confirm("The OpenSSH server is off. Turn it on now?") {
+            Ok(true) => {}
+            Ok(false) | Err(_) => {
+                ctx.note(&format!("The OpenSSH server is off. Run: {START_COMMAND}"));
+                return Ok(());
+            }
+        }
+        ctx.enable_service(SERVICE, ServiceScope::System)?;
+        if ctx.run(cmd!(sh, "sudo systemctl start {SERVICE}")).is_err() {
+            ctx.note("WARNING: the OpenSSH server did not start. See: journalctl -u sshd.service");
+            ctx.note(&format!("Retry with: {START_COMMAND}"));
+        }
+        Ok(())
+    }
+
+    fn verify(&self, _ctx: &Context) -> ModuleResult {
+        // The server may stay off by choice, and a failed start is only a warning.
         Ok(())
     }
 

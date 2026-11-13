@@ -11,9 +11,7 @@ static MODULES: &[&dyn Module] = &[
     },
     &CachyosSetup,
     &Ssh,
-    &Cli {
-        retired_config: &["hunk", "lazygit", "nvim", "tmux", "zed"],
-    },
+    &Cli,
     &Runtimes,
     &Zsh {
         set_login_shell: true,
@@ -36,6 +34,7 @@ static MODULES: &[&dyn Module] = &[
     &Pipewire,
     &Docker,
     &AgentConfigStowed { ydotool: true },
+    &SshServer,
     &GitConfig { windows_ssh: false },
     &EnvironmentInventory::CACHYOS,
 ];

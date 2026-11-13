@@ -92,7 +92,7 @@ The design has these rules:
 
 - Each module owns its config package from `dotfiles/<package>/`. Linux implementations stow it, and Windows implementations copy it. There is no central Dotfiles module.
 
-- A module changes the machine only through the recording functions on `Context`: `install_packages`, `uninstall_packages`, `set`, `unset`, `write_file`, `write_system_file`, `link`, `delete`, `delete_system_file`, `enable_service`, `deploy_config`, and `unstow_retired`. When a program makes a change by itself, record it around the call with `record_path`, `record_setting`, `record_setting_previous`, `created`, or `created_user_data`. Each one records the previous state in `state.json` before acting, and `remove` undoes from that record. A change made any other way cannot be removed. When a module needs a new kind of change, add a recording function or a `Setting` kind for it.
+- A module changes the machine only through the recording functions on `Context`: `install_packages`, `uninstall_packages`, `set`, `unset`, `write_file`, `write_system_file`, `link`, `delete`, `delete_system_file`, `enable_service`, and `deploy_config`. When a program makes a change by itself, record it around the call with `record_path`, `record_setting`, `record_setting_previous`, `created`, or `created_user_data`. Each one records the previous state in `state.json` before acting, and `remove` undoes from that record. A change made any other way cannot be removed. When a module needs a new kind of change, add a recording function or a `Setting` kind for it.
 
 - `footprint` lists the packages and settings the module needs. The "still needed?" check in `remove` reads it, so a module that needs a package installed by another module must list it too.
 

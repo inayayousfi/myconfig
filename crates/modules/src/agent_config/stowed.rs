@@ -31,19 +31,6 @@ pub(crate) fn link_agent_config(ctx: &Context) -> ModuleResult {
         return Err("agent skills or global AGENTS.md were not stowed".into());
     }
     let claude_skills = home.join(".claude/skills");
-    if claude_skills.is_dir() {
-        for entry in fs::read_dir(&claude_skills)? {
-            let path = entry?.path();
-            if let Ok(target) = fs::read_link(&path)
-                && target.starts_with("../../.agents/skills")
-                && !skills
-                    .join(path.file_name().ok_or("skill link has no name")?)
-                    .is_dir()
-            {
-                ctx.delete(&path)?;
-            }
-        }
-    }
     for entry in fs::read_dir(&skills)? {
         let entry = entry?;
         if entry.path().is_dir() {

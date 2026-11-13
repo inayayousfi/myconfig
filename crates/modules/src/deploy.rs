@@ -235,16 +235,6 @@ pub(crate) fn unstow(ctx: &Context, package: &str) -> ModuleResult {
     Ok(())
 }
 
-pub(crate) fn unstow_retired(ctx: &Context, package: &str) -> ModuleResult {
-    if !ctx.home.join("dotfiles").join(package).is_dir() {
-        return Ok(());
-    }
-    ctx.record(Change::Unstowed {
-        package: package.to_owned(),
-    })?;
-    unstow(ctx, package)
-}
-
 pub(crate) fn restow(ctx: &Context, package: &str) -> ModuleResult {
     let dotfiles = ctx.home.join("dotfiles");
     let home = ctx.home;

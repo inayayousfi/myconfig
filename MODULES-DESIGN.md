@@ -98,7 +98,6 @@ impl Context<'_> {
     pub fn delete_system_file(&self, path: &Path) -> ModuleResult;
     pub fn enable_service(&self, unit: &str, scope: ServiceScope) -> ModuleResult;
     pub fn deploy_config(&self, package: &str) -> ModuleResult;
-    pub fn unstow_retired(&self, package: &str) -> ModuleResult;
 
     // Changes that a program makes by itself, recorded around the call.
     pub fn record_path(&self, path: &Path) -> ModuleResult;
@@ -238,7 +237,7 @@ Each app's `main.rs` is a list of modules plus one call to the interface.
 let modules: &[&dyn Module] = &[
     &Base { packages: Base::ARCH, unwanted: &[] },
     &Ssh,
-    &Cli { retired_config: &["hunk", "lazygit", "nvim", "tmux"] },
+    &Cli,
     &Runtimes,
     &Zsh { set_login_shell: false },
     &TerminalTools,

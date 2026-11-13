@@ -19,6 +19,7 @@ mod agent_config;
 mod agents_packages;
 mod android_phone;
 mod appimage;
+mod apt_repository;
 mod arch_wsl;
 mod autohotkey;
 mod axidev_osk;

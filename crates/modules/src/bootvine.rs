@@ -8,10 +8,9 @@ use xshell::cmd;
 use crate::{
     Context, Footprint, Module, ModuleResult, ServiceScope,
     boot_config::{
-        MKINITCPIO_CONFIG, REFIND_LINUX_CONFIG, edit_system_file, has_hook, read_system_file,
-        with_hook_after, with_quiet_default,
+        MKINITCPIO_CONFIG, REFIND_LINUX_CONFIG, has_hook, with_hook_after, with_quiet_default,
     },
-    support::with_temporary_directory,
+    support::{edit_system_file, read_system_file, with_temporary_directory},
 };
 
 pub struct Bootvine;

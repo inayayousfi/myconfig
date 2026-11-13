@@ -431,3 +431,29 @@ pub(crate) fn set_default_application(
     }
     Ok(())
 }
+
+/// A root-owned file's contents, or `None` when it does not exist.
+pub(crate) fn read_system_file(ctx: &Context, path: &str) -> ModuleResult<Option<String>> {
+    if !ctx.succeeds(cmd!(ctx.shell, "sudo test -f {path}"))? {
+        return Ok(None);
+    }
+    let bytes = ctx.read_bytes(cmd!(ctx.shell, "sudo cat {path}"))?;
+    Ok(Some(String::from_utf8(bytes)?))
+}
+
+/// Replaces a root-owned file when `edit` changes it, and reports whether it did.
+pub(crate) fn edit_system_file(
+    ctx: &Context,
+    path: &str,
+    edit: impl Fn(&str) -> String,
+) -> ModuleResult<Option<bool>> {
+    let Some(current) = read_system_file(ctx, path)? else {
+        return Ok(None);
+    };
+    let edited = edit(&current);
+    if edited == current {
+        return Ok(Some(false));
+    }
+    ctx.write_system_file(Path::new(path), edited.as_bytes(), "0644")?;
+    Ok(Some(true))
+}

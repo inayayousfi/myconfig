@@ -28,13 +28,7 @@ impl Base {
         Package::Polkit,
     ];
 
-    pub const UBUNTU: &'static [Package] = &[
-        Package::CaCertificates,
-        Package::Curl,
-        Package::Git,
-        Package::Rsync,
-        Package::Stow,
-    ];
+    pub const UBUNTU: &'static [Package] = Self::ARCH;
 }
 
 impl Module for Base {

@@ -6,7 +6,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/inayayousfi/myconfig/main/install.sh | bash -s -- cachyos
 #   curl -fsSL https://raw.githubusercontent.com/inayayousfi/myconfig/main/install.sh | bash -s -- cachyos install
 #
-# The first argument may name the platform (cachyos, arch-wsl, ubuntu-server). Every
+# The first argument may name the platform (cachyos, arch-wsl, ubuntu-devbox). Every
 # other argument goes to the binary; with none, the binary opens its screen.
 
 set -euo pipefail
@@ -39,7 +39,7 @@ normalize_platform() {
     case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
         cachyos) printf 'cachyos' ;;
         arch-wsl | wsl) printf 'arch-wsl' ;;
-        ubuntu-server | ubuntu | linux | server) printf 'ubuntu-server' ;;
+        ubuntu-devbox | ubuntu | devbox) printf 'ubuntu-devbox' ;;
         *) return 1 ;;
     esac
 }
@@ -54,16 +54,16 @@ detect_platform() {
     elif [ "$id" = arch ] && { [ -n "${WSL_DISTRO_NAME:-}" ] || [[ "$kernel" == *microsoft* ]] || [[ "$kernel" == *wsl* ]]; }; then
         printf 'arch-wsl'
     elif [ "$id" = ubuntu ]; then
-        printf 'ubuntu-server'
+        printf 'ubuntu-devbox'
     fi
     return 0
 }
 
 choose_platform() {
-    has_terminal || fail "could not detect the platform; pass one of: cachyos, arch-wsl, ubuntu-server"
+    has_terminal || fail "could not detect the platform; pass one of: cachyos, arch-wsl, ubuntu-devbox"
     while true; do
         local choice
-        choice="$(ask $'Choose the platform:\n  1) CachyOS\n  2) Arch WSL\n  3) Ubuntu Server\nChoice (1-3): ')"
+        choice="$(ask $'Choose the platform:\n  1) CachyOS\n  2) Arch WSL\n  3) Ubuntu Devbox\nChoice (1-3): ')"
         case "$choice" in
             1)
                 printf 'cachyos'
@@ -74,7 +74,7 @@ choose_platform() {
                 return
                 ;;
             3)
-                printf 'ubuntu-server'
+                printf 'ubuntu-devbox'
                 return
                 ;;
             *) printf 'Enter 1, 2 or 3.\n' >/dev/tty ;;

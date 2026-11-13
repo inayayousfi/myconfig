@@ -203,12 +203,39 @@ fn every_linux_module_package_has_a_name_on_its_package_manager() {
         }
     });
     let apt = |package| myconfig_utils::resolve_package(package, PackageSystem::Apt);
-    for package in Base::UBUNTU
-        .iter()
-        .chain(&[Package::Zsh, Package::Git, Package::Curl])
-    {
-        assert!(apt(*package).is_some(), "{package:?} has no APT name");
-    }
+    let ubuntu: [&dyn Module; 12] = [
+        &Base {
+            packages: Base::UBUNTU,
+            unwanted: &[],
+        },
+        &Cli,
+        &crate::SystemMonitor,
+        &Runtimes {
+            bun_installer: true,
+        },
+        &crate::Zsh {
+            set_login_shell: true,
+        },
+        &crate::TerminalTools,
+        &crate::Tailscale,
+        &crate::AgentsPackages { extra: &[] },
+        &Docker { setup_tool: true },
+        &AgentConfigStowed { ydotool: false },
+        &crate::T3Code,
+        &crate::GitConfig { windows_ssh: false },
+    ];
+    sandbox.with(&Answers::new(None), |ctx| {
+        for module in ubuntu {
+            // Bun comes from its own installer on Ubuntu.
+            for package in module.footprint(ctx).packages {
+                assert!(
+                    package == Package::Bun || apt(package).is_some(),
+                    "{}: {package:?} has no APT name",
+                    module.name()
+                );
+            }
+        }
+    });
     let arch_name = |package| {
         myconfig_utils::resolve_package(package, PackageSystem::Arch)
             .unwrap()
@@ -1774,4 +1801,52 @@ fn t3code_desktop_installs_the_app_and_links_its_client_settings() {
     );
     let userdata = fs::symlink_metadata(sandbox.home.join(".t3/userdata")).unwrap();
     assert!(!userdata.file_type().is_symlink());
+}
+
+#[test]
+fn vendor_apt_repositories_are_added_once_with_their_keys() {
+    let sandbox = Sandbox::new("apt-repositories");
+    system(&sandbox);
+    sandbox.fake(
+        "curl",
+        r#"printf 'curl %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+case "$*" in
+    *docker*) printf -- '-----BEGIN PGP PUBLIC KEY BLOCK-----\nkey\n' ;;
+    *) printf 'binary key %s' "$2" ;;
+esac"#,
+    );
+    sandbox.fake("dpkg", "echo amd64");
+    sandbox.fake(
+        "apt-get",
+        r#"printf 'apt-get %s\n' "$*" >> "$MYCONFIG_TEST_LOG""#,
+    );
+    let packages = [
+        Package::Tailscale,
+        Package::Docker,
+        Package::DockerCompose,
+        Package::Ripgrep,
+    ];
+    let io = Answers::new(None);
+    for _ in 0..2 {
+        sandbox.with(&io, |ctx| {
+            ctx.state()
+                .borrow_mut()
+                .begin(crate::state::Action::Install)
+                .unwrap();
+            ctx.set_module("base");
+            crate::apt_repository::add_repositories(ctx, &packages, "noble").unwrap();
+        });
+    }
+    assert_eq!(sandbox.calls("sudo apt-get update"), 1);
+    assert_eq!(
+        system_file(&sandbox, "/etc/apt/sources.list.d/myconfig-docker.sources").unwrap(),
+        "Types: deb\nURIs: https://download.docker.com/linux/ubuntu\nSuites: noble\nComponents: stable\nArchitectures: amd64\nSigned-By: /etc/apt/keyrings/myconfig-docker.asc\n"
+    );
+    assert!(system_file(&sandbox, "/etc/apt/keyrings/myconfig-docker.asc").is_some());
+    assert_eq!(
+        system_file(&sandbox, "/etc/apt/keyrings/myconfig-tailscale.gpg").unwrap(),
+        "binary key https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg"
+    );
+    assert!(system_file(&sandbox, "/etc/apt/sources.list.d/myconfig-github.sources").is_none());
+    assert!(system_file(&sandbox, "/etc/apt/sources.list.d/myconfig-yazi.sources").is_none());
 }

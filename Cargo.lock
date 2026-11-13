@@ -808,7 +808,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "myconfig-ubuntu-server"
+name = "myconfig-ubuntu-devbox"
 version = "0.54.0"
 dependencies = [
  "myconfig-interface",

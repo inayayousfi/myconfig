@@ -16,7 +16,7 @@ use repository_tests::{Scratch, repository, run};
 fn release(scratch: &Scratch) -> std::path::PathBuf {
     let release = scratch.0.join("release");
     fs::create_dir_all(&release).unwrap();
-    for platform in ["cachyos", "arch-wsl", "ubuntu-server"] {
+    for platform in ["cachyos", "arch-wsl", "ubuntu-devbox"] {
         let asset = format!("myconfig-{platform}-x86_64-unknown-linux-musl");
         fs::write(
             release.join(&asset),
@@ -66,11 +66,11 @@ fn a_named_platform_installs_its_binary_and_passes_the_arguments() {
     );
     assert_eq!(
         String::from_utf8_lossy(&output.stdout).trim(),
-        "ubuntu-server install zsh"
+        "ubuntu-devbox install zsh"
     );
     let binary = scratch.0.join("home/.local/bin/myconfig");
     assert!(fs::metadata(&binary).unwrap().permissions().mode() & 0o111 != 0);
-    assert_eq!(kept(&scratch, &["verify"]), "ubuntu-server verify");
+    assert_eq!(kept(&scratch, &["verify"]), "ubuntu-devbox verify");
 }
 
 #[test]
@@ -88,7 +88,7 @@ fn a_binary_that_does_not_match_its_checksum_is_refused() {
     let scratch = Scratch::new("install-tampered");
     let release = release(&scratch);
     assert!(
-        install(&scratch, &release, &["ubuntu-server", "list"])
+        install(&scratch, &release, &["ubuntu-devbox", "list"])
             .status
             .success()
     );
@@ -103,7 +103,7 @@ fn a_binary_that_does_not_match_its_checksum_is_refused() {
     );
     assert_eq!(
         kept(&scratch, &["list"]),
-        "ubuntu-server list",
+        "ubuntu-devbox list",
         "the kept binary was replaced"
     );
 }

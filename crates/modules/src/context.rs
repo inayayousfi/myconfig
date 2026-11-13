@@ -396,6 +396,14 @@ impl<'a> Context<'a> {
         if missing.is_empty() {
             return Ok(());
         }
+        if self.package_system == PackageSystem::Apt {
+            let packages: Vec<_> = missing.iter().map(|(package, _)| *package).collect();
+            crate::apt_repository::add_repositories(
+                self,
+                &packages,
+                &crate::apt_repository::codename()?,
+            )?;
+        }
         let missing_specs: Vec<_> = missing.iter().map(|(_, spec)| *spec).collect();
         self.install_specs(&missing_specs)?;
         for (package, spec) in missing {

@@ -1,5 +1,5 @@
 [package]
-name = "myconfig-ubuntu-server"
+name = "myconfig-ubuntu-devbox"
 version.workspace = true
 edition = "2024"
 

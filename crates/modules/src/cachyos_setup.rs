@@ -5,9 +5,9 @@ use xshell::cmd;
 use crate::{
     Context, Footprint, Module, ModuleResult, Package,
     boot_config::{
-        MKINITCPIO_CONFIG, REFIND_LINUX_CONFIG, edit_system_file, has_hook, read_system_file,
-        without_hook, without_options,
+        MKINITCPIO_CONFIG, REFIND_LINUX_CONFIG, has_hook, without_hook, without_options,
     },
+    support::{edit_system_file, read_system_file},
 };
 
 pub struct CachyosSetup;

@@ -26,7 +26,7 @@ The top-level areas have different jobs:
 
 - `dotfiles/` contains packages whose paths mirror their destination under the home directory. The binaries embed it at build time. `dotfiles/old/` contains retired packages that no profile installs, and `dotfiles/assets/` contains files that modules install somewhere other than the home directory.
 
-- `apps/` contains one installer per platform: `cachyos`, `arch-wsl`, `ubuntu-server`, and `windows`. Each `main.rs` holds that profile's module list, which is the execution plan. Inspect it before assuming that a module runs on a platform.
+- `apps/` contains one installer per platform: `cachyos`, `arch-wsl`, `ubuntu-devbox`, and `windows`. Each `main.rs` holds that profile's module list, which is the execution plan. Inspect it before assuming that a module runs on a platform.
 
 - `crates/` contains the shared Rust crates. `MODULES-DESIGN.md` at the repository root describes their structure. See "Rust installers" below.
 

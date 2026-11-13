@@ -3,7 +3,7 @@ members = [
   "apps/cachyos",
   "apps/windows",
   "apps/arch-wsl",
-  "apps/ubuntu-server",
+  "apps/ubuntu-devbox",
   "crates/package-catalog",
   "crates/utils",
   "crates/modules",

@@ -10,6 +10,7 @@ static MODULES: &[&dyn Module] = &[
         unwanted: &[Package::CachyUpdate],
     },
     &CachyosSetup,
+    &Media,
     &Ssh,
     &Cli,
     &Runtimes,
@@ -78,6 +79,7 @@ mod tests {
             "handy",
             "pipewire",
             "docker",
+            "media",
             "agent-config",
             "git-config",
         ] {

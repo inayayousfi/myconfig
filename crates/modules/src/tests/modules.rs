@@ -85,7 +85,7 @@ while [ "$#" -gt 0 ]; do
         *) value="$1"; shift ;;
     esac
 done
-mkdir -p "$path" && printf '%s' "$value" > "$path/$key""#,
+mkdir -p "$(dirname "$path/$key")" && printf '%s' "$value" > "$path/$key""#,
     );
     sandbox.fake(
         "kreadconfig6",
@@ -1204,4 +1204,58 @@ fn a_running_ssh_server_restarts_without_a_question() {
         .unwrap();
     assert!(io.questions.borrow().is_empty());
     assert_eq!(sandbox.calls("sudo systemctl restart sshd.service"), 1);
+}
+
+#[test]
+fn media_makes_vlc_the_player_and_loupe_the_image_viewer() {
+    let sandbox = Sandbox::new("media");
+    system(&sandbox);
+    let applications = sandbox.root.join("share/applications");
+    fs::create_dir_all(&applications).unwrap();
+    fs::write(
+        applications.join("vlc.desktop"),
+        "[Desktop Entry]\nName=VLC\nMimeType=application/x-iso9660-image;audio/mpeg;video/mp4;x-content/video-dvd;\n",
+    )
+    .unwrap();
+    fs::write(
+        applications.join("org.gnome.Loupe.desktop"),
+        "[Desktop Entry]\nName=Loupe\nMimeType=image/png;image/jpeg;\n",
+    )
+    .unwrap();
+    sandbox
+        .shell
+        .set_var("XDG_DATA_DIRS", sandbox.root.join("share"));
+    let defaults = sandbox.root.join("kde/mimeapps.list/Default Applications");
+    fs::create_dir_all(defaults.join("text")).unwrap();
+    fs::write(defaults.join("text/plain"), "other.desktop").unwrap();
+    let io = Answers::new(None);
+    sandbox
+        .with(&io, |ctx| runner::install(ctx, &[&crate::Media]))
+        .unwrap();
+    for package in ["vlc", "loupe"] {
+        assert!(sandbox.installed(package), "{package} was not installed");
+    }
+    let default = |kind: &str| {
+        kde(
+            &sandbox,
+            &format!("mimeapps.list/Default Applications/{kind}"),
+        )
+    };
+    assert_eq!(default("audio/mpeg").as_deref(), Some("vlc.desktop"));
+    assert_eq!(default("video/mp4").as_deref(), Some("vlc.desktop"));
+    assert_eq!(default("application/x-iso9660-image"), None);
+    assert_eq!(default("x-content/video-dvd"), None);
+    assert_eq!(
+        default("image/png").as_deref(),
+        Some("org.gnome.Loupe.desktop")
+    );
+    assert_eq!(
+        default("image/jpeg").as_deref(),
+        Some("org.gnome.Loupe.desktop")
+    );
+    assert_eq!(default("text/plain").as_deref(), Some("other.desktop"));
+    let results = sandbox.with(&io, |ctx| runner::verify(ctx, &[&crate::Media]));
+    for (name, result) in results {
+        assert!(result.is_ok(), "{name}: {result:?}");
+    }
 }

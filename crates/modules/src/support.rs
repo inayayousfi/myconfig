@@ -386,3 +386,48 @@ pub(crate) fn verify_embedded(
     }
     Ok(())
 }
+
+/// The file types a desktop entry declares, from the first directory of `XDG_DATA_DIRS`
+/// that has it.
+pub(crate) fn desktop_entry_types(ctx: &Context, entry: &str) -> ModuleResult<Vec<String>> {
+    let directories = ctx
+        .shell
+        .var("XDG_DATA_DIRS")
+        .ok()
+        .filter(|directories| !directories.is_empty())
+        .unwrap_or_else(|| "/usr/local/share:/usr/share".to_owned());
+    let path = directories
+        .split(':')
+        .map(|directory| Path::new(directory).join("applications").join(entry))
+        .find(|path| path.is_file())
+        .ok_or_else(|| format!("desktop entry not found: {entry}"))?;
+    let contents = fs::read_to_string(&path)?;
+    Ok(contents
+        .lines()
+        .find_map(|line| line.strip_prefix("MimeType="))
+        .unwrap_or_default()
+        .split(';')
+        .filter(|kind| !kind.is_empty())
+        .map(str::to_owned)
+        .collect())
+}
+
+/// The settings that make `entry` the default application for each of `types`.
+/// Defaults for other file types stay.
+pub(crate) fn default_application_settings(types: &[String]) -> Vec<Setting> {
+    types
+        .iter()
+        .map(|kind| Setting::kde("mimeapps.list", &["Default Applications"], kind))
+        .collect()
+}
+
+pub(crate) fn set_default_application(
+    ctx: &Context,
+    entry: &str,
+    types: &[String],
+) -> ModuleResult {
+    for setting in default_application_settings(types) {
+        ctx.set(setting, entry)?;
+    }
+    Ok(())
+}

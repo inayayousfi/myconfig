@@ -152,10 +152,12 @@ pub enum Package {
     PlymouthKcm,
     CachyosPlymouthTheme,
     CachyosPlymouthBootanimation,
+    Vlc,
+    Loupe,
 }
 
 impl Package {
-    const COUNT: usize = 150;
+    const COUNT: usize = 152;
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -437,6 +439,8 @@ const PACKAGE_OVERRIDES: &[((Package, Platform), &str)] = &[
         (Package::CachyosPlymouthBootanimation, Platform::Pacman),
         "cachyos-plymouth-bootanimation",
     ),
+    ((Package::Vlc, Platform::Pacman), "vlc"),
+    ((Package::Loupe, Platform::Pacman), "loupe"),
 ];
 
 const fn build_packages()
@@ -623,6 +627,8 @@ const fn package_from_index(index: usize) -> Package {
         Package::PlymouthKcm,
         Package::CachyosPlymouthTheme,
         Package::CachyosPlymouthBootanimation,
+        Package::Vlc,
+        Package::Loupe,
     ][index]
 }
 

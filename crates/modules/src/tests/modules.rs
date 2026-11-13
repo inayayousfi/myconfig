@@ -1604,3 +1604,38 @@ fn bootvine_needs_the_systemd_hook() {
     );
     assert_eq!(sandbox.calls("makepkg"), 0);
 }
+
+#[test]
+fn tailscale_makes_the_user_its_operator_once_and_remove_clears_it() {
+    let sandbox = Sandbox::new("tailscale");
+    system(&sandbox);
+    sandbox.fake(
+        "tailscale",
+        r#"printf 'tailscale %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+operator="$MYCONFIG_TEST_ROOT/tailscale-operator"
+case "$1" in
+    debug) printf '{"OperatorUser":"%s","WantRunning":true}\n' "$(cat "$operator" 2>/dev/null)" ;;
+    set) printf '%s' "${2#--operator=}" > "$operator" ;;
+esac"#,
+    );
+    let io = Answers::new(None);
+    for _ in 0..2 {
+        sandbox
+            .with(&io, |ctx| runner::install(ctx, &[&crate::Tailscale]))
+            .unwrap();
+    }
+    assert_eq!(sandbox.calls("sudo tailscale set --operator=tester"), 1);
+    let results = sandbox.with(&io, |ctx| runner::verify(ctx, &[&crate::Tailscale]));
+    for (name, result) in results {
+        assert!(result.is_ok(), "{name}: {result:?}");
+    }
+    sandbox
+        .with(&io, |ctx| {
+            runner::remove(ctx, &[&crate::Tailscale], &[&crate::Tailscale], false)
+        })
+        .unwrap();
+    assert_eq!(
+        fs::read_to_string(sandbox.root.join("tailscale-operator")).unwrap(),
+        ""
+    );
+}

@@ -1,8 +1,10 @@
-//! The Tailscale service. Logging in is left to the person.
+//! The Tailscale service, with the current user as its operator. Logging in is left to
+//! the person.
 use xshell::cmd;
 
 use crate::{
-    Context, Footprint, Module, ModuleResult, Package, ServiceScope, support::verify_packages,
+    Context, Footprint, Module, ModuleResult, Package, ServiceScope, Setting,
+    support::{current_user, verify_packages},
 };
 
 pub struct Tailscale;
@@ -15,14 +17,16 @@ impl Module for Tailscale {
     fn footprint(&self, _ctx: &Context) -> Footprint {
         Footprint {
             packages: vec![Package::Tailscale],
-            settings: Vec::new(),
+            settings: vec![Setting::TailscaleOperator],
         }
     }
 
     fn install(&self, ctx: &Context) -> ModuleResult {
         ctx.install_packages(&[Package::Tailscale])?;
         ctx.enable_service("tailscaled", ServiceScope::System)?;
-        ctx.run(cmd!(ctx.shell, "sudo systemctl start tailscaled"))
+        ctx.run(cmd!(ctx.shell, "sudo systemctl start tailscaled"))?;
+        // t3ctl publishes T3 Code through Tailscale Serve without sudo.
+        ctx.set(Setting::TailscaleOperator, &current_user(ctx)?)
     }
 
     fn verify(&self, ctx: &Context) -> ModuleResult {
@@ -30,6 +34,10 @@ impl Module for Tailscale {
         let status = ctx.read(cmd!(ctx.shell, "systemctl is-active tailscaled"))?;
         if status != "active" {
             return Err(format!("tailscaled is not active: {status}").into());
+        }
+        let user = current_user(ctx)?;
+        if Setting::TailscaleOperator.read(ctx)?.as_deref() != Some(user.as_str()) {
+            return Err(format!("{user} is not the Tailscale operator").into());
         }
         Ok(())
     }

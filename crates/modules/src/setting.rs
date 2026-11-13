@@ -51,6 +51,8 @@ pub enum Setting {
     },
     /// The Docker context that the `docker` command uses.
     DockerCurrentContext,
+    /// The user allowed to change Tailscale without sudo.
+    TailscaleOperator,
     /// A system-wide Flatpak remote, added from its `.flatpakrepo` file.
     FlatpakRemote {
         name: String,
@@ -110,6 +112,7 @@ impl Setting {
             Self::FlatpakRemote { name, .. } => format!("Flatpak remote {name}"),
             Self::DockerContext { name } => format!("Docker context {name}"),
             Self::DockerCurrentContext => "current Docker context".to_owned(),
+            Self::TailscaleOperator => "Tailscale operator".to_owned(),
             Self::RegistryValue { key, name } => format!("registry {key} {name}"),
             Self::MachinePathEntry { entry } => format!("machine PATH entry {entry}"),
             Self::TaskbarAutoHide => "taskbar auto-hide".to_owned(),
@@ -187,6 +190,15 @@ impl Setting {
                 found.then_some(host)
             }
             Self::DockerCurrentContext => Some(ctx.read(cmd!(sh, "docker context show"))?),
+            Self::TailscaleOperator => {
+                let prefs: serde_json::Value =
+                    serde_json::from_str(&ctx.read(cmd!(sh, "tailscale debug prefs"))?)?;
+                prefs
+                    .get("OperatorUser")
+                    .and_then(serde_json::Value::as_str)
+                    .filter(|user| !user.is_empty())
+                    .map(str::to_owned)
+            }
             Self::FlatpakRemote { name, .. } => ctx
                 .read(cmd!(sh, "flatpak remotes --system --columns=name"))?
                 .lines()
@@ -305,6 +317,10 @@ impl Setting {
                 ctx.run(cmd!(sh, "docker context create {name} --docker {endpoint}"))
             }
             Self::DockerCurrentContext => ctx.run(cmd!(sh, "docker context use {value}")),
+            Self::TailscaleOperator => {
+                let operator = format!("--operator={value}");
+                ctx.run(cmd!(sh, "sudo tailscale set {operator}"))
+            }
             Self::FlatpakRemote { name, from } => ctx.run(cmd!(
                 sh,
                 "sudo flatpak remote-add --system --if-not-exists {name} {from}"
@@ -373,6 +389,7 @@ impl Setting {
             Self::GroupExists { group } => ctx.run(cmd!(sh, "sudo groupdel {group}")),
             Self::DockerContext { name } => ctx.run(cmd!(sh, "docker context rm --force {name}")),
             Self::DockerCurrentContext => ctx.run(cmd!(sh, "docker context use default")),
+            Self::TailscaleOperator => ctx.run(cmd!(sh, "sudo tailscale set --operator=")),
             Self::FlatpakRemote { name, .. } => {
                 ctx.run(cmd!(sh, "sudo flatpak remote-delete --system {name}"))
             }

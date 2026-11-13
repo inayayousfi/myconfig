@@ -45,6 +45,12 @@ pub enum Setting {
     ClaudeMcpServer {
         name: String,
     },
+    /// A Docker context, whose value is its Docker endpoint.
+    DockerContext {
+        name: String,
+    },
+    /// The Docker context that the `docker` command uses.
+    DockerCurrentContext,
     /// A system-wide Flatpak remote, added from its `.flatpakrepo` file.
     FlatpakRemote {
         name: String,
@@ -102,6 +108,8 @@ impl Setting {
             Self::GroupMember { group, user } => format!("{user} in group {group}"),
             Self::ClaudeMcpServer { name } => format!("Claude MCP server {name}"),
             Self::FlatpakRemote { name, .. } => format!("Flatpak remote {name}"),
+            Self::DockerContext { name } => format!("Docker context {name}"),
+            Self::DockerCurrentContext => "current Docker context".to_owned(),
             Self::RegistryValue { key, name } => format!("registry {key} {name}"),
             Self::MachinePathEntry { entry } => format!("machine PATH entry {entry}"),
             Self::TaskbarAutoHide => "taskbar auto-hide".to_owned(),
@@ -172,6 +180,13 @@ impl Setting {
             Self::GroupExists { group } => ctx
                 .succeeds(cmd!(sh, "getent group {group}"))?
                 .then(|| "present".to_owned()),
+            Self::DockerContext { name } => {
+                let format = "{{.Endpoints.docker.Host}}";
+                let (found, host) = ctx
+                    .read_unchecked(cmd!(sh, "docker context inspect {name} --format {format}"))?;
+                found.then_some(host)
+            }
+            Self::DockerCurrentContext => Some(ctx.read(cmd!(sh, "docker context show"))?),
             Self::FlatpakRemote { name, .. } => ctx
                 .read(cmd!(sh, "flatpak remotes --system --columns=name"))?
                 .lines()
@@ -282,6 +297,14 @@ impl Setting {
             Self::GroupExists { group } => {
                 ctx.run(cmd!(sh, "sudo groupadd --system --force {group}"))
             }
+            Self::DockerContext { name } => {
+                if self.read(ctx)?.is_some() {
+                    ctx.run(cmd!(sh, "docker context rm --force {name}"))?;
+                }
+                let endpoint = format!("host={value}");
+                ctx.run(cmd!(sh, "docker context create {name} --docker {endpoint}"))
+            }
+            Self::DockerCurrentContext => ctx.run(cmd!(sh, "docker context use {value}")),
             Self::FlatpakRemote { name, from } => ctx.run(cmd!(
                 sh,
                 "sudo flatpak remote-add --system --if-not-exists {name} {from}"
@@ -348,6 +371,8 @@ impl Setting {
             Self::UfwRule { rule } => ctx.run(cmd!(sh, "sudo ufw delete {rule...}")),
             Self::UfwEnabled => ctx.run(cmd!(sh, "sudo ufw disable")),
             Self::GroupExists { group } => ctx.run(cmd!(sh, "sudo groupdel {group}")),
+            Self::DockerContext { name } => ctx.run(cmd!(sh, "docker context rm --force {name}")),
+            Self::DockerCurrentContext => ctx.run(cmd!(sh, "docker context use default")),
             Self::FlatpakRemote { name, .. } => {
                 ctx.run(cmd!(sh, "sudo flatpak remote-delete --system {name}"))
             }

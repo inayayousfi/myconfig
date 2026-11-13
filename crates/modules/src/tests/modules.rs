@@ -193,7 +193,7 @@ fn every_linux_module_package_has_a_name_on_its_package_manager() {
         &KanataKde,
         &Handy,
         &crate::Pipewire,
-        &Docker,
+        &Docker { setup_tool: false },
         &AgentConfigStowed { ydotool: true },
     ];
     sandbox.with(&Answers::new(None), |ctx| {
@@ -631,6 +631,26 @@ fn handy_configures_push_to_talk_and_keeps_your_settings() {
     );
 }
 
+const DOCKER: Docker = Docker { setup_tool: false };
+
+/// A `docker` command that keeps its contexts as files and reports a rootless daemon.
+fn docker(sandbox: &Sandbox) {
+    sandbox.fake(
+        "docker",
+        r#"printf 'docker %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+contexts="$MYCONFIG_TEST_ROOT/docker"
+mkdir -p "$contexts"
+case "$1 $2" in
+    "context inspect") [ -e "$contexts/$3" ] && cat "$contexts/$3" ;;
+    "context create") printf '%s' "${5#host=}" > "$contexts/$3" ;;
+    "context rm") rm -f "$contexts/$4" ;;
+    "context use") printf '%s' "$3" > "$contexts/.current" ;;
+    "context show") cat "$contexts/.current" 2>/dev/null || echo default ;;
+    "info --format") echo '[name=seccomp,profile=builtin name=rootless name=cgroupns]' ;;
+esac"#,
+    );
+}
+
 #[test]
 fn docker_refuses_a_docker_group_member_without_changing_anything() {
     let sandbox = Sandbox::new("docker-refused");
@@ -638,22 +658,83 @@ fn docker_refuses_a_docker_group_member_without_changing_anything() {
     fs::create_dir_all(sandbox.root.join("groups/docker")).unwrap();
     fs::write(sandbox.root.join("groups/docker/tester"), "").unwrap();
     let error = sandbox
-        .with(&Answers::new(None), |ctx| Docker.install(ctx))
+        .with(&Answers::new(None), |ctx| DOCKER.install(ctx))
         .unwrap_err();
     assert!(error.to_string().contains("docker group"));
     assert_eq!(sandbox.calls("pacman -S"), 0);
     assert!(!enabled(&sandbox, "docker.service"));
+}
 
+#[test]
+fn docker_runs_rootless_through_its_own_context_and_remove_restores_the_default() {
     let sandbox = Sandbox::new("docker");
     system(&sandbox);
-    sandbox
-        .with(&Answers::new(None), |ctx| runner::install(ctx, &[&Docker]))
-        .unwrap();
-    for package in ["docker", "docker-buildx", "docker-compose"] {
-        assert!(sandbox.installed(package));
+    docker(&sandbox);
+    let io = Answers::new(None);
+    for _ in 0..2 {
+        sandbox
+            .with(&io, |ctx| runner::install(ctx, &[&DOCKER]))
+            .unwrap();
     }
+    for package in [
+        "docker",
+        "docker-buildx",
+        "docker-compose",
+        "docker-rootless-extras",
+        "slirp4netns",
+        "shadow",
+    ] {
+        assert!(sandbox.installed(package), "{package} was not installed");
+    }
+    assert_eq!(
+        sandbox.calls("sudo systemctl disable --now docker.service docker.socket"),
+        2
+    );
     assert!(enabled(&sandbox, "docker.service"));
-    assert_eq!(sandbox.calls("sudo systemctl start docker.service"), 1);
+    assert_eq!(
+        fs::read_to_string(sandbox.root.join("docker/rootless")).unwrap(),
+        "unix:///run/user/1000/docker.sock"
+    );
+    assert_eq!(sandbox.calls("docker context create"), 1);
+    assert_eq!(
+        fs::read_to_string(sandbox.root.join("docker/.current")).unwrap(),
+        "rootless"
+    );
+    sandbox
+        .with(&io, |ctx| {
+            runner::remove(ctx, &[&DOCKER], &[&DOCKER], false)
+        })
+        .unwrap();
+    assert_eq!(
+        fs::read_to_string(sandbox.root.join("docker/.current")).unwrap(),
+        "default"
+    );
+    assert!(!sandbox.root.join("docker/rootless").exists());
+}
+
+#[test]
+fn docker_creates_the_user_service_with_the_setup_tool_and_the_system_path() {
+    let sandbox = Sandbox::new("docker-setup-tool");
+    system(&sandbox);
+    docker(&sandbox);
+    sandbox.fake(
+        "dockerd-rootless-setuptool.sh",
+        r#"printf 'setuptool %s PATH=%s\n' "$*" "$PATH" >> "$MYCONFIG_TEST_LOG"
+mkdir -p "$HOME/.config/systemd/user" && : > "$HOME/.config/systemd/user/docker.service""#,
+    );
+    let docker = Docker { setup_tool: true };
+    let io = Answers::new(None);
+    for _ in 0..2 {
+        sandbox
+            .with(&io, |ctx| runner::install(ctx, &[&docker]))
+            .unwrap();
+    }
+    assert_eq!(
+        sandbox.calls(
+            "setuptool install PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+        ),
+        1
+    );
 }
 
 #[test]

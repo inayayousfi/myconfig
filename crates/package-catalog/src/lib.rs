@@ -159,10 +159,13 @@ pub enum Package {
     PythonVenv,
     Vscodium,
     Bsdtar,
+    DockerRootlessExtras,
+    Slirp4netns,
+    Uidmap,
 }
 
 impl Package {
-    const COUNT: usize = 157;
+    const COUNT: usize = 160;
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -452,6 +455,18 @@ const PACKAGE_OVERRIDES: &[((Package, Platform), &str)] = &[
     ((Package::PythonVenv, Platform::Apt), "python3-venv"),
     ((Package::Vscodium, Platform::Pacman), "vscodium"),
     ((Package::Bsdtar, Platform::Pacman), "libarchive"),
+    (
+        (Package::DockerRootlessExtras, Platform::Aur),
+        "docker-rootless-extras",
+    ),
+    (
+        (Package::DockerRootlessExtras, Platform::Apt),
+        "docker-ce-rootless-extras",
+    ),
+    ((Package::Slirp4netns, Platform::Pacman), "slirp4netns"),
+    ((Package::Slirp4netns, Platform::Apt), "slirp4netns"),
+    ((Package::Uidmap, Platform::Pacman), "shadow"),
+    ((Package::Uidmap, Platform::Apt), "uidmap"),
 ];
 
 const fn build_packages()
@@ -645,6 +660,9 @@ const fn package_from_index(index: usize) -> Package {
         Package::PythonVenv,
         Package::Vscodium,
         Package::Bsdtar,
+        Package::DockerRootlessExtras,
+        Package::Slirp4netns,
+        Package::Uidmap,
     ][index]
 }
 

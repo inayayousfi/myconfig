@@ -39,7 +39,7 @@ static MODULES: &[&dyn Module] = &[
     &KanataKde,
     &Handy,
     &Pipewire,
-    &Docker,
+    &Docker { setup_tool: false },
     &AgentConfigStowed { ydotool: true },
     &SshServer,
     &GitConfig { windows_ssh: false },

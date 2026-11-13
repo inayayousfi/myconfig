@@ -162,10 +162,12 @@ pub enum Package {
     DockerRootlessExtras,
     Slirp4netns,
     Uidmap,
+    Qrencode,
+    T3codeDesktop,
 }
 
 impl Package {
-    const COUNT: usize = 160;
+    const COUNT: usize = 162;
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -467,6 +469,9 @@ const PACKAGE_OVERRIDES: &[((Package, Platform), &str)] = &[
     ((Package::Slirp4netns, Platform::Apt), "slirp4netns"),
     ((Package::Uidmap, Platform::Pacman), "shadow"),
     ((Package::Uidmap, Platform::Apt), "uidmap"),
+    ((Package::Qrencode, Platform::Pacman), "qrencode"),
+    ((Package::Qrencode, Platform::Apt), "qrencode"),
+    ((Package::T3codeDesktop, Platform::Aur), "t3code-bin"),
 ];
 
 const fn build_packages()
@@ -663,6 +668,8 @@ const fn package_from_index(index: usize) -> Package {
         Package::DockerRootlessExtras,
         Package::Slirp4netns,
         Package::Uidmap,
+        Package::Qrencode,
+        Package::T3codeDesktop,
     ][index]
 }
 

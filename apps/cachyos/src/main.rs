@@ -41,6 +41,7 @@ static MODULES: &[&dyn Module] = &[
     &Pipewire,
     &Docker { setup_tool: false },
     &AgentConfigStowed { ydotool: true },
+    &T3CodeDesktop,
     &SshServer,
     &GitConfig { windows_ssh: false },
     &EnvironmentInventory::CACHYOS,
@@ -90,6 +91,7 @@ mod tests {
             "appimage",
             "vscodium",
             "bootvine",
+            "t3code-desktop",
             "agent-config",
             "git-config",
         ] {

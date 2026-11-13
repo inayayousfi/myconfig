@@ -51,6 +51,7 @@ mod runtimes;
 mod shared_desktop;
 mod ssh;
 mod system_monitor;
+mod t3code;
 mod tailscale;
 mod taskbar_auto_hide;
 mod terminal_tools;
@@ -98,6 +99,7 @@ pub mod internal {
 }
 pub use ssh::{Ssh, SshServer};
 pub use system_monitor::SystemMonitor;
+pub use t3code::{T3Code, T3CodeDesktop};
 pub use tailscale::Tailscale;
 pub use taskbar_auto_hide::TaskbarAutoHide;
 pub use terminal_tools::TerminalTools;

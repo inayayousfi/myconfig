@@ -32,6 +32,7 @@ static MODULES: &[&dyn Module] = &[
         extra: &[Package::WslSshAgent],
     },
     &AgentConfigStowed { ydotool: false },
+    &T3Code,
     &SshServer,
     &GitConfig { windows_ssh: true },
     &EnvironmentInventory::ARCH_WSL,
@@ -71,6 +72,7 @@ mod tests {
             "appimage",
             "vscodium",
             "bootvine",
+            "t3code-desktop",
         ] {
             assert!(!names.contains(&absent), "Arch WSL includes {absent}");
         }
@@ -80,6 +82,7 @@ mod tests {
             "agent-config",
             "git-config",
             "tailscale",
+            "t3code",
         ] {
             assert!(names.contains(&wanted), "Arch WSL lacks {wanted}");
         }

@@ -1721,3 +1721,57 @@ fi"#,
     );
     assert!(!sandbox.home.join(".local/bin/claude").exists());
 }
+
+#[test]
+fn t3code_repairs_the_server_through_the_deployed_t3ctl() {
+    let sandbox = Sandbox::new("t3code");
+    system(&sandbox);
+    sandbox.fake("npm", "exit 0");
+    let io = Answers::new(None);
+    // The deployed t3ctl runs as itself, so its own commands are faked through PATH.
+    sandbox.fake(
+        "loginctl",
+        r#"printf 'loginctl %s\n' "$*" >> "$MYCONFIG_TEST_LOG"; [ "$1" = show-user ] && echo yes"#,
+    );
+    sandbox.fake("curl", "exit 0");
+    let runtime = sandbox.home.join(".t3/userdata/server-runtime.json");
+    fs::create_dir_all(runtime.parent().unwrap()).unwrap();
+    fs::write(&runtime, "{}").unwrap();
+    let t3 = sandbox.home.join(".local/bin/t3");
+    fs::create_dir_all(t3.parent().unwrap()).unwrap();
+    fs::write(
+        &t3,
+        "#!/bin/sh\nprintf 't3 %s\\n' \"$*\" >> \"$MYCONFIG_TEST_LOG\"\n",
+    )
+    .unwrap();
+    fs::set_permissions(&t3, fs::Permissions::from_mode(0o755)).unwrap();
+    sandbox
+        .with(&io, |ctx| runner::install(ctx, &[&crate::T3Code]))
+        .unwrap();
+    assert!(sandbox.installed("qrencode"));
+    assert_eq!(sandbox.calls("t3 service install"), 1);
+    let t3ctl = sandbox.home.join(".local/bin/t3ctl");
+    assert_eq!(
+        fs::canonicalize(t3ctl).unwrap(),
+        fs::canonicalize(sandbox.home.join("dotfiles/t3code/.local/bin/t3ctl")).unwrap()
+    );
+}
+
+#[test]
+fn t3code_desktop_installs_the_app_and_links_its_client_settings() {
+    let sandbox = Sandbox::new("t3code-desktop");
+    let io = Answers::new(None);
+    sandbox
+        .with(&io, |ctx| runner::install(ctx, &[&crate::T3CodeDesktop]))
+        .unwrap();
+    assert!(sandbox.installed("t3code-bin"));
+    let settings = sandbox.home.join(".t3/userdata/client-settings.json");
+    assert!(
+        fs::symlink_metadata(&settings)
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    let userdata = fs::symlink_metadata(sandbox.home.join(".t3/userdata")).unwrap();
+    assert!(!userdata.file_type().is_symlink());
+}

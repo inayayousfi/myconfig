@@ -156,10 +156,11 @@ pub enum Package {
     Loupe,
     Flatpak,
     Fuse2,
+    PythonVenv,
 }
 
 impl Package {
-    const COUNT: usize = 154;
+    const COUNT: usize = 155;
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -445,6 +446,8 @@ const PACKAGE_OVERRIDES: &[((Package, Platform), &str)] = &[
     ((Package::Loupe, Platform::Pacman), "loupe"),
     ((Package::Flatpak, Platform::Pacman), "flatpak"),
     ((Package::Fuse2, Platform::Pacman), "fuse2"),
+    ((Package::PythonVenv, Platform::Pacman), "python"),
+    ((Package::PythonVenv, Platform::Apt), "python3-venv"),
 ];
 
 const fn build_packages()
@@ -635,6 +638,7 @@ const fn package_from_index(index: usize) -> Package {
         Package::Loupe,
         Package::Flatpak,
         Package::Fuse2,
+        Package::PythonVenv,
     ][index]
 }
 

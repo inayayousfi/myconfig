@@ -20,7 +20,9 @@ static MODULES: &[&dyn Module] = &[
     &Ssh,
     &Cli,
     &SystemMonitor,
-    &Runtimes,
+    &Runtimes {
+        bun_installer: false,
+    },
     &Zsh {
         set_login_shell: false,
     },

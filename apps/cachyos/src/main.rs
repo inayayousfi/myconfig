@@ -13,7 +13,9 @@ static MODULES: &[&dyn Module] = &[
     &Media,
     &Ssh,
     &Cli,
-    &Runtimes,
+    &Runtimes {
+        bun_installer: false,
+    },
     &Flatpak,
     &AppImage,
     &Zsh {

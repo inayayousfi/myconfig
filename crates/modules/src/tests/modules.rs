@@ -172,7 +172,9 @@ fn every_linux_module_package_has_a_name_on_its_package_manager() {
         },
         &CachyosSetup,
         &Cli,
-        &Runtimes,
+        &Runtimes {
+            bun_installer: false,
+        },
         &crate::KdePlasma,
     ];
     let more: [&dyn Module; 13] = [
@@ -310,7 +312,9 @@ fn cachyos_replaces_its_defaults() {
         },
         &CachyosSetup,
         &Cli,
-        &Runtimes,
+        &Runtimes {
+            bun_installer: false,
+        },
     ];
     sandbox.fake(
         "rustup",
@@ -332,6 +336,8 @@ fn cachyos_replaces_its_defaults() {
         "tokei",
         "jdk-openjdk",
         "maven",
+        "python",
+        "bun",
     ] {
         assert!(sandbox.installed(kept), "{kept} was not installed");
     }
@@ -1296,4 +1302,38 @@ esac"#,
         .unwrap();
     assert!(!sandbox.root.join("flatpak/flathub").exists());
     assert!(!sandbox.installed("flatpak"));
+}
+
+#[test]
+fn runtimes_install_bun_with_its_installer_once_when_asked() {
+    let sandbox = Sandbox::new("bun-installer");
+    sandbox.fake(
+        "rustup",
+        r#"[ "$#" -eq 1 ] && echo 'stable-x86_64-unknown-linux-gnu (default)'; exit 0"#,
+    );
+    fs::write(
+        sandbox.root.join("bun-installer"),
+        r#"printf 'installer SHELL=%s\n' "$SHELL" >> "$MYCONFIG_TEST_LOG"
+mkdir -p "$BUN_INSTALL/bin" && : > "$BUN_INSTALL/bin/bun" && chmod +x "$BUN_INSTALL/bin/bun"
+"#,
+    )
+    .unwrap();
+    sandbox.fake(
+        "curl",
+        r#"printf 'curl %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+cat "$MYCONFIG_TEST_ROOT/bun-installer""#,
+    );
+    let runtimes = Runtimes {
+        bun_installer: true,
+    };
+    let io = Answers::new(None);
+    for _ in 0..2 {
+        sandbox
+            .with(&io, |ctx| runner::install(ctx, &[&runtimes]))
+            .unwrap();
+    }
+    assert!(sandbox.home.join(".bun/bin/bun").is_file());
+    assert!(!sandbox.installed("bun"), "the Bun package was installed");
+    assert_eq!(sandbox.calls("curl -fsSL https://bun.sh/install"), 1);
+    assert_eq!(sandbox.calls("installer SHELL=/bin/sh"), 1);
 }

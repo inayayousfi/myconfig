@@ -1,0 +1,38 @@
+# Changes that a Windows cycle allows between the state lists it compares.
+# Each line is `<list> <pattern>`. The list is a `## <list>` name of the state lists, or `*`
+# for every list. In the pattern, `*` stands for any text, `\` included.
+
+# The user registry hive and its logs, which Windows writes all the time.
+files C:\Users\tester\NTUSER.DAT*
+files C:\Users\tester\ntuser.dat.LOG*
+files C:\Users\tester\ntuser.ini
+
+# Caches, temporary files and session state that Windows and its apps keep in the profile.
+files C:\Users\tester\AppData\Local\Temp
+files C:\Users\tester\AppData\Local\Temp\*
+files C:\Users\tester\AppData\Local\Microsoft\Windows\*
+files C:\Users\tester\AppData\Local\Microsoft\Edge\*
+files C:\Users\tester\AppData\Local\Microsoft\WinGet\*
+files C:\Users\tester\AppData\Local\Microsoft\PowerShell\*
+files C:\Users\tester\AppData\Local\Microsoft\CLR_v4.0*
+files C:\Users\tester\AppData\Local\Packages\*
+files C:\Users\tester\AppData\Local\ConnectedDevicesPlatform\*
+files C:\Users\tester\AppData\Local\D3DSCache\*
+files C:\Users\tester\AppData\Local\CrashDumps
+files C:\Users\tester\AppData\Local\CrashDumps\*
+files C:\Users\tester\AppData\Local\IconCache.db
+files C:\Users\tester\AppData\Roaming\Microsoft\Windows\Recent\*
+files C:\Users\tester\AppData\Roaming\Microsoft\Windows\PowerShell\PSReadLine\*
+
+# The disks of WSL distributions. Each registration gets a new folder, and the second install
+# registers the Arch distribution again. The wsl-distributions list checks that the
+# distribution itself is gone after removal.
+files C:\Users\tester\AppData\Local\wsl
+files C:\Users\tester\AppData\Local\wsl\*
+
+# Values that Explorer writes by itself.
+registry HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\TaskbarStateLastRun
+
+# The installer's own record of what it changed.
+files C:\Users\tester\AppData\Local\myconfig\state
+files C:\Users\tester\AppData\Local\myconfig\state\*

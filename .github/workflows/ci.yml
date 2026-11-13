@@ -140,6 +140,3 @@ jobs:
 
       - name: Test Claude configuration helper
         run: python3 test/test-claude-config-helper.py
-
-      - name: Test CachyOS VM installer
-        run: ./vm/test-cachyos.sh

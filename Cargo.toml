@@ -12,6 +12,7 @@ members = [
   "crates/embedded-dotfiles",
   "crates/typed-fs-rs",
   "crates/typed-fs-rs/macros",
+  "test/vm",
 ]
 resolver = "3"
 

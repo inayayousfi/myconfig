@@ -54,9 +54,9 @@ The same commands work through the install script, such as `curl -fsSL .../insta
 
 Before changing anything, each module records what was there in `~/.local/state/myconfig/state.json` (`%LOCALAPPDATA%\myconfig\state\state.json` on Windows). `remove` uses that record to put files, settings and packages back.
 
-### CachyOS Virtual Machine Testing
+### Virtual Machine Testing
 
-The [CachyOS VM harness](vm/README.md) installs the Desktop ISO interactively, preserves a clean base system, and tests the current working tree without a commit or release.
+The [VM xtask](test/vm/README.md) builds the installers from the working tree and tests them in throwaway CachyOS, Ubuntu and Windows virtual machines, without a commit or release.
 
 ## Features
 

@@ -1,0 +1,31 @@
+# Changes that an Ubuntu cycle allows between the state lists it compares.
+# Each line is `<list> <pattern>`. The list is a `## <list>` name of the state lists, or `*`
+# for every list. In the pattern, `*` stands for any text, `/` included.
+
+# Package upgrades replace the kernel, its boot images and files that packages regenerate.
+files /boot/vmlinuz*
+files /boot/initrd.img*
+files /boot/config-*
+files /boot/System.map-*
+files /boot/grub/grub.cfg
+files /etc/ld.so.cache
+files /etc/ssl/certs/*
+
+# Backups that shadow and useradd write when accounts or groups change.
+files /etc/passwd-
+files /etc/shadow-
+files /etc/group-
+files /etc/gshadow-
+files /etc/subuid-
+files /etc/subgid-
+
+# Caches and histories of the user.
+files /home/tester/.cache
+files /home/tester/.cache/*
+files /home/tester/.bash_history
+files /home/tester/.lesshst
+files /home/tester/.sudo_as_admin_successful
+
+# The installer's own record of what it changed.
+files /home/tester/.local/state/myconfig
+files /home/tester/.local/state/myconfig/*

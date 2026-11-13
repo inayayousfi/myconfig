@@ -833,6 +833,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "myconfig-xtask"
+version = "0.54.0"
+dependencies = [
+ "clap",
+ "regex",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "nix"
 version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

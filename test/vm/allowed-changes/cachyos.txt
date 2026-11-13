@@ -1,0 +1,37 @@
+# Changes that a CachyOS cycle allows between the state lists it compares.
+# Each line is `<list> <pattern>`. The list is a `## <list>` name of the state lists, or `*`
+# for every list. In the pattern, `*` stands for any text, `/` included.
+
+# The installer upgrades the whole system, which replaces the kernel, its boot images and
+# files that packages regenerate.
+files /boot/vmlinuz-*
+files /boot/initramfs-*
+files /boot/*-ucode.img
+files /etc/ld.so.cache
+files /etc/ca-certificates/*
+files /etc/ssl/certs/*
+files /etc/pacman.d/gnupg/*
+files /etc/pacman.d/*mirrorlist*
+files /etc/.updated
+files /etc/.pwd.lock
+
+# Backups that shadow and useradd write when accounts or groups change.
+files /etc/passwd-
+files /etc/shadow-
+files /etc/group-
+files /etc/gshadow-
+
+# Caches, histories and session state of the logged-in user.
+files /home/tester/.cache
+files /home/tester/.cache/*
+files /home/tester/.bash_history
+files /home/tester/.lesshst
+files /home/tester/.local/share/recently-used.xbel
+files /home/tester/.local/share/baloo
+files /home/tester/.local/share/baloo/*
+files /home/tester/.local/share/kactivitymanagerd
+files /home/tester/.local/share/kactivitymanagerd/*
+
+# The installer's own record of what it changed.
+files /home/tester/.local/state/myconfig
+files /home/tester/.local/state/myconfig/*

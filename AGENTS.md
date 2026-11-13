@@ -34,7 +34,7 @@ The top-level areas have different jobs:
 
 - `test/` contains the Python and shell tests for files in `dotfiles/`. Rust tests live next to the code they test, and `crates/repository-tests` tests repository files that are not Rust code.
 
-- `vm/` contains the CachyOS virtual machine harness, which builds the CachyOS installer from the working tree and runs it in a disposable guest.
+- `test/vm/` contains the VM xtask, run as `cargo xtask vm`. It builds the installers from the working tree and tests them in throwaway QEMU guests. `test/vm/README.md` describes it.
 
 ## Installation model
 
@@ -122,6 +122,6 @@ git diff --check
 
 The module tests in `crates/modules/src/tests/` run modules through the runner against fake system programs in a temporary home, so they never change the live system. `crates/repository-tests` runs programs such as `zsh`, `lua`, `python3`, `jq`, `stow` and `systemd-analyze`, which CI installs.
 
-For OpenCode or agent changes, verify both the repository bridge and the live resolved global file. For changes to `vm/`, run `vm/test-cachyos.sh`.
+For OpenCode or agent changes, verify both the repository bridge and the live resolved global file. For changes to `test/vm/`, the workspace tests run its unit tests. A change to how it drives a guest also needs `cargo xtask vm cycle <os>`, run by hand on each guest system it affects.
 
 Do not overwrite unrelated user changes. Before editing, inspect `git status` and keep pre-existing modifications separate from the task.

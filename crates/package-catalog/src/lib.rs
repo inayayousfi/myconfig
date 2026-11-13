@@ -141,10 +141,21 @@ pub enum Package {
     Paru,
     PlexFonts,
     BlexMonoFont,
+    Haruna,
+    Mpvqt,
+    Mpv,
+    Kdeconnect,
+    Partitionmanager,
+    Ark,
+    Gwenview,
+    Plymouth,
+    PlymouthKcm,
+    CachyosPlymouthTheme,
+    CachyosPlymouthBootanimation,
 }
 
 impl Package {
-    const COUNT: usize = 139;
+    const COUNT: usize = 150;
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -406,6 +417,26 @@ const PACKAGE_OVERRIDES: &[((Package, Platform), &str)] = &[
         (Package::BlexMonoFont, Platform::Pacman),
         "ttf-ibmplex-mono-nerd",
     ),
+    ((Package::Haruna, Platform::Pacman), "haruna"),
+    ((Package::Mpvqt, Platform::Pacman), "mpvqt"),
+    ((Package::Mpv, Platform::Pacman), "mpv"),
+    ((Package::Kdeconnect, Platform::Pacman), "kdeconnect"),
+    (
+        (Package::Partitionmanager, Platform::Pacman),
+        "partitionmanager",
+    ),
+    ((Package::Ark, Platform::Pacman), "ark"),
+    ((Package::Gwenview, Platform::Pacman), "gwenview"),
+    ((Package::Plymouth, Platform::Pacman), "plymouth"),
+    ((Package::PlymouthKcm, Platform::Pacman), "plymouth-kcm"),
+    (
+        (Package::CachyosPlymouthTheme, Platform::Pacman),
+        "cachyos-plymouth-theme",
+    ),
+    (
+        (Package::CachyosPlymouthBootanimation, Platform::Pacman),
+        "cachyos-plymouth-bootanimation",
+    ),
 ];
 
 const fn build_packages()
@@ -581,6 +612,17 @@ const fn package_from_index(index: usize) -> Package {
         Package::Paru,
         Package::PlexFonts,
         Package::BlexMonoFont,
+        Package::Haruna,
+        Package::Mpvqt,
+        Package::Mpv,
+        Package::Kdeconnect,
+        Package::Partitionmanager,
+        Package::Ark,
+        Package::Gwenview,
+        Package::Plymouth,
+        Package::PlymouthKcm,
+        Package::CachyosPlymouthTheme,
+        Package::CachyosPlymouthBootanimation,
     ][index]
 }
 

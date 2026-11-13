@@ -219,9 +219,86 @@ fn every_linux_module_package_has_a_name_on_its_package_manager() {
     assert_eq!(apt(Package::Fd).unwrap().name, "fd-find");
 }
 
+const MKINITCPIO: &str = "# vim:set ft=sh
+MODULES=()
+HOOKS=(base systemd autodetect microcode kms modconf block keyboard sd-vconsole plymouth filesystems fsck)
+";
+const REFIND_LINUX: &str = r#""Boot with standard options"    "quiet nowatchdog splash rw root=UUID=31f4 resume=UUID=31f4 resume_offset=244412416 efi_pstore.pstore_disable=0"
+"Boot to single-user mode"    "quiet nowatchdog splash rw root=UUID=31f4 resume=UUID=31f4 resume_offset=244412416" single
+"Boot with minimal options"   "ro root=/dev/nvme0n1p2 resume=UUID=31f4 resume_offset=244412416"
+"#;
+
+/// A CachyOS boot with the Plymouth splash, and rEFInd when `refind` is set.
+fn cachyos_boot(sandbox: &Sandbox, refind: bool) {
+    system(sandbox);
+    let etc = sandbox.root.join("system/etc");
+    fs::create_dir_all(&etc).unwrap();
+    fs::write(etc.join("mkinitcpio.conf"), MKINITCPIO).unwrap();
+    if refind {
+        let boot = sandbox.root.join("system/boot");
+        fs::create_dir_all(&boot).unwrap();
+        fs::write(boot.join("refind_linux.conf"), REFIND_LINUX).unwrap();
+    }
+    sandbox.fake(
+        "mkinitcpio",
+        r#"printf 'mkinitcpio %s\n' "$*" >> "$MYCONFIG_TEST_LOG""#,
+    );
+}
+
+#[test]
+fn cachyos_removes_the_boot_splash_and_rebuilds_the_initramfs_once() {
+    let sandbox = Sandbox::new("cachyos-splash");
+    cachyos_boot(&sandbox, true);
+    let splash = [
+        "plymouth",
+        "plymouth-kcm",
+        "cachyos-plymouth-theme",
+        "cachyos-plymouth-bootanimation",
+    ];
+    install_everything(&sandbox, &splash);
+    let io = Answers::new(None);
+    for _ in 0..2 {
+        sandbox
+            .with(&io, |ctx| runner::install(ctx, &[&CachyosSetup]))
+            .unwrap();
+    }
+    assert_eq!(
+        system_file(&sandbox, "/etc/mkinitcpio.conf").unwrap(),
+        MKINITCPIO.replace(" plymouth", "")
+    );
+    assert_eq!(
+        system_file(&sandbox, "/boot/refind_linux.conf").unwrap(),
+        REFIND_LINUX.replace("quiet nowatchdog splash ", "")
+    );
+    for package in splash {
+        assert!(!sandbox.installed(package), "{package} is still installed");
+    }
+    assert_eq!(sandbox.calls("sudo mkinitcpio -P"), 1);
+    let calls = fs::read_to_string(sandbox.root.join("calls")).unwrap();
+    let hook = calls.find("mkinitcpio.conf").unwrap();
+    let packages = calls.find("pacman -R").unwrap();
+    assert!(hook < packages, "the packages left before the hook");
+}
+
+#[test]
+fn cachyos_skips_the_kernel_options_without_refind() {
+    let sandbox = Sandbox::new("cachyos-no-refind");
+    cachyos_boot(&sandbox, false);
+    let io = Answers::new(None);
+    sandbox
+        .with(&io, |ctx| runner::install(ctx, &[&CachyosSetup]))
+        .unwrap();
+    assert!(
+        io.notes.borrow().iter().any(|note| note
+            == "Skipping the kernel options because /boot/refind_linux.conf was not found")
+    );
+    assert!(system_file(&sandbox, "/boot/refind_linux.conf").is_none());
+}
+
 #[test]
 fn cachyos_replaces_its_defaults() {
     let sandbox = Sandbox::new("cachyos-packages");
+    cachyos_boot(&sandbox, false);
     install_everything(
         &sandbox,
         &["konsole", "firefox", "fish", "kate", "cachy-update", "vim"],

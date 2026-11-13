@@ -22,6 +22,7 @@ mod arch_wsl;
 mod autohotkey;
 mod axidev_osk;
 mod base;
+mod boot_config;
 mod cachyos_setup;
 mod cli;
 mod docker;

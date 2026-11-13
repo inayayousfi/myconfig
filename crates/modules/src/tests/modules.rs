@@ -252,7 +252,6 @@ fn cachyos_replaces_its_defaults() {
         "noto-fonts-cjk",
         "ripgrep",
         "jq",
-        "btop",
         "tokei",
         "jdk-openjdk",
         "maven",

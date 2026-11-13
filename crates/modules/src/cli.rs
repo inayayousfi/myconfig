@@ -7,7 +7,6 @@ const PACKAGES: &[Package] = &[
     Package::Ripgrep,
     Package::Jq,
     Package::Fastfetch,
-    Package::Btop,
     Package::Tokei,
     Package::GithubCli,
 ];

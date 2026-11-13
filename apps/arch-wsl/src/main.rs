@@ -19,6 +19,7 @@ static MODULES: &[&dyn Module] = &[
     },
     &Ssh,
     &Cli,
+    &SystemMonitor,
     &Runtimes,
     &Zsh {
         set_login_shell: false,
@@ -66,7 +67,13 @@ mod tests {
         ] {
             assert!(!names.contains(&absent), "Arch WSL includes {absent}");
         }
-        for wanted in ["zsh", "agent-config", "git-config", "tailscale"] {
+        for wanted in [
+            "zsh",
+            "system-monitor",
+            "agent-config",
+            "git-config",
+            "tailscale",
+        ] {
             assert!(names.contains(&wanted), "Arch WSL lacks {wanted}");
         }
     }

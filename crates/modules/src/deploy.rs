@@ -12,9 +12,23 @@ use xshell::cmd;
 
 use crate::{Context, ModuleResult, state::Change};
 
-/// Real directories that keep Stow from folding them into one package, where
-/// programs and Claude data written later would land inside the deployed tree.
-const UNFOLDED: [&str; 2] = [".local/bin", ".claude"];
+/// Real directories that keep Stow from folding them into one package, where data that
+/// programs write later would land inside the deployed tree. systemd ignores a linked
+/// drop-in directory, so those stay real directories as well. Each one applies only to a
+/// package that contains it.
+const UNFOLDED: [&str; 9] = [
+    ".local/bin",
+    ".claude",
+    ".local/share/kwin/scripts",
+    ".local/share/plasma/plasmoids",
+    ".local/share/kio/servicemenus",
+    ".config/fontconfig/conf.d",
+    ".config/systemd/user/app-com.mitchellh.ghostty.service.d",
+    // VSCodium keeps its history and workspace storage beside its settings.
+    ".config/VSCodium/User",
+    // T3 Code keeps its database and secrets beside its client settings.
+    ".t3/userdata",
+];
 
 /// Top-level folders of `dotfiles/` that are not config packages.
 const NOT_PACKAGES: [&str; 2] = ["assets", "old"];

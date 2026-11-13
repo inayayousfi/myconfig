@@ -442,6 +442,33 @@ fn ghostty_links_its_config_and_leaves_other_files_alone() {
 }
 
 #[test]
+fn folders_that_programs_write_into_stay_real_folders() {
+    let sandbox = Sandbox::new("app-folders");
+    let io = Answers::new(None);
+    for (package, folder) in [
+        ("plasma", ".local/share/kwin/scripts"),
+        ("plasma", ".local/share/plasma/plasmoids"),
+        ("plasma", ".local/share/kio/servicemenus"),
+        ("plasma", ".config/fontconfig/conf.d"),
+        (
+            "ghostty",
+            ".config/systemd/user/app-com.mitchellh.ghostty.service.d",
+        ),
+        ("vscodium", ".config/VSCodium/User"),
+        ("t3code-desktop", ".t3/userdata"),
+    ] {
+        sandbox
+            .with(&io, |ctx| runner::install(ctx, &[&Config(package)]))
+            .unwrap();
+        let metadata = fs::symlink_metadata(sandbox.home.join(folder)).unwrap();
+        assert!(
+            metadata.is_dir() && !metadata.file_type().is_symlink(),
+            "{folder} of {package} was folded"
+        );
+    }
+}
+
+#[test]
 fn the_agent_package_keeps_bin_and_claude_as_real_folders() {
     let sandbox = Sandbox::new("ai-folders");
     let io = Answers::new(None);

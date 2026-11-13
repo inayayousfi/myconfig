@@ -12,6 +12,8 @@ The interface uses IBM Plex Sans and the fixed-width font is BlexMono Nerd Font 
 
 The `plasma` package owns the panel layout. `myconfig-plasma-layout` sends `~/.local/share/myconfig-plasma/layout.js` to Plasma. The layout gives every display a top bar and a dock. The top bar holds a KDE session menu (the `myconfig.session` widget), the global menu, the tray and the clock. The dock holds the application launcher, a one-click Overview icon and the task icons.
 
+The session menu shows a one-color Tux in the bar's text color. The drawing comes from CachyOS's char-white icon theme, which is GPL, so the widget is GPL. Its labels reuse the translations that KDE installs, so the widget stores no text in any language and follows the system language.
+
 The first run backs up and replaces every existing panel. Later runs add bars for new displays and reset the managed ones. `myconfig-plasma-layout.service` runs the command at each Plasma login.
 
 ## Bar behavior

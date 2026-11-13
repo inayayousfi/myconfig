@@ -38,6 +38,8 @@ PlasmoidItem {
         executable.connectSource(`kstart --application ${desktopFile}`);
     }
 
+    // Labels reuse the translations that KDE installs, so the widget stores no
+    // text of its own in any language.
     // Drawn like the global menu's entries beside it, which use Plasma's menu
     // bar item background rather than a regular button.
     fullRepresentation: QQC2.AbstractButton {
@@ -57,8 +59,7 @@ PlasmoidItem {
         bottomPadding: frame.margins.bottom
         leftPadding: frame.margins.left
         rightPadding: frame.margins.right
-        Accessible.name: i18n("Session")
-        Accessible.description: Plasmoid.metaData.description
+        Accessible.name: i18nd("libkicker", "Session")
         Accessible.role: Accessible.ButtonMenu
         // Like the global menu, the menu opens on press.
         onPressed: menu.openRelative()
@@ -72,7 +73,10 @@ PlasmoidItem {
         contentItem: Kirigami.Icon {
             implicitWidth: button.availableHeight
             implicitHeight: button.availableHeight
-            source: "start-here-kde"
+            source: Qt.resolvedUrl("../icons/tux.svg")
+            // Painted in the bar's text color, like the global menu beside it.
+            isMask: true
+            color: Kirigami.Theme.textColor
             active: button.hovered || button.menuOpen
         }
 
@@ -83,7 +87,7 @@ PlasmoidItem {
             placement: PlasmaExtras.Menu.BottomPosedLeftAlignedPopup
 
             PlasmaExtras.MenuItem {
-                text: i18n("About This System")
+                text: i18nd("systemsettings", "System Information")
                 icon: "help-about"
                 onClicked: root.launch("org.kde.kinfocenter")
             }
@@ -91,17 +95,17 @@ PlasmoidItem {
                 separator: true
             }
             PlasmaExtras.MenuItem {
-                text: i18n("System Settings")
+                text: i18nd("systemsettings", "System Settings")
                 icon: "systemsettings"
                 onClicked: root.launch("systemsettings")
             }
             PlasmaExtras.MenuItem {
-                text: i18n("System Monitor")
+                text: i18nd("plasma-systemmonitor", "System Monitor")
                 icon: "utilities-system-monitor"
                 onClicked: root.launch("org.kde.plasma-systemmonitor")
             }
             PlasmaExtras.MenuItem {
-                text: i18n("Force Quit…")
+                text: i18nd("kwin", "Kill Window")
                 icon: "window-close"
                 onClicked: executable.connectSource("qdbus6 org.kde.kglobalaccel /component/kwin org.kde.kglobalaccel.Component.invokeShortcut 'Kill Window'")
             }
@@ -109,25 +113,25 @@ PlasmoidItem {
                 separator: true
             }
             PlasmaExtras.MenuItem {
-                text: i18n("Sleep")
+                text: i18ndc("libkicker", "Suspend to RAM", "Sleep")
                 icon: "system-suspend"
                 enabled: session.canSuspend
                 onClicked: session.suspend()
             }
             PlasmaExtras.MenuItem {
-                text: i18n("Hibernate")
+                text: i18nd("libkicker", "Hibernate")
                 icon: "system-suspend-hibernate"
                 enabled: session.canHibernate
                 onClicked: session.hibernate()
             }
             PlasmaExtras.MenuItem {
-                text: i18n("Restart")
+                text: i18nd("libkicker", "Restart")
                 icon: "system-reboot"
                 enabled: session.canReboot
                 onClicked: session.requestReboot()
             }
             PlasmaExtras.MenuItem {
-                text: i18n("Shut Down")
+                text: i18nd("libkicker", "Shut Down")
                 icon: "system-shutdown"
                 enabled: session.canShutdown
                 onClicked: session.requestShutdown()
@@ -136,19 +140,19 @@ PlasmoidItem {
                 separator: true
             }
             PlasmaExtras.MenuItem {
-                text: i18n("Lock")
+                text: i18nd("libkicker", "Lock")
                 icon: "system-lock-screen"
                 enabled: session.canLock
                 onClicked: session.lock()
             }
             PlasmaExtras.MenuItem {
-                text: i18n("Log Out")
+                text: i18nd("libkicker", "Log Out")
                 icon: "system-log-out"
                 enabled: session.canLogout
                 onClicked: session.requestLogout()
             }
             PlasmaExtras.MenuItem {
-                text: i18n("Switch User")
+                text: i18nd("libkicker", "Switch User")
                 icon: "system-switch-user"
                 enabled: session.canSwitchUser
                 onClicked: session.switchUser()

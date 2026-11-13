@@ -29,6 +29,7 @@ static MODULES: &[&dyn Module] = &[
         extra: &[Package::Ydotool],
     },
     &AndroidPhone,
+    &Vscodium,
     &Refind,
     &Kanata {
         start_at_login: false,
@@ -86,6 +87,7 @@ mod tests {
             "media",
             "flatpak",
             "appimage",
+            "vscodium",
             "agent-config",
             "git-config",
         ] {

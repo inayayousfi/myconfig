@@ -53,6 +53,7 @@ mod system_monitor;
 mod tailscale;
 mod taskbar_auto_hide;
 mod terminal_tools;
+mod vscodium;
 mod windows_terminal;
 mod zsh;
 
@@ -98,6 +99,7 @@ pub use system_monitor::SystemMonitor;
 pub use tailscale::Tailscale;
 pub use taskbar_auto_hide::TaskbarAutoHide;
 pub use terminal_tools::TerminalTools;
+pub use vscodium::Vscodium;
 pub use windows_terminal::WindowsTerminal;
 pub use zsh::Zsh;
 

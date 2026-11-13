@@ -1364,3 +1364,58 @@ cat "$MYCONFIG_TEST_ROOT/bun-installer""#,
     assert_eq!(sandbox.calls("curl -fsSL https://bun.sh/install"), 1);
     assert_eq!(sandbox.calls("installer SHELL=/bin/sh"), 1);
 }
+
+#[test]
+fn vscodium_installs_the_theme_and_extensions_and_opens_text_files() {
+    let sandbox = Sandbox::new("vscodium");
+    system(&sandbox);
+    sandbox.fake(
+        "codium",
+        r#"printf 'codium %s\n' "$*" >> "$MYCONFIG_TEST_LOG""#,
+    );
+    sandbox.fake(
+        "bsdtar",
+        r#"printf 'bsdtar %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+[ "$3" = -cf ] && : > "$4""#,
+    );
+    let io = Answers::new(None);
+    sandbox
+        .with(&io, |ctx| runner::install(ctx, &[&crate::Vscodium]))
+        .unwrap();
+    for folder in [".config/VSCodium", ".config/VSCodium/User"] {
+        let metadata = fs::symlink_metadata(sandbox.home.join(folder)).unwrap();
+        assert!(
+            metadata.is_dir() && !metadata.file_type().is_symlink(),
+            "{folder} was folded"
+        );
+    }
+    for kind in ["text/plain", "text/markdown", "application/json"] {
+        assert_eq!(
+            kde(
+                &sandbox,
+                &format!("mimeapps.list/Default Applications/{kind}")
+            )
+            .as_deref(),
+            Some("vscodium.desktop")
+        );
+    }
+    assert_eq!(sandbox.calls("bsdtar --format zip -cf "), 1);
+    assert_eq!(sandbox.calls("codium --force --install-extension "), 1);
+    let calls = fs::read_to_string(sandbox.root.join("calls")).unwrap();
+    let extensions = calls
+        .lines()
+        .find(|line| line.starts_with("codium --install-extension jeanp413.open-remote-ssh"))
+        .expect("the extensions were not installed");
+    let listed = fs::read_to_string(
+        sandbox
+            .home
+            .join("dotfiles/vscodium/.config/VSCodium/extensions.txt"),
+    )
+    .unwrap();
+    for extension in listed.lines().filter(|line| !line.trim().is_empty()) {
+        assert!(
+            extensions.contains(&format!("--install-extension {}", extension.trim())),
+            "{extension} was not installed"
+        );
+    }
+}

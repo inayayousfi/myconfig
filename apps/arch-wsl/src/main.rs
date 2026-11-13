@@ -69,6 +69,7 @@ mod tests {
             "media",
             "flatpak",
             "appimage",
+            "vscodium",
         ] {
             assert!(!names.contains(&absent), "Arch WSL includes {absent}");
         }

@@ -157,10 +157,12 @@ pub enum Package {
     Flatpak,
     Fuse2,
     PythonVenv,
+    Vscodium,
+    Bsdtar,
 }
 
 impl Package {
-    const COUNT: usize = 155;
+    const COUNT: usize = 157;
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -448,6 +450,8 @@ const PACKAGE_OVERRIDES: &[((Package, Platform), &str)] = &[
     ((Package::Fuse2, Platform::Pacman), "fuse2"),
     ((Package::PythonVenv, Platform::Pacman), "python"),
     ((Package::PythonVenv, Platform::Apt), "python3-venv"),
+    ((Package::Vscodium, Platform::Pacman), "vscodium"),
+    ((Package::Bsdtar, Platform::Pacman), "libarchive"),
 ];
 
 const fn build_packages()
@@ -639,6 +643,8 @@ const fn package_from_index(index: usize) -> Package {
         Package::Flatpak,
         Package::Fuse2,
         Package::PythonVenv,
+        Package::Vscodium,
+        Package::Bsdtar,
     ][index]
 }
 

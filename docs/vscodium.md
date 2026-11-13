@@ -1,6 +1,6 @@
 # VSCodium
 
-This document describes the CachyOS VSCodium module, `linux/modules/vscodium.sh`, the `vscodium` package, and the Windows editor script, `windows-workstation/install-editor.ps1`.
+This document describes the CachyOS VSCodium module, `crates/modules/src/vscodium.rs`, the `vscodium` package, and the Windows editor script, `windows-workstation/install-editor.ps1`.
 
 The `vscodium` package holds the editor settings, the key bindings, the extension list and the Black and Pink theme source. VS Code reads the same settings format, so the Windows script applies the same files to both VSCodium and VS Code.
 

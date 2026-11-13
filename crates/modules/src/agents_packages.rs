@@ -1,4 +1,4 @@
-//! Packages and browser tools that coding agents use.
+//! Coding agents, with the packages and browser tools they use.
 use xshell::cmd;
 
 use crate::{
@@ -19,6 +19,28 @@ const PACKAGES: &[Package] = &[
     Package::Libxrandr,
     Package::Libxkbcommon,
 ];
+
+/// Global Bun packages, with the command each one installs.
+const BUN_PACKAGES: [(&str, &str); 2] = [
+    ("@playwright/mcp", "playwright-mcp"),
+    ("@mariozechner/pi-coding-agent", "pi"),
+];
+
+/// Anthropic's installer puts claude in ~/.local/bin, and Claude Code updates itself.
+fn install_claude(ctx: &Context) -> ModuleResult {
+    let sh = ctx.shell;
+    let claude = ctx.home.join(".local/bin/claude");
+    if claude.exists() {
+        return Ok(());
+    }
+    let installer = ctx
+        .read(cmd!(sh, "curl -fsSL https://claude.ai/install.sh"))
+        .map_err(|error| format!("could not download the Claude Code installer: {error}"))?;
+    ctx.created(&claude, false)?;
+    ctx.run(cmd!(sh, "bash -c {installer}"))
+        .map_err(|error| format!("the Claude Code installer failed: {error}"))?;
+    require_executable(&claude)
+}
 
 impl AgentsPackages {
     fn packages(&self) -> Vec<Package> {
@@ -49,12 +71,18 @@ impl Module for AgentsPackages {
         let bun = ctx.home.join(".bun");
         let _bun = sh.push_env("BUN_INSTALL", &bun);
         let _path = sh.push_env("PATH", agent_tool_path(ctx)?);
-        let playwright_mcp = bun.join("install/global/node_modules/@playwright/mcp");
-        if !playwright_mcp.exists() {
-            ctx.created(&playwright_mcp, false)?;
-            ctx.created(&bun.join("bin/playwright-mcp"), false)?;
+        install_claude(ctx)?;
+        let mut packages = Vec::new();
+        for (package, command) in BUN_PACKAGES {
+            let directory = bun.join("install/global/node_modules").join(package);
+            if !directory.exists() {
+                ctx.created(&directory, false)?;
+                ctx.created(&bun.join("bin").join(command), false)?;
+            }
+            packages.push(format!("{package}@latest"));
         }
-        ctx.run(cmd!(sh, "bun add --global @playwright/mcp@latest"))?;
+        ctx.run(cmd!(sh, "bun add --global {packages...}"))?;
+        require_executable(&bun.join("bin/pi"))?;
 
         let playwright_cli = Self::playwright_cli(ctx);
         require_executable(&playwright_cli)?;
@@ -80,13 +108,20 @@ impl Module for AgentsPackages {
     fn remove(&self, ctx: &Context) -> ModuleResult {
         let sh = ctx.shell;
         let bun = ctx.home.join(".bun");
-        let playwright_mcp = bun.join("install/global/node_modules/@playwright/mcp");
-        // Bun also lists the package in its global manifest, so let Bun take it out.
-        if !ctx.was_created(&playwright_mcp) || !playwright_mcp.exists() {
+        // Bun also lists each package in its global manifest, so let Bun take them out.
+        let packages: Vec<&str> = BUN_PACKAGES
+            .iter()
+            .map(|(package, _)| *package)
+            .filter(|package| {
+                let directory = bun.join("install/global/node_modules").join(package);
+                ctx.was_created(&directory) && directory.exists()
+            })
+            .collect();
+        if packages.is_empty() {
             return Ok(());
         }
         let _bun = sh.push_env("BUN_INSTALL", &bun);
         let _path = sh.push_env("PATH", agent_tool_path(ctx)?);
-        ctx.run(cmd!(sh, "bun remove --global @playwright/mcp"))
+        ctx.run(cmd!(sh, "bun remove --global {packages...}"))
     }
 }

@@ -889,10 +889,12 @@ fn agent_links_share_one_instruction_file_and_leave_other_skill_links() {
 fn the_inventory_describes_only_what_the_profile_installs() {
     let cachyos = EnvironmentInventory::CACHYOS.template();
     for line in [
-        "- **Terminal tools**: Yazi, ripgrep, jq, and btop.",
-        "http://HOSTNAME.local:18080",
+        "- **Terminal tools**: Yazi, ripgrep, and jq.",
+        "- **Coding agents**: Claude Code, installed by Anthropic's installer",
+        "the desktop app (AUR package `t3code-bin`)",
+        "VSCodium with the Black & Pink theme and Open Remote SSH",
         "Axidev OSK with desktop and login-screen startup",
-        "Black & Pink panels and application dock for KDE Plasma 6.7 through 6.x",
+        "Breeze Dark with a pink accent color",
         "Kanata keyboard remapping with a KDE tray profile selector",
         "Handy offline push-to-talk dictation on Ctrl+Space",
         "ydotool with a persistent user service",
@@ -900,12 +902,31 @@ fn the_inventory_describes_only_what_the_profile_installs() {
         assert!(cachyos.contains(line), "CachyOS inventory lacks: {line}");
     }
     let arch_wsl = EnvironmentInventory::ARCH_WSL.template();
-    assert!(arch_wsl.contains("This profile does not install an editor."));
-    for absent in ["Axidev OSK", "KDE Plasma", "Kanata", "Handy", "ydotool"] {
+    for line in [
+        "This profile does not install an editor.",
+        "- **Terminal tools**: Yazi, ripgrep, jq, and btop.",
+        "user service `t3code.service`",
+    ] {
+        assert!(arch_wsl.contains(line), "Arch WSL inventory lacks: {line}");
+    }
+    let devbox = EnvironmentInventory::UBUNTU_DEVBOX.template();
+    for line in [
+        "remote SSH extensions",
+        "the `rootless` Docker context is selected",
+        "user service `t3code.service`",
+    ] {
         assert!(
-            !arch_wsl.contains(absent),
-            "Arch WSL inventory mentions {absent}"
+            devbox.contains(line),
+            "Ubuntu Devbox inventory lacks: {line}"
         );
+    }
+    for (name, inventory) in [("Arch WSL", &arch_wsl), ("Ubuntu Devbox", &devbox)] {
+        for absent in ["Axidev OSK", "KDE Plasma", "Kanata", "Handy", "ydotool"] {
+            assert!(
+                !inventory.contains(absent),
+                "{name} inventory mentions {absent}"
+            );
+        }
     }
 }
 
@@ -1638,4 +1659,65 @@ esac"#,
         fs::read_to_string(sandbox.root.join("tailscale-operator")).unwrap(),
         ""
     );
+}
+
+#[test]
+fn agents_install_claude_code_once_and_the_bun_tools_and_remove_takes_them_out() {
+    let sandbox = Sandbox::new("agents");
+    fs::write(
+        sandbox.root.join("claude-installer"),
+        r#"printf 'claude installer\n' >> "$MYCONFIG_TEST_LOG"
+mkdir -p "$HOME/.local/bin" && : > "$HOME/.local/bin/claude" && chmod +x "$HOME/.local/bin/claude"
+"#,
+    )
+    .unwrap();
+    sandbox.fake(
+        "curl",
+        r#"printf 'curl %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+cat "$MYCONFIG_TEST_ROOT/claude-installer""#,
+    );
+    sandbox.fake(
+        "bun",
+        r#"printf 'bun %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+modules="$BUN_INSTALL/install/global/node_modules"
+action="$1"; shift 2
+for package; do
+    package="${package%@latest}"
+    case "$action" in
+        add) mkdir -p "$modules/$package" "$BUN_INSTALL/bin" "$modules/.bin" ;;
+        remove) rm -rf "$modules/$package" ;;
+    esac
+done
+if [ "$action" = add ]; then
+    for command in playwright-mcp pi; do
+        printf '#!/bin/sh\n' > "$BUN_INSTALL/bin/$command"; chmod +x "$BUN_INSTALL/bin/$command"
+    done
+    printf '#!/bin/sh\n' > "$modules/.bin/playwright"; chmod +x "$modules/.bin/playwright"
+fi"#,
+    );
+    let agents = crate::AgentsPackages { extra: &[] };
+    let io = Answers::new(None);
+    for _ in 0..2 {
+        sandbox
+            .with(&io, |ctx| runner::install(ctx, &[&agents]))
+            .unwrap();
+    }
+    assert_eq!(sandbox.calls("claude installer"), 1);
+    assert_eq!(
+        sandbox
+            .calls("bun add --global @playwright/mcp@latest @mariozechner/pi-coding-agent@latest"),
+        2
+    );
+    let modules = sandbox.home.join(".bun/install/global/node_modules");
+    assert!(modules.join("@mariozechner/pi-coding-agent").is_dir());
+    sandbox
+        .with(&io, |ctx| {
+            runner::remove(ctx, &[&agents], &[&agents], false)
+        })
+        .unwrap();
+    assert_eq!(
+        sandbox.calls("bun remove --global @playwright/mcp @mariozechner/pi-coding-agent"),
+        1
+    );
+    assert!(!sandbox.home.join(".local/bin/claude").exists());
 }

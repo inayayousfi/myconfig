@@ -1,8 +1,8 @@
 //! Tests of repository files that are not Rust code: the config packages under
 //! `dotfiles/`, their scripts and assets, and the root `install.sh`.
 //!
-//! Some checks run the program a file is written for, such as `zsh`, `node`, `lua`,
-//! `python3`, `resvg` or `systemd-analyze`. CI installs them. The tests run on Unix only.
+//! Some checks run the program a file is written for, such as `zsh`, `lua`,
+//! `python3` or `systemd-analyze`. CI installs them. The tests run on Unix only.
 use std::{
     path::{Path, PathBuf},
     process::{Command, Output},

@@ -18,7 +18,6 @@ impl PackageGroup {
             Package::Wsl,
             Package::OhMyPosh,
             Package::PowerToys,
-            Package::EmacsWayland,
             Package::Unzip,
             Package::Python,
         ],

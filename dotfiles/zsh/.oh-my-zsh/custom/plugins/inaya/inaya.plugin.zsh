@@ -37,9 +37,16 @@ export LC_ALL=en_US.UTF-8
 
 export VI_MODE_SET_CURSOR=true
 
-if $IS_LINUX && [ -z "$WSL_DISTRO_NAME" ] && has emacs; then
-    export EDITOR="emacs"
-    export VISUAL="emacs"
+if $IS_LINUX && [ -z "$WSL_DISTRO_NAME" ] && has codium; then
+    # Programs wait for the editor to close the file before reading it.
+    export EDITOR="codium --wait"
+    export VISUAL="$EDITOR"
+elif [ -n "$WSL_DISTRO_NAME" ] && [ -x "$HOME/.local/bin/windows-codium" ] \
+    && "$HOME/.local/bin/windows-codium" --check; then
+    # Windows VSCodium edits WSL files through \\wsl.localhost paths. The full
+    # path works before PATH gains ~/.local/bin and for programs without it.
+    export EDITOR="$HOME/.local/bin/windows-codium"
+    export VISUAL="$EDITOR"
 elif has vim; then
     export EDITOR="vim"
     export VISUAL="vim"
@@ -62,7 +69,9 @@ if $IS_MACOS; then
     export PATH="$HOME/.local/bin:$PATH:$(go env GOPATH 2>/dev/null)/bin:$JAVA_HOME/bin:$(bun pm bin -g 2>/dev/null)"
     export VCPKG_ROOT="$HOME/vcpkg"
 elif $IS_LINUX; then
-    export PATH="$HOME/.local/bin:$PATH:$(go env GOPATH 2>/dev/null)/bin:$(bun pm bin -g 2>/dev/null)"
+    # Bun's global programs live in $BUN_INSTALL/bin, which is also where Bun's
+    # own installer puts bun when no package provides it.
+    export PATH="$HOME/.local/bin:$PATH:$(go env GOPATH 2>/dev/null)/bin:$BUN_INSTALL/bin"
 fi
 
 # ============================================================================
@@ -73,12 +82,6 @@ alias ll='ls -la'
 alias gcb='git fetch --prune && git branch -vv | grep ": gone]" | awk "{print \$1}" | xargs -n 1 git branch -d'
 
 alias please='sudo'
-
-# Tool aliases
-if [ "$EDITOR" = emacs ]; then
-    alias vi='emacs'
-    alias v='emacs'
-fi
 
 if has bun; then
     alias npm='bun'
@@ -105,6 +108,7 @@ if has claude; then
     unalias cco ccor 2>/dev/null
     function cco {
         "$HOME/.local/bin/claude-config-helper" trust || return
+        "$HOME/.local/bin/claude-config-helper" onboarded || return
         IS_DEMO=1 claude --dangerously-skip-permissions "$@"
     }
     function ccor {
@@ -113,6 +117,7 @@ if has claude; then
             return 1
         fi
         "$HOME/.local/bin/claude-config-helper" trust || return
+        "$HOME/.local/bin/claude-config-helper" onboarded || return
         claude remote-control --permission-mode bypassPermissions "$@"
     }
 fi
@@ -237,6 +242,13 @@ elif $IS_LINUX; then
             echo "Updating Claude Code..."
             claude update
             echo "Claude Code updated."
+            echo ""
+        fi
+
+        # Package updates can change the launcher entries that myconfig hides.
+        if command -v myconfig-launcher-hide &>/dev/null; then
+            echo "Hiding development tools from the launcher..."
+            myconfig-launcher-hide
             echo ""
         fi
 

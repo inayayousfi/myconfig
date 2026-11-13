@@ -24,9 +24,7 @@ mod axidev_osk;
 mod base;
 mod cachyos_setup;
 mod cli;
-mod cursor_theme;
 mod docker;
-mod emacs;
 mod environment_inventory;
 mod ghostty;
 mod git_config;
@@ -62,9 +60,7 @@ pub use axidev_osk::AxidevOsk;
 pub use base::Base;
 pub use cachyos_setup::CachyosSetup;
 pub use cli::Cli;
-pub use cursor_theme::CursorTheme;
 pub use docker::Docker;
-pub use emacs::{EmacsCopied, EmacsOptions, EmacsStowed};
 pub use environment_inventory::EnvironmentInventory;
 pub use ghostty::Ghostty;
 pub use git_config::GitConfig;
@@ -87,7 +83,6 @@ pub use shared_desktop::SharedDesktop;
 
 /// Steps that `myconfig internal` runs on behalf of a module, such as an elevated child.
 pub mod internal {
-    pub use crate::kde_plasma::repair_glass;
     pub use crate::shared_desktop::{elevated_move, elevated_move_back};
 }
 pub use ssh::Ssh;

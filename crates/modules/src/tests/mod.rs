@@ -12,9 +12,8 @@ use embedded_dotfiles::DOTFILES;
 use xshell::Shell;
 
 use crate::{
-    Context, EmacsCopied, EmacsOptions, EnvironmentInventory, Event, Footprint, Interaction,
-    Module, ModuleResult, Package, PackageSystem, Setting, Unanswered, Zsh, runner,
-    state::StateStore,
+    Context, EnvironmentInventory, Event, Footprint, Interaction, Module, ModuleResult, Package,
+    PackageSystem, Setting, Unanswered, Zsh, runner, state::StateStore,
 };
 
 /// Answers every question the same way, or not at all when `reply` is `None`.
@@ -437,36 +436,6 @@ printf 'tester:x:1000:1000::/home/tester:%s\n' "$shell""#,
     );
     assert!(!sandbox.home.join(".oh-my-zsh").exists());
     assert!(!sandbox.installed("zsh"));
-}
-
-#[test]
-fn the_windows_emacs_copy_keeps_a_loader_you_wrote() {
-    let sandbox = Sandbox::new("emacs");
-    sandbox.fake("emacs.exe", r#"printf '%s\n' "$HOME""#);
-    let emacs = EmacsCopied(EmacsOptions {
-        browser_terminal_firewall: false,
-    });
-    let io = Answers::new(None);
-    sandbox
-        .with(&io, |ctx| runner::install(ctx, &[&emacs]))
-        .unwrap();
-    assert_eq!(
-        fs::read(sandbox.home.join(".config/emacs/init.el")).unwrap(),
-        DOTFILES.emacs._config.emacs.init_el.content
-    );
-    assert!(
-        fs::read_to_string(sandbox.home.join(".emacs"))
-            .unwrap()
-            .contains(".config/emacs/init.el")
-    );
-    fs::write(sandbox.home.join(".emacs"), "user loader\n").unwrap();
-    sandbox
-        .with(&io, |ctx| runner::install(ctx, &[&emacs]))
-        .unwrap();
-    assert_eq!(
-        fs::read_to_string(sandbox.home.join(".emacs")).unwrap(),
-        "user loader\n"
-    );
 }
 
 #[test]

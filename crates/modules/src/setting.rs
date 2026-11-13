@@ -17,6 +17,8 @@ pub enum Setting {
     LookAndFeel,
     /// The applied KDE cursor theme.
     CursorTheme,
+    /// The KDE accent color, as `red,green,blue`.
+    AccentColor,
     Gsettings {
         schema: String,
         key: String,
@@ -73,7 +75,10 @@ impl Setting {
     /// Settings applied by a program that also updates the running session, so they
     /// run again even when the stored value already matches.
     pub(crate) fn reapplies(&self) -> bool {
-        matches!(self, Self::LookAndFeel | Self::CursorTheme)
+        matches!(
+            self,
+            Self::LookAndFeel | Self::CursorTheme | Self::AccentColor
+        )
     }
 
     pub fn describe(&self) -> String {
@@ -81,6 +86,7 @@ impl Setting {
             Self::KdeKey { file, groups, key } => format!("{file} [{}] {key}", groups.join("][")),
             Self::LookAndFeel => "KDE global theme".to_owned(),
             Self::CursorTheme => "KDE cursor theme".to_owned(),
+            Self::AccentColor => "KDE accent color".to_owned(),
             Self::Gsettings { schema, key } => format!("gsettings {schema} {key}"),
             Self::GitConfig { key } => format!("git config --global {key}"),
             Self::LoginShell { user } => format!("login shell of {user}"),
@@ -112,6 +118,7 @@ impl Setting {
                 Self::kde("kdeglobals", &["KDE"], "LookAndFeelPackage").read(ctx)?
             }
             Self::CursorTheme => Self::kde("kcminputrc", &["Mouse"], "cursorTheme").read(ctx)?,
+            Self::AccentColor => Self::kde("kdeglobals", &["General"], "AccentColor").read(ctx)?,
             Self::Gsettings { schema, key } => {
                 Some(ctx.read(cmd!(sh, "gsettings get {schema} {key}"))?)
             }
@@ -212,7 +219,7 @@ impl Setting {
                 let groups = group_arguments(groups);
                 ctx.run(cmd!(
                     sh,
-                    "kwriteconfig6 --file {file} {groups...} --key {key} {value}"
+                    "kwriteconfig6 --notify --file {file} {groups...} --key {key} {value}"
                 ))
             }
             Self::LookAndFeel => ctx.run(
@@ -225,6 +232,22 @@ impl Setting {
                     .unwrap_or_else(|| "24".to_owned());
                 ctx.run(
                     cmd!(sh, "plasma-apply-cursortheme --size {size} {value}")
+                        .env("QT_QPA_PLATFORM", "offscreen"),
+                )
+            }
+            Self::AccentColor => {
+                // Plasma's tool derives the colors from the accent but leaves the accent
+                // setting that System Settings shows unset, so these keys record it.
+                let hex = value
+                    .split(',')
+                    .map(|part| part.trim().parse::<u8>().map(|byte| format!("{byte:02x}")))
+                    .collect::<Result<String, _>>()?;
+                let hex = format!("#{hex}");
+                for key in ["AccentColor", "LastUsedCustomAccentColor"] {
+                    Self::kde("kdeglobals", &["General"], key).write(ctx, value)?;
+                }
+                ctx.run(
+                    cmd!(sh, "plasma-apply-colorscheme --accent-color {hex}")
                         .env("QT_QPA_PLATFORM", "offscreen"),
                 )
             }
@@ -295,6 +318,12 @@ impl Setting {
             }
             Self::LookAndFeel => self.write(ctx, "org.kde.breeze.desktop"),
             Self::CursorTheme => self.write(ctx, "breeze_cursors"),
+            Self::AccentColor => {
+                for key in ["AccentColor", "LastUsedCustomAccentColor"] {
+                    Self::kde("kdeglobals", &["General"], key).delete(ctx)?;
+                }
+                Ok(())
+            }
             Self::Gsettings { schema, key } => ctx.run(cmd!(sh, "gsettings reset {schema} {key}")),
             Self::GitConfig { key } => ctx.run(cmd!(sh, "git config --global --unset {key}")),
             Self::LoginShell { user } => {

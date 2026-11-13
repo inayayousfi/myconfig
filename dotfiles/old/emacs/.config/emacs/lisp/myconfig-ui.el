@@ -1,0 +1,222 @@
+;;; myconfig-ui.el --- Black and Pink interface -*- lexical-binding: t; -*-
+
+(require 'univers)
+
+(deftheme myconfig-blacknpink "Black and Pink workbench theme.")
+
+(defvar evil-state)
+(defvar evil-visual-selection)
+(defvar ghostel--input-mode)
+(defvar evil-mode-line-format)
+(declare-function atelier-clickable-label "atelier-navigator")
+(declare-function atelier-workspace-name "atelier-model")
+(declare-function atelier-navigator "atelier-navigator")
+
+(defface myconfig-mode-line-state
+  '((t (:foreground "#ff4ead" :weight bold)))
+  "Input modes in the mode line."
+  :group 'myconfig)
+
+(defun myconfig-turn-on-hl-line-mode ()
+  (unless (derived-mode-p 'ghostel-mode)
+    (hl-line-mode 1)))
+
+(define-globalized-minor-mode myconfig-global-hl-line-mode
+  hl-line-mode myconfig-turn-on-hl-line-mode
+  :group 'myconfig)
+
+(let ((black "#000000") (surface "#0a0a0a") (raised "#111111")
+      (border "#1a1a1a") (heading "#f0f2f7") (text "#d0d6e0")
+      (muted "#a0aabe") (disabled "#4a4f5e") (pink "#ff4ead")
+      (pink-hover "#c02679") (green "#4ade80") (yellow "#facc15")
+      (red "#f87171") (hint "#a78bfa"))
+  (custom-theme-set-faces
+   'myconfig-blacknpink
+   `(default ((t (:background ,black :foreground ,text
+                              :family "BlexMono Nerd Font Mono" :height 150))))
+   `(variable-pitch ((t (:family "IBM Plex Serif"))))
+   `(cursor ((t (:background ,pink))))
+   `(fringe ((t (:background ,black :foreground ,disabled))))
+   `(region ((t (:background "#2a0016" :extend t))))
+    `(highlight ((t (:background ,raised))))
+    `(atelier-navigator-hover ((t (:background ,pink :foreground ,black :weight bold))))
+    `(atelier-navigator-current ((t (:background ,pink :weight bold :extend t))))
+   `(hl-line ((t (:background ,raised :extend t))))
+   `(minibuffer-prompt ((t (:foreground ,pink :weight bold))))
+   `(link ((t (:foreground ,pink :underline t))))
+   `(shadow ((t (:foreground ,muted))))
+   `(success ((t (:foreground ,green :weight bold))))
+   `(warning ((t (:foreground ,yellow :weight bold))))
+   `(error ((t (:foreground ,red :weight bold))))
+   `(font-lock-builtin-face ((t (:foreground ,pink))))
+   `(font-lock-comment-face ((t (:foreground ,disabled :slant italic))))
+   `(font-lock-constant-face ((t (:foreground "#22d3ee"))))
+   `(font-lock-function-name-face ((t (:foreground "#ff85c8"))))
+   `(font-lock-keyword-face ((t (:foreground ,pink :weight bold))))
+   `(font-lock-number-face ((t (:foreground ,yellow))))
+   `(font-lock-string-face ((t (:foreground ,green))))
+   `(font-lock-type-face ((t (:foreground ,heading :weight bold))))
+   `(font-lock-variable-name-face ((t (:foreground ,text))))
+    `(mode-line ((t (:background ,surface :foreground ,muted :box nil))))
+    `(mode-line-active ((t (:background ,raised :foreground ,heading :box nil))))
+    `(mode-line-inactive ((t (:background ,black :foreground ,disabled :box nil))))
+    `(myconfig-mode-line-state ((t (:foreground ,pink :weight bold))))
+   `(vertical-border ((t (:foreground ,border))))
+   `(window-divider ((t (:foreground ,border))))
+   `(window-divider-first-pixel ((t (:foreground ,border))))
+   `(window-divider-last-pixel ((t (:foreground ,border))))
+   `(isearch ((t (:background ,pink :foreground ,black :weight bold))))
+   `(lazy-highlight ((t (:background "#4d1835" :foreground ,heading))))
+   `(match ((t (:background "#4d1835" :foreground ,heading))))
+    `(flymake-error ((t (:underline (:style wave :color ,red)))))
+    `(flymake-warning ((t (:underline (:style wave :color ,yellow)))))
+    `(flymake-note ((t (:underline (:style wave :color ,hint)))))
+    `(flyover-error ((t (:foreground ,red :background unspecified :height 0.85))))
+    `(flyover-warning ((t (:foreground ,yellow :background unspecified :height 0.85))))
+    `(flyover-info ((t (:foreground ,hint :background unspecified :height 0.85))))
+    `(ghostel-color-black ((t (:foreground "#000000"))))
+    `(ghostel-color-red ((t (:foreground "#f87171"))))
+    `(ghostel-color-green ((t (:foreground "#4ade80"))))
+    `(ghostel-color-yellow ((t (:foreground "#facc15"))))
+    `(ghostel-color-blue ((t (:foreground "#60a5fa"))))
+    `(ghostel-color-magenta ((t (:foreground "#ff4ead"))))
+    `(ghostel-color-cyan ((t (:foreground "#22d3ee"))))
+    `(ghostel-color-white ((t (:foreground "#d0d6e0"))))
+    `(ghostel-color-bright-black ((t (:foreground "#2a2d36"))))
+    `(ghostel-color-bright-red ((t (:foreground "#fca5a5"))))
+    `(ghostel-color-bright-green ((t (:foreground "#86efac"))))
+    `(ghostel-color-bright-yellow ((t (:foreground "#fde047"))))
+    `(ghostel-color-bright-blue ((t (:foreground "#93c5fd"))))
+    `(ghostel-color-bright-magenta ((t (:foreground "#ff85c8"))))
+    `(ghostel-color-bright-cyan ((t (:foreground "#67e8f9"))))
+    `(ghostel-color-bright-white ((t (:foreground "#f0f2f7"))))
+    `(diff-added ((t (:background "#082513" :foreground ,green :extend t))))
+   `(diff-removed ((t (:background "#2a0c0c" :foreground ,red :extend t))))
+    `(diff-changed ((t (:background "#302600" :foreground ,yellow :extend t))))
+    `(ediff-current-diff-A ((t (:background "#2a0c0c" :foreground ,red :extend t))))
+     `(ediff-current-diff-B ((t (:background "#082513" :foreground ,green :extend t))))
+     `(ediff-fine-diff-A ((t (:background "#4a1111" :foreground ,heading :weight bold))))
+     `(ediff-fine-diff-B ((t (:background "#0d4a24" :foreground ,heading :weight bold))))
+     `(ediff-even-diff-A ((t (:background ,black :foreground ,red :extend t))))
+     `(ediff-even-diff-B ((t (:background ,black :foreground ,green :extend t))))
+     `(ediff-odd-diff-A ((t (:background ,black :foreground ,red :extend t))))
+     `(ediff-odd-diff-B ((t (:background ,black :foreground ,green :extend t))))
+     `(ediff-even-diff-C ((t (:background ,black :foreground ,yellow :extend t))))
+     `(ediff-odd-diff-C ((t (:background ,black :foreground ,yellow :extend t))))
+    `(completions-common-part ((t (:foreground ,pink :weight bold))))
+   `(corfu-default ((t (:background ,surface :foreground ,text))))
+   `(corfu-current ((t (:background ,pink-hover :foreground ,heading))))
+   `(magit-section-highlight ((t (:background ,raised))))
+   `(magit-branch-current ((t (:foreground ,pink :weight bold))))
+   `(magit-diff-added ((t (:background "#082513" :foreground ,green))))
+   `(magit-diff-removed ((t (:background "#2a0c0c" :foreground ,red))))
+   ;; Pink in place of the yellows that packages ship by default.
+   `(pulse-highlight-start-face ((t (:background "#4d1835"))))
+   `(pulse-highlight-face ((t (:background "#4d1835" :extend t))))
+   `(magit-section-heading ((t (:foreground ,pink :weight bold))))
+   `(magit-header-line ((t (:foreground ,pink :weight bold))))
+   `(magit-tag ((t (:foreground "#ff85c8"))))
+   `(magit-sequence-part ((t (:foreground "#ff85c8"))))
+   `(magit-bisect-skip ((t (:foreground ,pink-hover))))
+   `(magit-diff-base ((t (:background "#2a0016" :foreground ,text))))
+   `(magit-diff-base-highlight ((t (:background "#4d1835" :foreground ,heading))))
+   `(magit-diff-base-heading ((t (:background "#4d1835" :foreground ,heading :weight bold))))
+   `(magit-diff-base-indicator ((t (:foreground ,pink))))
+   `(diff-indicator-changed ((t (:background "#302600" :foreground ,pink))))
+   `(diff-refine-changed ((t (:background "#4d1835"))))
+   `(diff-refine-removed ((t (:background "#4a1111"))))
+   `(diff-refine-added ((t (:background "#0d4a24"))))
+   `(diff-changed-unspecified ((t (:background "#2a0016" :foreground ,text))))
+   `(ediff-current-diff-C ((t (:background "#2a0016" :extend t))))
+   `(ediff-fine-diff-C ((t (:background "#4d1835" :foreground ,heading :weight bold))))
+   `(smerge-base ((t (:background "#2a0016" :extend t))))
+   `(tooltip ((t (:background "#2a0016" :foreground ,heading))))
+   `(minibuffer-nonselected ((t (:background ,pink :foreground ,black))))
+   `(orderless-match-face-3 ((t (:foreground "#ff85c8" :weight bold))))
+   `(transient-key-return ((t (:foreground ,pink))))
+   `(sh-heredoc ((t (:foreground "#ff85c8"))))
+   `(message-cited-text-3 ((t (:foreground "#ff85c8"))))
+   `(message-header-newsgroups ((t (:foreground ,pink :weight bold))))
+   `(epa-string ((t (:foreground "#ff85c8"))))
+   `(dape-exception-description-face ((t (:background "#2a0016" :foreground ,red))))
+   `(custom-invalid ((t (:background "#4a1111" :foreground "#ff85c8"))))
+   `(dired-broken-symlink ((t (:background "#4a1111" :foreground "#ff85c8" :weight bold))))
+   `(widget-field ((t (:background "#2a0016" :foreground ,heading))))
+   `(tty-menu-enabled-face ((t (:background ,raised :foreground ,pink :weight bold))))
+   `(blamer-face ((t (:foreground ,muted :slant italic))))))
+
+(defun myconfig-ui-setup ()
+  (enable-theme 'myconfig-blacknpink)
+  (setq-default line-spacing 0)
+  (setq frame-title-format '(:eval (myconfig-frame-title)))
+  (myconfig-global-hl-line-mode 1)
+  (setq window-divider-default-right-width 1
+        window-divider-default-bottom-width 1)
+  (window-divider-mode 1)
+  (blink-cursor-mode 1)
+  (which-key-mode 1)
+  (setq blink-cursor-blinks 0
+        ring-bell-function #'ignore
+        use-dialog-box nil
+        visible-bell nil)
+  (myconfig-mode-line-setup))
+
+(defun myconfig-mode-line-modes ()
+  "Name every input mode active in the current buffer as [OWNER] STATE.
+Modes follow key lookup order: the first one listed sees a key first."
+  (let* ((terminal (derived-mode-p 'ghostel-mode))
+         (char (and terminal (eq ghostel--input-mode 'char)))
+         (ghostel (and terminal
+                       (cons "GHOSTEL" (upcase (symbol-name ghostel--input-mode))))))
+    (mapcar
+     (lambda (mode) (format "[%s] %s" (car mode) (cdr mode)))
+     (delq nil
+           (list (cons "EVIL"
+                       (cond ((not (bound-and-true-p evil-local-mode)) "OFF")
+                             ((and (eq evil-state 'visual)
+                                   (memq evil-visual-selection '(line block)))
+                              (format "VISUAL %s" (upcase (symbol-name evil-visual-selection))))
+                             (t (upcase (symbol-name evil-state)))))
+                 ;; Ghostel's char keys are an emulation keymap, just after Evil's.
+                 (and char ghostel)
+                 (when (bound-and-true-p multiple-cursors-mode) (cons "MULTIPLE-CURSORS" "ON"))
+                 ;; Its other modes, like Wdired, use the buffer's local keymap.
+                 (and terminal (not char) ghostel)
+                 (when (derived-mode-p 'wdired-mode) (cons "EMACS" "WDIRED"))
+                 ;; Overwrite has no keymap; it changes how typed characters insert.
+                 (when (bound-and-true-p overwrite-mode) (cons "EMACS" "OVERWRITE")))))))
+
+(defun myconfig-mode-line-state ()
+  (propertize (concat " " (mapconcat #'identity (myconfig-mode-line-modes) " & ") " ")
+              'face 'myconfig-mode-line-state))
+
+(defun myconfig-mode-line-status ()
+  (cond (buffer-read-only "  RO") ((buffer-modified-p) "  *") (t "")))
+
+(defun myconfig-mode-line-position ()
+  (format "Ln %d  Col %d" (line-number-at-pos) (1+ (current-column))))
+
+(defun myconfig-mode-line-buffer-name ()
+  (atelier-clickable-label (format "%-12s" (buffer-name)) #'atelier-navigator
+                           nil 'mode-line-buffer-id
+                           "Open workbench navigator (SPC W)"))
+
+(defun myconfig-mode-line-setup ()
+  (setq evil-mode-line-format nil)
+  (setq-default mode-line-format
+                '("%e" (:eval (myconfig-mode-line-state))
+                  "  " (:eval (myconfig-mode-line-buffer-name))
+                  (:eval (myconfig-mode-line-status))
+                  mode-line-format-right-align
+                  (:eval (format "%s  " (if-let* ((workspace (atelier-current-workspace)))
+                                            (atelier-workspace-name workspace)
+                                          "No workspace")))
+                  (:eval (myconfig-mode-line-position)) "  ")))
+
+(defun myconfig-frame-title ()
+  (if (fboundp 'atelier-title)
+      (atelier-title)
+    "Emacs"))
+
+(provide 'myconfig-ui)
+;;; myconfig-ui.el ends here

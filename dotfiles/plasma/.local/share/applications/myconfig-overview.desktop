@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Overview
+Name[fr]=Aperçu
+Comment=Show every window and desktop
+Comment[fr]=Afficher toutes les fenêtres et tous les bureaux
+Icon=preferences-desktop-virtual
+Exec=qdbus6 org.kde.kglobalaccel /component/kwin org.kde.kglobalaccel.Component.invokeShortcut Overview
+StartupNotify=false
+Categories=System;

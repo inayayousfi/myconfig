@@ -1,0 +1,22 @@
+{
+  "name": "blacknpink-theme",
+  "displayName": "Black and Pink",
+  "description": "Black and Pink color theme.",
+  "publisher": "myconfig",
+  "version": "1.0.0",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Themes"
+  ],
+  "contributes": {
+    "themes": [
+      {
+        "label": "Black and Pink",
+        "uiTheme": "vs-dark",
+        "path": "./themes/blacknpink-color-theme.json"
+      }
+    ]
+  }
+}

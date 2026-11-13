@@ -12,9 +12,6 @@ static MODULES: &[&dyn Module] = &[
     &PowerShellProfile,
     &OhMyPosh,
     &WindowsTerminal,
-    &EmacsCopied(EmacsOptions {
-        browser_terminal_firewall: false,
-    }),
     &AutoHotkey,
     &AgentConfigCopied,
     &PsReadLine,

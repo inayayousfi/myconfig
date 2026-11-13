@@ -57,9 +57,7 @@ mod tests {
         for absent in [
             "axidev-osk",
             "ghostty",
-            "emacs",
             "kde-plasma",
-            "cursor-theme",
             "refind",
             "kanata",
             "kanata-kde",

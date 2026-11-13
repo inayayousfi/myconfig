@@ -16,7 +16,7 @@ body:
       options:
         - CachyOS
         - Arch WSL
-        - Ubuntu Server
+        - Ubuntu Devbox
         - Windows
         - Other Linux
         - Other (please specify)

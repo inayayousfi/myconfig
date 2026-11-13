@@ -139,10 +139,12 @@ pub enum Package {
     LibreOffice,
     /// In the CachyOS repository; plain Arch gets `paru-bin` from the AUR instead.
     Paru,
+    PlexFonts,
+    BlexMonoFont,
 }
 
 impl Package {
-    const COUNT: usize = 137;
+    const COUNT: usize = 139;
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -399,6 +401,11 @@ const PACKAGE_OVERRIDES: &[((Package, Platform), &str)] = &[
         (Package::DesktopFileUtils, Platform::Pacman),
         "desktop-file-utils",
     ),
+    ((Package::PlexFonts, Platform::Aur), "otf-ibm-plex"),
+    (
+        (Package::BlexMonoFont, Platform::Pacman),
+        "ttf-ibmplex-mono-nerd",
+    ),
 ];
 
 const fn build_packages()
@@ -572,6 +579,8 @@ const fn package_from_index(index: usize) -> Package {
         Package::VirtualBox,
         Package::LibreOffice,
         Package::Paru,
+        Package::PlexFonts,
+        Package::BlexMonoFont,
     ][index]
 }
 

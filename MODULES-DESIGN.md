@@ -120,7 +120,7 @@ A test checks that no module calls `.run()`, `.read()` or `.output()` on a comma
 A `Setting` names one value outside the module's own files, such as a KDE key or a Git option. Each kind knows how to read its current value, write a value, and delete it:
 
 - `KdeKey { file, groups, key }`, through `kreadconfig6` and `kwriteconfig6`.
-- `LookAndFeel` and `CursorTheme`, through the KDE apply commands.
+- `LookAndFeel`, `CursorTheme` and `AccentColor`, through the KDE apply commands.
 - `Gsettings { schema, key }`.
 - `GitConfig { key }`, in the global Git configuration.
 - `LoginShell { user }`.
@@ -214,9 +214,9 @@ crates/modules/src/powershell_profile.rs
 When a concept works differently on different systems, it becomes a folder. The shared options go in `mod.rs`, and each implementation goes in its own file, named after its mechanism rather than its platform:
 
 ```
-crates/modules/src/emacs/mod.rs      pub struct EmacsOptions { .. }
-crates/modules/src/emacs/stowed.rs   pub struct EmacsStowed(pub EmacsOptions);  impl Module
-crates/modules/src/emacs/copied.rs   pub struct EmacsCopied(pub EmacsOptions);  impl Module
+crates/modules/src/agent_config/mod.rs      pub use of both implementations
+crates/modules/src/agent_config/stowed.rs   pub struct AgentConfigStowed { ydotool: bool };  impl Module
+crates/modules/src/agent_config/copied.rs   pub struct AgentConfigCopied;  impl Module
 ```
 
 Each implementation's `install` is one straight procedure with no branch on the platform.
@@ -262,7 +262,6 @@ let modules: &[&dyn Module] = &[
     &Base { packages: Base::ARCH, unwanted: &[Package::CachyUpdate] },
     &Zsh { set_login_shell: true },
     &AgentsPackages { extra: &[Package::Ydotool] },
-    &EmacsStowed(EmacsOptions { browser_terminal_firewall: true }),
     // ...
 ];
 ```
@@ -278,7 +277,7 @@ let modules: &[&dyn Module] = &[
     &PackageGroup::SUPPLEMENTARY,
     &ArchWsl,
     &PowerShellProfile,
-    &EmacsCopied(EmacsOptions { browser_terminal_firewall: false }),
+    &AgentConfigCopied,
     &LlvmPath,
     // ...
 ];
@@ -313,9 +312,6 @@ Clap parses the arguments. Every app has the same commands:
 Steps that the installer starts by itself are hidden from `--help` under `<app> internal`:
 
 ```
-<app> internal kde-plasma repair-glass
-                           rebuilds Glass for the running KWin; the Glass repair user
-                           service runs it at each Plasma login
 <app> internal shared-desktop move <record> <desktop>
 <app> internal shared-desktop move-back <change>
                            the elevated child that moves shared desktop items
@@ -329,7 +325,7 @@ Ratatui draws one screen. All four apps use it, and running an app with no argum
 ┌ myconfig: CachyOS ───────────────┐
 │ [x] base            installed    │
 │ [x] zsh             installed    │
-│ [ ] emacs           missing      │
+│ [ ] ghostty         missing      │
 │ [x] kanata          broken       │
 └──────────────────────────────────┘
  space toggle  i install  v verify
@@ -373,7 +369,7 @@ Undoing each kind of change:
 - **A deployed config package** is unstowed on Linux.
 - **A package that install added** is uninstalled after the check below.
 - **A package that install uninstalled** is reinstalled after a confirmation.
-- **A package built from this repository**, such as the Glass KWin effect, is uninstalled.
+- **A package built from this repository** is uninstalled.
 
 **One-way changes.** Each of these runs only after a confirmation pop-up: reinstalling packages that install uninstalled, moving shared desktop items back, unregistering the Arch WSL distribution, and deleting `~/environment.md`, which agents edit after install.
 

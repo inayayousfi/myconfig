@@ -1,0 +1,258 @@
+;;; myconfig-bindings.el --- Evil workbench keys -*- lexical-binding: t; -*-
+
+(require 'evil)
+(require 'multiple-cursors)
+(require 'atelier)
+(require 'dired-atelier)
+(require 'eglot)
+
+(declare-function avy-goto-char-timer "avy")
+(declare-function eldoc-box-help-at-point "eldoc-box")
+(declare-function eglot--code-action-bounds "eglot")
+(declare-function eglot--current-server-or-lose "eglot")
+(declare-function eglot--read-execute-code-action "eglot")
+(declare-function ghostel-paste-string "ghostel")
+(declare-function atelier-xref-find-definitions "xref-atelier")
+(declare-function atelier-xref-find-implementation "xref-atelier")
+(declare-function myconfig-search "myconfig-editing")
+(declare-function consult-mark "consult")
+(declare-function consult-line "consult")
+(declare-function consult-imenu "consult-imenu")
+(declare-function myconfig-terminal "myconfig-terminal")
+(declare-function myconfig-normal-state "myconfig-terminal")
+(defvar myconfig-terminal-escape-key)
+(declare-function myconfig-toggle-auto-format-save "myconfig-editing")
+(declare-function atelier-set-job-policy "atelier-persist")
+(declare-function dape "dape")
+(declare-function magit-status "magit")
+(declare-function jumel-visit "jum")
+(declare-function myconfig-compile "myconfig-editing")
+
+(defvar myconfig-leader-map (make-sparse-keymap))
+
+(defconst myconfig-leader-keys
+  '(("SPC" "Search files and text" myconfig-search)
+    ("?" "List every active key" describe-bindings)
+    ("RET" "Toggle full screen" toggle-frame-fullscreen)
+    ("b" "New scratch buffer" atelier-new-scratch-buffer)
+    ("f" "Browse files" atelier-file-browser)
+    ("m" "Set mark" set-mark-command)
+    ("n" "Jump to a mark" consult-mark)
+    ("/" "Search this file's lines" consult-line)
+    ("i" "List functions and headings" consult-imenu)
+    ("c" "Run a command by name" execute-extended-command)
+    ("t" "Open a terminal" myconfig-terminal)
+    ("=" "Split right" atelier-split-right)
+    ("-" "Split below" atelier-split-below)
+    ("<left>" "Move split left" myconfig-resize-left)
+    ("<right>" "Move split right" myconfig-resize-right)
+    ("<up>" "Move split up" myconfig-resize-up)
+    ("<down>" "Move split down" myconfig-resize-down)
+    ("h" "Go to left window" windmove-left)
+    ("j" "Go to lower window" windmove-down)
+    ("k" "Go to upper window" windmove-up)
+    ("l" "Go to right window" windmove-right)
+    ("x" "Close this view" atelier-close-current-view)
+    ("u v" "Toggle format and save" myconfig-toggle-auto-format-save)
+    ("u r" "Set job restart policy" atelier-set-job-policy)
+    ("w" "Find a buffer anywhere" atelier-traveller)
+    ("W" "Workspace navigator" atelier-navigator)
+    ("," "Previous buffer in view" atelier-traveller-step-backward)
+    ("." "Next buffer in view" atelier-traveller-step-forward)
+    ("g f" "Start debugger" dape)
+    ("g g" "Git status" magit-status)
+    ("g d" "Compare two files" diff)
+    ("g c" "Compile" myconfig-compile))
+  "Leader keys under SPC as (KEY LABEL COMMAND).")
+
+(defun myconfig-code-actions ()
+  "Choose among the code actions under point, even when there is only one.
+Eglot otherwise runs a single action at once when point is on its hint."
+  (interactive)
+  (eglot--read-execute-code-action
+   (apply #'eglot-code-actions (eglot--code-action-bounds))
+   (eglot--current-server-or-lose)))
+
+(defun myconfig-multiple-cursors-toggle ()
+  (interactive)
+  (if (bound-and-true-p multiple-cursors-mode)
+      (mc/keyboard-quit)
+    (call-interactively #'mc/edit-lines)))
+
+(defvar-keymap myconfig-resize-repeat-map
+  :doc "Arrows that keep resizing after a resize, until another key."
+  "<left>" #'myconfig-resize-left
+  "<right>" #'myconfig-resize-right
+  "<up>" #'myconfig-resize-up
+  "<down>" #'myconfig-resize-down)
+
+(defun myconfig-resize (direction amount)
+  "Resize the split toward DIRECTION by AMOUNT, then let a bare arrow repeat."
+  (atelier-resize-split direction amount)
+  ;; Each arrow re-arms the map, so a held arrow keeps resizing; any other
+  ;; key drops it and runs as usual.
+  (set-transient-map myconfig-resize-repeat-map nil nil
+                     "Arrows keep resizing; any other key stops"))
+
+(defun myconfig-resize-left ()
+  (interactive)
+  (myconfig-resize 'left 3))
+
+(defun myconfig-resize-right ()
+  (interactive)
+  (myconfig-resize 'right 3))
+
+(defun myconfig-resize-up ()
+  (interactive)
+  (myconfig-resize 'up 2))
+
+(defun myconfig-resize-down ()
+  (interactive)
+  (myconfig-resize 'down 2))
+
+(defun myconfig-directory-chooser-keymaps ()
+  (when (bound-and-true-p evil-local-mode) (evil-normalize-keymaps)))
+
+(defun myconfig-clipboard-image-p ()
+  "Return non-nil when the system clipboard offers an image."
+  (let ((types (ignore-errors (gui-get-selection 'CLIPBOARD 'TARGETS))))
+    (and (vectorp types)
+         (cl-some (lambda (type)
+                    (and (symbolp type) (string-prefix-p "image/" (symbol-name type))))
+                  types))))
+
+(defun myconfig-paste ()
+  (interactive)
+  (cond
+   ;; Ghostel's handler saves the image and pastes its path, as a drop does.
+   ((myconfig-clipboard-image-p)
+    (call-interactively #'yank-media))
+   ((derived-mode-p 'ghostel-mode)
+    (ghostel-paste-string (current-kill 0)))
+   ((and (bound-and-true-p evil-local-mode)
+         (memq evil-state '(normal visual motion operator)))
+    (call-interactively #'evil-paste-after))
+   (t (call-interactively #'yank))))
+
+(defun myconfig-jumel-keys ()
+  "Reload a side-by-side diff with r, as in Dired; open a row's file with RET."
+  (evil-local-set-key 'normal (kbd "r") #'revert-buffer)
+  (evil-local-set-key 'normal (kbd "RET") #'jumel-visit)
+  (evil-local-set-key 'normal (kbd "<return>") #'jumel-visit))
+
+(defun myconfig-bindings-setup ()
+  (global-set-key myconfig-terminal-escape-key #'myconfig-normal-state)
+  (add-hook 'jumel-buffer-hook #'myconfig-jumel-keys)
+  (evil-define-key '(normal insert visual motion operator replace emacs) 'global
+    myconfig-terminal-escape-key #'myconfig-normal-state)
+  (add-hook 'atelier-directory-chooser-mode-hook #'myconfig-directory-chooser-keymaps)
+  (evil-define-key '(normal visual motion) 'global (kbd "SPC") myconfig-leader-map)
+  (evil-define-key '(normal visual operator) 'global (kbd "f") #'avy-goto-char-timer)
+  (evil-define-key 'normal 'global (kbd ":") #'evil-ex)
+  (evil-define-key '(normal insert visual) 'global (kbd "C-r") #'evil-redo)
+  (evil-define-key 'normal 'global (kbd "g k") #'eldoc-box-help-at-point)
+  (define-key dired-mode-map (kbd "W") #'atelier-dired-flag-workspace)
+  (define-key dired-mode-map (kbd "x") #'atelier-dired-execute-flags)
+  (dolist (binding '(("RET" . atelier-directory-chooser-enter)
+                     ("<return>" . atelier-directory-chooser-enter)
+                     ("l" . atelier-directory-chooser-enter)
+                     ("h" . atelier-directory-chooser-up-directory)
+                     ("H" . atelier-directory-chooser-up-directory)
+                     ("^" . atelier-directory-chooser-up-directory)
+                     ("W" . atelier-dired-flag-workspace)
+                     ("x" . atelier-dired-execute-flags)
+                     ("q" . abort-recursive-edit)))
+    (define-key atelier-directory-chooser-mode-map (kbd (car binding)) (cdr binding)))
+  (define-key atelier-directory-chooser-mode-map [mouse-1] #'atelier-directory-chooser-mouse-enter)
+  (define-key atelier-directory-chooser-mode-map [mouse-2] #'atelier-directory-chooser-mouse-enter)
+  (evil-define-key 'normal dired-mode-map
+    (kbd "SPC") myconfig-leader-map
+    (kbd "RET") #'atelier-dired-open
+    (kbd "<return>") #'atelier-dired-open
+    (kbd "l") #'atelier-dired-open
+    (kbd "h") #'atelier-dired-up-directory
+    (kbd "n") #'atelier-dired-create
+    ;; A full reload; Dired's own r redraws only the file line under point.
+    (kbd "r") #'revert-buffer
+    (kbd "W") #'atelier-dired-flag-workspace
+    (kbd "x") #'atelier-dired-execute-flags
+    [mouse-1] #'atelier-dired-mouse-open
+    [mouse-2] #'atelier-dired-mouse-open)
+  (evil-define-key 'normal eglot-mode-map
+    (kbd "g a") #'myconfig-code-actions
+    (kbd "g d") #'atelier-xref-find-definitions
+    (kbd "g D") #'atelier-xref-find-implementation)
+  (evil-define-key 'normal atelier-directory-chooser-mode-map
+    (kbd "RET") #'atelier-directory-chooser-enter
+    (kbd "<return>") #'atelier-directory-chooser-enter
+    (kbd "l") #'atelier-directory-chooser-enter
+    (kbd "h") #'atelier-directory-chooser-up-directory
+    (kbd "H") #'atelier-directory-chooser-up-directory
+    (kbd "^") #'atelier-directory-chooser-up-directory
+    (kbd "W") #'atelier-dired-flag-workspace
+    (kbd "x") #'atelier-dired-execute-flags
+    (kbd "q") #'abort-recursive-edit
+    [mouse-1] #'atelier-directory-chooser-mouse-enter
+    [mouse-2] #'atelier-directory-chooser-mouse-enter)
+  (evil-make-intercept-map atelier-directory-chooser-mode-map 'normal t)
+  (global-set-key (kbd "C-S-v") #'myconfig-paste)
+  (global-set-key (kbd "C-=") #'text-scale-increase)
+  (global-set-key (kbd "C--") #'text-scale-decrease)
+  (global-unset-key (kbd "C-x"))
+  (global-unset-key (kbd "C-c"))
+  (global-unset-key (kbd "C-u"))
+  (global-unset-key (kbd "C-v"))
+  (evil-define-key '(normal insert visual motion operator replace emacs) 'global
+    (kbd "C-S-v") #'myconfig-paste)
+  (evil-define-key '(normal insert visual motion operator replace emacs) 'global
+    (kbd "C-=") #'text-scale-increase
+    (kbd "C--") #'text-scale-decrease)
+  ;; Do not let keys without an Evil meaning fall through to Emacs prefix
+  ;; maps.  C-u and C-v keep their native Evil bindings in editing states.
+  (evil-define-key '(normal insert visual motion operator replace emacs) 'global
+    (kbd "C-x") #'ignore
+    (kbd "C-c") #'ignore)
+  (evil-define-key 'emacs 'global
+    (kbd "C-u") #'ignore
+    (kbd "C-v") #'ignore)
+  (evil-define-key '(normal insert visual motion operator replace emacs) 'global
+    (kbd "C-l") #'myconfig-multiple-cursors-toggle)
+  (evil-define-key 'normal atelier-choice-mode-map
+    (kbd "j") #'atelier-choice-next
+    (kbd "k") #'atelier-choice-previous
+    (kbd "<down>") #'atelier-choice-next
+    (kbd "<up>") #'atelier-choice-previous
+    (kbd "RET") #'atelier-choice-select
+    (kbd "q") #'abort-recursive-edit)
+  (evil-define-key 'normal atelier-navigator-mode-map
+    (kbd "j") #'atelier-navigator-next
+    (kbd "k") #'atelier-navigator-previous
+    (kbd "h") #'atelier-navigator-stack-previous
+    (kbd "l") #'atelier-navigator-stack-next
+    (kbd "{") #'atelier-navigator-previous-group
+    (kbd "}") #'atelier-navigator-next-group
+    (kbd "<down>") #'atelier-navigator-next
+    (kbd "<up>") #'atelier-navigator-previous
+    (kbd "RET") #'atelier-navigator-open
+    (kbd "o") #'atelier-navigator-toggle-fold
+    (kbd "s") #'atelier-navigator-stop-workspace
+    (kbd "a") #'atelier-navigator-attach
+    (kbd "d") #'atelier-navigator-detach
+    (kbd "f") #'isearch-forward
+    (kbd "F") #'isearch-forward
+    (kbd "x") #'atelier-navigator-close
+    (kbd "X") #'atelier-navigator-close-entry
+    (kbd "r") #'atelier-navigator-rename
+    (kbd "R") #'atelier-navigator-rename
+    (kbd "q") #'atelier-navigator-quit)
+  ;; A (LABEL . COMMAND) binding runs COMMAND; the key-hint popup shows LABEL.
+  (pcase-dolist (`(,key ,label ,command) myconfig-leader-keys)
+    (keymap-set myconfig-leader-map key (cons label command)))
+  (when (fboundp 'aipanel-toggle)
+    (keymap-set myconfig-leader-map "a" '("Toggle AI panel" . aipanel-toggle)))
+  (which-key-add-keymap-based-replacements myconfig-leader-map
+    "g" "Git and code"
+    "u" "Settings"))
+
+(provide 'myconfig-bindings)
+;;; myconfig-bindings.el ends here

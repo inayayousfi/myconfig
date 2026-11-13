@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Service
+MimeType=application/zip;application/x-7z-compressed;application/vnd.rar;application/x-rar;application/x-tar;application/x-gtar;application/x-compressed-tar;application/x-bzip2-compressed-tar;application/x-xz-compressed-tar;application/x-zstd-compressed-tar;application/x-cd-image;
+Actions=extract
+X-KDE-Priority=TopLevel
+
+[Desktop Action extract]
+Name=Extract here
+Name[fr]=Extraire ici
+Icon=archive-extract
+Exec=sh -c '"$HOME/.local/bin/myconfig-7z" extract "$@"' myconfig-7z %F

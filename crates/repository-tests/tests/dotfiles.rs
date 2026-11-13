@@ -7,23 +7,23 @@ use std::{
     process::Command,
 };
 
-use base64::{Engine, engine::general_purpose::STANDARD};
 use repository_tests::{Scratch, dotfiles, repository, run};
-use sha2::{Digest, Sha256};
 
 /// The config packages the Linux installers deploy.
-const LINUX_PACKAGES: [&str; 11] = [
+const LINUX_PACKAGES: [&str; 13] = [
     "zsh",
     "yazi",
     "ai",
+    "t3code",
+    "t3code-desktop",
     "ghostty",
     "kanata",
     "kanata-kde",
     "handy",
-    "kde-plasma",
-    "emacs",
+    "vscodium",
     "phone",
     "pipewire",
+    "plasma",
 ];
 
 fn text(path: impl AsRef<Path>) -> String {
@@ -37,10 +37,6 @@ fn lines(path: impl AsRef<Path>) -> Vec<String> {
 
 fn has_line(path: impl AsRef<Path>, line: &str) -> bool {
     lines(path).iter().any(|candidate| candidate == line)
-}
-
-fn json(path: impl AsRef<Path>) -> serde_json::Value {
-    serde_json::from_str(&text(path)).unwrap()
 }
 
 fn files_under(root: &Path) -> Vec<PathBuf> {
@@ -183,15 +179,15 @@ fn the_zsh_files_parse() {
 
 #[test]
 fn zsh_picks_the_installed_editor_without_retired_aliases() {
-    // Command availability is simulated, including a retired editor, so no program runs
+    // Command availability is simulated, including retired editors, so no program runs
     // and the host shell configuration is not read.
     let script = r#"
 command() {
     if [[ "$1" = -v ]]; then
         case "$2" in
-            emacs) [[ "$MYCONFIG_EDITOR_CASE" = emacs ]] ;;
+            codium) [[ "$MYCONFIG_EDITOR_CASE" = codium ]] ;;
             vim) [[ "$MYCONFIG_EDITOR_CASE" = vim ]] ;;
-            nvim) return 0 ;;
+            emacs|nvim) return 0 ;;
             *) return 1 ;;
         esac
     else
@@ -201,22 +197,30 @@ command() {
 uname() { print Linux; }
 go() { print "$HOME/go"; }
 bun() { print "$HOME/.bun/bin"; }
-if [[ "$MYCONFIG_EDITOR_CASE" = emacs ]]; then
+if [[ "$MYCONFIG_EDITOR_CASE" = codium ]]; then
     unset WSL_DISTRO_NAME
 else
     export WSL_DISTRO_NAME=Arch
 fi
 source "$1" || exit 1
-[[ "$EDITOR" = "$MYCONFIG_EDITOR_CASE" && "$VISUAL" = "$MYCONFIG_EDITOR_CASE" ]] || exit 1
-if [[ "$MYCONFIG_EDITOR_CASE" = emacs ]]; then
-    (( ! $+aliases[vim] )) && [[ "${aliases[vi]}" = emacs && "${aliases[v]}" = emacs ]] || exit 1
-else
-    (( ! $+aliases[vim] && ! $+aliases[vi] && ! $+aliases[v] )) || exit 1
-fi
+case "$MYCONFIG_EDITOR_CASE" in
+    codium) expected="codium --wait" ;;
+    windows-codium) expected="$HOME/.local/bin/windows-codium" ;;
+    *) expected="$MYCONFIG_EDITOR_CASE" ;;
+esac
+[[ "$EDITOR" = "$expected" && "$VISUAL" = "$expected" ]] || exit 1
+(( ! $+aliases[vim] && ! $+aliases[vi] && ! $+aliases[v] )) || exit 1
 "#;
     let plugin = dotfiles().join("zsh/.oh-my-zsh/custom/plugins/inaya/inaya.plugin.zsh");
-    for editor in ["emacs", "vim", "vi"] {
+    for editor in ["codium", "windows-codium", "vim", "vi"] {
         let scratch = Scratch::new(&format!("editor-{editor}"));
+        if editor == "windows-codium" {
+            let bin = scratch.0.join(".local/bin");
+            fs::create_dir_all(&bin).unwrap();
+            let wrapper = bin.join("windows-codium");
+            fs::write(&wrapper, "#!/bin/sh\n[ \"$1\" = --check ]\n").unwrap();
+            fs::set_permissions(&wrapper, fs::Permissions::from_mode(0o755)).unwrap();
+        }
         run(Command::new("zsh")
             .args(["-f", "-c", script, "editor-selection"])
             .arg(&plugin)
@@ -224,43 +228,6 @@ fi
             .env("MYCONFIG_EDITOR_CASE", editor));
     }
 }
-
-#[test]
-fn the_pinned_ghostty_web_assets_in_remot_are_unchanged() {
-    let source = text(dotfiles().join("emacs/.config/emacs/lisp/remot.el"));
-    for (name, digest) in [
-        (
-            "ghostty-web-js",
-            "078b3fe37e4ef469d3f3d7772ee263070f8613e5a6f5ff305c85778907f45e72",
-        ),
-        (
-            "ghostty-vt-wasm",
-            "d6f0326f1874ad2ce9f289e3a4a0c5f3507d4cb38d8747e4b287def470a0c60a",
-        ),
-        (
-            "ghostty-web-license",
-            "5eccd0eeca906db6d661b64dd05e1d4a4b2e49d37d43bbcfd2c8cce4d7832920",
-        ),
-    ] {
-        let start = format!("(defconst remot--{name}-base64\n  (concat\n");
-        let begin = source
-            .find(&start)
-            .unwrap_or_else(|| panic!("missing embedded asset: {name}"))
-            + start.len();
-        let end = begin + source[begin..].find("\n   ))").unwrap();
-        let encoded: String = source[begin..end].split('"').skip(1).step_by(2).collect();
-        let decoded = STANDARD.decode(encoded).unwrap();
-        let actual: String = Sha256::digest(&decoded)
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect();
-        assert_eq!(
-            actual, digest,
-            "checksum mismatch for embedded asset: {name}"
-        );
-    }
-}
-
 #[test]
 fn the_pointer_plugin_multiplies_motion_by_four() {
     let plugin = dotfiles().join("assets/kde-plasma/libinput/90-myconfig-pointer-sensitivity.lua");
@@ -290,129 +257,6 @@ assert(frame[1].value == 4 and frame[2].value == -4)
 }
 
 #[test]
-fn the_plasma_dock_fits_its_content_and_the_panel_scripts_pass_their_tests() {
-    let kde = dotfiles().join("kde-plasma/.local/share");
-    let layout = kde.join("myconfig/kde-plasma/layout.js");
-    assert!(
-        text(&layout).contains(r#"panel.lengthMode = "fit";"#),
-        "the dock does not fit its content"
-    );
-    assert!(
-        text(&layout).contains(r#"tasks.writeConfig("fill", false);"#),
-        "the task manager fills the dock"
-    );
-    let panels = kde.join("kwin/scripts/myconfig-plasma-panels");
-    run(Command::new("node")
-        .arg(repository().join("test/test-kde-plasma-panels.js"))
-        .arg(panels.join("contents/code/main.js")));
-    run(Command::new("node")
-        .arg(repository().join("test/test-kde-plasma-layout.js"))
-        .arg(&layout));
-    json(panels.join("metadata.json"));
-}
-
-#[test]
-fn the_plasma_widgets_offer_their_approved_controls() {
-    let root = dotfiles().join("kde-plasma/.local/share/plasma/plasmoids");
-    for widget in ["overview", "session", "power", "island"] {
-        let id = format!("myconfig.{widget}");
-        assert_eq!(
-            json(root.join(&id).join("metadata.json"))["KPlugin"]["Id"],
-            id.as_str()
-        );
-        assert!(
-            root.join(&id).join("contents/ui/main.qml").is_file(),
-            "{id} has no QML entry point"
-        );
-    }
-    let qml = |widget: &str| text(root.join(format!("myconfig.{widget}/contents/ui/main.qml")));
-    let (overview, session, power, island) =
-        (qml("overview"), qml("session"), qml("power"), qml("island"));
-    for needle in [
-        r#"text: qsTr("Overview")"#,
-        "font.pointSize: 14",
-        "Layout.minimumWidth: implicitWidth",
-        "Layout.fillHeight: true",
-        "invokeShortcut Overview",
-        "CanFillArea",
-    ] {
-        assert!(
-            overview.contains(needle),
-            "the Overview widget lacks {needle}"
-        );
-    }
-    let ordered = |source: &str, values: &[&str]| {
-        let positions: Vec<_> = values.iter().map(|value| source.find(value)).collect();
-        positions.iter().all(Option::is_some) && positions.windows(2).all(|pair| pair[0] < pair[1])
-    };
-    assert!(ordered(
-        &session,
-        &[
-            r#"qsTr("Lock")"#,
-            r#"qsTr("Log Out")"#,
-            r#"qsTr("Switch User")"#
-        ]
-    ));
-    assert!(session.contains("enabled: session.canSwitchUser"));
-    assert!(ordered(
-        &power,
-        &[
-            r#"qsTr("Restart")"#,
-            r#"qsTr("Shut Down")"#,
-            r#"qsTr("Sleep")"#,
-            r#"qsTr("Hibernate")"#
-        ]
-    ));
-    assert!(!session.contains("ToolTip") && !power.contains("ToolTip"));
-    assert!(
-        session.contains("popupType: QQC2.Popup.Window")
-            && power.contains("popupType: QQC2.Popup.Window")
-    );
-    for forbidden in [
-        "/tmp/",
-        "ISLAND_",
-        "configuration.readyWidgets",
-        "configuration.trayGroups",
-    ] {
-        assert!(
-            !island.contains(forbidden),
-            "the island still uses {forbidden}"
-        );
-    }
-    assert!(island.contains("function closeAfterDeactivation()"));
-    assert!(island.contains(
-        "function onVisibleChanged() { if (!target.visible) island.closeAfterDeactivation(); }"
-    ));
-    for widget in [
-        "systemmonitor.cpu",
-        "systemmonitor.memory",
-        "systemmonitor.net",
-        "calendar",
-        "notifications",
-        "systemtray",
-    ] {
-        assert!(
-            island.contains(&format!(r#""org.kde.plasma.{widget}""#)),
-            "the island lacks {widget}"
-        );
-    }
-    for capability in [
-        "canLock",
-        "canSwitchUser",
-        "canLogout",
-        "canSuspend",
-        "canHibernate",
-        "canReboot",
-        "canShutdown",
-    ] {
-        assert!(
-            island.contains(&format!("enabled: session.{capability}")),
-            "the island ignores {capability}"
-        );
-    }
-}
-
-#[test]
 fn the_refind_theme_keeps_its_historical_minimal_layout() {
     let root = dotfiles().join("assets/refind/refind");
     assert!(has_line(root.join("global.conf"), "enable_mouse true"));
@@ -434,263 +278,8 @@ fn the_refind_theme_keeps_its_historical_minimal_layout() {
     );
 }
 
-mod cursors {
-    use super::*;
-
-    const SIZE: usize = 40;
-
-    fn root() -> PathBuf {
-        dotfiles().join("assets/cursor-theme/cursors/blacknpink-crosshair")
-    }
-
-    fn u32_at(data: &[u8], offset: usize) -> u32 {
-        u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap())
-    }
-
-    /// The 40 by 40 ARGB pixels of image `index` in an Xcursor file.
-    fn pixels(data: &[u8], index: usize) -> Vec<u32> {
-        let offset = u32_at(data, 24 + 12 * index) as usize;
-        (0..SIZE * SIZE)
-            .map(|pixel| u32_at(data, offset + 36 + 4 * pixel))
-            .collect()
-    }
-
-    #[test]
-    fn the_theme_inherits_breeze_and_has_every_cursor() {
-        assert!(has_line(
-            root().join("index.theme"),
-            "Inherits=breeze_cursors"
-        ));
-        for cursor in [
-            "default", "pointer", "progress", "text", "wait", "size_hor", "size_ver",
-        ] {
-            assert!(
-                fs::metadata(root().join("cursors").join(cursor))
-                    .unwrap()
-                    .len()
-                    > 0,
-                "{cursor} is missing"
-            );
-        }
-        for cursor in [
-            "pointer", "grab", "grabbing", "move", "dnd-move", "dnd-copy", "text",
-        ] {
-            assert_eq!(
-                fs::read_link(root().join("cursors").join(cursor)).unwrap(),
-                Path::new("crosshair"),
-                "{cursor} does not use Precision Select"
-            );
-        }
-    }
-
-    #[test]
-    fn every_image_and_slot_is_40_pixels() {
-        let mut checked = 0;
-        for entry in fs::read_dir(root().join("cursors")).unwrap() {
-            let path = entry.unwrap().path();
-            if fs::symlink_metadata(&path)
-                .unwrap()
-                .file_type()
-                .is_symlink()
-                || !path.is_file()
-            {
-                continue;
-            }
-            let data = fs::read(&path).unwrap();
-            assert_eq!(
-                &data[..4],
-                b"Xcur",
-                "{} is not an Xcursor file",
-                path.display()
-            );
-            let count = u32_at(&data, 12) as usize;
-            assert!(count > 0);
-            for index in 0..count {
-                let slot = u32_at(&data, 16 + index * 12 + 4) as usize;
-                let offset = u32_at(&data, 16 + index * 12 + 8) as usize;
-                assert_eq!(slot, SIZE, "{}", path.display());
-                assert!(offset + 36 + SIZE * SIZE * 4 <= data.len());
-                for field in [8, 16, 20] {
-                    assert_eq!(
-                        u32_at(&data, offset + field) as usize,
-                        SIZE,
-                        "{}",
-                        path.display()
-                    );
-                }
-            }
-            checked += 1;
-        }
-        assert!(checked > 0, "no cursor files were checked");
-    }
-
-    #[test]
-    fn the_cursors_match_their_svg_sources() {
-        let scratch = Scratch::new("cursor-build");
-        run(Command::new("python3")
-            .arg(root().join("build.py"))
-            .arg("--output-dir")
-            .arg(&scratch.0));
-        for cursor in [
-            "default",
-            "crosshair",
-            "help",
-            "no-drop",
-            "up-arrow",
-            "person",
-            "location",
-            "size_hor",
-            "size_ver",
-            "size_fdiag",
-            "size_bdiag",
-            "progress",
-            "wait",
-        ] {
-            assert_eq!(
-                fs::read(root().join("cursors").join(cursor)).unwrap(),
-                fs::read(scratch.0.join(cursor)).unwrap(),
-                "{cursor} does not match its SVG source"
-            );
-        }
-    }
-
-    #[test]
-    fn the_default_and_crosshair_differ_only_at_their_center() {
-        let default = pixels(&fs::read(root().join("cursors/default")).unwrap(), 0);
-        let crosshair = pixels(&fs::read(root().join("cursors/crosshair")).unwrap(), 0);
-        for image in [&default, &crosshair] {
-            for y in 0..SIZE {
-                for x in 0..SIZE / 2 {
-                    assert_eq!(
-                        image[y * SIZE + x],
-                        image[y * SIZE + SIZE - 1 - x],
-                        "not mirrored at {x},{y}"
-                    );
-                }
-            }
-        }
-        for y in 0..SIZE {
-            for x in 0..SIZE {
-                assert_eq!(
-                    default[y * SIZE + x],
-                    default[x * SIZE + SIZE - 1 - y],
-                    "not symmetric at {x},{y}"
-                );
-            }
-        }
-        for (x, y) in [(19, 19), (20, 19), (19, 20), (20, 20)] {
-            assert_eq!(default[y * SIZE + x], 0x6600_0000);
-            let pixel = crosshair[y * SIZE + x];
-            assert!(pixel >> 24 == 255 && (pixel >> 16) & 255 > (pixel >> 8) & 255);
-        }
-        for index in 0..SIZE * SIZE {
-            let (x, y) = (index % SIZE, index / SIZE);
-            if (17..23).contains(&x) && (17..23).contains(&y) {
-                assert_eq!(default[index], 0x6600_0000);
-                if (19..21).contains(&x) && (19..21).contains(&y) {
-                    assert_eq!(crosshair[index], 0xffff_4ead);
-                }
-            } else {
-                assert_eq!(
-                    default[index], crosshair[index],
-                    "they differ outside the center at {x},{y}"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn the_resize_arrows_share_the_cross_and_point_the_right_way() {
-        for name in ["size_hor", "size_ver", "size_fdiag", "size_bdiag"] {
-            let data = fs::read(root().join("cursors").join(name)).unwrap();
-            assert_eq!(u32_at(&data, 12), 2, "{name} has not two frames");
-            for index in 0..2 {
-                let offset = u32_at(&data, 24 + 12 * index) as usize;
-                assert_eq!(
-                    (
-                        u32_at(&data, offset + 24),
-                        u32_at(&data, offset + 28),
-                        u32_at(&data, offset + 32)
-                    ),
-                    (20, 20, 167),
-                    "{name} hotspot or delay"
-                );
-                let image = pixels(&data, index);
-                for y in 17..23 {
-                    for x in 17..23 {
-                        assert_eq!(image[y * SIZE + x], 0x6600_0000, "{name} center at {x},{y}");
-                    }
-                }
-                if index == 0 {
-                    let at = |x: usize, y: usize| image[y * SIZE + x] != 0;
-                    let (nw, ne, sw, se) = (at(11, 11), at(28, 11), at(11, 28), at(28, 28));
-                    match name {
-                        "size_fdiag" => assert!(nw && se && !ne && !sw),
-                        "size_bdiag" => assert!(ne && sw && !nw && !se),
-                        _ => assert!(!(nw || ne || sw || se), "{name} reaches a corner"),
-                    }
-                }
-            }
-        }
-    }
-}
-
 #[test]
-fn the_plasma_themes_select_the_black_and_pink_parts() {
-    let share = dotfiles().join("kde-plasma/.local/share/plasma");
-    let theme = share.join("desktoptheme/blacknpink");
-    assert_eq!(
-        json(theme.join("metadata.json"))["KPlugin"]["Id"],
-        "blacknpink"
-    );
-    assert!(has_line(theme.join("plasmarc"), "FallbackTheme=default"));
-    let global = share.join("look-and-feel/org.myconfig.blacknpink.desktop");
-    let metadata = json(global.join("metadata.json"));
-    assert_eq!(metadata["KPackageStructure"], "Plasma/LookAndFeel");
-    assert_eq!(metadata["KPlugin"]["Id"], "org.myconfig.blacknpink.desktop");
-    for line in [
-        "ColorScheme=BlackPink",
-        "name=blacknpink",
-        "cursorTheme=blacknpink-crosshair",
-    ] {
-        assert!(
-            has_line(global.join("contents/defaults"), line),
-            "the global theme lacks {line}"
-        );
-    }
-    let panel = theme.join("widgets/panel-background.svg");
-    let svg = text(&panel);
-    for (element, meaning) in [
-        (
-            r#"id="thick-hint-right-margin" x="95" y="-56" width="4" height="4""#,
-            "4-pixel floating-panel trailing margin",
-        ),
-        (
-            r#"id="thick-hint-left-margin" x="95" y="-20" width="4" height="8""#,
-            "Breeze floating-panel leading margin",
-        ),
-        (
-            r#"id="hint-top-margin" x="20" y="10" width="4" height="4""#,
-            "top panel vertical content margin",
-        ),
-        (
-            r#"id="hint-left-margin" x="0" y="30" width=".00000001" height="4""#,
-            "Overview control reaching the screen edge",
-        ),
-    ] {
-        assert!(
-            svg.contains(element),
-            "the panel background lost its {meaning}"
-        );
-    }
-    let scratch = Scratch::new("panel-render");
-    run(Command::new("resvg")
-        .arg(&panel)
-        .arg(scratch.0.join("panel.png")));
-}
-
-#[test]
-fn the_user_services_and_autostart_entry_are_valid() {
+fn the_user_services_are_valid() {
     let scratch = Scratch::new("units");
     let unit = |package: &str, name: &str| {
         dotfiles()
@@ -719,15 +308,12 @@ fn the_user_services_and_autostart_entry_are_valid() {
     };
     run(Command::new("systemd-analyze")
         .arg("verify")
-        .arg(unit("kde-plasma", "myconfig-kde-plasma-layout.service"))
-        .arg(unit("kde-plasma", "myconfig-kde-plasma-glass.service")));
+        .arg(copy(unit("plasma", "myconfig-plasma-layout.service"))));
     run(Command::new("systemd-analyze")
         .arg("verify")
         .arg(copy(unit("kanata", "myconfig-kanata.service")))
         .arg(copy(unit("kanata-kde", "myconfig-kanata-tray.service")))
         .arg(copy(unit("handy", "myconfig-handy.service"))));
-    run(Command::new("desktop-file-validate")
-        .arg(dotfiles().join("kde-plasma/.config/autostart/myconfig-kde-plasma-layout.desktop")));
 }
 
 #[test]
@@ -784,17 +370,17 @@ fn the_plasma_layout_script_backs_up_once_and_defers_without_plasma() {
     let home = scratch.0.join("home");
     let bin = scratch.0.join("bin");
     fs::create_dir_all(home.join(".config")).unwrap();
-    fs::create_dir_all(home.join(".local/share/myconfig/kde-plasma")).unwrap();
+    fs::create_dir_all(home.join(".local/share/myconfig-plasma")).unwrap();
     fs::create_dir_all(&bin).unwrap();
-    let script = home.join("myconfig-kde-plasma-layout");
+    let script = home.join("myconfig-plasma-layout");
     fs::copy(
-        dotfiles().join("kde-plasma/.local/bin/myconfig-kde-plasma-layout"),
+        dotfiles().join("plasma/.local/bin/myconfig-plasma-layout"),
         &script,
     )
     .unwrap();
     fs::copy(
-        dotfiles().join("kde-plasma/.local/share/myconfig/kde-plasma/layout.js"),
-        home.join(".local/share/myconfig/kde-plasma/layout.js"),
+        dotfiles().join("plasma/.local/share/myconfig-plasma/layout.js"),
+        home.join(".local/share/myconfig-plasma/layout.js"),
     )
     .unwrap();
     let applets = home.join(".config/plasma-org.kde.plasma.desktop-appletsrc");
@@ -802,7 +388,7 @@ fn the_plasma_layout_script_backs_up_once_and_defers_without_plasma() {
     let qdbus = bin.join("qdbus6");
     fs::write(
         &qdbus,
-        "#!/usr/bin/env bash\nif [ \"$#\" -eq 2 ]; then exit \"${MYCONFIG_PLASMA_DBUS_STATUS:-0}\"; fi\nprintf '%s\\n' \"${MYCONFIG_PLASMA_EVALUATE_OUTPUT:-MYCONFIG_STATUS=ok:screens=2}\"\n",
+        "#!/usr/bin/env bash\nif [ \"$#\" -eq 2 ]; then exit \"${MYCONFIG_PLASMA_DBUS_STATUS:-0}\"; fi\nprintf '%s\\n' \"${MYCONFIG_PLASMA_EVALUATE_OUTPUT:-MYCONFIG_PLASMA_LAYOUT=ok:version=7:screens=2}\"\n",
     )
     .unwrap();
     fs::set_permissions(&qdbus, fs::Permissions::from_mode(0o755)).unwrap();
@@ -828,8 +414,8 @@ fn the_plasma_layout_script_backs_up_once_and_defers_without_plasma() {
 
     assert!(layout(&[]).status.success());
     assert_eq!(
-        text(home.join(".local/state/myconfig/kde-plasma-layout-version")).trim(),
-        "5"
+        text(home.join(".local/state/myconfig/plasma-layout-version")).trim(),
+        "7"
     );
     assert_eq!(
         backups().len(),
@@ -842,7 +428,7 @@ fn the_plasma_layout_script_backs_up_once_and_defers_without_plasma() {
     assert!(
         !layout(&[(
             "MYCONFIG_PLASMA_EVALUATE_OUTPUT",
-            "MYCONFIG_STATUS=missing:org.kde.plasma.icontasks"
+            "MYCONFIG_PLASMA_LAYOUT=missing:org.kde.plasma.icontasks"
         )])
         .status
         .success(),
@@ -854,4 +440,63 @@ fn the_plasma_layout_script_backs_up_once_and_defers_without_plasma() {
             .code(),
         Some(75)
     );
+}
+
+#[test]
+fn the_launcher_command_hides_installed_entries_and_leaves_files_it_did_not_write() {
+    let scratch = Scratch::new("launcher-hide");
+    let system = scratch.0.join("system/applications");
+    let home = scratch.0.join("home/applications");
+    fs::create_dir_all(&system).unwrap();
+    fs::create_dir_all(&home).unwrap();
+    fs::write(
+        system.join("assistant.desktop"),
+        "[Desktop Entry]\nName=Qt Assistant\nNoDisplay=false\nExec=assistant\n\n[Desktop Action new]\nNoDisplay=false\n",
+    )
+    .unwrap();
+    fs::write(
+        system.join("designer.desktop"),
+        "[Desktop Entry]\nName=Designer\n",
+    )
+    .unwrap();
+    fs::write(
+        home.join("designer.desktop"),
+        "[Desktop Entry]\nName=Mine\n",
+    )
+    .unwrap();
+    fs::write(
+        home.join("lstopo.desktop"),
+        "# Generated by myconfig-launcher-hide from /old/lstopo.desktop\n[Desktop Entry]\n",
+    )
+    .unwrap();
+    let hide = || {
+        run(
+            Command::new(dotfiles().join("plasma/.local/bin/myconfig-launcher-hide"))
+                .env("XDG_DATA_DIRS", scratch.0.join("system"))
+                .env("XDG_DATA_HOME", scratch.0.join("home"))
+                .env("PATH", "/usr/bin:/bin"),
+        );
+    };
+    hide();
+    assert_eq!(
+        text(home.join("assistant.desktop")),
+        format!(
+            "# Generated by myconfig-launcher-hide from {}\n[Desktop Entry]\nNoDisplay=true\nName=Qt Assistant\nExec=assistant\n\n[Desktop Action new]\nNoDisplay=false\n",
+            system.join("assistant.desktop").display()
+        )
+    );
+    assert_eq!(
+        text(home.join("designer.desktop")),
+        "[Desktop Entry]\nName=Mine\n",
+        "a file it did not write was replaced"
+    );
+    assert!(
+        !home.join("lstopo.desktop").exists(),
+        "the copy of an uninstalled entry stayed"
+    );
+    let installed =
+        text(system.join("assistant.desktop")).replace("Exec=assistant", "Exec=assistant6");
+    fs::write(system.join("assistant.desktop"), installed).unwrap();
+    hide();
+    assert!(has_line(home.join("assistant.desktop"), "Exec=assistant6"));
 }

@@ -77,12 +77,13 @@
 
 ### Font Stack
 
-| Role                      | Font      | Fallback                                           |
-| ------------------------- | --------- | -------------------------------------------------- |
-| **Monospace / primary**   | `Iosevka` | `ui-monospace`, `Menlo`, `Consolas`, `Courier New` |
-| **Sans-serif (optional)** | `Inter`   | `system-ui`, `sans-serif`                          |
+| Role                     | Font             | Fallback                                           |
+| ------------------------ | ---------------- | -------------------------------------------------- |
+| **Sans-serif / primary** | `IBM Plex Sans`  | `system-ui`, `sans-serif`                          |
+| **Monospace**            | `IBM Plex Mono`  | `ui-monospace`, `Menlo`, `Consolas`, `Courier New` |
+| **Serif**                | `IBM Plex Serif` | `Georgia`, `serif`                                 |
 
-> Everything defaults to **Iosevka** — consistent monospace across web, editor and terminal.
+> Interfaces use **IBM Plex Sans**, code and terminals use **IBM Plex Mono**, and long reading text uses **IBM Plex Serif**. Where a program draws Nerd Font icons, Mono is the patched **BlexMono Nerd Font**.
 
 ### Type Scale
 
@@ -365,7 +366,7 @@ surface-fade   : linear-gradient(to bottom, #111111, #000000)
 
 - **Black first** — backgrounds are always as dark as possible, surfaces rise gradually
 - **Pink is sparse** — it guides the eye, never decorates for decoration's sake
-- **Monospace everywhere** — Iosevka across web, editor and terminal, no font mixing
+- **One type family** — IBM Plex everywhere: Sans for interfaces, Mono for code, Serif for reading
 - **Soft shadows** — shadows use muted warm-gray, never harsh black opaque drops
 - **Semantic over aesthetic** — every color choice has a function
 - **Consistent elevation** — `#000000` → `#0a0a0a` → `#111111` → `#1a1a1a`, always in that order

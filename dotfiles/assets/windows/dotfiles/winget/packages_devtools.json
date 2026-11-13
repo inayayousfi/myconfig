@@ -18,6 +18,9 @@
         },
         {
           "PackageIdentifier": "Docker.DockerDesktop"
+        },
+        {
+          "PackageIdentifier": "VSCodium.VSCodium"
         }
       ],
       "SourceDetails": {

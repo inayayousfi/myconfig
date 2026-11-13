@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+
+# Creates the top bar and dock on every display through Plasma's scripting
+# interface. Set MYCONFIG_PLASMA_ENSURE_OVERVIEW=1 to pin the Overview icon again.
+# Exits 75 when KDE Plasma is not running.
+
+set -euo pipefail
+
+layout="$HOME/.local/share/myconfig-plasma/layout.js"
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/myconfig"
+state_file="$state_dir/plasma-layout-version"
+applets="$HOME/.config/plasma-org.kde.plasma.desktop-appletsrc"
+
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
+
+command -v qdbus6 >/dev/null 2>&1 || {
+    printf 'qdbus6 is required to configure KDE Plasma\n' >&2
+    exit 1
+}
+[ -f "$layout" ] || {
+    printf 'Plasma layout script not found: %s\n' "$layout" >&2
+    exit 1
+}
+qdbus6 org.kde.plasmashell /PlasmaShell >/dev/null 2>&1 || exit 75
+
+first_run=true
+[ ! -s "$state_file" ] || first_run=false
+if [ "$first_run" = true ] && [ -f "$applets" ]; then
+    backup="$applets.backup.$(date +%Y%m%d_%H%M%S)"
+    suffix=1
+    while [ -e "$backup" ]; do
+        backup="$applets.backup.$(date +%Y%m%d_%H%M%S).$suffix"
+        suffix=$((suffix + 1))
+    done
+    cp -a "$applets" "$backup"
+fi
+
+ensure_overview=false
+[ "${MYCONFIG_PLASMA_ENSURE_OVERVIEW:-}" != 1 ] || ensure_overview=true
+
+script="const myconfigFirstRun = $first_run;
+const myconfigEnsureOverview = $ensure_overview;
+$(<"$layout")"
+output="$(qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript "$script")"
+
+case "$output" in
+    *MYCONFIG_PLASMA_LAYOUT=ok:version=*)
+        layout_version="${output##*MYCONFIG_PLASMA_LAYOUT=ok:version=}"
+        layout_version="${layout_version%%:*}"
+        ;;
+    *MYCONFIG_PLASMA_LAYOUT=missing:*)
+        printf 'KDE Plasma layout requires installed widgets: %s\n' "${output##*MYCONFIG_PLASMA_LAYOUT=missing:}" >&2
+        exit 1
+        ;;
+    *MYCONFIG_PLASMA_LAYOUT=error:*)
+        printf 'KDE Plasma layout failed: %s\n' "${output##*MYCONFIG_PLASMA_LAYOUT=error:}" >&2
+        exit 1
+        ;;
+    *)
+        printf 'KDE Plasma did not confirm the layout update: %s\n' "$output" >&2
+        exit 1
+        ;;
+esac
+
+mkdir -p "$state_dir"
+printf '%s\n' "$layout_version" >"$state_file"

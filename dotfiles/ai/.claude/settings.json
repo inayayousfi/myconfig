@@ -6,29 +6,20 @@
     "baseRef": "fresh"
   },
   "workflowKeywordTriggerEnabled": false,
-  "enabledPlugins": {
-    "posthog@claude-plugins-official": true,
-    "stripe@claude-plugins-official": true,
-    "cloudflare@cloudflare": true
-  },
-  "extraKnownMarketplaces": {
-    "cloudflare": {
-      "source": {
-        "source": "github",
-        "repo": "cloudflare/skills"
-      }
-    }
-  },
   "effortLevel": "medium",
+  "autoCompactWindow": 400000,
+  "cleanupPeriodDays": 400,
+  "promptSuggestionEnabled": false,
   "awaySummaryEnabled": false,
   "skipDangerousModePermissionPrompt": true,
   "theme": "dark",
   "editorMode": "vim",
-  "verbose": true,
-  "preferredNotifChannel": "auto",
+  "verbose": false,
+  "spinnerTipsEnabled": false,
+  "preferredNotifChannel": "notifications_disabled",
   "switchModelsOnFlag": false,
+  "remoteControlAtStartup": true,
   "inputNeededNotifEnabled": true,
   "agentPushNotifEnabled": true,
-  "useAutoModeDuringPlan": false,
-  "remoteControlAtStartup": true
+  "useAutoModeDuringPlan": false
 }

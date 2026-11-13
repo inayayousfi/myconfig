@@ -1,5 +1,5 @@
-//! The Black & Pink KDE Plasma look, panels, input settings and Glass effect.
-use std::{fs, path::Path};
+//! KDE Plasma with Breeze Dark, the pink accent, IBM Plex fonts, a top bar and a dock.
+use std::{collections::BTreeSet, fs, path::Path};
 
 use embedded_dotfiles::DOTFILES;
 use typed_fs_rs::EmbeddedDirectory;
@@ -16,48 +16,49 @@ use crate::{
 
 pub struct KdePlasma;
 
-const PACKAGES: &[Package] = &[
-    Package::IosevkaFont,
-    Package::DesktopFileUtils,
-    Package::Libinput,
-];
-const LOOK_AND_FEEL: &str = "org.myconfig.blacknpink.desktop";
-const CURSOR_THEME: &str = "blacknpink-crosshair";
-const CURSOR_SIZE: &str = "40";
-const GLASS_PACKAGE: &str = "myconfig-kde-glass";
-const GLASS_DATA: &str = "/usr/share/myconfig/kde-glass";
-const POINTER_PLUGIN: &str = "/etc/libinput/plugins/90-myconfig-pointer-sensitivity.lua";
-const GLASS_SERVICE: &str = "myconfig-kde-plasma-glass.service";
+const PACKAGES: &[Package] = &[Package::PlexFonts, Package::BlexMonoFont, Package::Libinput];
+const LOOK_AND_FEEL: &str = "org.kde.breezedark.desktop";
+/// The pink that Black & Pink uses in the terminal and Zsh.
+const ACCENT_COLOR: &str = "255,78,173";
+const CURSOR_THEME: &str = "breeze_cursors";
+const CURSOR_SIZE: &str = "24";
+const LIBINPUT_PLUGINS: &str = "/etc/libinput/plugins";
+const LAYOUT_SERVICE: &str = "myconfig-plasma-layout.service";
+const WINDOW_RULE: &str = "myconfig-picture-in-picture";
 
-const REQUIRED_FILES: [&str; 12] = [
-    ".local/bin/myconfig-kde-plasma-glass-repair",
-    ".local/share/color-schemes/BlackPink.colors",
-    ".local/share/plasma/desktoptheme/blacknpink/metadata.json",
-    ".local/share/plasma/desktoptheme/blacknpink/widgets/panel-background.svg",
-    ".local/share/plasma/desktoptheme/blacknpink/dialogs/background.svg",
-    ".local/share/plasma/desktoptheme/blacknpink/solid/dialogs/background.svg",
-    ".local/share/plasma/look-and-feel/org.myconfig.blacknpink.desktop/metadata.json",
-    ".local/share/plasma/look-and-feel/org.myconfig.blacknpink.desktop/contents/defaults",
-    ".local/share/kwin/scripts/myconfig-plasma-panels/metadata.json",
-    ".local/share/kwin/scripts/myconfig-plasma-panels/contents/code/main.js",
-    ".config/systemd/user/myconfig-kde-plasma-layout.service",
-    ".config/systemd/user/myconfig-kde-plasma-glass.service",
+const LAYOUT_COMMAND: &str = ".local/bin/myconfig-plasma-layout";
+const LAUNCHER_HIDE_COMMAND: &str = ".local/bin/myconfig-launcher-hide";
+const PANEL_SCRIPT: &str = ".local/share/kwin/scripts/myconfig-panels/metadata.json";
+
+/// The fonts that the `plasma` package's fontconfig file makes the defaults for programs
+/// that ask for a kind of font instead of naming one.
+const FONT_KINDS: [(&str, &str); 3] = [
+    ("sans-serif", "IBM Plex Sans"),
+    ("serif", "IBM Plex Serif"),
+    ("monospace", "BlexMono Nerd Font Mono"),
 ];
 
-/// Every KDE key this module sets, with its value.
+/// Every KDE key this module sets, with its value. The window rule keys are separate,
+/// because the rule list depends on the rules already present.
 pub(crate) fn kde_settings() -> Vec<(Setting, &'static str)> {
-    let font = "Iosevka Nerd Font,12,-1,5,50,0,0,0,0,0";
-    let small = "Iosevka Nerd Font,10,-1,5,50,0,0,0,0,0";
+    let font = "IBM Plex Sans,12,-1,5,50,0,0,0,0,0";
+    let fixed = "BlexMono Nerd Font Mono,12,-1,5,50,0,0,0,0,0";
+    let small = "IBM Plex Sans,10,-1,5,50,0,0,0,0,0";
     let mut settings = Vec::new();
+    let mut add = |file: &str, groups: &[&str], key: &str, value: &'static str| {
+        settings.push((Setting::kde(file, groups, key), value));
+    };
     for (group, key, value) in [
         ("General", "font", font),
-        ("General", "fixed", font),
+        ("General", "fixed", fixed),
         ("General", "menuFont", font),
         ("General", "toolBarFont", font),
         ("General", "smallestReadableFont", small),
         ("WM", "activeFont", font),
+        ("KDE", "AnimationDurationFactor", "0.25"),
+        ("KDE", "SingleClick", "true"),
     ] {
-        settings.push((Setting::kde("kdeglobals", &[group], key), value));
+        add("kdeglobals", &[group], key, value);
     }
     for (group, key, value) in [
         ("Windows", "PerOutputVirtualDesktops", "true"),
@@ -65,8 +66,47 @@ pub(crate) fn kde_settings() -> Vec<(Setting, &'static str)> {
         ("EdgeBarrier", "CornerBarrier", "false"),
         ("EdgeBarrier", "EdgeBarrier", "0"),
         ("Effect-overview", "BorderActivate", "9"),
+        ("Plugins", "myconfig-panelsEnabled", "true"),
     ] {
-        settings.push((Setting::kde("kwinrc", &[group], key), value));
+        add("kwinrc", &[group], key, value);
+    }
+    // Plasma turns on Do Not Disturb while a window is fullscreen, which hides every
+    // notification until the window leaves fullscreen.
+    add(
+        "plasmanotifyrc",
+        &["DoNotDisturb"],
+        "WhenFullscreen",
+        "false",
+    );
+    // Without Ark, Dolphin opens zip, tar and 7z archives as folders.
+    add("dolphinrc", &["General"], "BrowseThroughArchives", "true");
+    add(
+        "kglobalshortcutsrc",
+        &["services", "org.kde.krunner.desktop"],
+        "_launch",
+        "Search\tAlt+F2\tMeta+Space",
+    );
+    add(
+        "baloofilerc",
+        &["Basic Settings"],
+        "Indexing-Enabled",
+        "false",
+    );
+    add("plasmaparc", &["General"], "RaiseMaximumVolume", "true");
+    // Closing the lid sleeps even while an external display is connected.
+    for state in ["AC", "Battery", "LowBattery"] {
+        add(
+            "powerdevilrc",
+            &[state, "SuspendAndShutdown"],
+            "LidAction",
+            "1",
+        );
+        add(
+            "powerdevilrc",
+            &[state, "SuspendAndShutdown"],
+            "InhibitLidActionWhenExternalMonitorPresent",
+            "false",
+        );
     }
     for (device, key, value) in [
         ("Pointer", "PointerAcceleration", "1.000"),
@@ -77,194 +117,68 @@ pub(crate) fn kde_settings() -> Vec<(Setting, &'static str)> {
         ("Touchpad", "TapDragLock", "true"),
         ("Touchpad", "ClickMethod", "2"),
     ] {
-        settings.push((
-            Setting::kde("kcminputrc", &["Libinput", "Defaults", device], key),
-            value,
-        ));
+        add("kcminputrc", &["Libinput", "Defaults", device], key, value);
     }
-    settings.push((
-        Setting::kde("kcminputrc", &["Mouse"], "cursorSize"),
-        CURSOR_SIZE,
-    ));
+    // libinput enables button scrolling on the Wooting Two HE mouse device by default. It
+    // holds every middle-button press until release, so no program ever sees the middle
+    // button held down.
+    add(
+        "kcminputrc",
+        &[
+            "Libinput",
+            "12771",
+            "4657",
+            "Wooting Wooting Two HE (ARM) Mouse",
+        ],
+        "ScrollMethod",
+        "0",
+    );
+    add("kcminputrc", &["Mouse"], "cursorSize", CURSOR_SIZE);
     settings
 }
 
-fn glass_package_version() -> ModuleResult<String> {
-    let content = std::str::from_utf8(DOTFILES.assets.kde_plasma.kde_glass.PKGBUILD.content)?;
-    let value = |key: &str| -> ModuleResult<&str> {
-        content
-            .lines()
-            .find_map(|line| line.strip_prefix(key))
-            .filter(|value| {
-                !value.is_empty()
-                    && value
-                        .bytes()
-                        .all(|byte| byte.is_ascii_alphanumeric() || b".-_".contains(&byte))
-            })
-            .ok_or_else(|| format!("Glass PKGBUILD has no simple {key} value").into())
-    };
-    Ok(format!(
-        "{} {}-{}",
-        value("pkgname=")?,
-        value("pkgver=")?,
-        value("pkgrel=")?
-    ))
+/// The picture-in-picture window rule. KWin rule values: `titlematch` 3 is a regular
+/// expression, and a rule type of 2 forces the property. Firefox titles its French player
+/// "Incrustation vidéo".
+fn window_rule_settings() -> Vec<(Setting, &'static str)> {
+    [
+        (
+            "Description",
+            "Hide picture-in-picture windows from screen capture",
+        ),
+        ("title", "(?i)picture[ -]?in[ -]?picture|incrustation vidéo"),
+        ("titlematch", "3"),
+        ("excludefromcapture", "true"),
+        ("excludefromcapturerule", "2"),
+    ]
+    .into_iter()
+    .map(|(key, value)| (Setting::kde("kwinrulesrc", &[WINDOW_RULE], key), value))
+    .collect()
 }
 
-fn glass_effect_id() -> ModuleResult<String> {
-    let effect = fs::read_to_string(Path::new(GLASS_DATA).join("effect-id"))?;
-    let effect = effect.trim();
-    if !effect.starts_with("myconfig_glass_")
-        || !effect
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
-    {
-        return Err(format!("invalid Glass effect identifier: {effect}").into());
-    }
-    Ok(effect.to_owned())
+fn rule_list() -> Setting {
+    Setting::kde("kwinrulesrc", &["General"], "rules")
 }
 
-fn plugin_enabled(effect: &str) -> Setting {
-    Setting::kde("kwinrc", &["Plugins"], &format!("{effect}Enabled"))
+fn configure_window_rules(ctx: &Context) -> ModuleResult {
+    for (setting, value) in window_rule_settings() {
+        ctx.set(setting, value)?;
+    }
+    let current = rule_list().read(ctx)?.unwrap_or_default();
+    let mut rules: Vec<&str> = current.split(',').filter(|rule| !rule.is_empty()).collect();
+    if !rules.contains(&WINDOW_RULE) {
+        rules.push(WINDOW_RULE);
+    }
+    ctx.set(rule_list(), &rules.join(","))?;
+    ctx.set(
+        Setting::kde("kwinrulesrc", &["General"], "count"),
+        &rules.len().to_string(),
+    )
 }
 
-/// Builds the Glass KWin effect for the installed KWin and turns it on in place of Blur.
-fn install_glass(ctx: &Context) -> ModuleResult {
-    let sh = ctx.shell;
-    let data = Path::new(GLASS_DATA);
-    let previous = fs::read_to_string(data.join("effect-id")).unwrap_or_default();
-    let built_for = fs::read_to_string(data.join("kwin-version")).unwrap_or_default();
-    let kwin = ctx.read(cmd!(sh, "pacman -Q kwin"))?;
-    let expected = glass_package_version()?;
-    let (was_installed, installed) = ctx.read_unchecked(cmd!(sh, "pacman -Q {GLASS_PACKAGE}"))?;
-    if !was_installed || installed != expected || built_for.trim() != kwin {
-        ctx.find_program("makepkg")?;
-        let build = crate::context::temporary_path("glass");
-        fs::create_dir(&build)?;
-        let result = (|| -> ModuleResult {
-            for file in DOTFILES.assets.kde_plasma.kde_glass.files() {
-                let name = Path::new(file.path_from_root)
-                    .file_name()
-                    .ok_or("Glass resource has no name")?;
-                myconfig_utils::install_embedded_file(file, &build.join(name))?;
-            }
-            let _cwd = sh.push_dir(&build);
-            ctx.run(cmd!(sh, "makepkg --syncdeps --noconfirm"))?;
-            let mut packages = fs::read_dir(&build)?
-                .filter_map(Result::ok)
-                .map(|entry| entry.path())
-                .filter(|path| {
-                    path.file_name().is_some_and(|name| {
-                        let name = name.to_string_lossy();
-                        name.starts_with("myconfig-kde-glass-") && name.ends_with(".pkg.tar.zst")
-                    })
-                });
-            let package = packages.next().ok_or("Glass build produced no package")?;
-            if packages.next().is_some() {
-                return Err("Glass build produced multiple matching packages".into());
-            }
-            if !was_installed {
-                ctx.local_package_installed(GLASS_PACKAGE)?;
-            }
-            let elevate = sh
-                .var_os("MYCONFIG_GLASS_ELEVATE")
-                .filter(|value| !value.is_empty())
-                .unwrap_or_else(|| "sudo".into());
-            ctx.run(cmd!(sh, "{elevate} pacman -U --noconfirm {package}"))
-        })();
-        if let Err(error) = result {
-            return Err(format!(
-                "Glass build failed; build files retained in {}: {error}",
-                build.display()
-            )
-            .into());
-        }
-        fs::remove_dir_all(build)?;
-    }
-    let effect = glass_effect_id()?;
-    let config = std::str::from_utf8(
-        DOTFILES
-            .kde_plasma
-            ._local
-            .share
-            .myconfig
-            .kde_plasma
-            .glass_conf
-            .content,
-    )?;
-    for line in config.lines() {
-        if line.is_empty() || line.starts_with('[') {
-            continue;
-        }
-        let (key, value) = line.split_once('=').ok_or("invalid Glass setting")?;
-        ctx.set(Setting::kde("kwinrc", &["Effect-blurplus"], key), value)?;
-    }
-    for old in ["blur", "glass", "myconfig_glass", previous.trim()] {
-        if !old.is_empty() && old != effect {
-            ctx.set(plugin_enabled(old), "false")?;
-        }
-    }
-    ctx.set(plugin_enabled(&effect), "true")
-}
-
-/// Loads Glass into the running KWin, falling back to Blur when KWin rejects it.
-fn activate_glass(ctx: &Context) -> ModuleResult {
-    let sh = ctx.shell;
-    let effect = glass_effect_id()?;
-    let loaded = ctx.read(cmd!(
-        sh,
-        "qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.loadedEffects"
-    ))?;
-    for old in loaded.lines().filter(|name| {
-        matches!(*name, "blur" | "glass" | "myconfig_glass") || name.starts_with("myconfig_glass_")
-    }) {
-        ctx.run(cmd!(
-            sh,
-            "qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.unloadEffect {old}"
-        ))?;
-        if old != effect {
-            ctx.set(plugin_enabled(old), "false")?;
-        }
-    }
-    let loaded = ctx.read(cmd!(
-        sh,
-        "qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.loadEffect {effect}"
-    ));
-    let ready = matches!(loaded.as_deref(), Ok("true"))
-        && ctx
-            .run(cmd!(
-                sh,
-                "qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.reconfigureEffect {effect}"
-            ))
-            .is_ok()
-        && ctx
-            .read(cmd!(
-                sh,
-                "qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.debug {effect} ''"
-            ))
-            .is_ok_and(|result| result.starts_with("valid=1 shaders=1 "));
-    if ready {
-        return Ok(());
-    }
-    let _ = ctx.succeeds(cmd!(
-        sh,
-        "qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.unloadEffect {effect}"
-    ));
-    ctx.set(plugin_enabled(&effect), "false")?;
-    if matches!(
-        ctx.read(cmd!(
-            sh,
-            "qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.loadEffect blur"
-        ))
-        .as_deref(),
-        Ok("true")
-    ) {
-        ctx.set(plugin_enabled("blur"), "true")?;
-    }
-    Err(format!("KWin could not initialize Glass: {effect}").into())
-}
-
-/// Sets the GTK cursor size inside files that already have a size line.
+/// Sets the GTK cursor size inside files that already have a size line. Plasma's theme
+/// tool updates the KDE and X11 settings, but leaves these generated GTK settings at the
+/// old size in an existing session.
 pub(crate) fn set_gtk_cursor_size(ctx: &Context) -> ModuleResult {
     for (relative, prefix) in [
         (".gtkrc-2.0", "gtk-cursor-theme-size="),
@@ -296,14 +210,7 @@ pub(crate) fn set_gtk_cursor_size(ctx: &Context) -> ModuleResult {
     Ok(())
 }
 
-fn configure_appearance(ctx: &Context) -> ModuleResult {
-    for (setting, value) in kde_settings() {
-        ctx.set(setting, value)?;
-    }
-    require_file(
-        &ctx.home
-            .join(".local/share/icons/blacknpink-crosshair/cursors/default"),
-    )?;
+fn configure_cursor(ctx: &Context) -> ModuleResult {
     ctx.set(Setting::CursorTheme, CURSOR_THEME)?;
     set_gtk_cursor_size(ctx)?;
     if ctx.find_program("gsettings").is_ok()
@@ -322,72 +229,60 @@ fn configure_appearance(ctx: &Context) -> ModuleResult {
             CURSOR_SIZE,
         )?;
     }
-    ctx.set(plugin_enabled("myconfig-plasma-panels"), "true")
-}
-
-fn kwin_running(ctx: &Context) -> ModuleResult<bool> {
-    ctx.succeeds(cmd!(ctx.shell, "qdbus6 org.kde.KWin /KWin"))
-}
-
-/// Plasma files whose shape must agree with the Glass shader.
-const GLASS_CLIENTS: [&str; 3] = [
-    ".local/share/plasma/plasmoids/myconfig.island/contents/ui/main.qml",
-    ".local/share/plasma/desktoptheme/blacknpink/widgets/panel-background.svg",
-    ".local/share/plasma/desktoptheme/blacknpink/dialogs/background.svg",
-];
-
-/// Rebuilds Glass for the running KWin and reloads it. The Glass repair user service runs
-/// this at each Plasma login through `myconfig internal kde-plasma repair-glass`, so a
-/// KWin update never leaves a Glass build made for the previous version.
-pub fn repair_glass(ctx: &Context) -> ModuleResult {
-    ctx.state()
-        .borrow_mut()
-        .begin(crate::state::Action::Install)?;
-    ctx.set_module("kde-plasma");
-    let sh = ctx.shell;
-    let repaired = install_glass(ctx).and_then(|()| {
-        if !kwin_running(ctx)? {
-            return Err("KWin is not running".into());
-        }
-        activate_glass(ctx)
-    });
-    if let Err(error) = repaired {
-        ctx.set(plugin_enabled("blur"), "true")?;
-        let _ = ctx.succeeds(cmd!(
-            sh,
-            "qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.loadEffect blur"
-        ));
-        return Err(format!(
-            "Glass repair did not complete; KDE standard blur was requested: {error}"
-        )
-        .into());
-    }
-    // The deployed package may come from an older run, so refresh the files that must
-    // match the shader. They live in the generated ~/dotfiles tree, which is not recorded.
-    let package = Path::new("kde-plasma");
-    for relative in GLASS_CLIENTS {
-        let file = DOTFILES
-            .files()
-            .into_iter()
-            .find(|file| Path::new(file.path_from_root) == package.join(relative))
-            .ok_or_else(|| format!("embedded kde-plasma package is missing {relative}"))?;
-        let live = ctx.home.join(relative);
-        if fs::read(&live).ok().as_deref() != Some(file.content) {
-            fs::write(&live, file.content)?;
-        }
-    }
-    ctx.run(cmd!(
-        sh,
-        "qdbus6 org.kde.KWin /KWin org.kde.KWin.reconfigure"
-    ))?;
-    // Reloading the effect drops the blur regions of open windows, and they only register
-    // them again when Plasma restarts.
-    ctx.run(cmd!(
-        sh,
-        "systemctl --user try-restart plasma-plasmashell.service"
-    ))?;
-    ctx.note("Glass matches the running KWin version");
     Ok(())
+}
+
+fn require_default_fonts(ctx: &Context) -> ModuleResult {
+    let format = "%{family[0]}";
+    for (kind, family) in FONT_KINDS {
+        let resolved = ctx.read(cmd!(ctx.shell, "fc-match -f {format} {kind}"))?;
+        if resolved != family {
+            return Err(format!("{kind} resolves to {resolved} instead of {family}").into());
+        }
+    }
+    Ok(())
+}
+
+/// The libinput plugins, as their installed path and contents.
+fn libinput_plugins() -> Vec<(std::path::PathBuf, &'static [u8])> {
+    DOTFILES
+        .assets
+        .kde_plasma
+        .libinput
+        .files()
+        .into_iter()
+        .filter_map(|file| {
+            let name = Path::new(file.path_from_root).file_name()?;
+            Some((Path::new(LIBINPUT_PLUGINS).join(name), file.content))
+        })
+        .collect()
+}
+
+/// Runs `myconfig-launcher-hide` and records the launcher copies it creates.
+fn hide_launcher_entries(ctx: &Context) -> ModuleResult {
+    let applications = ctx.home.join(".local/share/applications");
+    let listing = |directory: &Path| -> BTreeSet<std::path::PathBuf> {
+        fs::read_dir(directory)
+            .map(|entries| {
+                entries
+                    .filter_map(Result::ok)
+                    .map(|entry| entry.path())
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    if !applications.exists() {
+        ctx.created(&applications, false)?;
+    }
+    let before = listing(&applications);
+    let command = ctx.home.join(LAUNCHER_HIDE_COMMAND);
+    let result = ctx.run(cmd!(ctx.shell, "{command}"));
+    for created in listing(&applications).difference(&before) {
+        ctx.created(created, false)?;
+    }
+    result.map_err(|error| {
+        format!("could not hide the development tools' launcher entries: {error}").into()
+    })
 }
 
 impl Module for KdePlasma {
@@ -409,43 +304,36 @@ impl Module for KdePlasma {
         require_programs(
             ctx,
             &[
+                "plasma-apply-colorscheme",
                 "plasma-apply-cursortheme",
                 "plasma-apply-lookandfeel",
                 "kwriteconfig6",
                 "kreadconfig6",
                 "qdbus6",
                 "fc-match",
-                "desktop-file-validate",
                 "systemctl",
                 "sudo",
             ],
         )?;
-        ctx.deploy_config("kde-plasma")?;
-        install_glass(ctx)?;
-        let pointer = DOTFILES
-            .assets
-            .kde_plasma
-            .libinput
-            ._90_myconfig_pointer_sensitivity_lua
-            .content;
-        ctx.write_system_file(Path::new(POINTER_PLUGIN), pointer, "0644")?;
-
+        ctx.deploy_config("plasma")?;
         let home = ctx.home;
-        require_executable(&home.join(".local/bin/myconfig-kde-plasma-layout"))?;
-        for relative in REQUIRED_FILES {
-            require_file(&home.join(relative))?;
+        require_executable(&home.join(LAYOUT_COMMAND))?;
+        require_executable(&home.join(LAUNCHER_HIDE_COMMAND))?;
+        require_file(&home.join(PANEL_SCRIPT))?;
+
+        for (path, contents) in libinput_plugins() {
+            ctx.write_system_file(&path, contents, "0644")?;
         }
-        let desktop = home.join(".config/autostart/myconfig-kde-plasma-layout.desktop");
-        ctx.run(cmd!(sh, "desktop-file-validate {desktop}"))?;
-        let font_name = "Iosevka Nerd Font";
-        if !ctx
-            .read(cmd!(sh, "fc-match {font_name}"))?
-            .contains("Iosevka")
-        {
-            return Err("Iosevka Nerd Font is not available after installation".into());
-        }
+        require_default_fonts(ctx)?;
+
         ctx.set(Setting::LookAndFeel, LOOK_AND_FEEL)?;
-        configure_appearance(ctx)?;
+        ctx.set(Setting::AccentColor, ACCENT_COLOR)?;
+        for (setting, value) in kde_settings() {
+            ctx.set(setting, value)?;
+        }
+        configure_window_rules(ctx)?;
+        configure_cursor(ctx)?;
+        hide_launcher_entries(ctx)?;
 
         let runtime = user_runtime_directory(ctx)?;
         let bus = sh
@@ -455,30 +343,27 @@ impl Module for KdePlasma {
         let _runtime = sh.push_env("XDG_RUNTIME_DIR", &runtime);
         let _bus = sh.push_env("DBUS_SESSION_BUS_ADDRESS", bus);
         ctx.run(cmd!(sh, "systemctl --user daemon-reload"))?;
-        ctx.enable_service(GLASS_SERVICE, ServiceScope::User)?;
-        if kwin_running(ctx)? {
-            activate_glass(ctx)?;
+        ctx.enable_service(LAYOUT_SERVICE, ServiceScope::User)?;
+        if ctx.succeeds(cmd!(sh, "qdbus6 org.kde.KWin /KWin"))? {
             ctx.run(cmd!(
                 sh,
                 "qdbus6 org.kde.KWin /KWin org.kde.KWin.reconfigure"
             ))?;
-        } else {
-            ctx.note("Glass will load at the next KDE Plasma login");
         }
 
         // The layout script rewrites the panel layout and records its own version.
         ctx.record_path(&home.join(".config/plasma-org.kde.plasma.desktop-appletsrc"))?;
-        ctx.record_path(&crate::state::state_directory(home).join("kde-plasma-layout-version"))?;
-        let layout = home.join(".local/bin/myconfig-kde-plasma-layout");
-        match ctx.run_status(cmd!(sh, "{layout}"))? {
-            Some(0) => ctx.run(cmd!(
-                sh,
-                "systemctl --user try-restart plasma-plasmashell.service"
-            )),
+        ctx.record_path(&crate::state::state_directory(home).join("plasma-layout-version"))?;
+        let layout = home.join(LAYOUT_COMMAND);
+        match ctx.run_status(cmd!(sh, "{layout}").env("MYCONFIG_PLASMA_ENSURE_OVERVIEW", "1"))? {
+            Some(0) => {
+                ctx.note("Applied the KDE Plasma top bar and dock");
+                Ok(())
+            }
             // The layout script exits with 75 when Plasma is not running.
             Some(75) => {
                 ctx.note(
-                    "KDE Plasma is not active; the layout will apply at the next KDE Plasma login",
+                    "KDE Plasma is not active; the top bar and dock will apply at the next KDE Plasma login",
                 );
                 Ok(())
             }
@@ -489,25 +374,31 @@ impl Module for KdePlasma {
     fn verify(&self, ctx: &Context) -> ModuleResult {
         require_supported_plasma(ctx)?;
         verify_packages(ctx, PACKAGES)?;
-        verify_package(ctx, "kde-plasma")?;
-        if !ctx.succeeds(cmd!(ctx.shell, "pacman -Q {GLASS_PACKAGE}"))? {
-            return Err(format!("{GLASS_PACKAGE} is not installed").into());
+        verify_package(ctx, "plasma")?;
+        for (path, _) in libinput_plugins() {
+            require_file(&path)?;
         }
-        require_file(Path::new(POINTER_PLUGIN))?;
-        if Setting::LookAndFeel.read(ctx)?.as_deref() != Some(LOOK_AND_FEEL) {
-            return Err("the Black & Pink global theme is not applied".into());
-        }
-        if Setting::CursorTheme.read(ctx)?.as_deref() != Some(CURSOR_THEME) {
-            return Err("the Black & Pink cursor theme is not applied".into());
-        }
-        for (setting, value) in kde_settings() {
+        require_default_fonts(ctx)?;
+        for (setting, value) in [
+            (Setting::LookAndFeel, LOOK_AND_FEEL),
+            (Setting::AccentColor, ACCENT_COLOR),
+            (Setting::CursorTheme, CURSOR_THEME),
+        ]
+        .into_iter()
+        .chain(kde_settings())
+        .chain(window_rule_settings())
+        {
             if setting.read(ctx)?.as_deref() != Some(value) {
                 return Err(format!("{} is not {value}", setting.describe()).into());
             }
         }
+        let rules = rule_list().read(ctx)?.unwrap_or_default();
+        if !rules.split(',').any(|rule| rule == WINDOW_RULE) {
+            return Err(format!("the KWin rule list lacks {WINDOW_RULE}").into());
+        }
         ctx.run(cmd!(
             ctx.shell,
-            "systemctl --user --quiet is-enabled {GLASS_SERVICE}"
+            "systemctl --user --quiet is-enabled {LAYOUT_SERVICE}"
         ))
     }
 

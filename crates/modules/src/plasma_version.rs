@@ -5,14 +5,14 @@ use crate::{Context, Footprint, Module, ModuleResult, support::require_programs}
 
 pub struct PlasmaVersion;
 
-/// KDE Plasma 6.7 through 6.x, which the panels, Glass and the layout script support.
+/// KDE Plasma 6.7 through 6.x, which the panels and the layout script support.
 pub(crate) fn require_supported_plasma(ctx: &Context) -> ModuleResult {
     require_programs(ctx, &["plasmashell", "pacman"])?;
     check_plasma_version(&ctx.read(cmd!(ctx.shell, "pacman -Q plasma-workspace"))?)
 }
 
 /// Accepts `pacman -Q plasma-workspace` output for KDE Plasma 6.7 through 6.x, which the
-/// panels, Glass and the layout script support.
+/// panels and the layout script support.
 fn check_plasma_version(output: &str) -> ModuleResult {
     let version = output
         .split_whitespace()

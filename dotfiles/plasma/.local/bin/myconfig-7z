@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# Runs the 7-Zip entries of Dolphin's context menu:
+#   myconfig-7z extract ARCHIVE...
+#   myconfig-7z compress 7z|zip FILE...
+set -u
+
+fail() {
+    notify-send --app-name=7-Zip --icon=dialog-error "7-Zip" "$1"
+    exit 1
+}
+
+# Prints BASE+EXTENSION, or "BASE 2"+EXTENSION and so on when it exists.
+free_path() {
+    local base="$1" extension="${2-}" path number=2
+    path="$base$extension"
+    while [ -e "$path" ]; do
+        path="$base $number$extension"
+        number=$((number + 1))
+    done
+    printf '%s\n' "$path"
+}
+
+extract() {
+    local archive name destination
+    for archive in "$@"; do
+        name="${archive##*/}"
+        case "$name" in
+            *.tar.*) name="${name%.tar.*}" ;;
+            *.*) name="${name%.*}" ;;
+        esac
+        destination="$(free_path "${archive%/*}/$name")"
+        # 7z only removes the outer compression layer of a tar archive.
+        case "$archive" in
+            *.tar | *.tar.* | *.tgz | *.tbz2 | *.txz | *.tzst)
+                mkdir -p -- "$destination" && tar -xf "$archive" -C "$destination"
+                ;;
+            *) 7z x -bso0 -bsp0 -y "-o$destination" -- "$archive" ;;
+        esac || {
+            rm -rf -- "$destination"
+            fail "Could not extract ${archive##*/}"
+        }
+    done
+}
+
+compress() {
+    local format="$1" parent name archive
+    shift
+    parent="${1%/*}"
+    if [ "$#" -eq 1 ]; then
+        name="${1##*/}"
+        [ -d "$1" ] || name="${name%.*}"
+    else
+        name="${parent##*/}"
+    fi
+    archive="$(free_path "$parent/$name" ".$format")"
+    (cd -- "$parent" && 7z a -bso0 -bsp0 "-t$format" -- "$archive" "${@##*/}") || {
+        rm -f -- "$archive"
+        fail "Could not create ${archive##*/}"
+    }
+}
+
+case "${1-}" in
+    extract)
+        shift
+        extract "$@"
+        ;;
+    compress)
+        shift
+        case "${1-}" in
+            7z | zip) compress "$@" ;;
+            *) fail "Unknown archive format: ${1-}" ;;
+        esac
+        ;;
+    *) fail "Unknown action: ${1-}" ;;
+esac

@@ -1,0 +1,10 @@
+[Unit]
+Description=Create the myconfig top bar and dock on every display
+After=plasma-plasmashell.service
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/myconfig-plasma-layout
+
+[Install]
+WantedBy=plasma-workspace.target

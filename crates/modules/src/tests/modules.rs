@@ -3,9 +3,9 @@ use std::{fs, os::unix::fs::PermissionsExt, path::Path};
 
 use super::{Answers, Sandbox};
 use crate::{
-    AgentConfigStowed, Base, CachyosSetup, Cli, Context, Docker, EmacsOptions, EmacsStowed,
-    EnvironmentInventory, Footprint, Ghostty, Handy, Kanata, KanataKde, Module, ModuleResult,
-    Package, PackageSystem, Runtimes, runner,
+    AgentConfigStowed, Base, CachyosSetup, Cli, Context, Docker, EnvironmentInventory, Footprint,
+    Ghostty, Handy, Kanata, KanataKde, Module, ModuleResult, Package, PackageSystem, Runtimes,
+    runner,
 };
 
 /// Fake system programs that keep their state under the sandbox, so modules run as on a
@@ -165,7 +165,7 @@ fn install_everything(sandbox: &Sandbox, packages: &[&str]) {
 fn every_linux_module_package_has_a_name_on_its_package_manager() {
     // A package without a name fails the install before the module changes anything.
     let sandbox = Sandbox::new("package-names");
-    let arch: [&dyn Module; 6] = [
+    let arch: [&dyn Module; 5] = [
         &Base {
             packages: Base::ARCH,
             unwanted: &[Package::CachyUpdate],
@@ -175,9 +175,6 @@ fn every_linux_module_package_has_a_name_on_its_package_manager() {
             retired_config: &[],
         },
         &Runtimes,
-        &EmacsStowed(EmacsOptions {
-            browser_terminal_firewall: true,
-        }),
         &crate::KdePlasma,
     ];
     let more: [&dyn Module; 13] = [
@@ -438,47 +435,6 @@ fn the_cli_unlinks_retired_config_and_remove_can_link_it_again() {
         .with(&io, |ctx| runner::remove(ctx, &[&cli], &[&cli], false))
         .unwrap();
     assert!(sandbox.home.join(".config/nvim/init.lua").exists());
-}
-
-#[test]
-fn emacs_opens_the_browser_terminal_only_to_private_networks() {
-    let sandbox = Sandbox::new("emacs-firewall");
-    system(&sandbox);
-    fs::create_dir_all(sandbox.home.join(".emacs.d")).unwrap();
-    fs::write(sandbox.home.join(".emacs.d/legacy"), "old\n").unwrap();
-    let emacs = EmacsStowed(EmacsOptions {
-        browser_terminal_firewall: true,
-    });
-    let io = Answers::new(None);
-    sandbox
-        .with(&io, |ctx| runner::install(ctx, &[&emacs]))
-        .unwrap();
-    for package in ["emacs-wayland", "sshfs", "ttf-iosevka-nerd", "ufw"] {
-        assert!(sandbox.installed(package), "{package} was not installed");
-    }
-    let rules = fs::read_to_string(sandbox.root.join("ufw/rules")).unwrap();
-    for subnet in ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"] {
-        assert!(rules.contains(&format!("from {subnet} to any port 18080,18081 proto tcp")));
-    }
-    assert_eq!(rules.lines().count(), 3);
-    assert!(sandbox.root.join("ufw/active").exists());
-    assert!(
-        !sandbox.home.join(".emacs.d").exists(),
-        "the old ~/.emacs.d would shadow the config"
-    );
-
-    sandbox
-        .with(&io, |ctx| runner::remove(ctx, &[&emacs], &[&emacs], false))
-        .unwrap();
-    assert_eq!(
-        fs::read_to_string(sandbox.root.join("ufw/rules")).unwrap(),
-        ""
-    );
-    assert!(!sandbox.root.join("ufw/active").exists());
-    assert_eq!(
-        fs::read_to_string(sandbox.home.join(".emacs.d/legacy")).unwrap(),
-        "old\n"
-    );
 }
 
 #[test]
@@ -889,12 +845,12 @@ fn the_gtk_cursor_size_changes_without_touching_other_settings() {
     for file in files {
         assert_eq!(
             fs::read_to_string(sandbox.home.join(file)).unwrap(),
-            "gtk-cursor-theme-size=40\nother-setting=preserved\n"
+            "gtk-cursor-theme-size=24\nother-setting=preserved\n"
         );
     }
     assert_eq!(
         fs::read_to_string(xsettings).unwrap(),
-        "Gtk/CursorThemeSize 40\nOther/Setting 1\n"
+        "Gtk/CursorThemeSize 24\nOther/Setting 1\n"
     );
 }
 
@@ -952,7 +908,35 @@ fn kde_keys_in_this_module_are_the_approved_values() {
         ("kwinrc/EdgeBarrier/EdgeBarrier", "0"),
         ("kwinrc/Effect-overview/BorderActivate", "9"),
         ("kwinrc/Windows/PerOutputVirtualDesktops", "true"),
-        ("kcminputrc/Mouse/cursorSize", "40"),
+        ("kcminputrc/Mouse/cursorSize", "24"),
+        (
+            "kdeglobals/General/font",
+            "IBM Plex Sans,12,-1,5,50,0,0,0,0,0",
+        ),
+        (
+            "kdeglobals/General/fixed",
+            "BlexMono Nerd Font Mono,12,-1,5,50,0,0,0,0,0",
+        ),
+        ("kdeglobals/KDE/AnimationDurationFactor", "0.25"),
+        ("kdeglobals/KDE/SingleClick", "true"),
+        ("kwinrc/Plugins/myconfig-panelsEnabled", "true"),
+        ("plasmanotifyrc/DoNotDisturb/WhenFullscreen", "false"),
+        ("dolphinrc/General/BrowseThroughArchives", "true"),
+        (
+            "kglobalshortcutsrc/services/org.kde.krunner.desktop/_launch",
+            "Search\tAlt+F2\tMeta+Space",
+        ),
+        ("baloofilerc/Basic Settings/Indexing-Enabled", "false"),
+        ("plasmaparc/General/RaiseMaximumVolume", "true"),
+        ("powerdevilrc/AC/SuspendAndShutdown/LidAction", "1"),
+        (
+            "powerdevilrc/LowBattery/SuspendAndShutdown/InhibitLidActionWhenExternalMonitorPresent",
+            "false",
+        ),
+        (
+            "kcminputrc/Libinput/12771/4657/Wooting Wooting Two HE (ARM) Mouse/ScrollMethod",
+            "0",
+        ),
         (
             "kcminputrc/Libinput/Defaults/Pointer/PointerAcceleration",
             "1.000",
@@ -978,4 +962,131 @@ fn kde_keys_in_this_module_are_the_approved_values() {
     ] {
         assert_eq!(kde(&sandbox, path).as_deref(), Some(value), "{path}");
     }
+}
+
+/// Stand-ins for the KDE programs the KDE Plasma module runs. Plasma is not running, so
+/// the layout script stops with its "not active" status.
+fn plasma(sandbox: &Sandbox) {
+    system(sandbox);
+    sandbox.fake("plasmashell", "exit 0");
+    sandbox.fake(
+        "plasma-apply-colorscheme",
+        r#"printf 'plasma-apply-colorscheme %s\n' "$*" >> "$MYCONFIG_TEST_LOG""#,
+    );
+    sandbox.fake(
+        "plasma-apply-lookandfeel",
+        r#"printf 'plasma-apply-lookandfeel %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+mkdir -p "$MYCONFIG_TEST_ROOT/kde/kdeglobals/KDE"
+printf '%s' "$2" > "$MYCONFIG_TEST_ROOT/kde/kdeglobals/KDE/LookAndFeelPackage""#,
+    );
+    sandbox.fake(
+        "plasma-apply-cursortheme",
+        r#"printf 'plasma-apply-cursortheme %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+for theme; do :; done
+mkdir -p "$MYCONFIG_TEST_ROOT/kde/kcminputrc/Mouse"
+printf '%s' "$theme" > "$MYCONFIG_TEST_ROOT/kde/kcminputrc/Mouse/cursorTheme""#,
+    );
+    sandbox.fake(
+        "fc-match",
+        r#"case "$3" in
+    sans-serif) printf 'IBM Plex Sans' ;;
+    serif) printf 'IBM Plex Serif' ;;
+    monospace) printf 'BlexMono Nerd Font Mono' ;;
+esac"#,
+    );
+    sandbox.fake("qdbus6", "exit 1");
+    sandbox.fake("kbuildsycoca6", "exit 0");
+    let applications = sandbox.root.join("share/applications");
+    fs::create_dir_all(&applications).unwrap();
+    fs::write(
+        applications.join("assistant.desktop"),
+        "[Desktop Entry]\nName=Qt Assistant\n",
+    )
+    .unwrap();
+    sandbox
+        .shell
+        .set_var("XDG_DATA_DIRS", sandbox.root.join("share"));
+}
+
+#[test]
+fn kde_plasma_applies_breeze_dark_with_the_pink_accent_and_remove_puts_it_back() {
+    let sandbox = Sandbox::new("kde-plasma");
+    plasma(&sandbox);
+    let rules = sandbox.root.join("kde/kwinrulesrc/General");
+    fs::create_dir_all(&rules).unwrap();
+    fs::write(rules.join("rules"), "user-rule").unwrap();
+    fs::write(rules.join("count"), "1").unwrap();
+    let io = Answers::new(None);
+    for _ in 0..2 {
+        sandbox
+            .with(&io, |ctx| runner::install(ctx, &[&crate::KdePlasma]))
+            .unwrap();
+    }
+    for package in ["otf-ibm-plex", "ttf-ibmplex-mono-nerd", "libinput"] {
+        assert!(sandbox.installed(package), "{package} was not installed");
+    }
+    for plugin in [
+        "90-myconfig-pointer-sensitivity.lua",
+        "90-myconfig-super-ctrl-right-click.lua",
+    ] {
+        assert!(
+            system_file(&sandbox, &format!("/etc/libinput/plugins/{plugin}")).is_some(),
+            "{plugin} was not installed"
+        );
+    }
+    assert!(sandbox.calls("plasma-apply-lookandfeel --apply org.kde.breezedark.desktop") > 0);
+    assert!(sandbox.calls("plasma-apply-colorscheme --accent-color #ff4ead") > 0);
+    assert!(sandbox.calls("plasma-apply-cursortheme --size 24 breeze_cursors") > 0);
+    for key in ["AccentColor", "LastUsedCustomAccentColor"] {
+        assert_eq!(
+            kde(&sandbox, &format!("kdeglobals/General/{key}")).as_deref(),
+            Some("255,78,173")
+        );
+    }
+    // The picture-in-picture rule joins the rules already there, once.
+    assert_eq!(
+        kde(&sandbox, "kwinrulesrc/General/rules").as_deref(),
+        Some("user-rule,myconfig-picture-in-picture")
+    );
+    assert_eq!(
+        kde(&sandbox, "kwinrulesrc/General/count").as_deref(),
+        Some("2")
+    );
+    assert_eq!(
+        kde(
+            &sandbox,
+            "kwinrulesrc/myconfig-picture-in-picture/excludefromcapture"
+        )
+        .as_deref(),
+        Some("true")
+    );
+    assert!(enabled(&sandbox, "myconfig-plasma-layout.service"));
+    let hidden = sandbox
+        .home
+        .join(".local/share/applications/assistant.desktop");
+    assert!(
+        fs::read_to_string(&hidden)
+            .unwrap()
+            .contains("NoDisplay=true")
+    );
+
+    sandbox
+        .with(&io, |ctx| {
+            runner::remove(ctx, &[&crate::KdePlasma], &[&crate::KdePlasma], false)
+        })
+        .unwrap();
+    assert_eq!(
+        kde(&sandbox, "kwinrulesrc/General/rules").as_deref(),
+        Some("user-rule")
+    );
+    assert_eq!(kde(&sandbox, "kdeglobals/General/AccentColor"), None);
+    assert!(!enabled(&sandbox, "myconfig-plasma-layout.service"));
+    assert!(!hidden.exists());
+    assert!(
+        system_file(
+            &sandbox,
+            "/etc/libinput/plugins/90-myconfig-pointer-sensitivity.lua"
+        )
+        .is_none()
+    );
 }

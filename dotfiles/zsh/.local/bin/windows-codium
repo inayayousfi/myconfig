@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Edit files from WSL in Windows VSCodium and wait until they are closed.
+# File arguments become Windows paths; options pass through unchanged.
+# --check exits 0 when Windows VSCodium is installed.
+set -euo pipefail
+
+windows_root="$(wslpath -u 'C:\')"
+# cmd.exe reads standard input and prints a UNC warning when started from a
+# Linux folder.
+local_app_data="$(cd "$windows_root" && cmd.exe /c 'echo %LOCALAPPDATA%' </dev/null 2>/dev/null | tr -d '\r')"
+
+electron=""
+for folder in "${local_app_data:+$(wslpath -u "$local_app_data")/Programs/VSCodium}" \
+    "${windows_root}Program Files/VSCodium"; do
+    if [ -n "$folder" ] && [ -f "$folder/VSCodium.exe" ]; then
+        electron="$folder/VSCodium.exe"
+        break
+    fi
+done
+
+if [ -z "$electron" ]; then
+    [ "${1:-}" = "--check" ] && exit 1
+    echo "windows-codium: Windows VSCodium is not installed" >&2
+    exit 1
+fi
+[ "${1:-}" = "--check" ] && exit 0
+
+# VSCodium's own launcher hands Linux paths to Windows unchanged unless a
+# remote WSL extension is installed, so this runs its command-line entry
+# directly, as the launcher does on Windows.
+cli="$(wslpath -m "$(dirname "$electron")/resources/app/out/cli.js")"
+
+arguments=()
+for argument in "$@"; do
+    if [[ $argument == -* ]]; then
+        arguments+=("$argument")
+    else
+        arguments+=("$(wslpath -w "$(realpath -m -- "$argument")")")
+    fi
+done
+
+export WSLENV="ELECTRON_RUN_AS_NODE/w${WSLENV:+:$WSLENV}"
+ELECTRON_RUN_AS_NODE=1 exec "$electron" "$cli" --wait "${arguments[@]}"

@@ -36,8 +36,15 @@ class ClaudeConfigHelper(unittest.TestCase):
             "    log.write(json.dumps(sys.argv[1:]) + '\\n')\n"
         )
         cli.chmod(0o700)
+        # The plugin runs go, whose telemetry child would write into the home during cleanup.
+        # Go ignores a GOTELEMETRY variable and reads only this mode file.
+        config_home = self.home / ".config"
+        (config_home / "go/telemetry").mkdir(parents=True)
+        (config_home / "go/telemetry/mode").write_text("off")
         # Only system programs and the fake claude, never the user's installed tools.
-        self.env = dict(os.environ, HOME=str(self.home), PATH=f"{self.bin}:/usr/bin:/bin")
+        self.env = dict(
+            os.environ, HOME=str(self.home), XDG_CONFIG_HOME=str(config_home), PATH=f"{self.bin}:/usr/bin:/bin"
+        )
         self.env.pop("CLAUDE_CONFIG_DIR", None)
         self.project = self.root / "project with spaces"
         self.project.mkdir()
@@ -82,13 +89,15 @@ class ClaudeConfigHelper(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 state = json.loads(self.config.read_text())
                 self.assertTrue(state["projects"][str(self.project)]["hasTrustDialogAccepted"])
+                self.assertIs(state.pop("hasCompletedOnboarding"), True)
+                trusted = json.loads(json.dumps(state))
                 del state["projects"][str(self.project)]["hasTrustDialogAccepted"]
                 self.assertEqual(state, self.original)
                 self.assertEqual(self.calls()[-1], expected)
                 self.assertFalse(Path(str(self.config) + ".lock").exists())
         # Each change replaces the single backup of the previous state.
         self.assertEqual(list(self.home.glob(".claude.json.*")), [self.backup])
-        self.assertEqual(json.loads(self.backup.read_text()), self.original)
+        self.assertEqual(json.loads(self.backup.read_text()), trusted)
 
     def test_worktree_launch_trusts_main_checkout(self):
         self.git("init")

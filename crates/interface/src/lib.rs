@@ -49,16 +49,8 @@ enum Command {
 
 #[derive(Subcommand)]
 enum Internal {
-    #[command(subcommand, name = "kde-plasma")]
-    KdePlasma(KdePlasmaStep),
     #[command(subcommand, name = "shared-desktop")]
     SharedDesktop(SharedDesktopStep),
-}
-
-#[derive(Subcommand)]
-enum KdePlasmaStep {
-    /// Rebuilds and reloads Glass for the running KWin.
-    RepairGlass,
 }
 
 #[derive(Subcommand)]
@@ -86,7 +78,7 @@ pub fn main(profile: Profile<'_>) -> ExitCode {
             }
             Ok(false)
         }
-        Some(Command::Internal(step)) => run_internal(&profile, step).map(|()| false),
+        Some(Command::Internal(step)) => run_internal(step).map(|()| false),
         Some(command) => run_plain(&profile, command),
     };
     report(result)
@@ -174,15 +166,9 @@ fn with_context<T>(
     action(&ctx)
 }
 
-fn run_internal(profile: &Profile<'_>, step: Internal) -> ModuleResult {
+fn run_internal(step: Internal) -> ModuleResult {
     use myconfig_modules::internal;
     match step {
-        // The login service has no terminal; Glass asks for permission through pkexec.
-        Internal::KdePlasma(KdePlasmaStep::RepairGlass) => with_context(
-            profile.package_system,
-            &plain::Plain,
-            internal::repair_glass,
-        ),
         Internal::SharedDesktop(SharedDesktopStep::Move { record, desktop }) => {
             internal::elevated_move(&record, &desktop)
         }

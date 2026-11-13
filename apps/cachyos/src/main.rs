@@ -26,10 +26,6 @@ static MODULES: &[&dyn Module] = &[
         extra: &[Package::Ydotool],
     },
     &AndroidPhone,
-    &EmacsStowed(EmacsOptions {
-        browser_terminal_firewall: true,
-    }),
-    &CursorTheme,
     &Refind,
     &Kanata {
         start_at_login: false,
@@ -75,10 +71,8 @@ mod tests {
         let names: Vec<_> = MODULES.iter().map(|module| module.name()).collect();
         for wanted in [
             "axidev-osk",
-            "emacs",
             "ghostty",
             "kde-plasma",
-            "cursor-theme",
             "refind",
             "kanata",
             "kanata-kde",
@@ -90,14 +84,6 @@ mod tests {
         ] {
             assert!(names.contains(&wanted), "CachyOS lacks {wanted}");
         }
-        // The cursor theme comes before KDE Plasma, which applies it.
-        let position = |name| {
-            names
-                .iter()
-                .position(|candidate| *candidate == name)
-                .unwrap()
-        };
-        assert!(position("cursor-theme") < position("kde-plasma"));
         assert_eq!(
             names[0], "plasma-version",
             "Plasma is checked before anything changes"

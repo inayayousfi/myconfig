@@ -1,0 +1,14 @@
+{
+  "KPlugin": {
+    "Name": "myconfig Panels",
+    "Description": "Shows the myconfig top bar and dock at the screen edge, even over fullscreen windows, and recreates them when displays change",
+    "Icon": "preferences-desktop",
+    "Id": "myconfig-panels",
+    "Version": "1.0",
+    "License": "MIT",
+    "EnabledByDefault": false
+  },
+  "X-Plasma-API": "javascript",
+  "X-Plasma-MainScript": "code/main.js",
+  "KPackageStructure": "KWin/Script"
+}

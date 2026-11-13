@@ -28,7 +28,7 @@ The CachyOS profile requires KDE Plasma 6.7 through 6.x and applies Breeze Dark 
 
 The Ubuntu Devbox profile installs the development runtimes, the command-line tools, rootless Docker, Tailscale, the coding agents, and the T3 Code server, which keeps running after logout. It leaves the machine's SSH configuration as it is. VSCodium and VS Code open folders on the machine over SSH with their remote SSH extensions.
 
-The final authentication step offers GitHub and Tailscale login. Declining either prompt prints the command for later.
+The installers do not log in to GitHub or Tailscale. Run `gh auth login` and `sudo tailscale up` afterwards.
 
 ### Windows Workstation (PowerShell)
 

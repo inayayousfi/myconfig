@@ -392,7 +392,7 @@ fn start<'scope>(
         };
         let result = with_context(profile.package_system, &remote, |ctx| match action {
             Action::Install => {
-                runner::install(ctx, &modules)?;
+                profile.install(ctx, &modules)?;
                 Ok(format!("{} modules installed and verified", modules.len()))
             }
             Action::Verify => {

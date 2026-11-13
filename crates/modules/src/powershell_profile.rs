@@ -40,6 +40,31 @@ fn contents() -> &'static [u8] {
         .content
 }
 
+/// Defender's Controlled Folder Access blocks pwsh.exe from writing to Documents, where
+/// PowerShell keeps its profile, so pwsh.exe goes on its allowed-apps list.
+fn allow_through_controlled_folder_access(ctx: &Context) -> ModuleResult {
+    let pwsh = powershell_7(ctx)?;
+    let check = "$p = Get-MpPreference -ErrorAction SilentlyContinue; if (-not $p -or $p.EnableControlledFolderAccess -ne 1) { 'off' } elseif ($p.ControlledFolderAccessAllowedApplications -contains $env:MYCONFIG_PWSH) { 'allowed' } else { 'blocked' }";
+    let state = ctx
+        .read(cmd!(ctx.shell, "{pwsh} -NoProfile -Command {check}").env("MYCONFIG_PWSH", &pwsh))?;
+    if state != "blocked" {
+        return Ok(());
+    }
+    ctx.note(&format!(
+        "Controlled Folder Access is on; allowing {} to write to protected folders",
+        pwsh.display()
+    ));
+    let allow = "$command = \"Add-MpPreference -ControlledFolderAccessAllowedApplications '$($env:MYCONFIG_PWSH.Replace(\"'\", \"''\"))' -ErrorAction Stop\"; $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command)); $process = Start-Process -FilePath $env:MYCONFIG_PWSH -Verb RunAs -ArgumentList '-NoLogo', '-NoProfile', '-EncodedCommand', $encoded -Wait -PassThru -ErrorAction Stop; exit $process.ExitCode";
+    ctx.run(cmd!(ctx.shell, "{pwsh} -NoProfile -Command {allow}").env("MYCONFIG_PWSH", &pwsh))
+        .map_err(|error| {
+            format!(
+                "could not allow {} through Controlled Folder Access; it needs administrator privileges, and Defender may be managed by company policy: {error}",
+                pwsh.display()
+            )
+            .into()
+        })
+}
+
 impl Module for PowerShellProfile {
     fn name(&self) -> &'static str {
         "powershell-profile"
@@ -53,6 +78,7 @@ impl Module for PowerShellProfile {
     }
 
     fn install(&self, ctx: &Context) -> ModuleResult {
+        allow_through_controlled_folder_access(ctx)?;
         let pwsh = powershell_7(ctx)?;
         for profile in profile_paths(ctx)? {
             if std::fs::symlink_metadata(&profile)

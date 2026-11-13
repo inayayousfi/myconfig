@@ -14,9 +14,12 @@ static MODULES: &[&dyn Module] = &[
     &WindowsTerminal,
     &AutoHotkey,
     &AgentConfigCopied,
+    &WindowsT3Code,
     &PsReadLine,
     &OhMyPoshFont,
+    &PlexSerifFont,
     &LlvmPath,
+    &WindowsEditor,
     &RegistryTweaks,
     &TaskbarAutoHide,
     &SharedDesktop,
@@ -31,6 +34,7 @@ fn main() -> ExitCode {
         title: "Windows Workstation",
         package_system: PackageSystem::Winget,
         modules: MODULES,
+        keep_going: true,
     })
 }
 

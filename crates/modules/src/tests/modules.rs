@@ -1850,3 +1850,53 @@ esac"#,
     assert!(system_file(&sandbox, "/etc/apt/sources.list.d/myconfig-github.sources").is_none());
     assert!(system_file(&sandbox, "/etc/apt/sources.list.d/myconfig-yazi.sources").is_none());
 }
+
+struct Step(&'static str, bool);
+
+impl Module for Step {
+    fn name(&self) -> &'static str {
+        self.0
+    }
+    fn footprint(&self, _ctx: &Context) -> Footprint {
+        Footprint::default()
+    }
+    fn install(&self, ctx: &Context) -> ModuleResult {
+        ctx.note(self.0);
+        if self.1 { Ok(()) } else { Err("broken".into()) }
+    }
+    fn verify(&self, _ctx: &Context) -> ModuleResult {
+        Ok(())
+    }
+    fn remove(&self, _ctx: &Context) -> ModuleResult {
+        Ok(())
+    }
+}
+
+#[test]
+fn keep_going_installs_every_module_and_lists_each_failure() {
+    let sandbox = Sandbox::new("keep-going");
+    let modules: [&dyn Module; 3] = [
+        &Step("first", false),
+        &Step("second", true),
+        &Step("third", false),
+    ];
+    let io = Answers::new(None);
+    let error = sandbox
+        .with(&io, |ctx| runner::install_keep_going(ctx, &modules))
+        .unwrap_err()
+        .to_string();
+    assert_eq!(*io.notes.borrow(), ["first", "second", "third"]);
+    assert!(error.starts_with("2 step(s) failed:"), "{error}");
+    assert!(error.contains("first: broken") && error.contains("third: broken"));
+    let io = Answers::new(None);
+    assert!(
+        sandbox
+            .with(&io, |ctx| runner::install(ctx, &modules))
+            .is_err()
+    );
+    assert_eq!(
+        *io.notes.borrow(),
+        ["first"],
+        "install stops at the first failure"
+    );
+}

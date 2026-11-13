@@ -47,6 +47,7 @@ fn main() -> ExitCode {
         title: "Arch WSL",
         package_system: PackageSystem::Arch,
         modules: MODULES,
+        keep_going: false,
     })
 }
 

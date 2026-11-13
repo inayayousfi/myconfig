@@ -1,4 +1,4 @@
-//! The Iosevka Nerd Font, installed for the current user by Oh My Posh.
+//! The BlexMono Nerd Font, installed for the current user by Oh My Posh.
 use std::{collections::HashSet, fs, path::PathBuf};
 
 use xshell::cmd;
@@ -7,9 +7,10 @@ use crate::{Context, Footprint, Module, ModuleResult, Package, Setting};
 
 pub struct OhMyPoshFont;
 
-const FONTS_KEY: &str = r"HKEY_CURRENT_USER\Software\Microsoft\Windows NT\CurrentVersion\Fonts";
+pub(crate) const FONTS_KEY: &str =
+    r"HKEY_CURRENT_USER\Software\Microsoft\Windows NT\CurrentVersion\Fonts";
 
-fn font_directory(ctx: &Context) -> ModuleResult<PathBuf> {
+pub(crate) fn font_directory(ctx: &Context) -> ModuleResult<PathBuf> {
     let local = ctx
         .shell
         .var_os("LOCALAPPDATA")
@@ -47,13 +48,13 @@ impl Module for OhMyPoshFont {
 
     fn install(&self, ctx: &Context) -> ModuleResult {
         let Ok(program) = ctx.find_program("oh-my-posh.exe") else {
-            ctx.note("Oh My Posh is not installed; skipping the Iosevka font");
+            ctx.note("Oh My Posh is not installed; skipping the BlexMono font");
             return Ok(());
         };
         // Oh My Posh copies the files and registers them itself, so record what appeared.
         let files_before = font_files(ctx)?;
         let names_before = registered_fonts(ctx)?;
-        let installed = ctx.run(cmd!(ctx.shell, "{program} font install Iosevka"));
+        let installed = ctx.run(cmd!(ctx.shell, "{program} font install IBMPlexMono"));
         for file in font_files(ctx)?.difference(&files_before) {
             ctx.created(file, false)?;
         }
@@ -75,9 +76,9 @@ impl Module for OhMyPoshFont {
         }
         if !registered_fonts(ctx)?
             .iter()
-            .any(|name| name.contains("Iosevka"))
+            .any(|name| name.contains("BlexMono"))
         {
-            return Err("the Iosevka font is not registered for this user".into());
+            return Err("the BlexMono font is not registered for this user".into());
         }
         Ok(())
     }

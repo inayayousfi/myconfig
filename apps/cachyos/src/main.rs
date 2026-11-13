@@ -66,6 +66,7 @@ fn main() -> ExitCode {
         title: "CachyOS",
         package_system: PackageSystem::Arch,
         modules: MODULES,
+        keep_going: false,
     })
 }
 

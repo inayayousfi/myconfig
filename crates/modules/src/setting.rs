@@ -51,6 +51,10 @@ pub enum Setting {
     },
     /// The Docker context that the `docker` command uses.
     DockerCurrentContext,
+    /// A Windows environment variable of the current user.
+    UserEnvironment {
+        name: String,
+    },
     /// The user allowed to change Tailscale without sudo.
     TailscaleOperator,
     /// A system-wide Flatpak remote, added from its `.flatpakrepo` file.
@@ -113,6 +117,7 @@ impl Setting {
             Self::DockerContext { name } => format!("Docker context {name}"),
             Self::DockerCurrentContext => "current Docker context".to_owned(),
             Self::TailscaleOperator => "Tailscale operator".to_owned(),
+            Self::UserEnvironment { name } => format!("user environment variable {name}"),
             Self::RegistryValue { key, name } => format!("registry {key} {name}"),
             Self::MachinePathEntry { entry } => format!("machine PATH entry {entry}"),
             Self::TaskbarAutoHide => "taskbar auto-hide".to_owned(),
@@ -190,6 +195,14 @@ impl Setting {
                 found.then_some(host)
             }
             Self::DockerCurrentContext => Some(ctx.read(cmd!(sh, "docker context show"))?),
+            Self::UserEnvironment { name } => {
+                let script = "[Environment]::GetEnvironmentVariable($env:MYCONFIG_NAME, 'User')";
+                let pwsh = crate::support::powershell_7(ctx)?;
+                let value = ctx.read(
+                    cmd!(sh, "{pwsh} -NoProfile -Command {script}").env("MYCONFIG_NAME", name),
+                )?;
+                (!value.is_empty()).then_some(value)
+            }
             Self::TailscaleOperator => {
                 let prefs: serde_json::Value =
                     serde_json::from_str(&ctx.read(cmd!(sh, "tailscale debug prefs"))?)?;
@@ -317,6 +330,15 @@ impl Setting {
                 ctx.run(cmd!(sh, "docker context create {name} --docker {endpoint}"))
             }
             Self::DockerCurrentContext => ctx.run(cmd!(sh, "docker context use {value}")),
+            Self::UserEnvironment { name } => {
+                let script = "[Environment]::SetEnvironmentVariable($env:MYCONFIG_NAME, $env:MYCONFIG_VALUE, 'User')";
+                let pwsh = crate::support::powershell_7(ctx)?;
+                ctx.run(
+                    cmd!(sh, "{pwsh} -NoProfile -Command {script}")
+                        .env("MYCONFIG_NAME", name)
+                        .env("MYCONFIG_VALUE", value),
+                )
+            }
             Self::TailscaleOperator => {
                 let operator = format!("--operator={value}");
                 ctx.run(cmd!(sh, "sudo tailscale set {operator}"))
@@ -390,6 +412,12 @@ impl Setting {
             Self::DockerContext { name } => ctx.run(cmd!(sh, "docker context rm --force {name}")),
             Self::DockerCurrentContext => ctx.run(cmd!(sh, "docker context use default")),
             Self::TailscaleOperator => ctx.run(cmd!(sh, "sudo tailscale set --operator=")),
+            Self::UserEnvironment { name } => {
+                let script =
+                    "[Environment]::SetEnvironmentVariable($env:MYCONFIG_NAME, $null, 'User')";
+                let pwsh = crate::support::powershell_7(ctx)?;
+                ctx.run(cmd!(sh, "{pwsh} -NoProfile -Command {script}").env("MYCONFIG_NAME", name))
+            }
             Self::FlatpakRemote { name, .. } => {
                 ctx.run(cmd!(sh, "sudo flatpak remote-delete --system {name}"))
             }

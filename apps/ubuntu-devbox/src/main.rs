@@ -40,6 +40,7 @@ fn main() -> ExitCode {
         title: "Ubuntu Devbox",
         package_system: PackageSystem::Apt,
         modules: MODULES,
+        keep_going: false,
     })
 }
 

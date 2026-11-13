@@ -70,6 +70,32 @@ pub fn install(ctx: &Context, modules: &[&dyn Module]) -> ModuleResult {
     Ok(())
 }
 
+/// Installs and verifies every module in profile order, going on after a failed one, then
+/// reports every failure together.
+pub fn install_keep_going(ctx: &Context, modules: &[&dyn Module]) -> ModuleResult {
+    ctx.state().borrow_mut().begin(Action::Install)?;
+    let mut failures = Vec::new();
+    if let Err(error) = prepare_packages(ctx) {
+        failures.push(error.to_string());
+    }
+    for module in modules {
+        let result = step(ctx, *module, Step::Install, || module.install(ctx))
+            .and_then(|()| step(ctx, *module, Step::Verify, || module.verify(ctx)));
+        if let Err(error) = result {
+            failures.push(error.to_string());
+        }
+    }
+    if failures.is_empty() {
+        return Ok(());
+    }
+    Err(format!(
+        "{} step(s) failed:\n  - {}\nFix the failures above, then run the installer again. Completed steps are safe to repeat.",
+        failures.len(),
+        failures.join("\n  - ")
+    )
+    .into())
+}
+
 /// Verifies every module and reports each result.
 pub fn verify(ctx: &Context, modules: &[&dyn Module]) -> Vec<(&'static str, ModuleResult)> {
     modules

@@ -203,13 +203,21 @@ fn configure_user(ctx: &Context, distro: &str, user: &str) -> ModuleResult {
         sh,
         "wsl.exe -d {distro} -u root -- sed -i {sed_wheel} /etc/sudoers"
     ))?;
-    let sudo_line = format!("{user} ALL=(ALL) NOPASSWD:ALL");
-    if !ctx.succeeds(cmd!(
-        sh,
-        "wsl.exe -d {distro} -u root -- grep -Fqx {sudo_line} /etc/sudoers"
-    ))? {
-        root_write(ctx, distro, "/etc/sudoers", &format!("{sudo_line}\n"), true)?;
+    // The wheel rule has no NOPASSWD, and sudo -v by default wants every matching rule
+    // to be password-free. The installer starts with sudo -v, so without verifypw=any it
+    // asks for a password that the NOPASSWD rule was meant to make unnecessary.
+    for sudo_line in [
+        format!("{user} ALL=(ALL) NOPASSWD:ALL"),
+        format!("Defaults:{user} verifypw=any"),
+    ] {
+        if !ctx.succeeds(cmd!(
+            sh,
+            "wsl.exe -d {distro} -u root -- grep -Fqx {sudo_line} /etc/sudoers"
+        ))? {
+            root_write(ctx, distro, "/etc/sudoers", &format!("{sudo_line}\n"), true)?;
+        }
     }
+    root(ctx, distro, "visudo", &["-c"])?;
     if !ctx.succeeds(cmd!(
         sh,
         "wsl.exe -d {distro} -u root -- loginctl enable-linger {user}"

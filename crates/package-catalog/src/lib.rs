@@ -164,10 +164,11 @@ pub enum Package {
     Uidmap,
     Qrencode,
     T3codeDesktop,
+    NodejsLts,
 }
 
 impl Package {
-    const COUNT: usize = 162;
+    const COUNT: usize = 163;
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -522,6 +523,12 @@ const PACKAGE_OVERRIDES: &[((Package, Platform), &str)] = &[
         (Package::DockerCompose, Platform::Apt),
         "docker-compose-plugin",
     ),
+    ((Package::Vscodium, Platform::Winget), "VSCodium.VSCodium"),
+    (
+        (Package::Tailscale, Platform::Winget),
+        "Tailscale.Tailscale",
+    ),
+    ((Package::NodejsLts, Platform::Winget), "OpenJS.NodeJS.LTS"),
 ];
 
 const fn build_packages()
@@ -720,6 +727,7 @@ const fn package_from_index(index: usize) -> Package {
         Package::Uidmap,
         Package::Qrencode,
         Package::T3codeDesktop,
+        Package::NodejsLts,
     ][index]
 }
 

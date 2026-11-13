@@ -66,6 +66,22 @@ pub struct Profile<'a> {
     pub title: &'a str,
     pub package_system: PackageSystem,
     pub modules: &'a [&'a dyn Module],
+    /// Installs the later modules after one fails, and lists every failure at the end.
+    pub keep_going: bool,
+}
+
+impl Profile<'_> {
+    pub(crate) fn install(
+        &self,
+        ctx: &myconfig_modules::Context,
+        modules: &[&dyn Module],
+    ) -> ModuleResult {
+        if self.keep_going {
+            runner::install_keep_going(ctx, modules)
+        } else {
+            runner::install(ctx, modules)
+        }
+    }
 }
 
 pub fn main(profile: Profile<'_>) -> ExitCode {
@@ -191,7 +207,7 @@ fn run_plain(profile: &Profile<'_>, command: Command) -> ModuleResult<bool> {
     let _session = sudo::Session::start_interactive(profile.package_system)?;
     with_context(profile.package_system, &io, |ctx| match command {
         Command::Install { .. } => {
-            runner::install(ctx, &modules)?;
+            profile.install(ctx, &modules)?;
             println!("{} profile completed successfully", profile.title);
             Ok(false)
         }

@@ -44,6 +44,25 @@ const REQUIRED: [&str; 5] = [
     ".config/claude-config-helper/mcp-servers.json",
 ];
 
+/// T3 Code plays its own sound when an agent finishes, so peon-ping is removed through its
+/// own uninstaller, which also clears its hooks.
+fn remove_peon_ping(ctx: &Context) {
+    let uninstaller = ctx.home.join(".claude/hooks/peon-ping/uninstall.ps1");
+    if !uninstaller.is_file() {
+        return;
+    }
+    let result = ctx.run(cmd!(
+        ctx.shell,
+        "powershell.exe -NoProfile -ExecutionPolicy Bypass -File {uninstaller} -Force"
+    ));
+    if result.is_err() {
+        ctx.note(&format!(
+            "WARNING: the peon-ping uninstaller failed; run {} by hand",
+            uninstaller.display()
+        ));
+    }
+}
+
 impl Module for AgentConfigCopied {
     fn name(&self) -> &'static str {
         "agent-config"
@@ -57,6 +76,7 @@ impl Module for AgentConfigCopied {
     }
 
     fn install(&self, ctx: &Context) -> ModuleResult {
+        remove_peon_ping(ctx);
         let files = DOTFILES.ai.files();
         for file in &files {
             for destination in destinations(ctx.home, Path::new(file.path_from_root)) {

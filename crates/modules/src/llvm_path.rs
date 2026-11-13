@@ -1,7 +1,7 @@
 //! Adds LLVM to the machine PATH when the dev-tools packages installed it.
 use std::path::{Path, PathBuf};
 
-use crate::{Context, Footprint, Module, ModuleResult, Package, Setting};
+use crate::{Context, Footprint, Module, ModuleResult, Need, Package, Setting};
 
 pub struct LlvmPath;
 
@@ -25,6 +25,10 @@ fn entry(ctx: &Context) -> ModuleResult<Setting> {
 impl Module for LlvmPath {
     fn name(&self) -> &'static str {
         "llvm-path"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[Need::Soft(crate::PackageGroup::DEV_TOOLS.name)]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {

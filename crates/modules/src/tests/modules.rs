@@ -4,16 +4,25 @@ use std::{fs, os::unix::fs::PermissionsExt, path::Path};
 use super::{Answers, Sandbox};
 use crate::{
     AgentConfigStowed, Base, CachyosSetup, Cli, Context, Docker, EnvironmentInventory, Footprint,
-    Ghostty, Handy, Kanata, KanataKde, Module, ModuleResult, Package, PackageSystem, Runtimes,
-    runner,
+    Ghostty, Handy, Kanata, KanataKde, Module, ModuleResult, Need, Package, PackageSystem,
+    Runtimes, ServiceScope, runner,
 };
 
 /// Fake system programs that keep their state under the sandbox, so modules run as on a
 /// real machine without root: `sudo` moves `/etc`, `/usr`, `/boot` and `/efi` paths under
-/// `system/`, groups live in `groups/`, `systemctl` remembers enabled units, KDE keys
-/// live in `kde/`, and `ufw` prints its rules in ufw's own word order.
+/// `system/`, groups live in `groups/`, `systemctl` remembers enabled system units in
+/// `units/system/` and user units in `units/user/` and counts every unit active until
+/// `disable --now` stops it, KDE keys live in `kde/`, and `ufw` prints its rules in ufw's
+/// own word order.
 fn system(sandbox: &Sandbox) {
-    for directory in ["system", "groups", "units", "kde", "ufw"] {
+    for directory in [
+        "system",
+        "groups",
+        "units/system",
+        "units/user",
+        "kde",
+        "ufw",
+    ] {
         fs::create_dir_all(sandbox.root.join(directory)).unwrap();
     }
     sandbox.fake(
@@ -63,15 +72,27 @@ mkdir -p "$MYCONFIG_TEST_ROOT/groups/$2" && : > "$MYCONFIG_TEST_ROOT/groups/$2/$
     sandbox.fake(
         "systemctl",
         r#"printf 'systemctl %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
-[ "$1" = --user ] && shift
-[ "$1" = --quiet ] && shift
-units="$MYCONFIG_TEST_ROOT/units"
-case "$1" in
-    enable) : > "$units/$2" ;;
-    disable) [ "$2" = --now ] && shift; rm -f "$units/$2" ;;
-    is-enabled) if [ -e "$units/$2" ]; then echo enabled; else echo disabled; exit 1; fi ;;
-    is-active) case "$2" in graphical-session.target) exit 1 ;; *) echo active ;; esac ;;
-esac"#,
+scope=system command= names= now=
+for argument in "$@"; do
+    case "$argument" in
+        --user) scope=user ;;
+        --now) now=1 ;;
+        --*) ;;
+        *) if [ -z "$command" ]; then command="$argument"; else names="$names $argument"; fi ;;
+    esac
+done
+units="$MYCONFIG_TEST_ROOT/units/$scope"
+for unit in $names; do
+    case "$command" in
+        enable) : > "$units/$unit"; [ -n "$now" ] && rm -f "$units/$unit.stopped" ;;
+        disable) rm -f "$units/$unit"; [ -n "$now" ] && : > "$units/$unit.stopped" ;;
+        start) rm -f "$units/$unit.stopped" ;;
+        is-enabled) if [ -e "$units/$unit" ]; then echo enabled; else echo disabled; exit 1; fi ;;
+        is-active) case "$unit" in graphical-session.target) exit 1 ;; esac
+            if [ -e "$units/$unit.stopped" ]; then echo inactive; exit 3; else echo active; fi ;;
+    esac
+done
+exit 0"#,
     );
     sandbox.fake(
         "kwriteconfig6",
@@ -151,8 +172,12 @@ fn kde(sandbox: &Sandbox, path: &str) -> Option<String> {
     fs::read_to_string(sandbox.root.join("kde").join(path)).ok()
 }
 
-fn enabled(sandbox: &Sandbox, unit: &str) -> bool {
-    sandbox.root.join("units").join(unit).exists()
+fn enabled(sandbox: &Sandbox, scope: ServiceScope, unit: &str) -> bool {
+    let folder = match scope {
+        ServiceScope::System => "units/system",
+        ServiceScope::User => "units/user",
+    };
+    sandbox.root.join(folder).join(unit).exists()
 }
 
 fn install_everything(sandbox: &Sandbox, packages: &[&str]) {
@@ -169,6 +194,7 @@ fn every_linux_module_package_has_a_name_on_its_package_manager() {
         &Base {
             packages: Base::ARCH,
             unwanted: &[Package::CachyUpdate],
+            needs: &[],
         },
         &CachyosSetup,
         &Cli,
@@ -207,6 +233,7 @@ fn every_linux_module_package_has_a_name_on_its_package_manager() {
         &Base {
             packages: Base::UBUNTU,
             unwanted: &[],
+            needs: &[],
         },
         &Cli,
         &crate::SystemMonitor,
@@ -288,7 +315,9 @@ fn cachyos_removes_the_boot_splash_and_rebuilds_the_initramfs_once() {
     let io = Answers::new(None);
     for _ in 0..2 {
         sandbox
-            .with(&io, |ctx| runner::install(ctx, &[&CachyosSetup]))
+            .with(&io, |ctx| {
+                runner::install(ctx, &[&CachyosSetup], &[&CachyosSetup])
+            })
             .unwrap();
     }
     assert_eq!(
@@ -310,12 +339,63 @@ fn cachyos_removes_the_boot_splash_and_rebuilds_the_initramfs_once() {
 }
 
 #[test]
+fn removing_cachyos_setup_brings_the_splash_back_and_rebuilds_the_initramfs_last() {
+    let sandbox = Sandbox::new("cachyos-splash-remove");
+    cachyos_boot(&sandbox, true);
+    let splash = [
+        "plymouth",
+        "plymouth-kcm",
+        "cachyos-plymouth-theme",
+        "cachyos-plymouth-bootanimation",
+    ];
+    install_everything(&sandbox, &splash);
+    sandbox
+        .with(&Answers::new(None), |ctx| {
+            runner::install(ctx, &[&CachyosSetup], &[&CachyosSetup])
+        })
+        .unwrap();
+    fs::remove_file(sandbox.root.join("calls")).unwrap();
+
+    let io = Answers::new(Some(true));
+    let report = sandbox
+        .with(&io, |ctx| {
+            runner::remove(ctx, &[&CachyosSetup], &[&CachyosSetup], false)
+        })
+        .unwrap();
+    assert!(!report.unanswered);
+    assert_eq!(
+        system_file(&sandbox, "/etc/mkinitcpio.conf").unwrap(),
+        MKINITCPIO
+    );
+    assert_eq!(
+        system_file(&sandbox, "/boot/refind_linux.conf").unwrap(),
+        REFIND_LINUX
+    );
+    for package in splash {
+        assert!(sandbox.installed(package), "{package} was not reinstalled");
+    }
+    assert_eq!(sandbox.calls("sudo mkinitcpio -P"), 1);
+    let calls = fs::read_to_string(sandbox.root.join("calls")).unwrap();
+    let rebuild = calls.find("sudo mkinitcpio -P").unwrap();
+    assert!(
+        calls.find("/etc/mkinitcpio.conf").unwrap() < rebuild,
+        "the initramfs was rebuilt before the plymouth hook came back"
+    );
+    assert!(
+        calls.find("pacman -S").unwrap() < rebuild,
+        "the initramfs was rebuilt before plymouth came back"
+    );
+}
+
+#[test]
 fn cachyos_skips_the_kernel_options_without_refind() {
     let sandbox = Sandbox::new("cachyos-no-refind");
     cachyos_boot(&sandbox, false);
     let io = Answers::new(None);
     sandbox
-        .with(&io, |ctx| runner::install(ctx, &[&CachyosSetup]))
+        .with(&io, |ctx| {
+            runner::install(ctx, &[&CachyosSetup], &[&CachyosSetup])
+        })
         .unwrap();
     assert!(
         io.notes.borrow().iter().any(|note| note
@@ -336,6 +416,7 @@ fn cachyos_replaces_its_defaults() {
         &Base {
             packages: Base::ARCH,
             unwanted: &[Package::CachyUpdate],
+            needs: &[],
         },
         &CachyosSetup,
         &Cli,
@@ -349,7 +430,7 @@ fn cachyos_replaces_its_defaults() {
     );
     let io = Answers::new(None);
     sandbox
-        .with(&io, |ctx| runner::install(ctx, &modules))
+        .with(&io, |ctx| runner::install(ctx, &modules, &modules))
         .unwrap();
     for removed in ["konsole", "firefox", "fish", "kate", "cachy-update", "vim"] {
         assert!(!sandbox.installed(removed), "{removed} is still installed");
@@ -405,6 +486,10 @@ impl Module for Config {
     fn name(&self) -> &'static str {
         self.0
     }
+
+    fn needs(&self) -> &'static [Need] {
+        &[]
+    }
     fn footprint(&self, _ctx: &Context) -> Footprint {
         Footprint::default()
     }
@@ -429,7 +514,9 @@ fn deploying_over_a_linked_outside_folder_leaves_that_folder_untouched() {
     std::os::unix::fs::symlink(&outside, sandbox.home.join(".config/yazi")).unwrap();
     let io = Answers::new(None);
     sandbox
-        .with(&io, |ctx| runner::install(ctx, &[&Config("yazi")]))
+        .with(&io, |ctx| {
+            runner::install(ctx, &[&Config("yazi")], &[&Config("yazi")])
+        })
         .unwrap();
     assert_eq!(
         fs::read_to_string(outside.join("yazi.toml")).unwrap(),
@@ -455,7 +542,9 @@ fn ghostty_links_its_config_and_leaves_other_files_alone() {
     let io = Answers::new(None);
     for _ in 0..2 {
         sandbox
-            .with(&io, |ctx| runner::install(ctx, &[&Config("ghostty")]))
+            .with(&io, |ctx| {
+                runner::install(ctx, &[&Config("ghostty")], &[&Config("ghostty")])
+            })
             .unwrap();
         assert_eq!(
             fs::canonicalize(folder.join("config")).unwrap(),
@@ -485,7 +574,9 @@ fn folders_that_programs_write_into_stay_real_folders() {
         ("t3code-desktop", ".t3/userdata"),
     ] {
         sandbox
-            .with(&io, |ctx| runner::install(ctx, &[&Config(package)]))
+            .with(&io, |ctx| {
+                runner::install(ctx, &[&Config(package)], &[&Config(package)])
+            })
             .unwrap();
         let metadata = fs::symlink_metadata(sandbox.home.join(folder)).unwrap();
         assert!(
@@ -500,7 +591,9 @@ fn the_agent_package_keeps_bin_and_claude_as_real_folders() {
     let sandbox = Sandbox::new("ai-folders");
     let io = Answers::new(None);
     sandbox
-        .with(&io, |ctx| runner::install(ctx, &[&Config("ai")]))
+        .with(&io, |ctx| {
+            runner::install(ctx, &[&Config("ai")], &[&Config("ai")])
+        })
         .unwrap();
     for folder in [".local/bin", ".claude"] {
         let metadata = fs::symlink_metadata(sandbox.home.join(folder)).unwrap();
@@ -535,7 +628,7 @@ fn kanata_gets_input_access_and_waits_for_the_new_groups() {
     };
     let io = Answers::new(None);
     sandbox
-        .with(&io, |ctx| runner::install(ctx, &[&kanata]))
+        .with(&io, |ctx| runner::install(ctx, &[&kanata], &[&kanata]))
         .unwrap();
     assert!(sandbox.installed("kanata-bin"));
     assert_eq!(
@@ -554,7 +647,11 @@ fn kanata_gets_input_access_and_waits_for_the_new_groups() {
         r#"KERNEL=="uinput", MODE="0660", GROUP="uinput", OPTIONS+="static_node=uinput""#
     ));
     assert!(rules.contains(r#"SUBSYSTEM=="input", KERNEL=="event*", MODE="0660", GROUP="input""#));
-    assert!(enabled(&sandbox, "myconfig-kanata.service"));
+    assert!(enabled(
+        &sandbox,
+        ServiceScope::User,
+        "myconfig-kanata.service"
+    ));
     assert_eq!(
         sandbox.calls("restart myconfig-kanata.service"),
         0,
@@ -568,7 +665,11 @@ fn kanata_gets_input_access_and_waits_for_the_new_groups() {
         .unwrap();
     assert!(!member(&sandbox, "uinput"));
     assert!(system_file(&sandbox, "/etc/udev/rules.d/99-myconfig-kanata.rules").is_none());
-    assert!(!enabled(&sandbox, "myconfig-kanata.service"));
+    assert!(!enabled(
+        &sandbox,
+        ServiceScope::User,
+        "myconfig-kanata.service"
+    ));
 }
 
 #[test]
@@ -593,11 +694,21 @@ fn kanata_started_by_the_kde_tray_is_not_enabled_on_its_own() {
         &KanataKde,
     ];
     sandbox
-        .with(&Answers::new(None), |ctx| runner::install(ctx, &modules))
+        .with(&Answers::new(None), |ctx| {
+            runner::install(ctx, &modules, &modules)
+        })
         .unwrap();
-    assert!(!enabled(&sandbox, "myconfig-kanata.service"));
+    assert!(!enabled(
+        &sandbox,
+        ServiceScope::User,
+        "myconfig-kanata.service"
+    ));
     assert!(fs::symlink_metadata(wants.join("myconfig-kanata.service")).is_err());
-    assert!(enabled(&sandbox, "myconfig-kanata-tray.service"));
+    assert!(enabled(
+        &sandbox,
+        ServiceScope::User,
+        "myconfig-kanata-tray.service"
+    ));
     assert_eq!(
         kde(&sandbox, "kglobalshortcutsrc/kwin/Overview").as_deref(),
         Some("Meta+W,Meta+W,Toggle Overview")
@@ -630,7 +741,7 @@ fn handy_configures_push_to_talk_and_keeps_your_settings() {
     .unwrap();
     let io = Answers::new(None);
     sandbox
-        .with(&io, |ctx| runner::install(ctx, &[&Handy]))
+        .with(&io, |ctx| runner::install(ctx, &[&Handy], &[&Handy]))
         .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&fs::read(&settings).unwrap()).unwrap();
     assert_eq!(json["settings"]["keyboard_implementation"], "handy_keys");
@@ -646,7 +757,11 @@ fn handy_configures_push_to_talk_and_keeps_your_settings() {
         0o600
     );
     assert!(system_file(&sandbox, "/etc/udev/rules.d/99-myconfig-handy.rules").is_some());
-    assert!(enabled(&sandbox, "myconfig-handy.service"));
+    assert!(enabled(
+        &sandbox,
+        ServiceScope::User,
+        "myconfig-handy.service"
+    ));
     assert_eq!(sandbox.calls("stop myconfig-handy.service"), 1);
 
     sandbox
@@ -689,7 +804,23 @@ fn docker_refuses_a_docker_group_member_without_changing_anything() {
         .unwrap_err();
     assert!(error.to_string().contains("docker group"));
     assert_eq!(sandbox.calls("pacman -S"), 0);
-    assert!(!enabled(&sandbox, "docker.service"));
+    assert_eq!(sandbox.calls("systemctl"), 0);
+    assert!(!enabled(&sandbox, ServiceScope::User, "docker.service"));
+}
+
+/// Makes the fake `docker` package enable the rootful daemon when it installs, as
+/// Ubuntu's docker-ce package does.
+fn docker_package_enables_the_rootful_daemon(sandbox: &Sandbox) {
+    fs::rename(
+        sandbox.root.join("bin/pacman"),
+        sandbox.root.join("bin/pacman-base"),
+    )
+    .unwrap();
+    sandbox.fake(
+        "pacman",
+        r#"if [ "$1" = -S ]; then for name in "$@"; do [ "$name" = docker ] && : > "$MYCONFIG_TEST_ROOT/units/system/docker.service" && : > "$MYCONFIG_TEST_ROOT/units/system/docker.socket"; done; fi
+exec pacman-base "$@""#,
+    );
 }
 
 #[test]
@@ -697,10 +828,11 @@ fn docker_runs_rootless_through_its_own_context_and_remove_restores_the_default(
     let sandbox = Sandbox::new("docker");
     system(&sandbox);
     docker(&sandbox);
+    docker_package_enables_the_rootful_daemon(&sandbox);
     let io = Answers::new(None);
     for _ in 0..2 {
         sandbox
-            .with(&io, |ctx| runner::install(ctx, &[&DOCKER]))
+            .with(&io, |ctx| runner::install(ctx, &[&DOCKER], &[&DOCKER]))
             .unwrap();
     }
     for package in [
@@ -713,11 +845,15 @@ fn docker_runs_rootless_through_its_own_context_and_remove_restores_the_default(
     ] {
         assert!(sandbox.installed(package), "{package} was not installed");
     }
-    assert_eq!(
-        sandbox.calls("sudo systemctl disable --now docker.service docker.socket"),
-        2
-    );
-    assert!(enabled(&sandbox, "docker.service"));
+    let stopped = |unit: &str| sandbox.root.join(format!("units/system/{unit}.stopped"));
+    for unit in ["docker.service", "docker.socket"] {
+        assert!(
+            !enabled(&sandbox, ServiceScope::System, unit),
+            "the rootful {unit} is still enabled"
+        );
+        assert!(stopped(unit).exists(), "the rootful {unit} still runs");
+    }
+    assert!(enabled(&sandbox, ServiceScope::User, "docker.service"));
     assert_eq!(
         fs::read_to_string(sandbox.root.join("docker/rootless")).unwrap(),
         "unix:///run/user/1000/docker.sock"
@@ -737,6 +873,46 @@ fn docker_runs_rootless_through_its_own_context_and_remove_restores_the_default(
         "default"
     );
     assert!(!sandbox.root.join("docker/rootless").exists());
+    assert!(!enabled(&sandbox, ServiceScope::User, "docker.service"));
+    assert!(!sandbox.installed("docker"));
+    for unit in ["docker.service", "docker.socket"] {
+        assert!(
+            !enabled(&sandbox, ServiceScope::System, unit),
+            "remove turned on the rootful {unit}, which only the package install had turned on"
+        );
+    }
+}
+
+#[test]
+fn removing_docker_turns_back_on_a_rootful_daemon_that_was_on_before() {
+    let sandbox = Sandbox::new("docker-rootful-before");
+    system(&sandbox);
+    docker(&sandbox);
+    install_everything(&sandbox, &["docker"]);
+    for unit in ["docker.service", "docker.socket"] {
+        fs::write(sandbox.root.join("units/system").join(unit), "").unwrap();
+    }
+    let io = Answers::new(None);
+    sandbox
+        .with(&io, |ctx| runner::install(ctx, &[&DOCKER], &[&DOCKER]))
+        .unwrap();
+    assert!(!enabled(&sandbox, ServiceScope::System, "docker.service"));
+    sandbox
+        .with(&io, |ctx| {
+            runner::remove(ctx, &[&DOCKER], &[&DOCKER], false)
+        })
+        .unwrap();
+    let stopped = |unit: &str| sandbox.root.join(format!("units/system/{unit}.stopped"));
+    for unit in ["docker.service", "docker.socket"] {
+        assert!(
+            enabled(&sandbox, ServiceScope::System, unit),
+            "the rootful {unit} was not enabled again"
+        );
+        assert!(
+            !stopped(unit).exists(),
+            "the rootful {unit} was not started again"
+        );
+    }
 }
 
 #[test]
@@ -753,7 +929,7 @@ mkdir -p "$HOME/.config/systemd/user" && : > "$HOME/.config/systemd/user/docker.
     let io = Answers::new(None);
     for _ in 0..2 {
         sandbox
-            .with(&io, |ctx| runner::install(ctx, &[&docker]))
+            .with(&io, |ctx| runner::install(ctx, &[&docker], &[&docker]))
             .unwrap();
     }
     assert_eq!(
@@ -771,7 +947,7 @@ fn ghostty_becomes_the_kde_terminal_when_plasma_is_present() {
     sandbox.fake("plasmashell", "exit 0");
     let io = Answers::new(None);
     sandbox
-        .with(&io, |ctx| runner::install(ctx, &[&Ghostty]))
+        .with(&io, |ctx| runner::install(ctx, &[&Ghostty], &[&Ghostty]))
         .unwrap();
     assert!(sandbox.installed("ghostty"));
     assert_eq!(
@@ -1207,7 +1383,9 @@ fn kde_plasma_applies_breeze_dark_with_the_pink_accent_and_remove_puts_it_back()
     let io = Answers::new(None);
     for _ in 0..2 {
         sandbox
-            .with(&io, |ctx| runner::install(ctx, &[&crate::KdePlasma]))
+            .with(&io, |ctx| {
+                runner::install(ctx, &[&crate::KdePlasma], &[&crate::KdePlasma])
+            })
             .unwrap();
     }
     for package in ["otf-ibm-plex", "ttf-ibmplex-mono-nerd", "libinput"] {
@@ -1248,7 +1426,11 @@ fn kde_plasma_applies_breeze_dark_with_the_pink_accent_and_remove_puts_it_back()
         .as_deref(),
         Some("true")
     );
-    assert!(enabled(&sandbox, "myconfig-plasma-layout.service"));
+    assert!(enabled(
+        &sandbox,
+        ServiceScope::User,
+        "myconfig-plasma-layout.service"
+    ));
     let hidden = sandbox
         .home
         .join(".local/share/applications/assistant.desktop");
@@ -1268,7 +1450,11 @@ fn kde_plasma_applies_breeze_dark_with_the_pink_accent_and_remove_puts_it_back()
         Some("user-rule")
     );
     assert_eq!(kde(&sandbox, "kdeglobals/General/AccentColor"), None);
-    assert!(!enabled(&sandbox, "myconfig-plasma-layout.service"));
+    assert!(!enabled(
+        &sandbox,
+        ServiceScope::User,
+        "myconfig-plasma-layout.service"
+    ));
     assert!(!hidden.exists());
     assert!(
         system_file(
@@ -1279,8 +1465,9 @@ fn kde_plasma_applies_breeze_dark_with_the_pink_accent_and_remove_puts_it_back()
     );
 }
 
-/// A systemctl stand-in whose sshd.service is active only while `units/sshd-active`
-/// exists, and whose start fails while `units/sshd-broken` exists.
+/// A systemctl stand-in whose sshd.service is enabled while `units/system/sshd.service`
+/// exists, is active only while `units/sshd-active` exists, and fails to start while
+/// `units/sshd-broken` exists.
 fn sshd(sandbox: &Sandbox, active: bool, broken: bool) {
     system(sandbox);
     let units = sandbox.root.join("units");
@@ -1296,9 +1483,9 @@ fn sshd(sandbox: &Sandbox, active: bool, broken: bool) {
 units="$MYCONFIG_TEST_ROOT/units"
 case "$*" in
     "is-active --quiet sshd.service") [ -e "$units/sshd-active" ] ;;
-    "is-enabled sshd.service") if [ -e "$units/sshd.service" ]; then echo enabled; else echo disabled; exit 1; fi ;;
-    "enable sshd.service") : > "$units/sshd.service" ;;
-    "disable sshd.service") rm -f "$units/sshd.service" ;;
+    "is-enabled sshd.service") if [ -e "$units/system/sshd.service" ]; then echo enabled; else echo disabled; exit 1; fi ;;
+    "enable sshd.service") : > "$units/system/sshd.service" ;;
+    "disable sshd.service") rm -f "$units/system/sshd.service" ;;
     "start sshd.service" | "restart sshd.service") [ ! -e "$units/sshd-broken" ] ;;
 esac"#,
     );
@@ -1310,9 +1497,15 @@ fn a_stopped_ssh_server_stays_off_unless_you_turn_it_on() {
     sshd(&without_terminal, false, false);
     let io = Answers::new(None);
     without_terminal
-        .with(&io, |ctx| runner::install(ctx, &[&crate::SshServer]))
+        .with(&io, |ctx| {
+            runner::install(ctx, &[&crate::SshServer], &[&crate::SshServer])
+        })
         .unwrap();
-    assert!(!enabled(&without_terminal, "sshd.service"));
+    assert!(!enabled(
+        &without_terminal,
+        ServiceScope::System,
+        "sshd.service"
+    ));
     assert!(
         io.notes
             .borrow()
@@ -1324,19 +1517,19 @@ fn a_stopped_ssh_server_stays_off_unless_you_turn_it_on() {
     sshd(&declined, false, false);
     declined
         .with(&Answers::new(Some(false)), |ctx| {
-            runner::install(ctx, &[&crate::SshServer])
+            runner::install(ctx, &[&crate::SshServer], &[&crate::SshServer])
         })
         .unwrap();
-    assert!(!enabled(&declined, "sshd.service"));
+    assert!(!enabled(&declined, ServiceScope::System, "sshd.service"));
 
     let accepted = Sandbox::new("ssh-server-on");
     sshd(&accepted, false, false);
     accepted
         .with(&Answers::new(Some(true)), |ctx| {
-            runner::install(ctx, &[&crate::SshServer])
+            runner::install(ctx, &[&crate::SshServer], &[&crate::SshServer])
         })
         .unwrap();
-    assert!(enabled(&accepted, "sshd.service"));
+    assert!(enabled(&accepted, ServiceScope::System, "sshd.service"));
     assert_eq!(accepted.calls("sudo systemctl start sshd.service"), 1);
 }
 
@@ -1346,7 +1539,9 @@ fn a_failed_ssh_server_start_warns_without_stopping_the_install() {
     sshd(&sandbox, false, true);
     let io = Answers::new(Some(true));
     sandbox
-        .with(&io, |ctx| runner::install(ctx, &[&crate::SshServer]))
+        .with(&io, |ctx| {
+            runner::install(ctx, &[&crate::SshServer], &[&crate::SshServer])
+        })
         .unwrap();
     assert!(
         io.notes
@@ -1362,7 +1557,9 @@ fn a_running_ssh_server_restarts_without_a_question() {
     sshd(&sandbox, true, false);
     let io = Answers::new(None);
     sandbox
-        .with(&io, |ctx| runner::install(ctx, &[&crate::SshServer]))
+        .with(&io, |ctx| {
+            runner::install(ctx, &[&crate::SshServer], &[&crate::SshServer])
+        })
         .unwrap();
     assert!(io.questions.borrow().is_empty());
     assert_eq!(sandbox.calls("sudo systemctl restart sshd.service"), 1);
@@ -1392,7 +1589,9 @@ fn media_makes_vlc_the_player_and_loupe_the_image_viewer() {
     fs::write(defaults.join("text/plain"), "other.desktop").unwrap();
     let io = Answers::new(None);
     sandbox
-        .with(&io, |ctx| runner::install(ctx, &[&crate::Media]))
+        .with(&io, |ctx| {
+            runner::install(ctx, &[&crate::Media], &[&crate::Media])
+        })
         .unwrap();
     for package in ["vlc", "loupe"] {
         assert!(sandbox.installed(package), "{package} was not installed");
@@ -1440,7 +1639,9 @@ esac"#,
     let io = Answers::new(None);
     for _ in 0..2 {
         sandbox
-            .with(&io, |ctx| runner::install(ctx, &[&crate::Flatpak]))
+            .with(&io, |ctx| {
+                runner::install(ctx, &[&crate::Flatpak], &[&crate::Flatpak])
+            })
             .unwrap();
     }
     assert!(sandbox.installed("flatpak"));
@@ -1485,7 +1686,7 @@ cat "$MYCONFIG_TEST_ROOT/bun-installer""#,
     let io = Answers::new(None);
     for _ in 0..2 {
         sandbox
-            .with(&io, |ctx| runner::install(ctx, &[&runtimes]))
+            .with(&io, |ctx| runner::install(ctx, &[&runtimes], &[&runtimes]))
             .unwrap();
     }
     assert!(sandbox.home.join(".bun/bin/bun").is_file());
@@ -1495,13 +1696,29 @@ cat "$MYCONFIG_TEST_ROOT/bun-installer""#,
 }
 
 #[test]
-fn vscodium_installs_the_theme_and_extensions_and_opens_text_files() {
+fn vscodium_installs_its_theme_and_extensions_and_remove_uninstalls_only_those() {
     let sandbox = Sandbox::new("vscodium");
     system(&sandbox);
+    // Keeps the installed extensions in a file, and names the packaged theme as VSCodium does.
     sandbox.fake(
         "codium",
-        r#"printf 'codium %s\n' "$*" >> "$MYCONFIG_TEST_LOG""#,
+        r#"printf 'codium %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+installed="$MYCONFIG_TEST_ROOT/extensions"
+touch "$installed"
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --list-extensions) cat "$installed" ;;
+        --install-extension)
+            case "$2" in *.vsix) id=myconfig.blacknpink-theme ;; *) id="$2" ;; esac
+            grep -Fxq "$id" "$installed" || printf '%s\n' "$id" >> "$installed"; shift ;;
+        --uninstall-extension) grep -Fxq "$2" "$installed" || { echo "Extension '$2' is not installed." >&2; exit 1; }
+            grep -Fxv "$2" "$installed" > "$installed.new"; mv "$installed.new" "$installed"; shift ;;
+    esac
+    shift
+done"#,
     );
+    // Installed before, so remove keeps it.
+    fs::write(sandbox.root.join("extensions"), "rust-lang.rust-analyzer\n").unwrap();
     sandbox.fake(
         "bsdtar",
         r#"printf 'bsdtar %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
@@ -1509,7 +1726,9 @@ fn vscodium_installs_the_theme_and_extensions_and_opens_text_files() {
     );
     let io = Answers::new(None);
     sandbox
-        .with(&io, |ctx| runner::install(ctx, &[&crate::Vscodium]))
+        .with(&io, |ctx| {
+            runner::install(ctx, &[&crate::Vscodium], &[&crate::Vscodium])
+        })
         .unwrap();
     for folder in [".config/VSCodium", ".config/VSCodium/User"] {
         let metadata = fs::symlink_metadata(sandbox.home.join(folder)).unwrap();
@@ -1547,6 +1766,25 @@ fn vscodium_installs_the_theme_and_extensions_and_opens_text_files() {
             "{extension} was not installed"
         );
     }
+
+    // An extension that install added and the person uninstalled since has nothing left
+    // to undo.
+    let installed = fs::read_to_string(sandbox.root.join("extensions")).unwrap();
+    fs::write(
+        sandbox.root.join("extensions"),
+        installed.replace("jeanp413.open-remote-ssh\n", ""),
+    )
+    .unwrap();
+    sandbox
+        .with(&io, |ctx| {
+            runner::remove(ctx, &[&crate::Vscodium], &[&crate::Vscodium], false)
+        })
+        .unwrap();
+    assert_eq!(
+        fs::read_to_string(sandbox.root.join("extensions")).unwrap(),
+        "rust-lang.rust-analyzer\n",
+        "remove kept an extension that install added, or removed one that was there"
+    );
 }
 
 /// A boot that bootvine can join, with pacman reporting bootvine at the version it
@@ -1589,7 +1827,9 @@ fn bootvine_builds_once_and_joins_the_initramfs_and_the_first_boot_entry() {
     let io = Answers::new(None);
     for _ in 0..2 {
         sandbox
-            .with(&io, |ctx| runner::install(ctx, &[&crate::Bootvine]))
+            .with(&io, |ctx| {
+                runner::install(ctx, &[&crate::Bootvine], &[&crate::Bootvine])
+            })
             .unwrap();
     }
     assert_eq!(sandbox.calls("makepkg --noconfirm"), 1);
@@ -1616,7 +1856,10 @@ fn bootvine_builds_once_and_joins_the_initramfs_and_the_first_boot_entry() {
             .replacen("\"rw root", "\"quiet rw root", 1)
     );
     for service in ["bootvine.service", "bootvine-shutdown.service"] {
-        assert!(enabled(&sandbox, service), "{service} is not enabled");
+        assert!(
+            enabled(&sandbox, ServiceScope::System, service),
+            "{service} is not enabled"
+        );
     }
 }
 
@@ -1627,10 +1870,52 @@ fn bootvine_rebuilds_the_initramfs_when_only_the_hook_was_missing() {
     fs::write(sandbox.root.join("bootvine-version"), "0.1.3-1\n").unwrap();
     let io = Answers::new(None);
     sandbox
-        .with(&io, |ctx| runner::install(ctx, &[&crate::Bootvine]))
+        .with(&io, |ctx| {
+            runner::install(ctx, &[&crate::Bootvine], &[&crate::Bootvine])
+        })
         .unwrap();
     assert_eq!(sandbox.calls("makepkg"), 0);
     assert_eq!(sandbox.calls("sudo mkinitcpio -P"), 1);
+}
+
+#[test]
+fn removing_bootvine_takes_its_hook_out_of_the_initramfs_before_the_package() {
+    let sandbox = Sandbox::new("bootvine-remove");
+    bootvine_boot(&sandbox);
+    // The CachyOS run changes the same file first, in the same run.
+    fs::write(sandbox.root.join("system/etc/mkinitcpio.conf"), MKINITCPIO).unwrap();
+    let modules: [&dyn Module; 2] = [&CachyosSetup, &crate::Bootvine];
+    let io = Answers::new(None);
+    sandbox
+        .with(&io, |ctx| runner::install(ctx, &modules, &modules))
+        .unwrap();
+    fs::remove_file(sandbox.root.join("calls")).unwrap();
+
+    let report = sandbox
+        .with(&io, |ctx| {
+            runner::remove(ctx, &modules, &[&crate::Bootvine], false)
+        })
+        .unwrap();
+    assert!(!report.unanswered);
+    assert_eq!(
+        system_file(&sandbox, "/etc/mkinitcpio.conf").unwrap(),
+        MKINITCPIO.replace(" plymouth", ""),
+        "remove did not take out exactly the bootvine hook"
+    );
+    assert_eq!(sandbox.calls("sudo mkinitcpio -P"), 1);
+    let calls = fs::read_to_string(sandbox.root.join("calls")).unwrap();
+    let rebuild = calls.find("sudo mkinitcpio -P").unwrap();
+    assert!(
+        calls.find("sudo install -m 0644").unwrap() < rebuild,
+        "the initramfs was rebuilt while HOOKS still named sd-bootvine"
+    );
+    assert!(
+        rebuild < calls.find("pacman -R --noconfirm bootvine").unwrap(),
+        "the package left before the initramfs stopped using its hook"
+    );
+    for service in ["bootvine.service", "bootvine-shutdown.service"] {
+        assert!(!enabled(&sandbox, ServiceScope::System, service));
+    }
 }
 
 #[test]
@@ -1644,7 +1929,9 @@ fn bootvine_needs_the_systemd_hook() {
     .unwrap();
     let io = Answers::new(None);
     let error = sandbox
-        .with(&io, |ctx| runner::install(ctx, &[&crate::Bootvine]))
+        .with(&io, |ctx| {
+            runner::install(ctx, &[&crate::Bootvine], &[&crate::Bootvine])
+        })
         .unwrap_err();
     assert!(
         error.to_string().contains("needs the systemd hook"),
@@ -1669,7 +1956,9 @@ esac"#,
     let io = Answers::new(None);
     for _ in 0..2 {
         sandbox
-            .with(&io, |ctx| runner::install(ctx, &[&crate::Tailscale]))
+            .with(&io, |ctx| {
+                runner::install(ctx, &[&crate::Tailscale], &[&crate::Tailscale])
+            })
             .unwrap();
     }
     assert_eq!(sandbox.calls("sudo tailscale set --operator=tester"), 1);
@@ -1726,7 +2015,7 @@ fi"#,
     let io = Answers::new(None);
     for _ in 0..2 {
         sandbox
-            .with(&io, |ctx| runner::install(ctx, &[&agents]))
+            .with(&io, |ctx| runner::install(ctx, &[&agents], &[&agents]))
             .unwrap();
     }
     assert_eq!(sandbox.calls("claude installer"), 1);
@@ -1750,7 +2039,7 @@ fi"#,
 }
 
 #[test]
-fn t3code_repairs_the_server_through_the_deployed_t3ctl() {
+fn t3code_repairs_the_server_through_the_deployed_t3ctl_and_remove_uninstalls_its_service() {
     let sandbox = Sandbox::new("t3code");
     system(&sandbox);
     sandbox.fake("npm", "exit 0");
@@ -1773,15 +2062,26 @@ fn t3code_repairs_the_server_through_the_deployed_t3ctl() {
     .unwrap();
     fs::set_permissions(&t3, fs::Permissions::from_mode(0o755)).unwrap();
     sandbox
-        .with(&io, |ctx| runner::install(ctx, &[&crate::T3Code]))
+        .with(&io, |ctx| {
+            runner::install(ctx, &[&crate::T3Code], &[&crate::T3Code])
+        })
         .unwrap();
     assert!(sandbox.installed("qrencode"));
     assert_eq!(sandbox.calls("t3 service install"), 1);
     let t3ctl = sandbox.home.join(".local/bin/t3ctl");
     assert_eq!(
-        fs::canonicalize(t3ctl).unwrap(),
+        fs::canonicalize(&t3ctl).unwrap(),
         fs::canonicalize(sandbox.home.join("dotfiles/t3code/.local/bin/t3ctl")).unwrap()
     );
+
+    sandbox
+        .with(&io, |ctx| {
+            runner::remove(ctx, &[&crate::T3Code], &[&crate::T3Code], false)
+        })
+        .unwrap();
+    assert_eq!(sandbox.calls("t3 service uninstall"), 1);
+    assert!(!sandbox.installed("qrencode"));
+    assert!(fs::symlink_metadata(&t3ctl).is_err());
 }
 
 #[test]
@@ -1789,7 +2089,9 @@ fn t3code_desktop_installs_the_app_and_links_its_client_settings() {
     let sandbox = Sandbox::new("t3code-desktop");
     let io = Answers::new(None);
     sandbox
-        .with(&io, |ctx| runner::install(ctx, &[&crate::T3CodeDesktop]))
+        .with(&io, |ctx| {
+            runner::install(ctx, &[&crate::T3CodeDesktop], &[&crate::T3CodeDesktop])
+        })
         .unwrap();
     assert!(sandbox.installed("t3code-bin"));
     let settings = sandbox.home.join(".t3/userdata/client-settings.json");
@@ -1820,12 +2122,15 @@ esac"#,
         "apt-get",
         r#"printf 'apt-get %s\n' "$*" >> "$MYCONFIG_TEST_LOG""#,
     );
-    let packages = [
+    let packages: Vec<_> = [
         Package::Tailscale,
         Package::Docker,
         Package::DockerCompose,
         Package::Ripgrep,
-    ];
+    ]
+    .into_iter()
+    .map(|package| myconfig_utils::resolve_package(package, PackageSystem::Apt).unwrap())
+    .collect();
     let io = Answers::new(None);
     for _ in 0..2 {
         sandbox.with(&io, |ctx| {
@@ -1851,18 +2156,50 @@ esac"#,
     assert!(system_file(&sandbox, "/etc/apt/sources.list.d/myconfig-yazi.sources").is_none());
 }
 
-struct Step(&'static str, bool);
+/// A module that notes its name when it installs, then succeeds or fails in both install
+/// and verify.
+struct Step(&'static str, bool, &'static [Need]);
 
 impl Module for Step {
     fn name(&self) -> &'static str {
         self.0
+    }
+    fn needs(&self) -> &'static [Need] {
+        self.2
     }
     fn footprint(&self, _ctx: &Context) -> Footprint {
         Footprint::default()
     }
     fn install(&self, ctx: &Context) -> ModuleResult {
         ctx.note(self.0);
+        self.verify(ctx)
+    }
+    fn verify(&self, _ctx: &Context) -> ModuleResult {
         if self.1 { Ok(()) } else { Err("broken".into()) }
+    }
+    fn remove(&self, _ctx: &Context) -> ModuleResult {
+        Ok(())
+    }
+}
+
+/// A module that installs one package, like most modules do.
+struct PackageStep;
+
+impl Module for PackageStep {
+    fn name(&self) -> &'static str {
+        "package"
+    }
+    fn needs(&self) -> &'static [Need] {
+        &[]
+    }
+    fn footprint(&self, _ctx: &Context) -> Footprint {
+        Footprint {
+            packages: vec![Package::Btop],
+            settings: vec![],
+        }
+    }
+    fn install(&self, ctx: &Context) -> ModuleResult {
+        ctx.install_packages(&[Package::Btop])
     }
     fn verify(&self, _ctx: &Context) -> ModuleResult {
         Ok(())
@@ -1873,30 +2210,368 @@ impl Module for Step {
 }
 
 #[test]
-fn keep_going_installs_every_module_and_lists_each_failure() {
+fn a_failed_package_refresh_skips_only_the_modules_that_change_packages() {
+    let sandbox = Sandbox::new("failed-refresh");
+    sandbox.fake(
+        "pacman",
+        r#"printf 'pacman %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+[ "$1" = -Syu ] && exit 1
+exit 0"#,
+    );
+    let modules: [&dyn Module; 2] = [&PackageStep, &Step("config", true, &[])];
+    let io = Answers::new(None);
+    let report = incomplete(sandbox.with(&io, |ctx| runner::install(ctx, &modules, &modules)));
+    assert_eq!(*io.notes.borrow(), ["config"]);
+    assert!(report.failed.is_empty());
+    let skipped: Vec<_> = report
+        .skipped
+        .iter()
+        .map(|skipped| skipped.module)
+        .collect();
+    assert_eq!(skipped, ["package"]);
+    assert!(matches!(
+        report.skipped[0].reason,
+        runner::SkipReason::PackageDatabase(_)
+    ));
+    assert_eq!(sandbox.calls("pacman -S "), 0);
+}
+
+fn incomplete(result: Result<(), runner::InstallError>) -> runner::InstallReport {
+    match result {
+        Err(runner::InstallError::Incomplete(report)) => report,
+        other => panic!("expected an incomplete install, got {other:?}"),
+    }
+}
+
+#[test]
+fn install_goes_on_after_a_failure_and_skips_the_modules_that_need_it() {
     let sandbox = Sandbox::new("keep-going");
-    let modules: [&dyn Module; 3] = [
-        &Step("first", false),
-        &Step("second", true),
-        &Step("third", false),
+    let modules: [&dyn Module; 7] = [
+        &Step("first", false, &[]),
+        &Step("second", true, &[]),
+        &Step("third", true, &[Need::Soft("first")]),
+        &Step("fourth", true, &[Need::Hard("third")]),
+        &Step("fifth", true, &[Need::Soft("absent"), Need::Hard("second")]),
+        &Step("sixth", false, &[]),
+        &Step("summary", true, &[Need::EveryEarlier]),
     ];
     let io = Answers::new(None);
-    let error = sandbox
-        .with(&io, |ctx| runner::install_keep_going(ctx, &modules))
-        .unwrap_err()
-        .to_string();
-    assert_eq!(*io.notes.borrow(), ["first", "second", "third"]);
-    assert!(error.starts_with("2 step(s) failed:"), "{error}");
-    assert!(error.contains("first: broken") && error.contains("third: broken"));
-    let io = Answers::new(None);
-    assert!(
-        sandbox
-            .with(&io, |ctx| runner::install(ctx, &modules))
-            .is_err()
-    );
+    let report = incomplete(sandbox.with(&io, |ctx| runner::install(ctx, &modules, &modules)));
+    assert_eq!(*io.notes.borrow(), ["first", "second", "fifth", "sixth"]);
+    let failed: Vec<_> = report.failed.iter().map(|failed| failed.module).collect();
+    assert_eq!(failed, ["first", "sixth"]);
+    let skipped: Vec<_> = report
+        .skipped
+        .iter()
+        .map(|skipped| (skipped.module, skipped.reason.clone()))
+        .collect();
     assert_eq!(
-        *io.notes.borrow(),
-        ["first"],
-        "install stops at the first failure"
+        skipped,
+        [
+            (
+                "third",
+                runner::SkipReason::Needs(vec![("first", runner::Unmet::Failed)])
+            ),
+            (
+                "fourth",
+                runner::SkipReason::Needs(vec![("third", runner::Unmet::Skipped)])
+            ),
+            (
+                "summary",
+                runner::SkipReason::Needs(vec![
+                    ("first", runner::Unmet::Failed),
+                    ("third", runner::Unmet::Skipped),
+                    ("fourth", runner::Unmet::Skipped),
+                    ("sixth", runner::Unmet::Failed),
+                ])
+            ),
+        ]
+    );
+    assert!(!report.only_unanswered());
+}
+
+#[test]
+fn a_hard_need_left_out_of_the_run_must_verify() {
+    let sandbox = Sandbox::new("hard-need");
+    let dependent = Step("dependent", true, &[Need::Hard("needed")]);
+    let run: [&dyn Module; 1] = [&dependent];
+
+    let broken: [&dyn Module; 2] = [&Step("needed", false, &[]), &dependent];
+    let io = Answers::new(None);
+    let report = incomplete(sandbox.with(&io, |ctx| runner::install(ctx, &broken, &run)));
+    assert!(io.notes.borrow().is_empty(), "nothing installs");
+    assert_eq!(report.skipped.len(), 1);
+    assert_eq!(
+        report.skipped[0].reason,
+        runner::SkipReason::Needs(vec![(
+            "needed",
+            runner::Unmet::NotInstalled("broken".to_owned())
+        )])
+    );
+
+    let working: [&dyn Module; 2] = [&Step("needed", true, &[]), &dependent];
+    let io = Answers::new(None);
+    sandbox
+        .with(&io, |ctx| runner::install(ctx, &working, &run))
+        .unwrap();
+    assert_eq!(*io.notes.borrow(), ["dependent"]);
+}
+
+/// Fake PowerShells where Defender keeps its allowed apps in a file, and only an elevated
+/// pwsh changes them. With `refused`, the person refuses every administrator prompt.
+fn defender(sandbox: &Sandbox, refused: bool) {
+    let elevate = if refused { "exit 1" } else { ":" };
+    sandbox.fake(
+        "pwsh.exe",
+        &format!(
+            r#"allowed="$MYCONFIG_TEST_ROOT/allowed"
+case "$3" in
+    '$PROFILE') printf '%s\n' "$HOME/Documents/PowerShell/Microsoft.PowerShell_profile.ps1" ;;
+    *Get-MpPreference*) if [ -e "$allowed" ]; then echo allowed; else echo blocked; fi ;;
+    *Add-MpPreference*-Verb\ RunAs*) printf 'defender %s\n' "$3" >> "$MYCONFIG_TEST_LOG"; {elevate}; : > "$allowed" ;;
+    *Remove-MpPreference*-Verb\ RunAs*) printf 'defender %s\n' "$3" >> "$MYCONFIG_TEST_LOG"; {elevate}; rm -f "$allowed" ;;
+esac"#
+        ),
+    );
+    sandbox.fake(
+        "powershell.exe",
+        r#"printf '%s\n' "$HOME/Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1""#,
+    );
+}
+
+#[test]
+fn a_refused_administrator_prompt_leaves_nothing_for_remove_to_ask_again() {
+    let sandbox = Sandbox::new("powershell-profile-refused");
+    defender(&sandbox, true);
+    let modules: [&dyn Module; 1] = [&crate::PowerShellProfile];
+    let io = Answers::new(None);
+    let report = incomplete(sandbox.with(&io, |ctx| runner::install(ctx, &modules, &modules)));
+    assert_eq!(report.failed.len(), 1);
+    sandbox
+        .with(&io, |ctx| runner::remove(ctx, &modules, &modules, false))
+        .unwrap();
+    assert_eq!(
+        sandbox.calls("Remove-MpPreference"),
+        0,
+        "remove showed an administrator prompt for an entry that was never added"
+    );
+}
+
+#[test]
+fn the_powershell_profile_allows_pwsh_through_controlled_folder_access_until_removed() {
+    let sandbox = Sandbox::new("powershell-profile");
+    defender(&sandbox, false);
+    let io = Answers::new(None);
+    sandbox
+        .with(&io, |ctx| {
+            runner::install(
+                ctx,
+                &[&crate::PowerShellProfile],
+                &[&crate::PowerShellProfile],
+            )
+        })
+        .unwrap();
+    assert!(sandbox.root.join("allowed").exists());
+    let pwsh = sandbox.root.join("bin/pwsh.exe");
+    assert_eq!(
+        sandbox.calls(&format!(
+            "Add-MpPreference -ControlledFolderAccessAllowedApplications ''{}''",
+            pwsh.display()
+        )),
+        1
+    );
+
+    sandbox
+        .with(&io, |ctx| {
+            runner::remove(
+                ctx,
+                &[&crate::PowerShellProfile],
+                &[&crate::PowerShellProfile],
+                false,
+            )
+        })
+        .unwrap();
+    assert!(!sandbox.root.join("allowed").exists());
+    assert_eq!(
+        sandbox.calls(&format!(
+            "Remove-MpPreference -ControlledFolderAccessAllowedApplications ''{}''",
+            pwsh.display()
+        )),
+        1
+    );
+    assert!(!sandbox.home.join("Documents").exists());
+}
+
+/// Fake `gh` and `tailscale` that count as logged in after their login command, and log
+/// every call.
+fn logins(sandbox: &Sandbox) {
+    sandbox.fake(
+        "gh",
+        r#"printf 'gh %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+case "$*" in
+    "auth status") [ -e "$MYCONFIG_TEST_ROOT/gh-login" ] ;;
+    "auth login") : > "$MYCONFIG_TEST_ROOT/gh-login" ;;
+esac"#,
+    );
+    sandbox.fake(
+        "tailscale",
+        r#"printf 'tailscale %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+case "$*" in
+    status) [ -e "$MYCONFIG_TEST_ROOT/tailscale-login" ] ;;
+    up) : > "$MYCONFIG_TEST_ROOT/tailscale-login" ;;
+esac"#,
+    );
+}
+
+#[test]
+fn login_asks_only_when_logged_out_and_otherwise_prints_the_command() {
+    let sandbox = Sandbox::new("login");
+    logins(&sandbox);
+    let install = |io: &Answers| {
+        sandbox
+            .with(io, |ctx| {
+                runner::install(ctx, &[&crate::Login], &[&crate::Login])
+            })
+            .unwrap();
+    };
+
+    for io in [Answers::new(None), Answers::new(Some(false))] {
+        install(&io);
+        assert_eq!(io.questions.borrow().len(), 2);
+        assert_eq!(
+            *io.notes.borrow(),
+            [
+                "GitHub CLI is not authenticated. Run: gh auth login",
+                "Tailscale is not authenticated. Run: sudo tailscale up",
+            ]
+        );
+    }
+    assert_eq!(sandbox.calls("gh auth login"), 0);
+    assert_eq!(sandbox.calls("tailscale up"), 0);
+
+    let accepted = Answers::new(Some(true));
+    install(&accepted);
+    assert_eq!(
+        *accepted.questions.borrow(),
+        [
+            "GitHub CLI is not authenticated. Log in now?",
+            "Tailscale is not authenticated. Log in now?",
+        ]
+    );
+    assert_eq!(sandbox.calls("gh auth login"), 1);
+    assert_eq!(sandbox.calls("tailscale up"), 1);
+
+    let logged_in = Answers::new(Some(true));
+    install(&logged_in);
+    assert!(logged_in.questions.borrow().is_empty());
+
+    sandbox
+        .with(&logged_in, |ctx| {
+            runner::remove(ctx, &[&crate::Login], &[&crate::Login], false)
+        })
+        .unwrap();
+    assert_eq!(sandbox.calls("logout"), 0, "remove keeps the logins");
+    assert_eq!(
+        sandbox.calls("tailscale down"),
+        0,
+        "remove keeps the logins"
+    );
+}
+
+#[test]
+fn a_declined_windows_t3code_verifies_and_is_asked_again() {
+    let sandbox = Sandbox::new("windows-t3code-declined");
+    let modules: [&dyn Module; 1] = [&crate::WindowsT3Code];
+    for _ in 0..2 {
+        let io = Answers::new(Some(false));
+        sandbox
+            .with(&io, |ctx| runner::install(ctx, &modules, &modules))
+            .unwrap();
+        assert_eq!(io.questions.borrow().len(), 1);
+    }
+    assert!(!sandbox.home.join(".local/bin/t3ctl.ps1").exists());
+    let io = Answers::new(None);
+    let verified = sandbox.with(&io, |ctx| runner::verify(ctx, &modules));
+    assert!(verified[0].1.is_ok());
+    assert!(
+        io.events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, crate::Event::Declined { module } if module == "t3code")),
+        "the screen would show the declined module as installed"
+    );
+    assert!(sandbox.with(&io, |ctx| !runner::installed(ctx, &crate::WindowsT3Code)));
+}
+
+#[test]
+fn an_unanswered_windows_t3code_is_skipped() {
+    let sandbox = Sandbox::new("windows-t3code-unanswered");
+    let modules: [&dyn Module; 1] = [&crate::WindowsT3Code];
+    let report = incomplete(sandbox.with(&Answers::new(None), |ctx| {
+        runner::install(ctx, &modules, &modules)
+    }));
+    assert!(report.failed.is_empty());
+    assert_eq!(report.skipped.len(), 1);
+    assert!(matches!(
+        report.skipped[0].reason,
+        runner::SkipReason::Unanswered(_)
+    ));
+    assert!(
+        report.only_unanswered(),
+        "the command line exits with code 3 instead of reporting a failure"
+    );
+    assert!(!sandbox.home.join(".local/bin/t3ctl.ps1").exists());
+    let verified = sandbox.with(&Answers::new(None), |ctx| runner::verify(ctx, &modules));
+    assert!(verified[0].1.is_err(), "nothing records a skip");
+}
+
+/// Asks before installing, the way `WindowsT3Code` does, and verifies that it installed
+/// unless the person declined.
+struct Asks;
+
+impl Module for Asks {
+    fn name(&self) -> &'static str {
+        "asks"
+    }
+    fn needs(&self) -> &'static [Need] {
+        &[]
+    }
+    fn footprint(&self, _ctx: &Context) -> Footprint {
+        Footprint::default()
+    }
+    fn install(&self, ctx: &Context) -> ModuleResult {
+        if !ctx.confirm("Install?")? {
+            return ctx.record_declined();
+        }
+        ctx.record_accepted()
+    }
+    fn verify(&self, ctx: &Context) -> ModuleResult {
+        if ctx.declined() {
+            Ok(())
+        } else {
+            Err("not installed".into())
+        }
+    }
+    fn remove(&self, _ctx: &Context) -> ModuleResult {
+        Ok(())
+    }
+}
+
+#[test]
+fn accepting_after_a_decline_makes_verify_check_the_install_again() {
+    let sandbox = Sandbox::new("accepted-after-decline");
+    let modules: [&dyn Module; 1] = [&Asks];
+    sandbox
+        .with(&Answers::new(Some(false)), |ctx| {
+            runner::install(ctx, &modules, &modules)
+        })
+        .unwrap();
+    let report = incomplete(sandbox.with(&Answers::new(Some(true)), |ctx| {
+        runner::install(ctx, &modules, &modules)
+    }));
+    assert_eq!(
+        report.failed.len(),
+        1,
+        "verify no longer passes on the decline"
     );
 }

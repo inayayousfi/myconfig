@@ -16,6 +16,7 @@ static MODULES: &[&dyn Module] = &[
     &Base {
         packages: Base::ARCH,
         unwanted: &[],
+        needs: &[],
     },
     &Ssh,
     &Cli,
@@ -35,6 +36,7 @@ static MODULES: &[&dyn Module] = &[
     &T3Code,
     &SshServer,
     &GitConfig { windows_ssh: true },
+    &Login,
     &EnvironmentInventory::ARCH_WSL,
 ];
 
@@ -47,13 +49,19 @@ fn main() -> ExitCode {
         title: "Arch WSL",
         package_system: PackageSystem::Arch,
         modules: MODULES,
-        keep_going: false,
     })
 }
 
 #[cfg(test)]
 mod tests {
+    use myconfig_modules::runner::need_problems;
+
     use super::MODULES;
+
+    #[test]
+    fn every_need_comes_earlier_and_every_hard_need_is_in_the_profile() {
+        assert_eq!(need_problems(MODULES), Vec::<String>::new());
+    }
 
     #[test]
     fn the_profile_has_no_desktop_modules() {
@@ -84,6 +92,7 @@ mod tests {
             "git-config",
             "tailscale",
             "t3code",
+            "login",
         ] {
             assert!(names.contains(&wanted), "Arch WSL lacks {wanted}");
         }

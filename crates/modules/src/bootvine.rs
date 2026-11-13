@@ -6,9 +6,9 @@ use embedded_dotfiles::DOTFILES;
 use xshell::cmd;
 
 use crate::{
-    Context, Footprint, Module, ModuleResult, ServiceScope,
+    Context, Footprint, Module, ModuleResult, Need, ServiceScope,
     boot_config::{
-        MKINITCPIO_CONFIG, REFIND_LINUX_CONFIG, has_hook, with_hook_after, with_quiet_default,
+        MKINITCPIO_CONFIG, REFIND_LINUX_CONFIG, add_initramfs_hook, has_hook, with_quiet_default,
     },
     support::{edit_system_file, read_system_file, with_temporary_directory},
 };
@@ -57,8 +57,17 @@ impl Module for Bootvine {
         "bootvine"
     }
 
+    fn needs(&self) -> &'static [Need] {
+        &[Need::Hard("base")]
+    }
+
     fn footprint(&self, _ctx: &Context) -> Footprint {
         Footprint::default()
+    }
+
+    /// bootvine is a package built here, so the catalog footprint cannot list it.
+    fn changes_packages(&self, _ctx: &Context) -> bool {
+        true
     }
 
     fn install(&self, ctx: &Context) -> ModuleResult {
@@ -77,10 +86,7 @@ impl Module for Bootvine {
             }
             // HOOKS names sd-bootvine only once its package is built, and before the
             // package installs, so the rebuild that pacman runs includes it.
-            let hook_changed = edit_system_file(ctx, MKINITCPIO_CONFIG, |config| {
-                with_hook_after(config, "sd-bootvine", "systemd")
-            })?
-            .unwrap_or(false);
+            let hook_changed = add_initramfs_hook(ctx, "sd-bootvine", "systemd")?;
             if !packages.is_empty() {
                 ctx.run(cmd!(sh, "sudo pacman -U --noconfirm {packages...}"))
             } else if hook_changed {

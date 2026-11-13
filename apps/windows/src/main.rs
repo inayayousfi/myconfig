@@ -34,13 +34,19 @@ fn main() -> ExitCode {
         title: "Windows Workstation",
         package_system: PackageSystem::Winget,
         modules: MODULES,
-        keep_going: true,
     })
 }
 
 #[cfg(test)]
 mod tests {
+    use myconfig_modules::runner::need_problems;
+
     use super::MODULES;
+
+    #[test]
+    fn every_need_comes_earlier_and_every_hard_need_is_in_the_profile() {
+        assert_eq!(need_problems(MODULES), Vec::<String>::new());
+    }
 
     #[test]
     fn the_base_packages_come_first() {

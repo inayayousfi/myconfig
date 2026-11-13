@@ -3,7 +3,9 @@ use std::path::PathBuf;
 
 use embedded_dotfiles::DOTFILES;
 
-use crate::{Context, Footprint, Module, ModuleResult, Package, powershell_profile::profile_paths};
+use crate::{
+    Context, Footprint, Module, ModuleResult, Need, Package, powershell_profile::profile_paths,
+};
 
 pub struct OhMyPosh;
 
@@ -33,6 +35,10 @@ fn contents() -> &'static [u8] {
 impl Module for OhMyPosh {
     fn name(&self) -> &'static str {
         "oh-my-posh"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {

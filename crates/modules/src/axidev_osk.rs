@@ -6,7 +6,7 @@ use std::path::Path;
 use xshell::cmd;
 
 use crate::{
-    Context, Footprint, Module, ModuleResult, Package,
+    Context, Footprint, Module, ModuleResult, Need, Package,
     support::{
         current_user, input_access_settings, require_executable, require_programs, verify_packages,
         with_temporary_directory,
@@ -59,6 +59,10 @@ pub(crate) fn configure(ctx: &Context, lifecycle: &Path, app: &Path) -> ModuleRe
 impl Module for AxidevOsk {
     fn name(&self) -> &'static str {
         "axidev-osk"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[Need::Hard("base")]
     }
 
     fn footprint(&self, ctx: &Context) -> Footprint {

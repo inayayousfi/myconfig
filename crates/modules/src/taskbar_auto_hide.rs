@@ -1,5 +1,5 @@
 //! Hides the Windows taskbar until the pointer reaches it.
-use crate::{Context, Footprint, Module, ModuleResult, Setting};
+use crate::{Context, Footprint, Module, ModuleResult, Need, Setting};
 
 pub struct TaskbarAutoHide;
 
@@ -82,6 +82,10 @@ pub(crate) fn set(auto_hide: bool) -> ModuleResult {
 impl Module for TaskbarAutoHide {
     fn name(&self) -> &'static str {
         "taskbar-auto-hide"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {

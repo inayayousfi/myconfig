@@ -12,8 +12,8 @@ use embedded_dotfiles::DOTFILES;
 use xshell::Shell;
 
 use crate::{
-    Context, EnvironmentInventory, Event, Footprint, Interaction, Module, ModuleResult, Package,
-    PackageSystem, Setting, Unanswered, Zsh, runner, state::StateStore,
+    Context, EnvironmentInventory, Event, Footprint, Interaction, Module, ModuleResult, Need,
+    Package, PackageSystem, Setting, Unanswered, Zsh, runner, state::StateStore,
 };
 
 /// Answers every question the same way, or not at all when `reply` is `None`.
@@ -21,6 +21,7 @@ pub(crate) struct Answers {
     reply: Option<bool>,
     pub(crate) questions: RefCell<Vec<String>>,
     pub(crate) notes: RefCell<Vec<String>>,
+    pub(crate) events: RefCell<Vec<Event>>,
 }
 
 impl Answers {
@@ -29,6 +30,7 @@ impl Answers {
             reply,
             questions: RefCell::new(Vec::new()),
             notes: RefCell::new(Vec::new()),
+            events: RefCell::new(Vec::new()),
         }
     }
 }
@@ -50,7 +52,9 @@ impl Interaction for Answers {
     fn with_terminal(&self, command: &mut Command) -> std::io::Result<ExitStatus> {
         command.status()
     }
-    fn event(&self, _event: Event) {}
+    fn event(&self, event: Event) {
+        self.events.borrow_mut().push(event);
+    }
 }
 
 /// A temporary home with fake programs first on PATH. Fake `sudo` runs its command
@@ -156,6 +160,10 @@ impl Module for Sample {
     fn name(&self) -> &'static str {
         "sample"
     }
+
+    fn needs(&self) -> &'static [Need] {
+        &[]
+    }
     fn footprint(&self, _ctx: &Context) -> Footprint {
         Footprint {
             packages: vec![Package::Zsh, Package::Git],
@@ -187,6 +195,10 @@ impl Module for NeedsZsh {
     fn name(&self) -> &'static str {
         "needs-zsh"
     }
+
+    fn needs(&self) -> &'static [Need] {
+        &[]
+    }
     fn footprint(&self, _ctx: &Context) -> Footprint {
         Footprint {
             packages: vec![Package::Zsh],
@@ -216,7 +228,7 @@ fn remove_undoes_exactly_what_install_added() {
     prepare_sample(&sandbox);
     let io = Answers::new(None);
     sandbox
-        .with(&io, |ctx| runner::install(ctx, &[&Sample]))
+        .with(&io, |ctx| runner::install(ctx, &[&Sample], &[&Sample]))
         .unwrap();
     assert!(sandbox.installed("zsh"));
     assert_eq!(sandbox.git_config("core.symlinks").as_deref(), Some("true"));
@@ -254,7 +266,9 @@ fn an_unanswered_still_needed_package_is_kept_for_a_later_remove() {
     prepare_sample(&sandbox);
     let profile: &[&dyn Module] = &[&Sample, &NeedsZsh];
     sandbox
-        .with(&Answers::new(None), |ctx| runner::install(ctx, profile))
+        .with(&Answers::new(None), |ctx| {
+            runner::install(ctx, profile, profile)
+        })
         .unwrap();
 
     let unattended = Answers::new(None);
@@ -294,6 +308,10 @@ impl Module for ZshConfig {
     fn name(&self) -> &'static str {
         "zsh-config"
     }
+
+    fn needs(&self) -> &'static [Need] {
+        &[]
+    }
     fn footprint(&self, _ctx: &Context) -> Footprint {
         Footprint::default()
     }
@@ -315,7 +333,9 @@ fn a_deployed_config_package_replaces_and_later_restores_your_file() {
     fs::write(&zshrc, "previous user config\n").unwrap();
     let io = Answers::new(None);
     sandbox
-        .with(&io, |ctx| runner::install(ctx, &[&ZshConfig]))
+        .with(&io, |ctx| {
+            runner::install(ctx, &[&ZshConfig], &[&ZshConfig])
+        })
         .unwrap();
     assert_eq!(fs::read(&zshrc).unwrap(), DOTFILES.zsh._zshrc.content);
     assert_eq!(
@@ -324,7 +344,9 @@ fn a_deployed_config_package_replaces_and_later_restores_your_file() {
     );
     // A second install leaves the deployed package in place.
     sandbox
-        .with(&io, |ctx| runner::install(ctx, &[&ZshConfig]))
+        .with(&io, |ctx| {
+            runner::install(ctx, &[&ZshConfig], &[&ZshConfig])
+        })
         .unwrap();
     assert_eq!(fs::read(&zshrc).unwrap(), DOTFILES.zsh._zshrc.content);
 
@@ -353,6 +375,10 @@ impl Module for KanataConfig {
     fn name(&self) -> &'static str {
         "kanata-config"
     }
+
+    fn needs(&self) -> &'static [Need] {
+        &[]
+    }
     fn footprint(&self, _ctx: &Context) -> Footprint {
         Footprint::default()
     }
@@ -373,7 +399,9 @@ fn a_folder_shared_by_config_packages_stays_a_real_folder() {
     let sandbox = Sandbox::new("shared-folders");
     let io = Answers::new(None);
     sandbox
-        .with(&io, |ctx| runner::install(ctx, &[&KanataConfig]))
+        .with(&io, |ctx| {
+            runner::install(ctx, &[&KanataConfig], &[&KanataConfig])
+        })
         .unwrap();
     // A service enabled later writes here, so it must not be a link into ~/dotfiles/kanata.
     for folder in [".config", ".config/systemd", ".config/systemd/user"] {
@@ -421,10 +449,10 @@ printf 'tester:x:1000:1000::/home/tester:%s\n' "$shell""#,
     };
     let io = Answers::new(None);
     sandbox
-        .with(&io, |ctx| runner::install(ctx, &[&zsh]))
+        .with(&io, |ctx| runner::install(ctx, &[&zsh], &[&zsh]))
         .unwrap();
     sandbox
-        .with(&io, |ctx| runner::install(ctx, &[&zsh]))
+        .with(&io, |ctx| runner::install(ctx, &[&zsh], &[&zsh]))
         .unwrap();
     assert_eq!(sandbox.calls("pacman -S --needed --noconfirm zsh"), 1);
     assert_eq!(sandbox.calls("curl -fsSL"), 1);
@@ -448,7 +476,11 @@ fn the_environment_inventory_keeps_an_existing_file() {
     let io = Answers::new(None);
     sandbox
         .with(&io, |ctx| {
-            runner::install(ctx, &[&EnvironmentInventory::ARCH_WSL])
+            runner::install(
+                ctx,
+                &[&EnvironmentInventory::ARCH_WSL],
+                &[&EnvironmentInventory::ARCH_WSL],
+            )
         })
         .unwrap();
     let inventory = fs::read_to_string(sandbox.home.join("environment.md")).unwrap();
@@ -462,7 +494,11 @@ fn the_environment_inventory_keeps_an_existing_file() {
     .unwrap();
     sandbox
         .with(&io, |ctx| {
-            runner::install(ctx, &[&EnvironmentInventory::CACHYOS])
+            runner::install(
+                ctx,
+                &[&EnvironmentInventory::CACHYOS],
+                &[&EnvironmentInventory::CACHYOS],
+            )
         })
         .unwrap();
     assert_eq!(

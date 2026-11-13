@@ -3,9 +3,9 @@
 use xshell::cmd;
 
 use crate::{
-    Context, Footprint, Module, ModuleResult, Package,
+    Context, Footprint, Module, ModuleResult, Need, Package,
     boot_config::{
-        MKINITCPIO_CONFIG, REFIND_LINUX_CONFIG, has_hook, without_hook, without_options,
+        MKINITCPIO_CONFIG, REFIND_LINUX_CONFIG, has_hook, remove_initramfs_hook, without_options,
     },
     support::{edit_system_file, read_system_file},
 };
@@ -79,10 +79,7 @@ const SPLASH: &[Package] = &[
 const SPLASH_OPTIONS: &[&str] = &["quiet", "nowatchdog", "splash"];
 
 fn remove_boot_splash(ctx: &Context) -> ModuleResult {
-    let hooks_changed = edit_system_file(ctx, MKINITCPIO_CONFIG, |config| {
-        without_hook(config, "plymouth")
-    })?
-    .ok_or_else(|| format!("{MKINITCPIO_CONFIG} was not found"))?;
+    let hooks_changed = remove_initramfs_hook(ctx, "plymouth")?;
     ctx.uninstall_packages(SPLASH)?;
     if edit_system_file(ctx, REFIND_LINUX_CONFIG, |config| {
         without_options(config, SPLASH_OPTIONS)
@@ -102,6 +99,10 @@ fn remove_boot_splash(ctx: &Context) -> ModuleResult {
 impl Module for CachyosSetup {
     fn name(&self) -> &'static str {
         "cachyos-setup"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[Need::Hard("plasma-version"), Need::Hard("base")]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {

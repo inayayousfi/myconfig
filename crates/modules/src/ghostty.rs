@@ -1,6 +1,6 @@
 //! Ghostty, set as the KDE Plasma terminal when Plasma is present.
 use crate::{
-    Context, Footprint, Module, ModuleResult, Package, Setting, deploy::verify_package,
+    Context, Footprint, Module, ModuleResult, Need, Package, Setting, deploy::verify_package,
     support::verify_packages,
 };
 
@@ -16,6 +16,10 @@ fn kde_present(ctx: &Context) -> bool {
 impl Module for Ghostty {
     fn name(&self) -> &'static str {
         "ghostty"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[Need::Hard("base"), Need::Soft(crate::PlasmaVersion::NAME)]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {

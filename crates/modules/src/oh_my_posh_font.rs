@@ -3,7 +3,7 @@ use std::{collections::HashSet, fs, path::PathBuf};
 
 use xshell::cmd;
 
-use crate::{Context, Footprint, Module, ModuleResult, Package, Setting};
+use crate::{Context, Footprint, Module, ModuleResult, Need, Package, Setting};
 
 pub struct OhMyPoshFont;
 
@@ -31,12 +31,18 @@ fn font_files(ctx: &Context) -> ModuleResult<HashSet<PathBuf>> {
 
 fn registered_fonts(ctx: &Context) -> ModuleResult<HashSet<String>> {
     let (_, output) = ctx.read_unchecked(cmd!(ctx.shell, "reg.exe query {FONTS_KEY}"))?;
-    Ok(Setting::registry_value_names(&output).into_iter().collect())
+    Ok(crate::setting::registry_value::value_names(&output)
+        .into_iter()
+        .collect())
 }
 
 impl Module for OhMyPoshFont {
     fn name(&self) -> &'static str {
         "oh-my-posh-font"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {

@@ -1,7 +1,7 @@
 //! The VLC media player and the Loupe image viewer, as the default applications for
 //! their file types.
 use crate::{
-    Context, Footprint, Module, ModuleResult, Package, Setting,
+    Context, Footprint, Module, ModuleResult, Need, Package, Setting,
     support::{
         default_application_settings, desktop_entry_types, set_default_application, verify_packages,
     },
@@ -31,6 +31,10 @@ fn defaults(ctx: &Context) -> ModuleResult<[(&'static str, Vec<String>); 2]> {
 impl Module for Media {
     fn name(&self) -> &'static str {
         "media"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[Need::Hard("plasma-version")]
     }
 
     fn footprint(&self, ctx: &Context) -> Footprint {

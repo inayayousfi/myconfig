@@ -1,6 +1,6 @@
 //! Android phone tools and the `phone` command.
 use crate::{
-    Context, Footprint, Module, ModuleResult, Package,
+    Context, Footprint, Module, ModuleResult, Need, Package,
     deploy::verify_package,
     support::{require_executable, require_programs, verify_packages},
 };
@@ -12,6 +12,10 @@ const PACKAGES: &[Package] = &[Package::AndroidSdkPlatformTools, Package::Scrcpy
 impl Module for AndroidPhone {
     fn name(&self) -> &'static str {
         "android-phone"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[Need::Hard("base")]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {

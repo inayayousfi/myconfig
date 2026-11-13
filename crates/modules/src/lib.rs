@@ -10,7 +10,7 @@ mod support;
 #[cfg(all(test, unix))]
 mod tests;
 
-pub use context::{Context, Event, Interaction, ServiceScope, Step, Unanswered};
+pub use context::{Context, Event, Interaction, ServiceScope, ServiceState, Step, Unanswered};
 pub use myconfig_utils::PackageSystem;
 pub use package_catalog::Package;
 pub use setting::Setting;
@@ -38,6 +38,7 @@ mod kanata;
 mod kanata_kde;
 mod kde_plasma;
 mod llvm_path;
+mod login;
 mod media;
 mod oh_my_posh;
 mod oh_my_posh_font;
@@ -84,6 +85,7 @@ pub use kanata::Kanata;
 pub use kanata_kde::KanataKde;
 pub use kde_plasma::KdePlasma;
 pub use llvm_path::LlvmPath;
+pub use login::Login;
 pub use media::Media;
 pub use oh_my_posh::OhMyPosh;
 pub use oh_my_posh_font::OhMyPoshFont;
@@ -125,11 +127,37 @@ pub struct Footprint {
     pub settings: Vec<Setting>,
 }
 
+/// Another module, named as `Module::name` returns it, that a module relies on. The
+/// runner skips the module when a module it needs failed or was skipped in the same run.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Need {
+    /// The module cannot work without this one, so the profile must hold it, earlier in
+    /// the order. When a run leaves it out, the runner installs the module only if this one
+    /// verifies.
+    Hard(&'static str),
+    /// The module relies on this one only when the run includes it, earlier in the order.
+    /// No profile check catches a misspelled name, so name it through a constant of the
+    /// needed module, such as `PlasmaVersion::NAME`.
+    Soft(&'static str),
+    /// A soft need on every module that comes earlier in the profile, for a module that
+    /// describes the whole run.
+    EveryEarlier,
+}
+
 pub trait Module: Sync {
     /// Name used by the command line, the screen and the recorded state.
     fn name(&self) -> &'static str;
 
+    /// The modules this one relies on, such as the one that installs a program it runs.
+    fn needs(&self) -> &'static [Need];
+
     fn footprint(&self, ctx: &Context) -> Footprint;
+
+    /// Whether install installs or removes packages. The runner skips such a module when
+    /// the package database refresh failed.
+    fn changes_packages(&self, ctx: &Context) -> bool {
+        !self.footprint(ctx).packages.is_empty()
+    }
 
     /// Changes the machine only through the recording functions on `Context`.
     fn install(&self, ctx: &Context) -> ModuleResult;

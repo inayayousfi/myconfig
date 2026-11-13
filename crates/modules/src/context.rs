@@ -50,6 +50,17 @@ pub enum Event {
         step: Step,
         error: Option<String>,
     },
+    /// The runner did not install the module, because a module it needs is not in place
+    /// or because nobody could answer its question.
+    Skipped {
+        module: String,
+        reason: String,
+    },
+    /// The module verified because the person declined its install, so nothing of it is
+    /// installed.
+    Declined {
+        module: String,
+    },
 }
 
 /// How a run talks to the person: the screen or the plain command line.
@@ -64,6 +75,13 @@ pub trait Interaction {
     /// Gives the whole terminal to a program, then takes it back.
     fn with_terminal(&self, command: &mut Command) -> std::io::Result<ExitStatus>;
     fn event(&self, event: Event);
+}
+
+/// Whether a service starts at boot or login, and whether it runs now.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ServiceState {
+    pub enabled: bool,
+    pub active: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -396,15 +414,14 @@ impl<'a> Context<'a> {
         if missing.is_empty() {
             return Ok(());
         }
+        let missing_specs: Vec<_> = missing.iter().map(|(_, spec)| *spec).collect();
         if self.package_system == PackageSystem::Apt {
-            let packages: Vec<_> = missing.iter().map(|(package, _)| *package).collect();
             crate::apt_repository::add_repositories(
                 self,
-                &packages,
+                &missing_specs,
                 &crate::apt_repository::codename()?,
             )?;
         }
-        let missing_specs: Vec<_> = missing.iter().map(|(_, spec)| *spec).collect();
         self.install_specs(&missing_specs)?;
         for (package, spec) in missing {
             if self.package_installed(spec)? {
@@ -605,13 +622,7 @@ impl<'a> Context<'a> {
             system: true,
             previous,
         })?;
-        let staged = temporary_path("system-file");
-        fs::write(&staged, contents)?;
-        let result = self.run(cmd!(sh, "sudo install -m {mode} {staged} {path}"));
-        let cleanup = fs::remove_file(&staged);
-        result?;
-        cleanup?;
-        Ok(())
+        crate::support::install_system_file(self, path, contents, mode)
     }
 
     /// Records a user file before a program changes it by itself.
@@ -707,6 +718,92 @@ impl<'a> Context<'a> {
             ServiceScope::System => self.run(cmd!(sh, "sudo systemctl enable {unit}")),
             ServiceScope::User => self.run(cmd!(sh, "systemctl --user enable {unit}")),
         }
+    }
+
+    /// Whether a service is enabled, and whether it is active.
+    pub fn service_state(&self, unit: &str, scope: ServiceScope) -> ModuleResult<ServiceState> {
+        let sh = self.shell;
+        let user: &[&str] = &scope_argument(scope);
+        let (_, enabled) =
+            self.read_unchecked(cmd!(sh, "systemctl {user...} is-enabled {unit}"))?;
+        Ok(ServiceState {
+            enabled: enabled == "enabled",
+            active: self.succeeds(cmd!(sh, "systemctl {user...} --quiet is-active {unit}"))?,
+        })
+    }
+
+    /// Disables and stops a service after recording whether it was enabled and active.
+    pub fn disable_service(&self, unit: &str, scope: ServiceScope) -> ModuleResult {
+        let before = self.service_state(unit, scope)?;
+        self.disable_service_previous(unit, scope, before)
+    }
+
+    /// Disables and stops a service that a program, such as a package install, may have
+    /// turned on by itself. `before` is its state from before that program ran. Only a
+    /// service that was on before is recorded, so `remove` turns on only what was on.
+    pub fn disable_service_previous(
+        &self,
+        unit: &str,
+        scope: ServiceScope,
+        before: ServiceState,
+    ) -> ModuleResult {
+        if before.enabled || before.active {
+            self.record(Change::ServiceDisabled {
+                unit: unit.to_owned(),
+                scope,
+                was_enabled: before.enabled,
+                was_active: before.active,
+            })?;
+        }
+        let now = self.service_state(unit, scope)?;
+        if !now.enabled && !now.active {
+            return Ok(());
+        }
+        let sh = self.shell;
+        match scope {
+            ServiceScope::System => self.run(cmd!(sh, "sudo systemctl disable --now {unit}")),
+            ServiceScope::User => self.run(cmd!(sh, "systemctl --user disable --now {unit}")),
+        }
+    }
+
+    /// Records the command that undoes what a program is about to change by itself.
+    /// `remove` runs it with the other undos, newest first.
+    pub fn record_undo_command(&self, program: &Path, args: &[&str]) -> ModuleResult {
+        self.record(Change::UndoCommand {
+            program: program.to_path_buf(),
+            args: args.iter().map(|arg| (*arg).to_owned()).collect(),
+        })
+    }
+
+    /// Records that the person declined this module's install, so its `verify` passes.
+    pub fn record_declined(&self) -> ModuleResult {
+        if self.declined() {
+            return Ok(());
+        }
+        self.record(Change::Declined)
+    }
+
+    /// Marks an earlier decline of this module undone, because the person accepted the install.
+    pub fn record_accepted(&self) -> ModuleResult {
+        let pending = self.state.borrow().pending(self.module.get());
+        for entry in pending {
+            if matches!(entry.change, Change::Declined) {
+                self.record(Change::Undone {
+                    snapshot: entry.snapshot,
+                    index: entry.index,
+                })?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Whether the person declined this module's install and has not accepted it since.
+    pub fn declined(&self) -> bool {
+        self.state
+            .borrow()
+            .pending(self.module.get())
+            .iter()
+            .any(|entry| matches!(entry.change, Change::Declined))
     }
 
     pub fn deploy_config(&self, package: &str) -> ModuleResult {

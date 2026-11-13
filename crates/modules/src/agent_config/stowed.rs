@@ -4,7 +4,7 @@ use std::{fs, path::Path};
 use xshell::cmd;
 
 use crate::{
-    Context, Footprint, Module, ModuleResult, Package, ServiceScope,
+    Context, Footprint, Module, ModuleResult, Need, Package, ServiceScope,
     deploy::verify_package,
     support::{
         active_group, agent_tool_path, configure_input_access, input_access_settings,
@@ -91,6 +91,15 @@ fn wait_for_ydotool_socket(ctx: &Context) -> ModuleResult {
 impl Module for AgentConfigStowed {
     fn name(&self) -> &'static str {
         "agent-config"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[
+            Need::Hard("base"),
+            Need::Hard("cli"),
+            Need::Hard("runtimes"),
+            Need::Hard("agents-packages"),
+        ]
     }
 
     fn footprint(&self, ctx: &Context) -> Footprint {

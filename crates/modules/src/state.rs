@@ -205,6 +205,18 @@ pub enum Change {
         scope: ServiceScope,
         was_enabled: bool,
     },
+    /// A service that the module disabled and stopped, with its state from before.
+    ServiceDisabled {
+        unit: String,
+        scope: ServiceScope,
+        was_enabled: bool,
+        was_active: bool,
+    },
+    /// A command that undoes what a program changed by itself.
+    UndoCommand {
+        program: PathBuf,
+        args: Vec<String>,
+    },
     /// A config package deployed with GNU Stow.
     Stowed {
         package: String,
@@ -225,6 +237,9 @@ pub enum Change {
     LocalPackage {
         name: String,
     },
+    /// The person declined the module's install, so its verify passes. The next install
+    /// asks again, and a yes marks this record undone.
+    Declined,
     /// Marks a change from an earlier snapshot as undone or deliberately kept.
     Undone {
         snapshot: u64,
@@ -254,11 +269,20 @@ impl Change {
                 format!("created {}", path.display())
             }
             Self::Service { unit, .. } => format!("service {unit}"),
+            Self::ServiceDisabled { unit, .. } => format!("disabled service {unit}"),
+            Self::UndoCommand { program, args } => {
+                format!(
+                    "change undone by `{} {}`",
+                    program.display(),
+                    args.join(" ")
+                )
+            }
             Self::Stowed { package } => format!("stowed config package {package}"),
             Self::Unstowed { package } => format!("unstowed retired package {package}"),
             Self::Moved { from, to, .. } => format!("moved {} to {}", from.display(), to.display()),
             Self::WslDistribution { name } => format!("WSL distribution {name}"),
             Self::LocalPackage { name } => format!("local package {name}"),
+            Self::Declined => "declined install".to_owned(),
             Self::Undone { .. } | Self::Removed => String::new(),
         }
     }

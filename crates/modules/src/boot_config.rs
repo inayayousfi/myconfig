@@ -1,7 +1,47 @@
 //! Edits of the initramfs hooks in `/etc/mkinitcpio.conf` and the kernel options in
 //! `/boot/refind_linux.conf`, shared by the modules that change the boot.
+use std::path::Path;
+
+use crate::{Context, ModuleResult, Setting};
+
 pub(crate) const MKINITCPIO_CONFIG: &str = "/etc/mkinitcpio.conf";
 pub(crate) const REFIND_LINUX_CONFIG: &str = "/boot/refind_linux.conf";
+
+fn hook_setting(hook: &str) -> Setting {
+    Setting::InitramfsHook {
+        hook: hook.to_owned(),
+    }
+}
+
+/// Records the initramfs rebuild before a hook change, so `remove` rebuilds once the
+/// hook is back as it was.
+fn record_rebuild(ctx: &Context) -> ModuleResult {
+    ctx.record_undo_command(Path::new("sudo"), &["mkinitcpio", "-P"])
+}
+
+/// Puts `hook` right after `after` unless the hook list already has it, and reports
+/// whether it changed the list. The hook is its own recorded setting, so another
+/// module's hook change in the same run stays apart from it.
+pub(crate) fn add_initramfs_hook(ctx: &Context, hook: &str, after: &str) -> ModuleResult<bool> {
+    let setting = hook_setting(hook);
+    if setting.read(ctx)?.is_some() {
+        return Ok(false);
+    }
+    record_rebuild(ctx)?;
+    ctx.set(setting, after)?;
+    Ok(true)
+}
+
+/// Takes `hook` out of the hook list, and reports whether it was there.
+pub(crate) fn remove_initramfs_hook(ctx: &Context, hook: &str) -> ModuleResult<bool> {
+    let setting = hook_setting(hook);
+    if setting.read(ctx)?.is_none() {
+        return Ok(false);
+    }
+    record_rebuild(ctx)?;
+    ctx.unset(setting)?;
+    Ok(true)
+}
 
 /// Applies `edit` to the hook list of each `HOOKS=(...)` line.
 fn edit_hooks(config: &str, edit: impl Fn(&mut Vec<String>)) -> String {
@@ -34,16 +74,35 @@ pub(crate) fn without_hook(config: &str, hook: &str) -> String {
     edit_hooks(config, |hooks| hooks.retain(|name| name != hook))
 }
 
-/// Puts `hook` right after `after`, unless the list already has it.
-pub(crate) fn with_hook_after(config: &str, hook: &str, after: &str) -> String {
-    edit_hooks(config, |hooks| {
-        if hooks.iter().any(|name| name == hook) {
-            return;
-        }
-        if let Some(position) = hooks.iter().position(|name| name == after) {
-            hooks.insert(position + 1, hook.to_owned());
-        }
+/// The hook that comes right before `hook`, empty when `hook` is first, or `None` when
+/// the list does not have `hook`.
+pub(crate) fn hook_before(config: &str, hook: &str) -> Option<String> {
+    config.lines().find_map(|line| {
+        let (hooks, _) = line.strip_prefix("HOOKS=(")?.split_once(')')?;
+        let hooks: Vec<&str> = hooks.split_whitespace().collect();
+        let position = hooks.iter().position(|name| *name == hook)?;
+        Some(
+            position
+                .checked_sub(1)
+                .map_or("", |before| hooks[before])
+                .to_owned(),
+        )
     })
+}
+
+/// Puts `hook` right after `after`, or first when `after` is empty, moving it when the
+/// list already has it elsewhere.
+pub(crate) fn with_hook_after(config: &str, hook: &str, after: &str) -> ModuleResult<String> {
+    if !after.is_empty() && !has_hook(config, after) {
+        return Err(format!("{MKINITCPIO_CONFIG} has no {after} hook to put {hook} after").into());
+    }
+    Ok(edit_hooks(&without_hook(config, hook), |hooks| {
+        let position = hooks
+            .iter()
+            .position(|name| name == after)
+            .map_or(0, |position| position + 1);
+        hooks.insert(position, hook.to_owned());
+    }))
 }
 
 /// Applies `edit` to the kernel options of each boot entry, with the entry's index.
@@ -110,10 +169,25 @@ mod tests {
     }
 
     #[test]
-    fn a_hook_goes_right_after_another_once() {
-        let edited = with_hook_after(&without_hook(HOOKS, "plymouth"), "sd-bootvine", "systemd");
+    fn a_hook_goes_back_right_after_the_hook_it_followed() {
+        assert_eq!(
+            hook_before(HOOKS, "plymouth").as_deref(),
+            Some("sd-vconsole")
+        );
+        assert_eq!(hook_before(HOOKS, "base").as_deref(), Some(""));
+        assert_eq!(hook_before(HOOKS, "sd-bootvine"), None);
+        let without = without_hook(HOOKS, "plymouth");
+        assert_eq!(
+            with_hook_after(&without, "plymouth", "sd-vconsole").unwrap(),
+            HOOKS
+        );
+        let edited = with_hook_after(&without, "sd-bootvine", "systemd").unwrap();
         assert!(edited.contains("HOOKS=(base systemd sd-bootvine autodetect microcode"));
-        assert_eq!(with_hook_after(&edited, "sd-bootvine", "systemd"), edited);
+        assert_eq!(
+            with_hook_after(&edited, "sd-bootvine", "systemd").unwrap(),
+            edited
+        );
+        assert!(with_hook_after(&without, "plymouth", "missing").is_err());
     }
 
     #[test]

@@ -441,6 +441,22 @@ pub(crate) fn read_system_file(ctx: &Context, path: &str) -> ModuleResult<Option
     Ok(Some(String::from_utf8(bytes)?))
 }
 
+/// Replaces a root-owned file with `sudo install`, without recording it. The callers
+/// record the change themselves or undo a recorded one.
+pub(crate) fn install_system_file(
+    ctx: &Context,
+    path: &Path,
+    contents: &[u8],
+    mode: &str,
+) -> ModuleResult {
+    let staged = temporary_path("system-file");
+    fs::write(&staged, contents)?;
+    let result = ctx.run(cmd!(ctx.shell, "sudo install -m {mode} {staged} {path}"));
+    let cleanup = fs::remove_file(&staged);
+    result?;
+    Ok(cleanup?)
+}
+
 /// Replaces a root-owned file when `edit` changes it, and reports whether it did.
 pub(crate) fn edit_system_file(
     ctx: &Context,

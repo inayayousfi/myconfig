@@ -7,7 +7,7 @@ use typed_fs_rs::EmbeddedDirectory;
 use xshell::cmd;
 
 use crate::{
-    Context, Footprint, Module, ModuleResult, Package, Setting,
+    Context, Footprint, Module, ModuleResult, Need, Package, Setting,
     support::{copy_embedded, verify_embedded, with_temporary_directory},
 };
 
@@ -95,6 +95,10 @@ fn install_theme_and_extensions(ctx: &Context, editor: &Editor, program: &Path) 
 impl Module for WindowsEditor {
     fn name(&self) -> &'static str {
         "editor"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[Need::Soft(crate::PackageGroup::DEV_TOOLS.name)]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {

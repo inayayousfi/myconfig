@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use embedded_dotfiles::DOTFILES;
 
-use crate::{Context, Footprint, Module, ModuleResult, Package};
+use crate::{Context, Footprint, Module, ModuleResult, Need, Package};
 
 pub struct WindowsTerminal;
 
@@ -29,6 +29,10 @@ fn contents() -> &'static [u8] {
 impl Module for WindowsTerminal {
     fn name(&self) -> &'static str {
         "windows-terminal"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {

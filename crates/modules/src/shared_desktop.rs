@@ -10,7 +10,7 @@ use std::{
 use xshell::cmd;
 
 use crate::{
-    Context, Footprint, Module, ModuleResult,
+    Context, Footprint, Module, ModuleResult, Need,
     context::temporary_path,
     state::{Change, Previous},
     support::{powershell, powershell_7},
@@ -225,6 +225,10 @@ pub fn elevated_move_back(change: &Path) -> ModuleResult {
 impl Module for SharedDesktop {
     fn name(&self) -> &'static str {
         "shared-desktop"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {

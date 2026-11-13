@@ -8,7 +8,7 @@ use std::{
 use xshell::cmd;
 
 use crate::{
-    Context, Footprint, Module, ModuleResult, Package,
+    Context, Footprint, Module, ModuleResult, Need, Package,
     state::Change,
     support::{powershell, powershell_7, startup_directory},
 };
@@ -19,6 +19,30 @@ type Value<T> = ModuleResult<T>;
 
 const ARCH_ASSET: &str = "myconfig-arch-wsl-x86_64-unknown-linux-musl";
 const WSL_CONFIG: &str = "[general]\ninstanceIdleTimeout=-1\n\n[wsl2]\nvmIdleTimeout=-1\n";
+
+/// Where the Linux installer that runs inside the distribution comes from.
+enum ArchInstaller {
+    /// The asset of this release on GitHub, checked against its published SHA-256.
+    Release(String),
+    /// A file already on this computer, as a path inside WSL. `MYCONFIG_ARCH_WSL_BINARY`
+    /// names it, so a test can run an installer built from a working tree.
+    Local(String),
+}
+
+fn arch_installer(ctx: &Context) -> Value<ArchInstaller> {
+    let Some(path) = ctx
+        .shell
+        .var_os("MYCONFIG_ARCH_WSL_BINARY")
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(ArchInstaller::Release(release_tag()?));
+    };
+    let path = PathBuf::from(path);
+    if !path.is_file() {
+        return Err(format!("MYCONFIG_ARCH_WSL_BINARY names no file: {}", path.display()).into());
+    }
+    Ok(ArchInstaller::Local(windows_path_in_wsl(&path)?))
+}
 
 fn release_tag() -> Value<String> {
     let tag = option_env!("MYCONFIG_RELEASE_TAG")
@@ -246,7 +270,7 @@ fn configure_user(ctx: &Context, distro: &str, user: &str) -> ModuleResult {
     root_write(ctx, distro, "/etc/locale.conf", "LANG=en_US.UTF-8\n", false)
 }
 
-fn download_and_run_arch(ctx: &Context, distro: &str, tag: &str) -> ModuleResult {
+fn download_and_run_arch(ctx: &Context, distro: &str, installer: &ArchInstaller) -> ModuleResult {
     let sh = ctx.shell;
     let directory = ctx.read(cmd!(
         sh,
@@ -257,6 +281,13 @@ fn download_and_run_arch(ctx: &Context, distro: &str, tag: &str) -> ModuleResult
     }
     let result = (|| -> ModuleResult {
         let binary = format!("{directory}/{ARCH_ASSET}");
+        let tag = match installer {
+            ArchInstaller::Release(tag) => tag,
+            ArchInstaller::Local(path) => {
+                ctx.run(cmd!(sh, "wsl.exe -d {distro} --exec cp {path} {binary}"))?;
+                return run_arch(ctx, distro, &binary);
+            }
+        };
         let checksum = format!("{binary}.sha256");
         let url =
             format!("https://github.com/inayayousfi/myconfig/releases/download/{tag}/{ARCH_ASSET}");
@@ -277,20 +308,7 @@ fn download_and_run_arch(ctx: &Context, distro: &str, tag: &str) -> ModuleResult
         if actual.split_whitespace().next() != Some(hash) {
             return Err("Arch WSL binary does not match its release SHA-256".into());
         }
-        ctx.run(cmd!(sh, "wsl.exe -d {distro} --exec chmod 0755 {binary}"))?;
-        let windows_root = sh.var_os("SystemRoot").ok_or("SystemRoot is unset")?;
-        let ssh = Path::new(&windows_root).join("System32/OpenSSH/ssh.exe");
-        let ssh = if ssh.is_file() {
-            windows_path_in_wsl(&ssh)?
-        } else {
-            String::new()
-        };
-        let ssh_env = format!("MYCONFIG_WINDOWS_SSH={ssh}");
-        // The Arch WSL installer runs non-interactively inside the distribution.
-        ctx.run(cmd!(
-            sh,
-            "wsl.exe -d {distro} --exec env {ssh_env} {binary} install"
-        ))
+        run_arch(ctx, distro, &binary)
     })();
     let cleanup = ctx.run(cmd!(
         sh,
@@ -305,6 +323,25 @@ fn download_and_run_arch(ctx: &Context, distro: &str, tag: &str) -> ModuleResult
         )
         .into()),
     }
+}
+
+/// Runs the Linux installer at `binary`, a path inside the distribution.
+fn run_arch(ctx: &Context, distro: &str, binary: &str) -> ModuleResult {
+    let sh = ctx.shell;
+    ctx.run(cmd!(sh, "wsl.exe -d {distro} --exec chmod 0755 {binary}"))?;
+    let windows_root = sh.var_os("SystemRoot").ok_or("SystemRoot is unset")?;
+    let ssh = Path::new(&windows_root).join("System32/OpenSSH/ssh.exe");
+    let ssh = if ssh.is_file() {
+        windows_path_in_wsl(&ssh)?
+    } else {
+        String::new()
+    };
+    let ssh_env = format!("MYCONFIG_WINDOWS_SSH={ssh}");
+    // The Arch WSL installer runs non-interactively inside the distribution.
+    ctx.run(cmd!(
+        sh,
+        "wsl.exe -d {distro} --exec env {ssh_env} {binary} install"
+    ))
 }
 
 fn configure_shell(ctx: &Context, distro: &str, user: &str) -> ModuleResult {
@@ -380,6 +417,10 @@ impl Module for ArchWsl {
         "arch-wsl"
     }
 
+    fn needs(&self) -> &'static [Need] {
+        &[]
+    }
+
     fn footprint(&self, _ctx: &Context) -> Footprint {
         Footprint {
             packages: vec![Package::Wsl, Package::Powershell],
@@ -392,7 +433,7 @@ impl Module for ArchWsl {
             return Err("Arch WSL provisioning requires Windows".into());
         }
         let sh = ctx.shell;
-        let tag = release_tag()?;
+        let installer = arch_installer(ctx)?;
         let distro = distro_name(ctx)?;
         let user = windows_user(ctx)?;
         powershell_7(ctx)?;
@@ -430,7 +471,7 @@ impl Module for ArchWsl {
         ctx.run(cmd!(sh, "wsl.exe -s {distro}"))?;
         configure_user(ctx, &distro, &user)?;
         ctx.run(cmd!(sh, "wsl.exe --shutdown"))?;
-        download_and_run_arch(ctx, &distro, &tag)?;
+        download_and_run_arch(ctx, &distro, &installer)?;
         configure_shell(ctx, &distro, &user)?;
         configure_autostart(ctx, &distro)?;
         ctx.run(cmd!(sh, "wsl.exe --shutdown"))?;

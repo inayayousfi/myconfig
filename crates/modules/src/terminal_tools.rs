@@ -1,6 +1,6 @@
 //! Yazi and the tools it uses for previews, with the Yazi config.
 use crate::{
-    Context, Footprint, Module, ModuleResult, Package, deploy::verify_package,
+    Context, Footprint, Module, ModuleResult, Need, Package, deploy::verify_package,
     support::verify_packages,
 };
 
@@ -18,6 +18,10 @@ const PACKAGES: &[Package] = &[
 impl Module for TerminalTools {
     fn name(&self) -> &'static str {
         "terminal-tools"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[Need::Hard("base")]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {

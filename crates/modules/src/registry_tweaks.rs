@@ -1,5 +1,5 @@
 //! Explorer, taskbar and Start menu preferences from `RegistryPreferences.reg`.
-use crate::{Context, Footprint, Module, ModuleResult, Setting};
+use crate::{Context, Footprint, Module, ModuleResult, Need, Setting};
 use embedded_dotfiles::DOTFILES;
 
 pub struct RegistryTweaks;
@@ -56,6 +56,10 @@ fn entries() -> ModuleResult<Vec<Entry>> {
 impl Module for RegistryTweaks {
     fn name(&self) -> &'static str {
         "registry-tweaks"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {

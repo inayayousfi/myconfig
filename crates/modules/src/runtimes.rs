@@ -2,7 +2,7 @@
 use xshell::cmd;
 
 use crate::{
-    Context, Footprint, Module, ModuleResult, Package, Setting,
+    Context, Footprint, Module, ModuleResult, Need, Package, Setting,
     support::{require_executable, verify_packages},
 };
 
@@ -63,6 +63,10 @@ fn install_bun(ctx: &Context) -> ModuleResult {
 impl Module for Runtimes {
     fn name(&self) -> &'static str {
         "runtimes"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[Need::Hard("base")]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {

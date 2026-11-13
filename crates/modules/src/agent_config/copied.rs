@@ -5,7 +5,7 @@ use embedded_dotfiles::DOTFILES;
 use typed_fs_rs::EmbeddedDirectory;
 use xshell::cmd;
 
-use crate::{Context, Footprint, Module, ModuleResult, Package};
+use crate::{Context, Footprint, Module, ModuleResult, Need, Package};
 
 pub struct AgentConfigCopied;
 
@@ -66,6 +66,10 @@ fn remove_peon_ping(ctx: &Context) {
 impl Module for AgentConfigCopied {
     fn name(&self) -> &'static str {
         "agent-config"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {

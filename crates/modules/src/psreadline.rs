@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use xshell::cmd;
 
 use crate::{
-    Context, Footprint, Module, ModuleResult, Package,
+    Context, Footprint, Module, ModuleResult, Need, Package,
     support::{powershell, powershell_7},
 };
 
@@ -21,6 +21,10 @@ fn available(ctx: &Context) -> ModuleResult<bool> {
 impl Module for PsReadLine {
     fn name(&self) -> &'static str {
         "psreadline"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {

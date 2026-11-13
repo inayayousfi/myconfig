@@ -1,9 +1,15 @@
-//! Stops a CachyOS run early when KDE Plasma is not a supported version.
+//! The check that KDE Plasma is a supported version. In the CachyOS profile, `base`
+//! needs it, so no module changes the machine on an unsupported Plasma.
 use xshell::cmd;
 
-use crate::{Context, Footprint, Module, ModuleResult, support::require_programs};
+use crate::{Context, Footprint, Module, ModuleResult, Need, support::require_programs};
 
 pub struct PlasmaVersion;
+
+impl PlasmaVersion {
+    /// The module name, for the soft needs that the compiler checks.
+    pub const NAME: &'static str = "plasma-version";
+}
 
 /// KDE Plasma 6.7 through 6.x, which the panels and the layout script support.
 pub(crate) fn require_supported_plasma(ctx: &Context) -> ModuleResult {
@@ -36,7 +42,11 @@ fn check_plasma_version(output: &str) -> ModuleResult {
 
 impl Module for PlasmaVersion {
     fn name(&self) -> &'static str {
-        "plasma-version"
+        Self::NAME
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {

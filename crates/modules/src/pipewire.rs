@@ -2,7 +2,7 @@
 use xshell::cmd;
 
 use crate::{
-    Context, Footprint, Module, ModuleResult, Package, ServiceScope,
+    Context, Footprint, Module, ModuleResult, Need, Package, ServiceScope,
     deploy::verify_package,
     support::{graphical_session, require_executable, require_programs, verify_packages},
 };
@@ -15,6 +15,10 @@ const SERVICE: &str = "myconfig-pipewire-tray.service";
 impl Module for Pipewire {
     fn name(&self) -> &'static str {
         "pipewire"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[Need::Hard("base")]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {

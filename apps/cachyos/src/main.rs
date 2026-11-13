@@ -8,6 +8,7 @@ static MODULES: &[&dyn Module] = &[
     &Base {
         packages: Base::ARCH,
         unwanted: &[Package::CachyUpdate],
+        needs: &[Need::Hard("plasma-version")],
     },
     &CachyosSetup,
     &Media,
@@ -44,6 +45,7 @@ static MODULES: &[&dyn Module] = &[
     &T3CodeDesktop,
     &SshServer,
     &GitConfig { windows_ssh: false },
+    &Login,
     &EnvironmentInventory::CACHYOS,
 ];
 
@@ -66,13 +68,47 @@ fn main() -> ExitCode {
         title: "CachyOS",
         package_system: PackageSystem::Arch,
         modules: MODULES,
-        keep_going: false,
     })
 }
 
 #[cfg(test)]
 mod tests {
+    use myconfig_modules::{Need, runner::need_problems};
+
     use super::MODULES;
+
+    #[test]
+    fn every_need_comes_earlier_and_every_hard_need_is_in_the_profile() {
+        assert_eq!(need_problems(MODULES), Vec::<String>::new());
+    }
+
+    /// Whether `name` needs the Plasma version check, directly or through other needs.
+    fn waits_for_plasma(name: &str) -> bool {
+        if name == "plasma-version" {
+            return true;
+        }
+        let module = MODULES
+            .iter()
+            .find(|module| module.name() == name)
+            .unwrap_or_else(|| panic!("the profile lacks {name}"));
+        module.needs().iter().any(|need| match need {
+            Need::Hard(needed) => waits_for_plasma(needed),
+            // The check comes first, so it is one of the earlier modules.
+            Need::EveryEarlier => true,
+            Need::Soft(_) => false,
+        })
+    }
+
+    #[test]
+    fn no_module_runs_when_the_plasma_version_check_fails() {
+        for module in MODULES {
+            assert!(
+                waits_for_plasma(module.name()),
+                "{} runs even when the Plasma version is unsupported",
+                module.name()
+            );
+        }
+    }
 
     #[test]
     fn the_profile_is_the_full_desktop() {
@@ -95,6 +131,7 @@ mod tests {
             "t3code-desktop",
             "agent-config",
             "git-config",
+            "login",
         ] {
             assert!(names.contains(&wanted), "CachyOS lacks {wanted}");
         }

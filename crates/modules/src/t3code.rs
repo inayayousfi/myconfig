@@ -3,7 +3,7 @@
 use xshell::cmd;
 
 use crate::{
-    Context, Footprint, Module, ModuleResult, Package,
+    Context, Footprint, Module, ModuleResult, Need, Package,
     deploy::verify_package,
     support::{require_executable, require_programs, verify_packages},
 };
@@ -35,6 +35,10 @@ impl Module for T3Code {
         "t3code"
     }
 
+    fn needs(&self) -> &'static [Need] {
+        &[Need::Hard("base"), Need::Hard("runtimes")]
+    }
+
     fn footprint(&self, _ctx: &Context) -> Footprint {
         Footprint {
             packages: SERVER_PACKAGES.to_vec(),
@@ -53,6 +57,14 @@ impl Module for T3Code {
             if !path.exists() {
                 ctx.created(&path, false)?;
             }
+        }
+        let (_, service) = ctx.read_unchecked(cmd!(
+            ctx.shell,
+            "systemctl --user is-enabled t3code.service"
+        ))?;
+        if service != "enabled" {
+            // t3ctl installs the service with the t3 it installed from npm into ~/.local.
+            ctx.record_undo_command(&ctx.home.join(".local/bin/t3"), &["service", "uninstall"])?;
         }
         ctx.run(cmd!(ctx.shell, "{t3ctl} repair"))
             .map_err(|error| format!("t3ctl could not install the T3 Code server: {error}"))?;
@@ -73,6 +85,10 @@ impl Module for T3Code {
 impl Module for T3CodeDesktop {
     fn name(&self) -> &'static str {
         "t3code-desktop"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[Need::Hard("base")]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {

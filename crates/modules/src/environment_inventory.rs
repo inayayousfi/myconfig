@@ -1,7 +1,7 @@
 //! The `~/environment.md` inventory that agents read and keep up to date.
 use std::fs;
 
-use crate::{Context, Footprint, Module, ModuleResult};
+use crate::{Context, Footprint, Module, ModuleResult, Need};
 
 const INVENTORY_START: &str =
     "# Environment\n\nThis file describes the capabilities installed for the ";
@@ -84,6 +84,11 @@ impl EnvironmentInventory {
 impl Module for EnvironmentInventory {
     fn name(&self) -> &'static str {
         "environment-inventory"
+    }
+
+    /// It states that every selected module completed, so it waits for all of them.
+    fn needs(&self) -> &'static [Need] {
+        &[Need::EveryEarlier]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {

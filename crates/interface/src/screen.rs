@@ -36,6 +36,8 @@ enum Status {
     Installed,
     Broken,
     Missing,
+    Skipped,
+    Declined,
 }
 
 impl Status {
@@ -46,6 +48,8 @@ impl Status {
             Self::Installed => Span::styled("installed", Style::new().fg(Color::Green)),
             Self::Broken => Span::styled("broken", Style::new().fg(Color::Red)),
             Self::Missing => Span::styled("missing", Style::new().fg(Color::DarkGray)),
+            Self::Skipped => Span::styled("skipped", Style::new().fg(PINK)),
+            Self::Declined => Span::styled("declined", Style::new().fg(Color::DarkGray)),
         }
     }
 }
@@ -250,6 +254,20 @@ fn drain(
                     _ => app.status[index],
                 };
             }
+            Message::Event(Event::Skipped { module, reason }) => {
+                app.log(Line::styled(
+                    format!("==> Skipping: {reason}"),
+                    Style::new().fg(PINK),
+                ));
+                if let Some(index) = app.index(&module) {
+                    app.status[index] = Status::Skipped;
+                }
+            }
+            Message::Event(Event::Declined { module }) => {
+                if let Some(index) = app.index(&module) {
+                    app.status[index] = Status::Declined;
+                }
+            }
             Message::Status(module, status) => {
                 if let Some(index) = app.index(&module) {
                     app.status[index] = status;
@@ -275,10 +293,12 @@ fn drain(
                 app.running = false;
                 match result {
                     Ok(summary) => app.log(Line::styled(summary, Style::new().fg(Color::Green))),
-                    Err(error) => app.log(Line::styled(
-                        format!("error: {error}"),
-                        Style::new().fg(Color::Red),
-                    )),
+                    Err(error) => {
+                        // An install report lists each failed and skipped module on its own line.
+                        for line in format!("error: {error}").lines() {
+                            app.log(Line::styled(line.to_owned(), Style::new().fg(Color::Red)));
+                        }
+                    }
                 }
             }
         }
@@ -392,7 +412,7 @@ fn start<'scope>(
         };
         let result = with_context(profile.package_system, &remote, |ctx| match action {
             Action::Install => {
-                profile.install(ctx, &modules)?;
+                runner::install(ctx, profile.modules, &modules)?;
                 Ok(format!("{} modules installed and verified", modules.len()))
             }
             Action::Verify => {

@@ -1,4 +1,4 @@
-use package_catalog::{PACKAGES, Package, Platform};
+use package_catalog::{AptRepository, PACKAGES, Package, Platform, apt_source};
 
 mod files;
 mod programs;
@@ -12,6 +12,8 @@ pub use programs::find_program;
 pub struct PackageSpec {
     pub tool: PackageTool,
     pub name: &'static str,
+    /// The vendor repository that APT installs the package from, when Ubuntu lacks it.
+    pub apt_repository: Option<&'static AptRepository>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -37,9 +39,14 @@ pub fn resolve_package(package: Package, system: PackageSystem) -> Option<Packag
         PackageSystem::Winget => &[Platform::Winget],
     };
     sources.iter().find_map(|source| {
-        let (_, name) = PACKAGES
+        let (_, identifier) = PACKAGES
             .iter()
             .find(|((candidate, platform), _)| *candidate == package && platform == source)?;
+        let identifier = (*identifier)?;
+        let (apt_repository, name) = match source {
+            Platform::Apt => apt_source(identifier)?,
+            _ => (None, identifier),
+        };
         Some(PackageSpec {
             tool: match source {
                 Platform::Pacman => PackageTool::Pacman,
@@ -47,7 +54,8 @@ pub fn resolve_package(package: Package, system: PackageSystem) -> Option<Packag
                 Platform::Apt => PackageTool::Apt,
                 Platform::Winget => PackageTool::Winget,
             },
-            name: (*name)?,
+            name,
+            apt_repository,
         })
     })
 }
@@ -62,16 +70,31 @@ mod tests {
             resolve_package(Package::Yazi, PackageSystem::Arch),
             Some(PackageSpec {
                 tool: PackageTool::Paru,
-                name: "yazi-git"
+                name: "yazi-git",
+                apt_repository: None,
             })
         );
         assert_eq!(
             resolve_package(Package::Git, PackageSystem::Arch),
             Some(PackageSpec {
                 tool: PackageTool::Pacman,
-                name: "git"
+                name: "git",
+                apt_repository: None,
             })
         );
+    }
+
+    #[test]
+    fn apt_packages_from_a_vendor_carry_its_repository() {
+        let spec = resolve_package(Package::Docker, PackageSystem::Apt).unwrap();
+        assert_eq!(spec.name, "docker-ce");
+        assert_eq!(
+            spec.apt_repository.map(|repository| repository.id),
+            Some("docker")
+        );
+        let spec = resolve_package(Package::Ripgrep, PackageSystem::Apt).unwrap();
+        assert_eq!(spec.name, "ripgrep");
+        assert_eq!(spec.apt_repository, None);
     }
 
     #[test]

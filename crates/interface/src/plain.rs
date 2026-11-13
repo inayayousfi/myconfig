@@ -59,6 +59,10 @@ impl Interaction for Plain {
                 error: Some(error),
             } => eprintln!("==> {} {module} failed: {error}", verb(step)),
             Event::Finished { .. } => {}
+            Event::Skipped { reason, .. } => eprintln!("==> Skipping: {reason}"),
+            Event::Declined { module } => {
+                println!("==> {module} is not installed: its install was declined");
+            }
         }
     }
 }

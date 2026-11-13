@@ -82,7 +82,7 @@ Share a module only when its behavior and paths are genuinely portable. Otherwis
 
 The design has these rules:
 
-- `crates/modules` holds one `Module` trait with `name`, `footprint`, `install`, `verify`, and `remove`. Every module implements all five. There are no per-module traits.
+- `crates/modules` holds one `Module` trait with `name`, `footprint`, `needs`, `install`, `verify`, and `remove`. Every module implements all six. There are no per-module traits.
 
 - A module is a struct. Anything that differs between platforms or profiles is a field on that struct, set in the app's profile list. Modules do not test the platform or profile at run time, and `Context` has no profile field.
 
@@ -92,9 +92,11 @@ The design has these rules:
 
 - Each module owns its config package from `dotfiles/<package>/`. Linux implementations stow it, and Windows implementations copy it. There is no central Dotfiles module.
 
-- A module changes the machine only through the recording functions on `Context`: `install_packages`, `uninstall_packages`, `set`, `unset`, `write_file`, `write_system_file`, `link`, `delete`, `delete_system_file`, `enable_service`, and `deploy_config`. When a program makes a change by itself, record it around the call with `record_path`, `record_setting`, `record_setting_previous`, `created`, or `created_user_data`. Each one records the previous state in `state.json` before acting, and `remove` undoes from that record. A change made any other way cannot be removed. When a module needs a new kind of change, add a recording function or a `Setting` kind for it.
+- A module changes the machine only through the recording functions on `Context`: `install_packages`, `uninstall_packages`, `set`, `unset`, `write_file`, `write_system_file`, `link`, `delete`, `delete_system_file`, `enable_service`, `disable_service`, and `deploy_config`. When a program makes a change by itself, record it around the call with `record_path`, `record_setting`, `record_setting_previous`, `disable_service_previous`, `created`, or `created_user_data`. When only another command can undo that change, record the command with `record_undo_command`. `remove` runs that command without checking the current state, so it must succeed when the change is already undone; otherwise add a `Setting` kind, whose undo reads the current state first. Each one records the previous state in `state.json` before acting, and `remove` undoes from that record. A change made any other way cannot be removed. When a module needs a new kind of change, add a recording function or a `Setting` kind for it.
 
 - `footprint` lists the packages and settings the module needs. The "still needed?" check in `remove` reads it, so a module that needs a package installed by another module must list it too.
+
+- `needs` names the other modules a module relies on, such as the module that installs a program, runtime or file it uses. Make it a hard need when the module cannot work without the other one, and a soft need when it relies on the other one only when the run includes it. Name a soft need through a name constant of the needed module, because no profile check catches a misspelled soft need. Put every needed module earlier in the profile list.
 
 - Modules never read stdin, open `/dev/tty`, or call xshell's `.run()`, `.read()` or `.output()` directly. They use `ctx.run`, `ctx.read` and `ctx.succeeds` for commands, `ctx.confirm` for yes or no questions, and `ctx.with_terminal` for programs that need the whole terminal, such as the Axidev greeter.
 

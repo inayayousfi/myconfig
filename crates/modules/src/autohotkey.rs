@@ -6,7 +6,7 @@ use typed_fs_rs::EmbeddedDirectory;
 use xshell::cmd;
 
 use crate::{
-    Context, Footprint, Module, ModuleResult,
+    Context, Footprint, Module, ModuleResult, Need,
     support::{copy_embedded, powershell_7, startup_directory, verify_embedded},
 };
 
@@ -17,6 +17,10 @@ const SOURCE: &str = "assets/windows/dotfiles/AutoHotkey";
 impl Module for AutoHotkey {
     fn name(&self) -> &'static str {
         "autohotkey"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {

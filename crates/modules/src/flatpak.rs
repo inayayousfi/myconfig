@@ -1,5 +1,7 @@
 //! Flatpak with the Flathub remote.
-use crate::{Context, Footprint, Module, ModuleResult, Package, Setting, support::verify_packages};
+use crate::{
+    Context, Footprint, Module, ModuleResult, Need, Package, Setting, support::verify_packages,
+};
 
 pub struct Flatpak;
 
@@ -13,6 +15,10 @@ fn flathub() -> Setting {
 impl Module for Flatpak {
     fn name(&self) -> &'static str {
         "flatpak"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[Need::Hard("base")]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {

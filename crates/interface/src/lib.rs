@@ -16,7 +16,8 @@ use myconfig_modules::{
 };
 use xshell::Shell;
 
-/// Exit code when a remove question had no answer and something was kept.
+/// Exit code when a question had no answer, so a remove kept something or an install
+/// skipped a module, and nothing failed.
 const UNANSWERED: u8 = 3;
 
 #[derive(Parser)]
@@ -66,22 +67,6 @@ pub struct Profile<'a> {
     pub title: &'a str,
     pub package_system: PackageSystem,
     pub modules: &'a [&'a dyn Module],
-    /// Installs the later modules after one fails, and lists every failure at the end.
-    pub keep_going: bool,
-}
-
-impl Profile<'_> {
-    pub(crate) fn install(
-        &self,
-        ctx: &myconfig_modules::Context,
-        modules: &[&dyn Module],
-    ) -> ModuleResult {
-        if self.keep_going {
-            runner::install_keep_going(ctx, modules)
-        } else {
-            runner::install(ctx, modules)
-        }
-    }
 }
 
 pub fn main(profile: Profile<'_>) -> ExitCode {
@@ -206,11 +191,18 @@ fn run_plain(profile: &Profile<'_>, command: Command) -> ModuleResult<bool> {
     let io = plain::Plain;
     let _session = sudo::Session::start_interactive(profile.package_system)?;
     with_context(profile.package_system, &io, |ctx| match command {
-        Command::Install { .. } => {
-            profile.install(ctx, &modules)?;
-            println!("{} profile completed successfully", profile.title);
-            Ok(false)
-        }
+        Command::Install { .. } => match runner::install(ctx, profile.modules, &modules) {
+            Ok(()) => {
+                println!("{} profile completed successfully", profile.title);
+                Ok(false)
+            }
+            Err(error) if matches!(&error, runner::InstallError::Incomplete(report) if report.only_unanswered()) =>
+            {
+                eprintln!("{error}");
+                Ok(true)
+            }
+            Err(error) => Err(error.into()),
+        },
         Command::Verify { .. } => {
             let failures: Vec<_> = runner::verify(ctx, &modules)
                 .into_iter()

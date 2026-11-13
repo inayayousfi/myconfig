@@ -3,7 +3,7 @@
 use xshell::cmd;
 
 use crate::{
-    Context, Footprint, Module, ModuleResult, Package, ServiceScope, Setting,
+    Context, Footprint, Module, ModuleResult, Need, Package, ServiceScope, Setting,
     support::{current_user, verify_packages},
 };
 
@@ -12,6 +12,10 @@ pub struct Tailscale;
 impl Module for Tailscale {
     fn name(&self) -> &'static str {
         "tailscale"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[Need::Hard("base")]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {

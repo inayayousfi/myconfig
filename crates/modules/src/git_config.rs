@@ -2,7 +2,7 @@
 use std::path::PathBuf;
 
 use crate::{
-    Context, Footprint, Module, ModuleResult, Package, Setting, support::require_executable,
+    Context, Footprint, Module, ModuleResult, Need, Package, Setting, support::require_executable,
 };
 
 pub struct GitConfig {
@@ -43,6 +43,10 @@ impl GitConfig {
 impl Module for GitConfig {
     fn name(&self) -> &'static str {
         "git-config"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[Need::Hard("base")]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {

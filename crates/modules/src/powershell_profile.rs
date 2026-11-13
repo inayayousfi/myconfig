@@ -5,7 +5,7 @@ use embedded_dotfiles::DOTFILES;
 use xshell::cmd;
 
 use crate::{
-    Context, Footprint, Module, ModuleResult, Package,
+    Context, Footprint, Module, ModuleResult, Need, Package, Setting,
     support::{powershell, powershell_7},
 };
 
@@ -54,20 +54,25 @@ fn allow_through_controlled_folder_access(ctx: &Context) -> ModuleResult {
         "Controlled Folder Access is on; allowing {} to write to protected folders",
         pwsh.display()
     ));
-    let allow = "$command = \"Add-MpPreference -ControlledFolderAccessAllowedApplications '$($env:MYCONFIG_PWSH.Replace(\"'\", \"''\"))' -ErrorAction Stop\"; $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command)); $process = Start-Process -FilePath $env:MYCONFIG_PWSH -Verb RunAs -ArgumentList '-NoLogo', '-NoProfile', '-EncodedCommand', $encoded -Wait -PassThru -ErrorAction Stop; exit $process.ExitCode";
-    ctx.run(cmd!(ctx.shell, "{pwsh} -NoProfile -Command {allow}").env("MYCONFIG_PWSH", &pwsh))
-        .map_err(|error| {
-            format!(
-                "could not allow {} through Controlled Folder Access; it needs administrator privileges, and Defender may be managed by company policy: {error}",
-                pwsh.display()
-            )
-            .into()
-        })
+    let app = Setting::ControlledFolderAccessApp {
+        path: pwsh.display().to_string(),
+    };
+    ctx.set(app, "allowed").map_err(|error| {
+        format!(
+            "could not allow {} through Controlled Folder Access; it needs administrator privileges, and Defender may be managed by company policy: {error}",
+            pwsh.display()
+        )
+        .into()
+    })
 }
 
 impl Module for PowerShellProfile {
     fn name(&self) -> &'static str {
         "powershell-profile"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {

@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use xshell::cmd;
 
 use crate::{
-    Context, Footprint, Module, ModuleResult, Package, ServiceScope,
+    Context, Footprint, Module, ModuleResult, Need, Package, ServiceScope,
     support::{current_user, verify_packages, with_temporary_directory},
 };
 
@@ -34,6 +34,10 @@ fn host_keys(ctx: &Context) -> ModuleResult<Vec<PathBuf>> {
 impl Module for Ssh {
     fn name(&self) -> &'static str {
         "ssh"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[Need::Hard("base")]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {
@@ -109,6 +113,10 @@ impl Module for Ssh {
 impl Module for SshServer {
     fn name(&self) -> &'static str {
         "ssh-server"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[Need::Hard("ssh")]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {

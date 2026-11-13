@@ -1,62 +1,11 @@
-//! Vendor apt repositories for packages that Ubuntu does not carry, or carries only in
-//! old versions.
-use std::{collections::BTreeSet, path::Path};
+//! Adds the vendor APT repositories that the package catalog names for a package.
+use std::{collections::BTreeMap, path::Path};
 
+use myconfig_utils::PackageSpec;
+use package_catalog::AptRepository;
 use xshell::cmd;
 
-use crate::{Context, ModuleResult, Package, support::read_system_file};
-
-struct AptRepository {
-    id: &'static str,
-    /// The signing key, binary or ASCII-armored. `{codename}` becomes the release code
-    /// name of this Ubuntu.
-    key_url: &'static str,
-    uri: &'static str,
-    suite: &'static str,
-    component: &'static str,
-}
-
-const TAILSCALE: AptRepository = AptRepository {
-    id: "tailscale",
-    key_url: "https://pkgs.tailscale.com/stable/ubuntu/{codename}.noarmor.gpg",
-    uri: "https://pkgs.tailscale.com/stable/ubuntu",
-    suite: "{codename}",
-    component: "main",
-};
-const GITHUB: AptRepository = AptRepository {
-    id: "github",
-    key_url: "https://cli.github.com/packages/githubcli-archive-keyring.gpg",
-    uri: "https://cli.github.com/packages",
-    suite: "stable",
-    component: "main",
-};
-const DOCKER: AptRepository = AptRepository {
-    id: "docker",
-    key_url: "https://download.docker.com/linux/ubuntu/gpg",
-    uri: "https://download.docker.com/linux/ubuntu",
-    suite: "{codename}",
-    component: "stable",
-};
-const YAZI: AptRepository = AptRepository {
-    id: "yazi",
-    key_url: "https://yazi-rs.github.io/builds/yazi-keyring.gpg",
-    uri: "https://yazi-rs.github.io/builds/",
-    suite: "stable",
-    component: "main",
-};
-
-fn repository(package: Package) -> Option<&'static AptRepository> {
-    match package {
-        Package::Tailscale => Some(&TAILSCALE),
-        Package::GithubCli => Some(&GITHUB),
-        Package::Docker
-        | Package::DockerBuildx
-        | Package::DockerCompose
-        | Package::DockerRootlessExtras => Some(&DOCKER),
-        Package::Yazi => Some(&YAZI),
-        _ => None,
-    }
-}
+use crate::{Context, ModuleResult, support::read_system_file};
 
 /// The release code name from `/etc/os-release`.
 pub(crate) fn codename() -> ModuleResult<String> {
@@ -107,19 +56,17 @@ fn add(ctx: &Context, repository: &AptRepository, codename: &str) -> ModuleResul
 /// databases when a repository changed.
 pub(crate) fn add_repositories(
     ctx: &Context,
-    packages: &[Package],
+    packages: &[PackageSpec],
     codename: &str,
 ) -> ModuleResult {
-    let ids: BTreeSet<&str> = packages
+    let repositories: BTreeMap<&str, &AptRepository> = packages
         .iter()
-        .filter_map(|package| repository(*package))
-        .map(|repository| repository.id)
+        .filter_map(|spec| spec.apt_repository)
+        .map(|repository| (repository.id, repository))
         .collect();
     let mut changed = false;
-    for repository in [&TAILSCALE, &GITHUB, &DOCKER, &YAZI] {
-        if ids.contains(repository.id) {
-            changed |= add(ctx, repository, codename)?;
-        }
+    for repository in repositories.into_values() {
+        changed |= add(ctx, repository, codename)?;
     }
     if changed {
         ctx.run(cmd!(ctx.shell, "sudo apt-get update"))?;

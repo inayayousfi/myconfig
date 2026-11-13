@@ -7,7 +7,9 @@ use std::{
 use embedded_dotfiles::DOTFILES;
 use xshell::cmd;
 
-use crate::{Context, Footprint, Module, ModuleResult, Package, support::with_temporary_directory};
+use crate::{
+    Context, Footprint, Module, ModuleResult, Need, Package, support::with_temporary_directory,
+};
 
 pub struct Refind;
 
@@ -86,6 +88,10 @@ fn updated_config(original: &str) -> String {
 impl Module for Refind {
     fn name(&self) -> &'static str {
         "refind"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[Need::Hard("terminal-tools")]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {

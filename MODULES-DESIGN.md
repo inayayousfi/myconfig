@@ -1,35 +1,8 @@
 # Rust module design
 
-This document describes the structure of `crates/modules`, `crates/interface`, and the four apps in `apps/`. It replaces the earlier shape, where each module had its own one-function trait and one empty struct per platform.
+This document describes the structure of `crates/modules`, `crates/interface`, and the four apps in `apps/`.
 
-## Why the earlier shape was wrong
-
-Every module used to look like this:
-
-```rust
-pub trait ZshModule {
-    fn install(&self, context: &ModuleContext<'_>) -> ModuleResult;
-}
-pub struct CachyosZsh;
-pub struct ArchWslZsh;
-
-impl ZshModule for ArchWslZsh {
-    fn install(&self, context: &ModuleContext<'_>) -> ModuleResult {
-        if context.profile != Profile::ArchWsl {
-            return Err("ArchWslZsh requires Arch WSL".into());
-        }
-        install_zsh(context) // shared body, which still tests context.profile inside
-    }
-}
-```
-
-This had three problems:
-
-1. No code used `ZshModule` without knowing the concrete type. The trait abstracted nothing and only forced each `main.rs` to import about 50 names.
-
-2. The platform was stated twice, once in the struct name and once in `context.profile`, and a run-time check made sure they agreed. An app would never call `UbuntuServerZsh` anyway.
-
-3. The real platform difference was hidden inside the shared body. `install_zsh` skipped `chsh` with `if context.profile != Profile::ArchWsl`, and `install_agents_packages` added `ydotool` with `if context.profile == Profile::Cachyos`. Reading the profile did not show these differences.
+Every module implements one shared `Module` trait, and there are no per-module traits. A module is one struct, used on every platform where it belongs. A difference between platforms or profiles is a field on that struct, set in the profile list, so reading a profile shows every difference. No module tests the platform or the profile at run time.
 
 ## Crates
 
@@ -37,7 +10,7 @@ This had three problems:
 
 - `crates/interface` contains the command line (Clap) and the interactive screen (Ratatui). It depends on `crates/modules`.
 
-- `apps/<platform>` contains only the profile list and one call to `myconfig_interface::main`.
+- `apps/<platform>` contains only the profile list, its platform check, and one call to `myconfig_interface::main`.
 
 ## The `Module` trait
 
@@ -47,6 +20,10 @@ There is one trait, shared by Linux and Windows. Every module implements every o
 pub trait Module {
     /// Name used by the command line, the screen and the recorded state.
     fn name(&self) -> &'static str;
+
+    /// The modules this one relies on. The runner skips the module when one of them
+    /// failed or was skipped.
+    fn needs(&self) -> &'static [Need];
 
     /// What the module needs on the machine. The "still needed?" check reads it.
     fn footprint(&self, ctx: &Context) -> Footprint;
@@ -63,7 +40,21 @@ pub struct Footprint {
     pub packages: Vec<Package>,
     pub settings: Vec<Setting>,
 }
+
+pub enum Need {
+    Hard(&'static str),
+    Soft(&'static str),
+    EveryEarlier,
+}
 ```
+
+A need names another module that this one relies on, such as the module that installs a program it runs. A hard need is a module the profile must hold. A soft need matters only when the run includes that module. Every need comes earlier in the profile, and each app's tests check its profile with `runner::need_problems`.
+
+That check cannot see a misspelled soft need, because a soft need may name a module that the profile lacks. A soft need therefore names its module through a constant of that module, such as `PlasmaVersion::NAME`, which the compiler checks.
+
+`EveryEarlier` is a soft need on every module that comes earlier in the profile. The environment inventory uses it, because it states that every selected module completed.
+
+A check that must pass before anything changes the machine is a module that `base` needs. Every other module of that profile needs `base` or the check, directly or through other needs, so none of them runs when the check fails. The CachyOS profile checks the KDE Plasma version this way, and its tests check that every module waits for it.
 
 ## `Context`
 
@@ -83,6 +74,7 @@ impl Context<'_> {
 
     // Interaction.
     pub fn confirm(&self, question: &str) -> Result<bool, Unanswered>;
+    pub fn has_terminal(&self) -> bool;
     pub fn with_terminal(&self, cmd: std::process::Command) -> ModuleResult;
     pub fn note(&self, message: &str);
 
@@ -97,6 +89,8 @@ impl Context<'_> {
     pub fn delete(&self, path: &Path) -> ModuleResult;
     pub fn delete_system_file(&self, path: &Path) -> ModuleResult;
     pub fn enable_service(&self, unit: &str, scope: ServiceScope) -> ModuleResult;
+    pub fn disable_service(&self, unit: &str, scope: ServiceScope) -> ModuleResult;
+    pub fn service_state(&self, unit: &str, scope: ServiceScope) -> ModuleResult<ServiceState>;
     pub fn deploy_config(&self, package: &str) -> ModuleResult;
 
     // Changes that a program makes by itself, recorded around the call.
@@ -105,29 +99,29 @@ impl Context<'_> {
     pub fn record_setting_previous(&self, setting: Setting, previous: Option<String>) -> ModuleResult;
     pub fn created(&self, path: &Path, system: bool) -> ModuleResult;
     pub fn created_user_data(&self, path: &Path) -> ModuleResult;
+    pub fn record_undo_command(&self, program: &Path, args: &[&str]) -> ModuleResult;
+    pub fn disable_service_previous(&self, unit: &str, scope: ServiceScope, before: ServiceState) -> ModuleResult;
+
+    // A module that asks before installing.
+    pub fn record_declined(&self) -> ModuleResult;
+    pub fn record_accepted(&self) -> ModuleResult;
+    pub fn declined(&self) -> bool;
 }
 ```
 
 `Interaction` is implemented twice, once by the screen and once by the command line, both in `crates/interface`.
 
-`with_terminal` is for programs that talk to the terminal directly. Today only the Axidev greeter needs it. Everything else uses `run` or `confirm`.
+`with_terminal` is for programs that talk to the terminal directly, such as the Axidev greeter and the GitHub CLI and Tailscale logins. Everything else uses `run` or `confirm`.
+
+A module that asks before installing calls `confirm` at the start of `install`. On a no, it records the decline with `record_declined`, and its `verify` passes while `declined` is true. The next install asks again, and a yes marks the decline undone with `record_accepted`. When nobody can answer, the module returns the `Unanswered` error and the runner skips it.
 
 A test checks that no module calls `.run()`, `.read()` or `.output()` on a command, reads stdin, or opens `/dev/tty`. The only exception is the elevated shared desktop step on Windows, which runs in its own console window.
 
 ## Settings
 
-A `Setting` names one value outside the module's own files, such as a KDE key or a Git option. Each kind knows how to read its current value, write a value, and delete it:
+A `Setting` names one value outside the module's own files, such as a KDE key, a Git option, a group membership or a Windows registry value. The `Setting` enum in `crates/modules/src/setting/mod.rs` lists every kind.
 
-- `KdeKey { file, groups, key }`, through `kreadconfig6` and `kwriteconfig6`.
-- `LookAndFeel`, `CursorTheme` and `AccentColor`, through the KDE apply commands.
-- `Gsettings { schema, key }`.
-- `GitConfig { key }`, in the global Git configuration.
-- `LoginShell { user }`.
-- `RustupDefault`.
-- `UfwRule { rule }` and `UfwEnabled`.
-- `GroupMember { group, user }`.
-- `ClaudeMcpServer { name }`.
-- `RegistryValue { key, name }`, `MachinePathEntry { entry }` and `TaskbarAutoHide` on Windows.
+Each kind lives in its own file under `crates/modules/src/setting/` and implements the private `Kind` trait, which describes, reads, writes and deletes the value. The variant names and fields are the serde names that `state.json` stores, so they never change.
 
 ## Recorded state
 
@@ -164,9 +158,13 @@ Before changing anything, a module records what was there. The state lives in on
 
 - **One snapshot per run.** Each install or remove run adds a snapshot listing what it changed. A setting or file is recorded only the first time a run touches it, so the record always holds the value from before that run.
 
-- **File copies.** When `write_file` replaces a file, the previous contents go into the snapshot, encoded in base64. There are no more `<path>.backup.<date>` files next to your files.
+- **File copies.** When `write_file` replaces a file, the previous contents go into the snapshot, encoded in base64. No backup file is left next to the replaced file.
 
 - **Paru.** The first AUR package needs paru. When a configured repository has it, as CachyOS does, it is installed with pacman. Otherwise it comes from the AUR's `paru-bin`, which packages paru's official release binary instead of compiling it. Either way it is recorded under the module that needed it, so removing that module uninstalls paru too.
+
+- **APT repositories.** The package catalog names the vendor APT repository of a package that Ubuntu does not carry, or carries only in old versions. `install_packages` adds that repository's key and source file with recorded writes before it installs the package.
+
+- **Declines.** A module that asks before installing records a decline when the person says no. A decline has nothing to undo.
 
 - **Packages.** `install_packages` records only the packages that were missing. A package that was already there is never uninstalled by `remove`. `uninstall_packages` records the packages it removed, so `remove` can reinstall them.
 
@@ -230,65 +228,17 @@ There is no central Dotfiles module. Each module deploys and removes its own con
 
 ## Profiles are lists
 
-Each app's `main.rs` is a list of modules plus one call to the interface.
+Each app's `main.rs` holds the profile: a static list of modules in run order, each built with its options. After its platform check, it passes that list to `myconfig_interface::main` with the profile title and the package system.
 
-```rust
-// apps/arch-wsl/src/main.rs
-let modules: &[&dyn Module] = &[
-    &Base { packages: Base::ARCH, unwanted: &[] },
-    &Ssh,
-    &Cli,
-    &Runtimes,
-    &Zsh { set_login_shell: false },
-    &TerminalTools,
-    &Tailscale,
-    &AgentsPackages { extra: &[Package::WslSshAgent] },
-    &AgentConfigStowed { ydotool: false },
-    &GitConfig { windows_ssh: true },
-    &EnvironmentInventory::ARCH_WSL,
-];
-myconfig_interface::main(Profile {
-    title: "Arch WSL",
-    package_system: PackageSystem::Arch,
-    modules,
-})
-```
-
-```rust
-// apps/cachyos/src/main.rs (excerpt)
-let modules: &[&dyn Module] = &[
-    &PlasmaVersion,
-    &Base { packages: Base::ARCH, unwanted: &[Package::CachyUpdate] },
-    &Zsh { set_login_shell: true },
-    &AgentsPackages { extra: &[Package::Ydotool] },
-    // ...
-];
-```
-
-On Windows, each Winget package group is its own module, so you choose groups on the screen:
-
-```rust
-// apps/windows/src/main.rs (excerpt)
-let modules: &[&dyn Module] = &[
-    &PackageGroup::BASE,
-    &PackageGroup::DEV_TOOLS,
-    &PackageGroup::ART,
-    &PackageGroup::SUPPLEMENTARY,
-    &ArchWsl,
-    &PowerShellProfile,
-    &AgentConfigCopied,
-    &LlvmPath,
-    // ...
-];
-```
-
-`LlvmPath` runs only if you leave it checked. The old `dev_tools: bool` that the Winget step returned is gone.
+On Windows, each Winget package group is its own module, so you choose groups on the screen. A module that relies on one of those groups names it as a need.
 
 ## The runner
 
 The runner is shared code in `crates/modules`. It is the only code that loops over modules. The command line and the screen both call it.
 
-- `install(ctx, modules)` runs `install` and then `verify` on each module, in profile order. An install that leaves a broken state fails right there.
+- `install(ctx, profile, modules)` runs `install` and then `verify` on each module, in profile order. A module that fails does not stop the run. A module whose need failed or was skipped is skipped. A module whose `install` returns `Unanswered` is skipped too, with the question in the report. A hard need that the run leaves out must pass its `verify`, or the module is skipped too. A soft need that the run leaves out is fine. When the package database refresh before the first module fails, every module whose `changes_packages` is true is skipped, because installing packages after a failed `pacman -Syu` would leave a partly upgraded system. `changes_packages` is true when the footprint lists packages, and a module that installs a package missing from the catalog overrides it. At the end, `install` reports the failed modules and the skipped modules apart, and the screen marks each skipped module `skipped`. When nothing failed and every skip comes from an unanswered question, the command line exits with code 3, as `remove` does.
+
+- A module whose `verify` passes because its install was declined is reported as declined, and the screen marks it `declined`.
 
 - `verify(ctx, modules)` runs only `verify` on each module.
 
@@ -365,6 +315,9 @@ Undoing each kind of change:
 - **A replaced file** gets its recorded previous contents back. A file that did not exist before is deleted.
 - **A created path** is deleted.
 - **A service** goes back to its recorded enabled state.
+- **A disabled service** is enabled and started again when it was enabled or active before.
+- **A decline** has nothing to undo.
+- **A recorded undo command** runs, without a check of the current state. It undoes a change that a program made by itself and that only another command can undo.
 - **A deployed config package** is unstowed on Linux.
 - **A package that install added** is uninstalled after the check below.
 - **A package that install uninstalled** is reinstalled after a confirmation.

@@ -2,7 +2,7 @@
 use xshell::cmd;
 
 use crate::{
-    Context, Footprint, Module, ModuleResult, Package, ServiceScope, Setting,
+    Context, Footprint, Module, ModuleResult, Need, Package, ServiceScope, Setting,
     support::{current_user, verify_packages},
 };
 
@@ -49,6 +49,10 @@ impl Module for Docker {
         "docker"
     }
 
+    fn needs(&self) -> &'static [Need] {
+        &[Need::Hard("base")]
+    }
+
     fn footprint(&self, _ctx: &Context) -> Footprint {
         Footprint {
             packages: PACKAGES.to_vec(),
@@ -70,11 +74,18 @@ impl Module for Docker {
                 );
             }
         }
+        // The socket goes first, so no connection starts the service again in between.
+        let rootful = ["docker.socket", "docker.service"];
+        // Some Docker packages turn the rootful daemon on when they install, which
+        // remove has no reason to turn back on.
+        let mut before = Vec::new();
+        for unit in rootful {
+            before.push(ctx.service_state(unit, ServiceScope::System)?);
+        }
         ctx.install_packages(PACKAGES)?;
-        ctx.run(cmd!(
-            sh,
-            "sudo systemctl disable --now docker.service docker.socket"
-        ))?;
+        for (unit, before) in rootful.into_iter().zip(before) {
+            ctx.disable_service_previous(unit, ServiceScope::System, before)?;
+        }
         if self.setup_tool {
             create_user_unit(ctx)?;
         }

@@ -5,7 +5,7 @@ use std::fs;
 use xshell::cmd;
 
 use crate::{
-    Context, Footprint, Module, ModuleResult, Setting,
+    Context, Footprint, Module, ModuleResult, Need, Setting,
     oh_my_posh_font::{FONTS_KEY, font_directory},
     support::with_temporary_directory,
 };
@@ -26,6 +26,10 @@ fn registration(name: &str) -> Setting {
 impl Module for PlexSerifFont {
     fn name(&self) -> &'static str {
         "plex-serif-font"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {
@@ -69,7 +73,7 @@ impl Module for PlexSerifFont {
 
     fn verify(&self, ctx: &Context) -> ModuleResult {
         let (_, output) = ctx.read_unchecked(cmd!(ctx.shell, "reg.exe query {FONTS_KEY}"))?;
-        if !Setting::registry_value_names(&output)
+        if !crate::setting::registry_value::value_names(&output)
             .iter()
             .any(|name| name.starts_with(&FAMILY.replace(' ', "")) || name.starts_with(FAMILY))
         {

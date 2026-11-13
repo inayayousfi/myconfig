@@ -1,11 +1,15 @@
 //! The btop terminal system monitor.
-use crate::{Context, Footprint, Module, ModuleResult, Package, support::verify_packages};
+use crate::{Context, Footprint, Module, ModuleResult, Need, Package, support::verify_packages};
 
 pub struct SystemMonitor;
 
 impl Module for SystemMonitor {
     fn name(&self) -> &'static str {
         "system-monitor"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {

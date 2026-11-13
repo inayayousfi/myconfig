@@ -2,7 +2,7 @@
 use xshell::cmd;
 
 use crate::{
-    Context, Footprint, Module, ModuleResult, Package, ServiceScope,
+    Context, Footprint, Module, ModuleResult, Need, Package, ServiceScope,
     deploy::verify_package,
     support::{
         active_group, configure_input_access, graphical_session, input_access_settings,
@@ -17,6 +17,10 @@ const SERVICE: &str = "myconfig-handy.service";
 impl Module for Handy {
     fn name(&self) -> &'static str {
         "handy"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[Need::Hard("base"), Need::Hard("cli")]
     }
 
     fn footprint(&self, ctx: &Context) -> Footprint {

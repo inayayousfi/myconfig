@@ -6,7 +6,7 @@ use typed_fs_rs::EmbeddedDirectory;
 use xshell::cmd;
 
 use crate::{
-    Context, Footprint, Module, ModuleResult, Package, ServiceScope, Setting,
+    Context, Footprint, Module, ModuleResult, Need, Package, ServiceScope, Setting,
     deploy::verify_package,
     plasma_version::require_supported_plasma,
     support::{
@@ -288,6 +288,10 @@ fn hide_launcher_entries(ctx: &Context) -> ModuleResult {
 impl Module for KdePlasma {
     fn name(&self) -> &'static str {
         "kde-plasma"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[Need::Hard("base"), Need::Hard("plasma-version")]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {

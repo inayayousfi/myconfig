@@ -9,6 +9,7 @@ static MODULES: &[&dyn Module] = &[
     &Base {
         packages: Base::UBUNTU,
         unwanted: &[],
+        needs: &[],
     },
     &Cli,
     &SystemMonitor,
@@ -25,6 +26,7 @@ static MODULES: &[&dyn Module] = &[
     &AgentConfigStowed { ydotool: false },
     &T3Code,
     &GitConfig { windows_ssh: false },
+    &Login,
     &EnvironmentInventory::UBUNTU_DEVBOX,
 ];
 
@@ -40,13 +42,19 @@ fn main() -> ExitCode {
         title: "Ubuntu Devbox",
         package_system: PackageSystem::Apt,
         modules: MODULES,
-        keep_going: false,
     })
 }
 
 #[cfg(test)]
 mod tests {
+    use myconfig_modules::runner::need_problems;
+
     use super::MODULES;
+
+    #[test]
+    fn every_need_comes_earlier_and_every_hard_need_is_in_the_profile() {
+        assert_eq!(need_problems(MODULES), Vec::<String>::new());
+    }
 
     #[test]
     fn the_profile_is_the_development_machine_without_ssh_or_a_desktop() {
@@ -66,6 +74,7 @@ mod tests {
                 "agent-config",
                 "t3code",
                 "git-config",
+                "login",
                 "environment-inventory",
             ]
         );

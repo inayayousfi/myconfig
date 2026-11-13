@@ -1,5 +1,5 @@
 //! A group of Winget packages that you choose on the screen.
-use crate::{Context, Footprint, Module, ModuleResult, Package, support::verify_packages};
+use crate::{Context, Footprint, Module, ModuleResult, Need, Package, support::verify_packages};
 
 pub struct PackageGroup {
     pub name: &'static str,
@@ -59,6 +59,10 @@ impl PackageGroup {
 impl Module for PackageGroup {
     fn name(&self) -> &'static str {
         self.name
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {

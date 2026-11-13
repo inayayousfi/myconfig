@@ -2,7 +2,7 @@
 use xshell::cmd;
 
 use crate::{
-    Context, Footprint, Module, ModuleResult, Package, Setting,
+    Context, Footprint, Module, ModuleResult, Need, Package, Setting,
     deploy::verify_package,
     support::{current_user, verify_packages},
 };
@@ -38,6 +38,10 @@ impl Zsh {
 impl Module for Zsh {
     fn name(&self) -> &'static str {
         "zsh"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[Need::Hard("base")]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {

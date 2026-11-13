@@ -4,7 +4,7 @@ use std::{fs, path::Path};
 use xshell::cmd;
 
 use crate::{
-    Context, Footprint, Module, ModuleResult, Package,
+    Context, Footprint, Module, ModuleResult, Need, Package, Setting,
     deploy::verify_package,
     support::{
         default_application_settings, require_programs, set_default_application, verify_packages,
@@ -63,9 +63,21 @@ fn install_extensions(ctx: &Context, config: &Path) -> ModuleResult {
         .map_err(|error| format!("could not install the VSCodium extensions: {error}").into())
 }
 
+fn installed_extensions(ctx: &Context) -> ModuleResult<Vec<String>> {
+    Ok(ctx
+        .read(cmd!(ctx.shell, "codium --list-extensions"))?
+        .lines()
+        .map(str::to_owned)
+        .collect())
+}
+
 impl Module for Vscodium {
     fn name(&self) -> &'static str {
         "vscodium"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[Need::Hard("base"), Need::Hard("plasma-version")]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {
@@ -86,8 +98,16 @@ impl Module for Vscodium {
             ctx.created(&extensions, false)?;
         }
         let config = ctx.home.join(".config/VSCodium");
-        install_theme(ctx, &config)?;
-        install_extensions(ctx, &config)
+        let before = installed_extensions(ctx)?;
+        let result = install_theme(ctx, &config).and_then(|()| install_extensions(ctx, &config));
+        // Only codium knows the identifier of each extension it installs, so the added ones
+        // come from comparing its lists, even after a failed install.
+        for extension in installed_extensions(ctx)? {
+            if !before.contains(&extension) {
+                ctx.record_setting_previous(Setting::VscodiumExtension { id: extension }, None)?;
+            }
+        }
+        result
     }
 
     fn verify(&self, ctx: &Context) -> ModuleResult {

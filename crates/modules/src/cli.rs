@@ -1,5 +1,5 @@
 //! Command-line tools.
-use crate::{Context, Footprint, Module, ModuleResult, Package, support::verify_packages};
+use crate::{Context, Footprint, Module, ModuleResult, Need, Package, support::verify_packages};
 
 pub struct Cli;
 
@@ -14,6 +14,10 @@ const PACKAGES: &[Package] = &[
 impl Module for Cli {
     fn name(&self) -> &'static str {
         "cli"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[Need::Hard("base")]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {

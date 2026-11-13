@@ -2,7 +2,7 @@
 use xshell::cmd;
 
 use crate::{
-    Context, Footprint, Module, ModuleResult, Package, ServiceScope,
+    Context, Footprint, Module, ModuleResult, Need, Package, ServiceScope,
     deploy::verify_package,
     support::{
         active_group, configure_input_access, input_access_settings, require_file,
@@ -20,6 +20,10 @@ const SERVICE: &str = "myconfig-kanata.service";
 impl Module for Kanata {
     fn name(&self) -> &'static str {
         "kanata"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[Need::Hard("base")]
     }
 
     fn footprint(&self, ctx: &Context) -> Footprint {

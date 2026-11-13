@@ -2,7 +2,7 @@
 use xshell::cmd;
 
 use crate::{
-    Context, Footprint, Module, ModuleResult, Package, ServiceScope, Setting,
+    Context, Footprint, Module, ModuleResult, Need, Package, ServiceScope, Setting,
     deploy::verify_package,
     plasma_version::require_supported_plasma,
     support::{
@@ -23,6 +23,14 @@ fn overview_shortcut() -> Setting {
 impl Module for KanataKde {
     fn name(&self) -> &'static str {
         "kanata-kde"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[
+            Need::Hard("base"),
+            Need::Hard("plasma-version"),
+            Need::Hard("kanata"),
+        ]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {

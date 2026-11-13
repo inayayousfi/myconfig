@@ -1,10 +1,13 @@
 //! The packages every other module builds on.
-use crate::{Context, Footprint, Module, ModuleResult, Package};
+use crate::{Context, Footprint, Module, ModuleResult, Need, Package};
 
 pub struct Base {
     pub packages: &'static [Package],
     /// Distribution packages that conflict with this setup.
     pub unwanted: &'static [Package],
+    /// Checks that must pass before anything installs, such as a supported desktop
+    /// version. Every other module needs `base`, so none of them runs when one fails.
+    pub needs: &'static [Need],
 }
 
 impl Base {
@@ -34,6 +37,10 @@ impl Base {
 impl Module for Base {
     fn name(&self) -> &'static str {
         "base"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        self.needs
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {

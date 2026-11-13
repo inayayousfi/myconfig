@@ -1,5 +1,5 @@
 //! The runtime that AppImages need to start.
-use crate::{Context, Footprint, Module, ModuleResult, Package, support::verify_packages};
+use crate::{Context, Footprint, Module, ModuleResult, Need, Package, support::verify_packages};
 
 pub struct AppImage;
 
@@ -9,6 +9,10 @@ const PACKAGES: &[Package] = &[Package::Fuse2];
 impl Module for AppImage {
     fn name(&self) -> &'static str {
         "appimage"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[Need::Hard("base")]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {

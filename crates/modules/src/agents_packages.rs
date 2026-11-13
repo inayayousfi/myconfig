@@ -2,7 +2,7 @@
 use xshell::cmd;
 
 use crate::{
-    Context, Footprint, Module, ModuleResult, Package,
+    Context, Footprint, Module, ModuleResult, Need, Package,
     support::{agent_tool_path, require_executable, verify_packages},
 };
 
@@ -56,6 +56,10 @@ impl AgentsPackages {
 impl Module for AgentsPackages {
     fn name(&self) -> &'static str {
         "agents-packages"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[Need::Hard("base"), Need::Hard("runtimes")]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {

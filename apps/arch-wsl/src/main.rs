@@ -70,6 +70,7 @@ mod tests {
             "flatpak",
             "appimage",
             "vscodium",
+            "bootvine",
         ] {
             assert!(!names.contains(&absent), "Arch WSL includes {absent}");
         }

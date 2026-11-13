@@ -40,9 +40,22 @@ pub(crate) fn without_hook(config: &str, hook: &str) -> String {
     edit_hooks(config, |hooks| hooks.retain(|name| name != hook))
 }
 
-/// Applies `edit` to the kernel options of each boot entry.
+/// Puts `hook` right after `after`, unless the list already has it.
+pub(crate) fn with_hook_after(config: &str, hook: &str, after: &str) -> String {
+    edit_hooks(config, |hooks| {
+        if hooks.iter().any(|name| name == hook) {
+            return;
+        }
+        if let Some(position) = hooks.iter().position(|name| name == after) {
+            hooks.insert(position + 1, hook.to_owned());
+        }
+    })
+}
+
+/// Applies `edit` to the kernel options of each boot entry, with the entry's index.
 /// An entry is a line with a quoted title and quoted options; comments stay as they are.
-fn edit_entries(config: &str, edit: impl Fn(&str) -> String) -> String {
+fn edit_entries(config: &str, edit: impl Fn(usize, &str) -> String) -> String {
+    let mut index = 0;
     config
         .split_inclusive('\n')
         .map(|line| {
@@ -52,7 +65,8 @@ fn edit_entries(config: &str, edit: impl Fn(&str) -> String) -> String {
             if trimmed.is_empty() || trimmed.starts_with('#') || fields.len() < 5 {
                 return line.to_owned();
             }
-            let options = edit(fields[3]);
+            let options = edit(index, fields[3]);
+            index += 1;
             fields[3] = &options;
             format!("{}{}", fields.join("\""), &line[body.len()..])
         })
@@ -60,12 +74,26 @@ fn edit_entries(config: &str, edit: impl Fn(&str) -> String) -> String {
 }
 
 pub(crate) fn without_options(config: &str, removed: &[&str]) -> String {
-    edit_entries(config, |options| {
+    edit_entries(config, |_, options| {
         options
             .split_whitespace()
             .filter(|option| !removed.contains(option))
             .collect::<Vec<_>>()
             .join(" ")
+    })
+}
+
+/// Passes `quiet` on the first boot entry only, so the other entries keep the kernel
+/// messages for diagnosis.
+pub(crate) fn with_quiet_default(config: &str) -> String {
+    edit_entries(config, |index, options| {
+        if index > 0 || options.split_whitespace().any(|option| option == "quiet") {
+            options.to_owned()
+        } else if options.is_empty() {
+            "quiet".to_owned()
+        } else {
+            format!("quiet {options}")
+        }
     })
 }
 
@@ -114,10 +142,28 @@ mod tests {
     }
 
     #[test]
+    fn a_hook_goes_right_after_another_once() {
+        let edited = with_hook_after(&without_hook(HOOKS, "plymouth"), "sd-bootvine", "systemd");
+        assert!(edited.contains("HOOKS=(base systemd sd-bootvine autodetect microcode"));
+        assert_eq!(with_hook_after(&edited, "sd-bootvine", "systemd"), edited);
+    }
+
+    #[test]
     fn only_the_named_options_leave_each_entry() {
         assert_eq!(
             without_options(ENTRIES, &["quiet", "nowatchdog", "splash"]),
             "\"Boot with standard options\"    \"rw root=UUID=31f4 resume=UUID=31f4\"\n\"Boot to single-user mode\"    \"rw root=UUID=31f4\" single\n# \"Commented\" \"quiet\"\n\"Boot with minimal options\"   \"ro root=/dev/nvme0n1p2\"\n"
         );
+    }
+
+    #[test]
+    fn only_the_first_entry_becomes_quiet() {
+        let clean = without_options(ENTRIES, &["quiet", "nowatchdog", "splash"]);
+        let quiet = with_quiet_default(&clean);
+        assert_eq!(
+            quiet,
+            "\"Boot with standard options\"    \"quiet rw root=UUID=31f4 resume=UUID=31f4\"\n\"Boot to single-user mode\"    \"rw root=UUID=31f4\" single\n# \"Commented\" \"quiet\"\n\"Boot with minimal options\"   \"ro root=/dev/nvme0n1p2\"\n"
+        );
+        assert_eq!(with_quiet_default(&quiet), quiet);
     }
 }

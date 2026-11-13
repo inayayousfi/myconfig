@@ -31,6 +31,7 @@ static MODULES: &[&dyn Module] = &[
     &AndroidPhone,
     &Vscodium,
     &Refind,
+    &Bootvine,
     &Kanata {
         start_at_login: false,
     },
@@ -88,6 +89,7 @@ mod tests {
             "flatpak",
             "appimage",
             "vscodium",
+            "bootvine",
             "agent-config",
             "git-config",
         ] {

@@ -1419,3 +1419,107 @@ fn vscodium_installs_the_theme_and_extensions_and_opens_text_files() {
         );
     }
 }
+
+/// A boot that bootvine can join, with pacman reporting bootvine at the version it
+/// last installed.
+fn bootvine_boot(sandbox: &Sandbox) {
+    cachyos_boot(sandbox, true);
+    let config = sandbox.root.join("system/etc/mkinitcpio.conf");
+    fs::write(&config, MKINITCPIO.replace(" plymouth", "")).unwrap();
+    fs::write(
+        sandbox.root.join("system/boot/refind_linux.conf"),
+        REFIND_LINUX.replace("quiet nowatchdog splash ", ""),
+    )
+    .unwrap();
+    fs::rename(
+        sandbox.root.join("bin/pacman"),
+        sandbox.root.join("bin/pacman-base"),
+    )
+    .unwrap();
+    sandbox.fake(
+        "pacman",
+        r#"version="$MYCONFIG_TEST_ROOT/bootvine-version"
+case "$1 $2" in
+    "-Q bootvine") [ -e "$version" ] && printf 'bootvine %s\n' "$(cat "$version")" ;;
+    -U*) printf '%s\n' "$BOOTVINE_BUILT" > "$version"; exec pacman-base "$@" ;;
+    *) exec pacman-base "$@" ;;
+esac"#,
+    );
+    sandbox.fake(
+        "makepkg",
+        r#"printf 'makepkg %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+[ "$1" = --packagelist ] && printf 'bootvine-0.1.3-1-x86_64.pkg.tar.zst\n'; exit 0"#,
+    );
+    sandbox.shell.set_var("BOOTVINE_BUILT", "0.1.3-1");
+}
+
+#[test]
+fn bootvine_builds_once_and_joins_the_initramfs_and_the_first_boot_entry() {
+    let sandbox = Sandbox::new("bootvine");
+    bootvine_boot(&sandbox);
+    let io = Answers::new(None);
+    for _ in 0..2 {
+        sandbox
+            .with(&io, |ctx| runner::install(ctx, &[&crate::Bootvine]))
+            .unwrap();
+    }
+    assert_eq!(sandbox.calls("makepkg --noconfirm"), 1);
+    assert_eq!(sandbox.calls("local "), 1, "pacman -U ran more than once");
+    assert_eq!(
+        sandbox.calls("sudo mkinitcpio -P"),
+        0,
+        "pacman rebuilds the initramfs when the package installs"
+    );
+    let calls = fs::read_to_string(sandbox.root.join("calls")).unwrap();
+    assert!(
+        calls.find("mkinitcpio.conf").unwrap() < calls.find("local ").unwrap(),
+        "the package installed before HOOKS named its hook"
+    );
+    assert!(
+        system_file(&sandbox, "/etc/mkinitcpio.conf")
+            .unwrap()
+            .contains("HOOKS=(base systemd sd-bootvine autodetect")
+    );
+    assert_eq!(
+        system_file(&sandbox, "/boot/refind_linux.conf").unwrap(),
+        REFIND_LINUX
+            .replace("quiet nowatchdog splash ", "")
+            .replacen("\"rw root", "\"quiet rw root", 1)
+    );
+    for service in ["bootvine.service", "bootvine-shutdown.service"] {
+        assert!(enabled(&sandbox, service), "{service} is not enabled");
+    }
+}
+
+#[test]
+fn bootvine_rebuilds_the_initramfs_when_only_the_hook_was_missing() {
+    let sandbox = Sandbox::new("bootvine-hook");
+    bootvine_boot(&sandbox);
+    fs::write(sandbox.root.join("bootvine-version"), "0.1.3-1\n").unwrap();
+    let io = Answers::new(None);
+    sandbox
+        .with(&io, |ctx| runner::install(ctx, &[&crate::Bootvine]))
+        .unwrap();
+    assert_eq!(sandbox.calls("makepkg"), 0);
+    assert_eq!(sandbox.calls("sudo mkinitcpio -P"), 1);
+}
+
+#[test]
+fn bootvine_needs_the_systemd_hook() {
+    let sandbox = Sandbox::new("bootvine-busybox");
+    bootvine_boot(&sandbox);
+    fs::write(
+        sandbox.root.join("system/etc/mkinitcpio.conf"),
+        "HOOKS=(base udev autodetect block filesystems fsck)\n",
+    )
+    .unwrap();
+    let io = Answers::new(None);
+    let error = sandbox
+        .with(&io, |ctx| runner::install(ctx, &[&crate::Bootvine]))
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("needs the systemd hook"),
+        "{error}"
+    );
+    assert_eq!(sandbox.calls("makepkg"), 0);
+}

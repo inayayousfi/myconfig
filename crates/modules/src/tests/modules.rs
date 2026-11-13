@@ -1259,3 +1259,41 @@ fn media_makes_vlc_the_player_and_loupe_the_image_viewer() {
         assert!(result.is_ok(), "{name}: {result:?}");
     }
 }
+
+#[test]
+fn flatpak_adds_flathub_once_and_remove_deletes_it() {
+    let sandbox = Sandbox::new("flatpak");
+    system(&sandbox);
+    sandbox.fake(
+        "flatpak",
+        r#"printf 'flatpak %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+remotes="$MYCONFIG_TEST_ROOT/flatpak"
+mkdir -p "$remotes"
+case "$1" in
+    remotes) ls "$remotes" ;;
+    remote-add) for name; do :; done; : > "$remotes/$4" ;;
+    remote-delete) rm -f "$remotes/$3" ;;
+esac"#,
+    );
+    let io = Answers::new(None);
+    for _ in 0..2 {
+        sandbox
+            .with(&io, |ctx| runner::install(ctx, &[&crate::Flatpak]))
+            .unwrap();
+    }
+    assert!(sandbox.installed("flatpak"));
+    assert!(sandbox.root.join("flatpak/flathub").exists());
+    assert_eq!(
+        sandbox.calls(
+            "sudo flatpak remote-add --system --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo"
+        ),
+        1
+    );
+    sandbox
+        .with(&io, |ctx| {
+            runner::remove(ctx, &[&crate::Flatpak], &[&crate::Flatpak], false)
+        })
+        .unwrap();
+    assert!(!sandbox.root.join("flatpak/flathub").exists());
+    assert!(!sandbox.installed("flatpak"));
+}

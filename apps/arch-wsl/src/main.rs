@@ -64,6 +64,9 @@ mod tests {
             "handy",
             "pipewire",
             "docker",
+            "media",
+            "flatpak",
+            "appimage",
         ] {
             assert!(!names.contains(&absent), "Arch WSL includes {absent}");
         }

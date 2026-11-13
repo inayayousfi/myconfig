@@ -45,6 +45,11 @@ pub enum Setting {
     ClaudeMcpServer {
         name: String,
     },
+    /// A system-wide Flatpak remote, added from its `.flatpakrepo` file.
+    FlatpakRemote {
+        name: String,
+        from: String,
+    },
     RegistryValue {
         key: String,
         name: String,
@@ -96,6 +101,7 @@ impl Setting {
             Self::GroupExists { group } => format!("group {group}"),
             Self::GroupMember { group, user } => format!("{user} in group {group}"),
             Self::ClaudeMcpServer { name } => format!("Claude MCP server {name}"),
+            Self::FlatpakRemote { name, .. } => format!("Flatpak remote {name}"),
             Self::RegistryValue { key, name } => format!("registry {key} {name}"),
             Self::MachinePathEntry { entry } => format!("machine PATH entry {entry}"),
             Self::TaskbarAutoHide => "taskbar auto-hide".to_owned(),
@@ -165,6 +171,11 @@ impl Setting {
             }
             Self::GroupExists { group } => ctx
                 .succeeds(cmd!(sh, "getent group {group}"))?
+                .then(|| "present".to_owned()),
+            Self::FlatpakRemote { name, .. } => ctx
+                .read(cmd!(sh, "flatpak remotes --system --columns=name"))?
+                .lines()
+                .any(|remote| remote.trim() == name)
                 .then(|| "present".to_owned()),
             Self::GroupMember { group, user } => {
                 let groups = ctx.read(cmd!(sh, "id -nG {user}"))?;
@@ -271,6 +282,10 @@ impl Setting {
             Self::GroupExists { group } => {
                 ctx.run(cmd!(sh, "sudo groupadd --system --force {group}"))
             }
+            Self::FlatpakRemote { name, from } => ctx.run(cmd!(
+                sh,
+                "sudo flatpak remote-add --system --if-not-exists {name} {from}"
+            )),
             Self::GroupMember { group, user } => {
                 ctx.run(cmd!(sh, "sudo usermod -aG {group} {user}"))
             }
@@ -333,6 +348,9 @@ impl Setting {
             Self::UfwRule { rule } => ctx.run(cmd!(sh, "sudo ufw delete {rule...}")),
             Self::UfwEnabled => ctx.run(cmd!(sh, "sudo ufw disable")),
             Self::GroupExists { group } => ctx.run(cmd!(sh, "sudo groupdel {group}")),
+            Self::FlatpakRemote { name, .. } => {
+                ctx.run(cmd!(sh, "sudo flatpak remote-delete --system {name}"))
+            }
             Self::GroupMember { group, user } => {
                 ctx.run(cmd!(sh, "sudo gpasswd -d {user} {group}"))
             }

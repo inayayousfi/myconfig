@@ -14,6 +14,8 @@ static MODULES: &[&dyn Module] = &[
     &Ssh,
     &Cli,
     &Runtimes,
+    &Flatpak,
+    &AppImage,
     &Zsh {
         set_login_shell: true,
     },
@@ -80,6 +82,8 @@ mod tests {
             "pipewire",
             "docker",
             "media",
+            "flatpak",
+            "appimage",
             "agent-config",
             "git-config",
         ] {

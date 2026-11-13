@@ -154,10 +154,12 @@ pub enum Package {
     CachyosPlymouthBootanimation,
     Vlc,
     Loupe,
+    Flatpak,
+    Fuse2,
 }
 
 impl Package {
-    const COUNT: usize = 152;
+    const COUNT: usize = 154;
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -441,6 +443,8 @@ const PACKAGE_OVERRIDES: &[((Package, Platform), &str)] = &[
     ),
     ((Package::Vlc, Platform::Pacman), "vlc"),
     ((Package::Loupe, Platform::Pacman), "loupe"),
+    ((Package::Flatpak, Platform::Pacman), "flatpak"),
+    ((Package::Fuse2, Platform::Pacman), "fuse2"),
 ];
 
 const fn build_packages()
@@ -629,6 +633,8 @@ const fn package_from_index(index: usize) -> Package {
         Package::CachyosPlymouthBootanimation,
         Package::Vlc,
         Package::Loupe,
+        Package::Flatpak,
+        Package::Fuse2,
     ][index]
 }
 

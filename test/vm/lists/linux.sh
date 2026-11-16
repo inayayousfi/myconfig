@@ -27,36 +27,36 @@ files() {
 }
 
 case ${1:-} in
-user)
-    echo '## user-services'
-    systemctl --user list-unit-files --state=enabled --no-legend --plain | awk '{ print $1 }'
-    echo '## groups'
-    id -nG | tr ' ' '\n'
-    ;;
-system)
-    tool=$2
-    home=$3
-    echo '## packages'
-    case $tool in
-    pacman) pacman -Qq ;;
-    dpkg) dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' | awk '$1 == "ii" { print $2 }' ;;
+    user)
+        echo '## user-services'
+        systemctl --user list-unit-files --state=enabled --no-legend --plain | awk '{ print $1 }'
+        echo '## groups'
+        id -nG | tr ' ' '\n'
+        ;;
+    system)
+        tool=$2
+        home=$3
+        echo '## packages'
+        case $tool in
+            pacman) pacman -Qq ;;
+            dpkg) dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' | awk '$1 == "ii" { print $2 }' ;;
+            *)
+                echo "unknown package tool: $tool" >&2
+                exit 2
+                ;;
+        esac
+        echo '## system-services'
+        systemctl list-unit-files --state=enabled --no-legend --plain | awk '{ print $1 }'
+        echo '## files'
+        files /etc
+        files /boot
+        files /usr/local
+        files /opt
+        files /var/lib/flatpak
+        files "$home"
+        ;;
     *)
-        echo "unknown package tool: $tool" >&2
+        echo "usage: $0 user | system <pacman|dpkg> <home>" >&2
         exit 2
         ;;
-    esac
-    echo '## system-services'
-    systemctl list-unit-files --state=enabled --no-legend --plain | awk '{ print $1 }'
-    echo '## files'
-    files /etc
-    files /boot
-    files /usr/local
-    files /opt
-    files /var/lib/flatpak
-    files "$home"
-    ;;
-*)
-    echo "usage: $0 user | system <pacman|dpkg> <home>" >&2
-    exit 2
-    ;;
 esac

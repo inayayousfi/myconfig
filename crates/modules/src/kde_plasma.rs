@@ -380,8 +380,11 @@ impl Module for KdePlasma {
         require_supported_plasma(ctx)?;
         verify_packages(ctx, PACKAGES)?;
         verify_package(ctx, "plasma")?;
+        // The plugins are system files, so root checks them, as it wrote them.
         for (path, _) in libinput_plugins() {
-            require_file(&path)?;
+            if !ctx.succeeds(cmd!(ctx.shell, "sudo test -f {path}"))? {
+                return Err(format!("required file is missing: {}", path.display()).into());
+            }
         }
         require_default_fonts(ctx)?;
         for (setting, value) in [

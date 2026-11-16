@@ -1,6 +1,6 @@
 # KDE Plasma
 
-This document describes the CachyOS KDE Plasma setup: the `linux/modules/kde-plasma.sh` module and the `plasma` dotfile package.
+This document describes the CachyOS KDE Plasma setup: the `kde-plasma` module in `crates/modules/src/kde_plasma.rs` and the `plasma` dotfile package.
 
 ## Theme and settings
 
@@ -14,7 +14,9 @@ The `plasma` package owns the panel layout. `myconfig-plasma-layout` sends `~/.l
 
 The session menu shows a one-color Tux in the bar's text color. The drawing comes from CachyOS's char-white icon theme, which is GPL, so the widget is GPL. Its labels reuse the translations that KDE installs, so the widget stores no text in any language and follows the system language.
 
-The first run backs up and replaces every existing panel. Later runs add bars for new displays and reset the managed ones. `myconfig-plasma-layout.service` runs the command at each Plasma login.
+The first run replaces every existing panel. Later runs add bars for new displays and reset the managed ones. `myconfig-plasma-layout.service` runs the command at each Plasma login.
+
+The module records the panel file before the first run. Plasma keeps its panels in memory and saves them when it stops, so `remove` stops a running Plasma shell, restores the recorded file, and starts the shell again.
 
 ## Bar behavior
 

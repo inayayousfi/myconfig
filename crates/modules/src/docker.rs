@@ -1,0 +1,132 @@
+//! Rootless Docker, whose daemon runs as the user instead of root.
+use xshell::cmd;
+
+use crate::{
+    Context, Footprint, Module, ModuleResult, Need, Package, ServiceScope, Setting,
+    support::{current_user, verify_packages},
+};
+
+pub struct Docker {
+    /// Creates the user service with Docker's setup tool, for packages that ship the
+    /// tool instead of the unit.
+    pub setup_tool: bool,
+}
+
+const PACKAGES: &[Package] = &[
+    Package::Docker,
+    Package::DockerBuildx,
+    Package::DockerCompose,
+    Package::DockerRootlessExtras,
+    Package::Slirp4netns,
+    Package::Uidmap,
+];
+const CONTEXT: &str = "rootless";
+
+fn context() -> Setting {
+    Setting::DockerContext {
+        name: CONTEXT.to_owned(),
+    }
+}
+
+/// Docker's setup tool copies the PATH it runs with into the unit, so it runs with the
+/// system PATH only. Besides the unit, the tool enables the service, creates the rootless
+/// context and selects it, so those are recorded first.
+fn create_user_unit(ctx: &Context) -> ModuleResult {
+    let unit = ctx.home.join(".config/systemd/user/docker.service");
+    if unit.is_file() {
+        return Ok(());
+    }
+    let tool = ctx.find_program("dockerd-rootless-setuptool.sh")?;
+    ctx.created(&unit, false)?;
+    ctx.record_service("docker.service", ServiceScope::User)?;
+    ctx.record_setting(context())?;
+    ctx.record_setting(Setting::DockerCurrentContext)?;
+    ctx.run(cmd!(ctx.shell, "{tool} install").env(
+        "PATH",
+        "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    ))
+    .map_err(|error| format!("Docker's rootless setup tool failed: {error}").into())
+}
+
+impl Module for Docker {
+    fn name(&self) -> &'static str {
+        "docker"
+    }
+
+    fn needs(&self) -> &'static [Need] {
+        &[Need::Hard("base")]
+    }
+
+    fn footprint(&self, _ctx: &Context) -> Footprint {
+        Footprint {
+            packages: PACKAGES.to_vec(),
+            settings: vec![context(), Setting::DockerCurrentContext],
+        }
+    }
+
+    fn install(&self, ctx: &Context) -> ModuleResult {
+        let sh = ctx.shell;
+        let user = current_user(ctx)?;
+        // Membership in the docker group gives root access, so this setup refuses it.
+        for groups in [
+            ctx.read(cmd!(sh, "id -Gn"))?,
+            ctx.read(cmd!(sh, "id -nG {user}"))?,
+        ] {
+            if groups.split_whitespace().any(|group| group == "docker") {
+                return Err(
+                    "current user is already in the docker group; refusing Docker setup".into(),
+                );
+            }
+        }
+        // The socket goes first, so no connection starts the service again in between.
+        let rootful = ["docker.socket", "docker.service"];
+        // Some Docker packages turn the rootful daemon on when they install, which
+        // remove has no reason to turn back on.
+        let mut before = Vec::new();
+        for unit in rootful {
+            before.push(ctx.service_state(unit, ServiceScope::System)?);
+        }
+        // The docker package creates the docker group itself, and removing the package does
+        // not delete it. It is recorded even after a failed install, which may have created it.
+        let group = Setting::GroupExists {
+            group: "docker".to_owned(),
+        };
+        let group_before = group.read(ctx)?;
+        let installed = ctx.install_packages(PACKAGES);
+        if group_before.is_none() && group.read(ctx)?.is_some() {
+            ctx.record_setting_previous(group, None)?;
+        }
+        installed?;
+        for (unit, before) in rootful.into_iter().zip(before) {
+            ctx.disable_service_previous(unit, ServiceScope::System, before)?;
+        }
+        if self.setup_tool {
+            create_user_unit(ctx)?;
+        }
+        ctx.run(cmd!(sh, "systemctl --user daemon-reload"))?;
+        ctx.enable_service("docker.service", ServiceScope::User)?;
+        ctx.run(cmd!(sh, "systemctl --user start docker.service"))?;
+        let status = ctx.read(cmd!(sh, "systemctl --user is-active docker.service"))?;
+        if status != "active" {
+            return Err("the rootless docker.service user unit is not active".into());
+        }
+        let uid = ctx.read(cmd!(sh, "id -u"))?;
+        ctx.set(context(), &format!("unix:///run/user/{uid}/docker.sock"))?;
+        ctx.set(Setting::DockerCurrentContext, CONTEXT)?;
+        self.verify(ctx)
+    }
+
+    fn verify(&self, ctx: &Context) -> ModuleResult {
+        verify_packages(ctx, PACKAGES)?;
+        let format = "{{.SecurityOptions}}";
+        let options = ctx.read(cmd!(ctx.shell, "docker info --format {format}"))?;
+        if !options.contains("name=rootless") {
+            return Err("the selected Docker daemon is not rootless".into());
+        }
+        Ok(())
+    }
+
+    fn remove(&self, _ctx: &Context) -> ModuleResult {
+        Ok(())
+    }
+}

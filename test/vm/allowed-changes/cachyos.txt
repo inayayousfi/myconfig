@@ -1,0 +1,169 @@
+# Changes that a CachyOS cycle allows between the state lists it compares.
+# Each line is `<list> <pattern>`. The list is a `## <list>` name of the state lists, or `*`
+# for every list. In the pattern, `*` stands for any text, `/` included.
+# A line that starts with `removal` applies only to the removal comparison.
+
+# The installer upgrades the whole system, which replaces the kernel, its boot images and
+# files that packages regenerate.
+files /boot/vmlinuz-*
+files /boot/initramfs-*
+files /boot/*-ucode.img
+files /etc/ld.so.cache
+files /etc/ca-certificates/*
+files /etc/ssl/certs/*
+files /etc/pacman.d/gnupg/*
+files /etc/pacman.d/*mirrorlist*
+files /etc/.updated
+files /etc/.pwd.lock
+files /etc/xdg/autostart/pam_kwallet_init.desktop
+packages zlib
+packages lib32-zlib
+packages zlib-ng-compat
+packages lib32-zlib-ng
+packages lib32-zlib-ng-compat
+
+# The appstream data of the Flathub remote, which Flatpak downloads again when it refreshes
+# the remote. The remote itself, in /var/lib/flatpak/repo/config, stays checked on the
+# second install.
+files /var/lib/flatpak/.changed
+files /var/lib/flatpak/appstream/*/*
+files /var/lib/flatpak/repo/objects/*
+files /var/lib/flatpak/repo/tmp/*
+files /var/lib/flatpak/repo/refs/remotes/*/appstream*
+
+# Backups that shadow and useradd write when accounts or groups change.
+files /etc/passwd-
+files /etc/shadow-
+files /etc/group-
+files /etc/gshadow-
+
+# The flatpak system account, which the flatpak package creates and its removal keeps.
+removal files /etc/passwd
+removal files /etc/shadow
+removal files /etc/group
+removal files /etc/gshadow
+
+# The login shells list, which the cachyos-zsh-config reinstall rewrites in another order.
+removal files /etc/shells
+
+# Data that the installed programs write themselves, which removal keeps: Cargo's and Go's
+# downloads, Go's telemetry, the keys that the GitHub CLI test suite writes while paru
+# builds it, Flatpak's empty repository, the desktop caches that the desktop database
+# writes, Claude Code's state, npm's cache, rustup's settings, Docker's client settings and
+# rootless storage, the GitHub CLI's device ID, paru's development package list,
+# WirePlumber's state, VSCodium's caches, dconf's database, Plasma's defaults and the KDE
+# files left empty once removal deletes their last key, the file git keeps after its last
+# key is unset, and the folders that hold them.
+removal files /home/tester/.cargo
+removal files /home/tester/.cargo/*
+removal files /home/tester/go
+removal files /home/tester/go/*
+removal files /home/tester/.config/go
+removal files /home/tester/.config/go/*
+removal files /home/tester/.ssh/codespaces.auto
+removal files /home/tester/.ssh/codespaces.auto.pub
+removal files /var/lib/flatpak
+removal files /var/lib/flatpak/repo
+removal files /var/lib/flatpak/repo/config
+removal files /var/lib/flatpak/repo/extensions
+removal files /var/lib/flatpak/repo/objects
+removal files /var/lib/flatpak/repo/refs
+removal files /var/lib/flatpak/repo/refs/heads
+removal files /var/lib/flatpak/repo/refs/mirrors
+removal files /var/lib/flatpak/repo/refs/remotes
+removal files /var/lib/flatpak/repo/state
+removal files /var/lib/flatpak/repo/tmp
+removal files /usr/local/share/applications
+removal files /usr/local/share/applications/intent.cache
+removal files /usr/local/share/applications/mimeinfo.cache
+removal files /usr/local/share/icons
+removal files /usr/local/share/icons/hicolor
+removal files /usr/local/share/icons/hicolor/scalable
+removal files /usr/local/share/icons/hicolor/scalable/apps
+removal files /home/tester/.claude
+removal files /home/tester/.claude.json
+removal files /home/tester/.claude/backups
+removal files /home/tester/.claude/backups/*
+removal files /home/tester/.claude/downloads
+removal files /home/tester/.claude/sessions
+removal files /home/tester/.local/state/claude
+removal files /home/tester/.local/state/claude/locks
+removal files /home/tester/.npm
+removal files /home/tester/.npm/*
+removal files /home/tester/.rustup
+removal files /home/tester/.rustup/downloads
+removal files /home/tester/.rustup/settings.toml
+removal files /home/tester/.rustup/tmp
+removal files /home/tester/.rustup/toolchains
+removal files /home/tester/.rustup/update-hashes
+removal files /home/tester/.docker
+removal files /home/tester/.docker/config.json
+removal files /home/tester/.docker/contexts
+removal files /home/tester/.docker/contexts/meta
+removal files /home/tester/.local/share/docker
+removal files /home/tester/.local/share/docker/*
+removal files /home/tester/.local/state/gh
+removal files /home/tester/.local/state/gh/device-id
+removal files /home/tester/.local/state/paru
+removal files /home/tester/.local/state/paru/devel.toml
+removal files /home/tester/.local/state/wireplumber
+removal files /home/tester/.config/VSCodium
+removal files /home/tester/.config/VSCodium/CachedExtensionVSIXs
+removal files /home/tester/.config/VSCodium/CachedProfilesData
+removal files /home/tester/.config/VSCodium/CachedProfilesData/*
+removal files /home/tester/.config/dconf
+removal files /home/tester/.config/dconf/user
+removal files /home/tester/.config/kdedefaults
+removal files /home/tester/.config/kdedefaults/*
+removal files /home/tester/.config/baloofilerc
+removal files /home/tester/.config/dolphinrc
+removal files /home/tester/.config/kcminputrc
+removal files /home/tester/.config/kdeglobals
+removal files /home/tester/.config/kglobalshortcutsrc
+removal files /home/tester/.config/kwinrc
+removal files /home/tester/.config/kwinrulesrc
+removal files /home/tester/.config/mimeapps.list
+removal files /home/tester/.config/plasmanotifyrc
+removal files /home/tester/.config/plasmaparc
+removal files /home/tester/.config/powerdevilrc
+removal files /home/tester/.gitconfig
+removal files /home/tester/.config/systemd
+removal files /home/tester/.config/systemd/user
+removal files /home/tester/.config/systemd/user/graphical-session.target.wants
+removal files /home/tester/.config/systemd/user/plasma-workspace.target.wants
+removal files /home/tester/.local/share
+
+# Caches, histories, logs and session state of the logged-in user.
+files /home/tester/.cache
+files /home/tester/.cache/*
+files /home/tester/.bun/install/cache/*
+files /home/tester/.local/state/VSCodium
+files /home/tester/.local/state/VSCodium/*
+files /home/tester/.bash_history
+files /home/tester/.lesshst
+files /home/tester/.local/share/recently-used.xbel
+files /home/tester/.local/share/baloo
+files /home/tester/.local/share/baloo/*
+files /home/tester/.local/share/kactivitymanagerd
+files /home/tester/.local/share/kactivitymanagerd/*
+
+# The bytecode that `python -m py_compile` writes when kanata-kde and pipewire check their
+# tray scripts. Each deploy replaces the scripts, so it changes on every install.
+files /home/tester/.local/bin/__pycache__
+files /home/tester/.local/bin/__pycache__/*
+
+# Files that a running T3 Code and Claude Code rewrite.
+files /home/tester/.t3/caches/*.json
+files /home/tester/.t3/userdata/logs/*
+files /home/tester/.t3/userdata/server-owner.sqlite-journal
+files /home/tester/.t3/userdata/server-runtime.json
+files /home/tester/.t3/userdata/statev2.sqlite
+files /home/tester/.t3/userdata/statev2.sqlite-shm
+files /home/tester/.t3/userdata/statev2.sqlite-wal
+files /home/tester/.claude/plugins/store/*.json
+
+# The installer's own record of what it changed, and the folder that holds it, which the
+# installer creates and keeps.
+files /home/tester/.local/state
+files /home/tester/.local/state/myconfig
+files /home/tester/.local/state/myconfig/*

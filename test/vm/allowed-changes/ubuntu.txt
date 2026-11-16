@@ -1,0 +1,313 @@
+# Changes that an Ubuntu cycle allows between the state lists it compares.
+# Each line is `<list> <pattern>`. The list is a `## <list>` name of the state lists, or `*`
+# for every list. In the pattern, `*` stands for any text, `/` included.
+# A line that starts with `removal` applies only to the removal comparison.
+
+# Package upgrades replace the kernel, its boot images and files that packages regenerate.
+files /boot/vmlinuz*
+files /boot/initrd.img*
+files /boot/config-*
+files /boot/System.map-*
+files /boot/grub/grub.cfg
+files /etc/ld.so.cache
+files /etc/ssl/certs/*
+files /etc/fwupd/fwupd.conf
+
+# Backups that shadow and useradd write when accounts or groups change.
+files /etc/passwd-
+files /etc/shadow-
+files /etc/group-
+files /etc/gshadow-
+files /etc/subuid-
+files /etc/subgid-
+
+# Caches and histories of the user.
+files /home/tester/.cache
+files /home/tester/.cache/*
+files /home/tester/.bash_history
+files /home/tester/.lesshst
+files /home/tester/.sudo_as_admin_successful
+
+# Data that the installed programs write themselves, which removal keeps: Claude Code's
+# state, npm's cache, rustup's settings, Docker's client settings and rootless storage,
+# the GitHub CLI's device ID, npm's global folder, the file git keeps after its last key
+# is unset, and the folders that hold them.
+removal files /home/tester/.claude
+removal files /home/tester/.claude.json
+removal files /home/tester/.claude/backups
+removal files /home/tester/.claude/backups/*
+removal files /home/tester/.claude/downloads
+removal files /home/tester/.claude/plugins
+removal files /home/tester/.claude/plugins/store
+removal files /home/tester/.claude/sessions
+removal files /home/tester/.local/state/claude
+removal files /home/tester/.local/state/claude/locks
+removal files /home/tester/.npm
+removal files /home/tester/.npm/*
+removal files /home/tester/.rustup
+removal files /home/tester/.rustup/downloads
+removal files /home/tester/.rustup/settings.toml
+removal files /home/tester/.rustup/tmp
+removal files /home/tester/.rustup/toolchains
+removal files /home/tester/.rustup/update-hashes
+removal files /home/tester/.docker
+removal files /home/tester/.docker/config.json
+removal files /home/tester/.docker/contexts
+removal files /home/tester/.docker/contexts/meta
+removal files /home/tester/.local/share/docker
+removal files /home/tester/.local/share/docker/*
+removal files /home/tester/.local/state/gh
+removal files /home/tester/.local/state/gh/device-id
+removal files /home/tester/.local/lib
+removal files /home/tester/.local/lib/node_modules
+removal files /home/tester/.gitconfig
+removal files /home/tester/.config
+removal files /home/tester/.config/systemd
+removal files /home/tester/.config/systemd/user
+removal files /home/tester/.local/share
+
+# Files that package removal scripts leave: the folder where the AppArmor purge scripts
+# record disabled profiles, and the containerd runtime folders that Docker creates.
+removal files /etc/apparmor.d/disable
+removal files /opt/containerd
+removal files /opt/containerd/bin
+removal files /opt/containerd/lib
+
+# The packages that install pulled in because an installed package recommends or suggests
+# them, and their configuration files. APT keeps a package while an installed package
+# recommends or suggests it, so removal leaves them.
+removal packages bubblewrap
+removal packages bzip2
+removal packages cpp
+removal packages cpp-15
+removal packages cpp-15-x86-64-linux-gnu
+removal packages cpp-x86-64-linux-gnu
+removal packages dpkg-dev
+removal packages fakeroot
+removal packages fontconfig
+removal packages fontconfig-config
+removal packages fonts-dejavu-core
+removal packages fonts-dejavu-mono
+removal packages fonts-urw-base35
+removal packages gcc
+removal packages gcc-15
+removal packages gcc-15-base
+removal packages gcc-15-x86-64-linux-gnu
+removal packages gcc-x86-64-linux-gnu
+removal packages glycin-loaders
+removal packages glycin-thumbnailers
+removal packages libalgorithm-diff-perl
+removal packages libalgorithm-diff-xs-perl
+removal packages libalgorithm-merge-perl
+removal packages libaom3
+removal packages libarchive13t64
+removal packages libasan8
+removal packages libauthen-sasl-perl
+removal packages libcairo-gobject2
+removal packages libcairo2
+removal packages libcc1-0
+removal packages libclone-perl
+removal packages libcrypt-urandom-perl
+removal packages libdata-dump-perl
+removal packages libdatrie1
+removal packages libdpkg-perl
+removal packages libencode-locale-perl
+removal packages libfakeroot
+removal packages libfile-fcntllock-perl
+removal packages libfile-listing-perl
+removal packages libfont-afm-perl
+removal packages libfontconfig1
+removal packages libfontenc1
+removal packages libgcc-15-dev
+removal packages libgdk-pixbuf-2.0-0
+removal packages libgdk-pixbuf2.0-common
+removal packages libglycin-2-0
+removal packages libgomp1
+removal packages libgraphite2-3
+removal packages libharfbuzz0b
+removal packages libheif-plugin-aomdec
+removal packages libheif-plugin-aomenc
+removal packages libheif1
+removal packages libhtml-form-perl
+removal packages libhtml-format-perl
+removal packages libhtml-parser-perl
+removal packages libhtml-tagset-perl
+removal packages libhtml-tree-perl
+removal packages libhttp-cookies-perl
+removal packages libhttp-daemon-perl
+removal packages libhttp-date-perl
+removal packages libhttp-message-perl
+removal packages libhttp-negotiate-perl
+removal packages libhwasan0
+removal packages libhwy1t64
+removal packages libio-html-perl
+removal packages libio-socket-ssl-perl
+removal packages libisl23
+removal packages libitm1
+removal packages libjxl0.11
+removal packages liblcms2-2
+removal packages liblsan0
+removal packages liblwp-mediatypes-perl
+removal packages liblwp-protocol-https-perl
+removal packages libmailtools-perl
+removal packages libmpc3
+removal packages libnet-http-perl
+removal packages libnet-smtp-ssl-perl
+removal packages libnet-ssleay-perl
+removal packages libnotify-bin
+removal packages libnotify4
+removal packages libpango-1.0-0
+removal packages libpangocairo-1.0-0
+removal packages libpangoft2-1.0-0
+removal packages libpixman-1-0
+removal packages libqrencode4
+removal packages libquadmath0
+removal packages librsvg2-2
+removal packages librsvg2-common
+removal packages libsharpyuv0
+removal packages libthai-data
+removal packages libthai0
+removal packages libtimedate-perl
+removal packages libtry-tiny-perl
+removal packages libtsan2
+removal packages libubsan1
+removal packages liburi-perl
+removal packages libwww-perl
+removal packages libwww-robotrules-perl
+removal packages libxcb-render0
+removal packages libxcb-shm0
+removal packages libxrender1
+removal packages lto-disabled-list
+removal packages make
+removal packages perl-openssl-defaults
+removal packages python3-pip-whl
+removal packages python3-setuptools-whl
+removal packages python3.14-venv
+removal packages x11-common
+removal packages xfonts-encodings
+removal packages xfonts-utils
+removal files /etc/X11/Xreset
+removal files /etc/X11/Xreset.d
+removal files /etc/X11/Xreset.d/README
+removal files /etc/X11/Xresources
+removal files /etc/X11/Xresources/x11-common
+removal files /etc/X11/Xsession
+removal files /etc/X11/Xsession.d/20x11-common_process-args
+removal files /etc/X11/Xsession.d/30x11-common_xresources
+removal files /etc/X11/Xsession.d/35x11-common_xhost-local
+removal files /etc/X11/Xsession.d/40x11-common_xsessionrc
+removal files /etc/X11/Xsession.d/50x11-common_determine-startup
+removal files /etc/X11/Xsession.d/60x11-common_xdg_path
+removal files /etc/X11/Xsession.d/90x11-common_ssh-agent
+removal files /etc/X11/Xsession.d/99x11-common_start
+removal files /etc/X11/Xsession.options
+removal files /etc/X11/fonts
+removal files /etc/X11/fonts/Type1
+removal files /etc/X11/fonts/Type1/fonts-urw-base35.alias
+removal files /etc/X11/fonts/Type1/fonts-urw-base35.scale
+removal files /etc/X11/rgb.txt
+removal files /etc/X11/xorg.conf.d
+removal files /etc/alternatives/c89
+removal files /etc/alternatives/c89.1.gz
+removal files /etc/alternatives/c99
+removal files /etc/alternatives/c99.1.gz
+removal files /etc/alternatives/cc
+removal files /etc/alternatives/cc.1.gz
+removal files /etc/alternatives/cpp
+removal files /etc/alternatives/faked.1.gz
+removal files /etc/alternatives/faked.es.1.gz
+removal files /etc/alternatives/faked.fr.1.gz
+removal files /etc/alternatives/faked.sv.1.gz
+removal files /etc/alternatives/fakeroot
+removal files /etc/alternatives/fakeroot.1.gz
+removal files /etc/alternatives/fakeroot.es.1.gz
+removal files /etc/alternatives/fakeroot.fr.1.gz
+removal files /etc/alternatives/fakeroot.sv.1.gz
+removal files /etc/dpkg/shlibs.default
+removal files /etc/dpkg/shlibs.override
+removal files /etc/fonts
+removal files /etc/fonts/conf.avail
+removal files /etc/fonts/conf.avail/20-unhint-small-dejavu-lgc-sans-mono.conf
+removal files /etc/fonts/conf.avail/20-unhint-small-dejavu-lgc-sans.conf
+removal files /etc/fonts/conf.avail/20-unhint-small-dejavu-lgc-serif.conf
+removal files /etc/fonts/conf.avail/20-unhint-small-dejavu-sans-mono.conf
+removal files /etc/fonts/conf.avail/20-unhint-small-dejavu-sans.conf
+removal files /etc/fonts/conf.avail/20-unhint-small-dejavu-serif.conf
+removal files /etc/fonts/conf.avail/57-dejavu-sans-mono.conf
+removal files /etc/fonts/conf.avail/57-dejavu-sans.conf
+removal files /etc/fonts/conf.avail/57-dejavu-serif.conf
+removal files /etc/fonts/conf.avail/58-dejavu-lgc-sans-mono.conf
+removal files /etc/fonts/conf.avail/58-dejavu-lgc-sans.conf
+removal files /etc/fonts/conf.avail/58-dejavu-lgc-serif.conf
+removal files /etc/fonts/conf.d
+removal files /etc/fonts/conf.d/10-hinting-slight.conf
+removal files /etc/fonts/conf.d/10-scale-bitmap-fonts.conf
+removal files /etc/fonts/conf.d/10-sub-pixel-rgb.conf
+removal files /etc/fonts/conf.d/10-yes-antialias.conf
+removal files /etc/fonts/conf.d/11-lcdfilter-default.conf
+removal files /etc/fonts/conf.d/20-unhint-small-dejavu-lgc-sans-mono.conf
+removal files /etc/fonts/conf.d/20-unhint-small-dejavu-lgc-sans.conf
+removal files /etc/fonts/conf.d/20-unhint-small-dejavu-lgc-serif.conf
+removal files /etc/fonts/conf.d/20-unhint-small-dejavu-sans-mono.conf
+removal files /etc/fonts/conf.d/20-unhint-small-dejavu-sans.conf
+removal files /etc/fonts/conf.d/20-unhint-small-dejavu-serif.conf
+removal files /etc/fonts/conf.d/20-unhint-small-vera.conf
+removal files /etc/fonts/conf.d/30-metric-aliases.conf
+removal files /etc/fonts/conf.d/40-nonlatin.conf
+removal files /etc/fonts/conf.d/45-generic.conf
+removal files /etc/fonts/conf.d/45-latin.conf
+removal files /etc/fonts/conf.d/48-spacing.conf
+removal files /etc/fonts/conf.d/49-sansserif.conf
+removal files /etc/fonts/conf.d/50-user.conf
+removal files /etc/fonts/conf.d/51-local.conf
+removal files /etc/fonts/conf.d/57-dejavu-sans-mono.conf
+removal files /etc/fonts/conf.d/57-dejavu-sans.conf
+removal files /etc/fonts/conf.d/57-dejavu-serif.conf
+removal files /etc/fonts/conf.d/58-dejavu-lgc-sans-mono.conf
+removal files /etc/fonts/conf.d/58-dejavu-lgc-sans.conf
+removal files /etc/fonts/conf.d/58-dejavu-lgc-serif.conf
+removal files /etc/fonts/conf.d/60-generic.conf
+removal files /etc/fonts/conf.d/60-latin.conf
+removal files /etc/fonts/conf.d/61-urw-bookman.conf
+removal files /etc/fonts/conf.d/61-urw-c059.conf
+removal files /etc/fonts/conf.d/61-urw-d050000l.conf
+removal files /etc/fonts/conf.d/61-urw-fallback-backwards.conf
+removal files /etc/fonts/conf.d/61-urw-fallback-generics.conf
+removal files /etc/fonts/conf.d/61-urw-gothic.conf
+removal files /etc/fonts/conf.d/61-urw-nimbus-mono-ps.conf
+removal files /etc/fonts/conf.d/61-urw-nimbus-roman.conf
+removal files /etc/fonts/conf.d/61-urw-nimbus-sans.conf
+removal files /etc/fonts/conf.d/61-urw-p052.conf
+removal files /etc/fonts/conf.d/61-urw-standard-symbols-ps.conf
+removal files /etc/fonts/conf.d/61-urw-z003.conf
+removal files /etc/fonts/conf.d/65-fonts-persian.conf
+removal files /etc/fonts/conf.d/65-nonlatin.conf
+removal files /etc/fonts/conf.d/69-unifont.conf
+removal files /etc/fonts/conf.d/70-no-bitmaps-except-emoji.conf
+removal files /etc/fonts/conf.d/80-delicious.conf
+removal files /etc/fonts/conf.d/90-synthetic.conf
+removal files /etc/fonts/conf.d/README
+removal files /etc/fonts/fonts.conf
+removal files /etc/ghostscript
+removal files /etc/ghostscript/fontmap.d
+removal files /etc/ghostscript/fontmap.d/10fonts-urw-base35.conf
+removal files /etc/init.d/x11-common
+removal files /etc/ld.so.conf.d/fakeroot-x86_64-linux-gnu.conf
+removal files /etc/rcS.d/S01x11-common
+removal files /usr/local/share/fonts
+
+# Files that a running T3 Code and Claude Code rewrite.
+files /home/tester/.t3/caches/*.json
+files /home/tester/.t3/userdata/logs/*
+files /home/tester/.t3/userdata/server-owner.sqlite-journal
+files /home/tester/.t3/userdata/server-runtime.json
+files /home/tester/.t3/userdata/statev2.sqlite
+files /home/tester/.t3/userdata/statev2.sqlite-shm
+files /home/tester/.t3/userdata/statev2.sqlite-wal
+files /home/tester/.claude/plugins/store/*.json
+
+# The installer's own record of what it changed, and the folder that holds it, which the
+# installer creates and keeps.
+files /home/tester/.local/state
+files /home/tester/.local/state/myconfig
+files /home/tester/.local/state/myconfig/*

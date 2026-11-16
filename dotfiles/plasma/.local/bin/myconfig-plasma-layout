@@ -9,7 +9,6 @@ set -euo pipefail
 layout="$HOME/.local/share/myconfig-plasma/layout.js"
 state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/myconfig"
 state_file="$state_dir/plasma-layout-version"
-applets="$HOME/.config/plasma-org.kde.plasma.desktop-appletsrc"
 
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
@@ -26,15 +25,6 @@ qdbus6 org.kde.plasmashell /PlasmaShell >/dev/null 2>&1 || exit 75
 
 first_run=true
 [ ! -s "$state_file" ] || first_run=false
-if [ "$first_run" = true ] && [ -f "$applets" ]; then
-    backup="$applets.backup.$(date +%Y%m%d_%H%M%S)"
-    suffix=1
-    while [ -e "$backup" ]; do
-        backup="$applets.backup.$(date +%Y%m%d_%H%M%S).$suffix"
-        suffix=$((suffix + 1))
-    done
-    cp -a "$applets" "$backup"
-fi
 
 ensure_overview=false
 [ "${MYCONFIG_PLASMA_ENSURE_OVERVIEW:-}" != 1 ] || ensure_overview=true

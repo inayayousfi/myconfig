@@ -1,0 +1,47 @@
+# Changes that a Windows cycle allows between the state lists of the Arch WSL distribution.
+# Each line is `<list> <pattern>`. The list is a `## <list>` name of the state lists, or `*`
+# for every list. In the pattern, `*` stands for any text, `/` included.
+# A line that starts with `removal` applies only to the removal comparison.
+#
+# Only the first Windows install creates the distribution, and later installs configure it
+# again, so every list comes from the same distribution. The removal lists are compared with
+# the lists saved before the Arch WSL installer first ran in it.
+
+# The installer upgrades the whole system, which regenerates these files. A new keyring
+# package fills the pacman keyring again.
+files /etc/ld.so.cache
+files /etc/ca-certificates/*
+files /etc/ssl/certs/*
+files /etc/pacman.d/*mirrorlist*
+files /etc/.updated
+files /etc/.pwd.lock
+files /etc/pacman.d/gnupg/*
+
+# Backups that shadow and useradd write when accounts or groups change.
+files /etc/passwd-
+files /etc/shadow-
+files /etc/group-
+files /etc/gshadow-
+
+# Caches and histories of the user.
+files /home/tester/.cache
+files /home/tester/.cache/*
+files /home/tester/.bash_history
+files /home/tester/.lesshst
+
+# Files that a running T3 Code and Claude Code rewrite.
+files /home/tester/.t3/caches/*.json
+files /home/tester/.t3/userdata/logs/*
+files /home/tester/.t3/userdata/server-owner.sqlite-journal
+files /home/tester/.t3/userdata/server-runtime.json
+files /home/tester/.t3/userdata/statev2.sqlite
+files /home/tester/.t3/userdata/statev2.sqlite-shm
+files /home/tester/.t3/userdata/statev2.sqlite-wal
+files /home/tester/.claude/plugins/store/*.json
+
+# The installer's own record of what it changed, and the folder that holds it, which the
+# installer creates and keeps.
+files /home/tester/.local
+files /home/tester/.local/state
+files /home/tester/.local/state/myconfig
+files /home/tester/.local/state/myconfig/*

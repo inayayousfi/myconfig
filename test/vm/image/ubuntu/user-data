@@ -1,0 +1,23 @@
+#cloud-config
+# cloud-init reads this file from the NoCloud seed disc at the first boot of the cloud image.
+# The test account needs its password for sudo, as on a real machine. cloud-init is turned
+# off at the end, so the throwaway copies of the image never run it again. The apt timers and
+# unattended-upgrades are turned off too, so no package upgrade starts in the background
+# between the state lists of a cycle or holds the dpkg lock while the installer runs apt.
+hostname: myconfig-ubuntu
+users:
+  - name: @USER@
+    groups: [sudo]
+    shell: /bin/bash
+    sudo: "ALL=(ALL) ALL"
+    lock_passwd: false
+    plain_text_passwd: @PASSWORD@
+    ssh_authorized_keys:
+      - @KEY@
+ssh_pwauth: false
+runcmd:
+  - [systemctl, disable, --now, apt-daily.timer, apt-daily-upgrade.timer, unattended-upgrades.service]
+  - [touch, /etc/cloud/cloud-init.disabled]
+power_state:
+  mode: poweroff
+  condition: true

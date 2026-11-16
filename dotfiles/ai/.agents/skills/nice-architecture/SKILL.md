@@ -5,7 +5,7 @@ description: Use when discussing or changing code architecture, including module
 
 # Nice architecture
 
-The aim is a program made of small, self-contained components, each with one clear role. Each component can be understood, replaced, and removed on its own, and the causal structure of the program stays understandable even when it has many features. Given an observed behavior, the user wants to find the component responsible, see who asks it and why its dependencies exist, and predict which parts a change will touch. Judge simplicity by that traceability and by the independence of the components, not by line count, number of features, or whether a rebuild is needed.
+The aim is a program made of small, self-contained components, each with one clear role. Each component can be understood, replaced, and removed on its own, and the causal structure of the program stays understandable even when it has many features. Given an observed behavior, I want to find the component responsible, see who asks it and why its dependencies exist, and predict which parts a change will touch. Judge simplicity by that traceability and by the independence of the components, not by line count, number of features, or whether a rebuild is needed.
 
 Start with the actual system and its constraints. Trace the path from the behavior or requested change through the components involved, the code that assembles them, and their implementation. Identify which relationships the design makes visible and which require reconstructing hidden load order, precedence, conventions, or shared state.
 
@@ -77,4 +77,4 @@ Keep a conceptually local change structurally local. When comparing designs, acc
 
 ## Limits
 
-Apply these preferences inside the user's chosen outcome and the target's real constraints. Do not remove required behavior, insist on one implementation style across unrelated systems, or replace an established design only to satisfy these rules. In existing code, point out where the design departs from them instead of rewriting it unasked. When a design choice has lasting consequences, expose those consequences instead of silently choosing for the user.
+Apply these inside the answer we settled and the target's real constraints. Do not remove required behavior, force one style across unrelated systems, or replace an established design only to fit these rules. In existing code, point out where the design departs from them instead of rewriting it unasked. When a design choice has lasting consequences, bring them to me instead of choosing silently.

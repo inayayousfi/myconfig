@@ -1,43 +1,24 @@
 ---
 name: commit
-description: ALWAYS use this skill when the user asks to create a Git commit or draft a commit message, including implicit requests whose intended result is a commit. Do not use it for other outgoing text.
+description: Use when I ask to create a Git commit or draft a commit message, including when the result I ask for is a commit without saying so. Not for other outgoing text.
 ---
 
-# Commit
+# commit
 
-Drafts the intended result early when a request includes future work, establishes the actual change set, and commits only after the user confirms the final message.
+Commit only after I approve the final message.
 
-## Steps
+1. **Draft early when work is still ahead.** When I ask for work plus a commit, show a provisional message from the intended result before you start, in a `text` code block. Say it is provisional: it is not the approval. Skip this when the changes already exist.
 
-1. **Draft the intent early when work is still pending.** When the user's request combines future task work with a commit, before changing state, draft a provisional commit message from the requested outcome and show it in ordinary chat in a fenced code block tagged `text`. Keep it focused on the intended result and do not invent implementation details. State that it is provisional, do not ask the user to approve it yet, and do not treat it as the final message. Skip this step when the request only commits changes that already exist.
+2. **Know what "this" is.** Read `git status --short` and `git diff --cached --stat`. When there is nothing to commit, say so and stop. Keep any staging scope I named. When this session made the changes, "commit this" means them: stage them, with `git add -A` when they are the only changes, by exact paths or patches otherwise. In a fresh session with no such changes, show me the coherent groups and ask which. When staged work or overlapping edits cannot be separated from the intended ones, stop and say what cannot be separated.
 
-2. **Establish what "this" means.** Inspect `git diff --cached --stat` and `git status --short`. If there are no changes, tell the user there's nothing to commit and stop. Honor any staging scope the user already named. When the current session just produced a task's changes, "commit this" refers to those changes: stage them directly, using `git add -A` when they are the only worktree changes or exact paths or patches when unrelated work also exists. In a fresh session with no task-produced change set, inspect the coherent staging scopes and ask the user to choose. If existing staged work or overlapping edits cannot be safely separated from the intended changes, emit a global deviation instead of committing unrelated work.
+3. **Read the context**: the branch, the last 10 messages (`git log -10 --pretty=format:"%h%n%B"`), and the full staged diff.
 
-3. **Gather context:**
-   - Current branch: `git branch --show-current`
-   - Recent commit style: `git log -10 --pretty=format:"%h%n%B"`
-   - `git diff --cached --stat`
-   - Full staged diff: `git diff --cached`
+4. **Write the message.** The first line is a short subject about the change, with nothing before it. Match the style of recent commits: tense, capitals, prefixes such as `fix:`. Add a body only when it says something the subject does not. Check a provisional message against what is really staged and change it where they differ. No emojis, no filler, no diff retold line by line.
 
-4. **Draft the final message:**
-   - The first line must be a concise, descriptive subject line about the change. Never put attribution, disclosure, or other metadata before it.
-   - Infer style (tense, capitalization, prefix conventions like `fix:`/`feat:`) from the recent commits above and match it.
-   - Include a body only if it adds real information beyond the subject.
-   - Reconcile any provisional message with the actual staged changes. Preserve its outcome focus when it remains accurate, but change it when the real change set requires that.
-   - No emojis, no filler, no restating the diff line-by-line.
+5. **Ask with the full message in the question.** The question text is the complete message, never a preview or a pointer to text above, because chat text and previews do not always show. Options: Confirm, and I can't see the full message. I ask for changes or cancel in the free text field; when the tool has none, add Request changes and Cancel.
 
-5. **Ask for confirmation with the full message inside the question.** You HAVE to call the question tool, and the complete final message MUST be inside that call. Text in the chat or in hidden reasoning never counts as showing it, and never refer to the message as shown above or elsewhere.
-   - The question text is the full message itself. Never move it into an option preview, because some harnesses do not display previews.
-   - The question text needs no question sentence. For this confirmation, this overrides the global rule that every question field contains one.
-   - Options: Confirm, I can't see the full message, and the global explain-more option. The user requests changes or cancels through the free-text answer. If the question tool offers no free-text answer, also add Request changes and Cancel.
+6. **Handle the answer.** "I can't see the full message": write it in the chat, then ask again. Changes: redraft and ask again. Cancel: stop. Run `git commit` only after Confirm.
 
-6. **Handle the answer.** Do not run `git commit` until the user confirms the final message. The provisional message from step 1 never counts as this confirmation.
-   - "I can't see the full message": write the full message as visible text in the chat response, then repeat step 5.
-   - Changes: redraft, then repeat step 5.
-   - Cancel: stop without committing.
+7. **Commit and read it back.** Commit with the approved message (`git commit -F -`). Read it with `git log -1 --pretty=format:"%B"` and apply "Text that leaves" from the global instructions. Amend only to remove what that rule removes, and say what you removed.
 
-7. Once confirmed, commit with the approved message (e.g. `git commit -F -` fed the final message, or `git commit -m`/`-m` flags as appropriate).
-
-8. **Read back the finished commit.** Run `git log -1 --pretty=format:"%B"`, then apply the global "No automatic promotion" rule. Amend only when that rule requires cleanup, keep the approved message otherwise identical, and report any cleanup.
-
-9. **Push only with authorization.** After the finished-commit cleanup settles, honor an active session premise that explicitly authorizes pushing this commit and push without asking again. Otherwise, ask whether to push now through the globally preferred question mechanism. If they decline, stop. If they confirm, push with `git push` if the branch already tracks an upstream, or `git push -u origin <branch>` if it doesn't.
+8. **Push.** When the goal's agreed side effects include pushing this commit, push. Otherwise ask through the question tool. Use `git push`, or `git push -u origin <branch>` when the branch has no upstream.

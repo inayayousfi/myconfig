@@ -1,6 +1,6 @@
 ---
 name: nice-documentation
-description: ALWAYS use this skill before writing, changing, or deciding whether to update any documentation, including instruction files such as AGENTS.md, READMEs, module documents, and code comments. Use it after a code change too, before touching any document that describes the changed area.
+description: Use before writing, changing, or deciding whether to update any documentation, including instruction files such as AGENTS.md, READMEs, module documents, and code comments. Use it after a code change too, before touching any document that describes the changed area.
 ---
 
 # Nice documentation
@@ -25,11 +25,11 @@ A document whose scope is broad gives the principles shared across its area and 
 
 A document whose scope is one part says so explicitly in its opening sentence. Only such a document describes that part's behavior.
 
-When a fact belongs to a narrower scope than the document being edited, put it in the document for that scope. If no such document exists and the fact is needed, say so to the user instead of putting it in the broader one.
+When a fact belongs to a narrower scope than the document being edited, put it in the document for that scope. If no such document exists and the fact is needed, tell me instead of putting it in the broader one.
 
 ## Describe the present
 
-Every document, comment included, describes what is true now. It does not mention what was there before, what changed, what was removed, or what is planned, and it does not compare the present with another time. History belongs to version control. Plans belong to the user's issue tracker or notes.
+Every document, comment included, describes what is true now. It does not mention what was there before, what changed, what was removed, or what is planned, and it does not compare the present with another time. History belongs to version control. Plans belong to my issue tracker or notes.
 
 A constraint caused by the outside world, such as a defect in a dependency that the code works around, is present state, not history.
 
@@ -45,7 +45,7 @@ A code change is not, by itself, a reason to add documentation. After a change, 
 
 2. Add a statement only when it belongs to that document's kind and scope and its reader needs it.
 
-3. When a document's existing text already breaks these rules, report it to the user instead of adding more text in the same pattern.
+3. When a document's existing text already breaks these rules, tell me instead of adding more text in the same pattern.
 
 ## Write each statement plainly
 

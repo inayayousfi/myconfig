@@ -7,6 +7,7 @@
   },
   "workflowKeywordTriggerEnabled": false,
   "effortLevel": "medium",
+  "autoMemoryEnabled": false,
   "autoCompactWindow": 400000,
   "cleanupPeriodDays": 400,
   "promptSuggestionEnabled": false,

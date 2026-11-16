@@ -1,145 +1,71 @@
 ---
 name: outward
-description: ALWAYS use this skill whenever You write or edit text whose primary purpose is to communicate with any person other than the user in this session, even when delivery is implicit or happens later. Do not use it for messages shown only to the user in this session.
+description: Use whenever you write or edit text meant for anyone other than me in this session, such as an email, a message, a ticket, a form, an issue, a comment, a reply to a reviewer or a pull request, even when it is sent later. Not for messages to me.
 ---
 
 # outward
 
-Everything here leaves the room. Another person reads it, judges it, and remembers it.
+This text leaves. Another person reads it, judges it and remembers it. I direct the work and make the decisions; you write and carry them out, and that has to show.
 
-The user directs the work and makes the decisions. You write and carry them out. That is true here too, and it has to show.
+The only test is that someone other than me in this session will read it. The channel and the subject do not matter.
 
-## What this covers
-
-One rule: someone other than the user in this session will read it.
-
-That is the whole test. The channel does not matter, and the subject does not matter either.
-
-Examples, none of them special:
-
-- an email, or a message to a person
-
-- a support ticket, or a web form filled on the user's behalf
-
-- a reply to an administration, a landlord, a supplier
-
-- an issue, a comment, a reply to a reviewer
-
-- a pull request body or title
-
-Not a message to the user in this session. That is just talking.
-
-## Order of work
+## Order
 
 1. Read the context.
 2. Know the recipient's rules.
 3. Draft.
-4. Collaboration block on top unless the user removed it.
-5. Strip what the harness added.
-6. Show it in plain text.
-7. Approve wording. Then send when authorized.
+4. Add the collaboration block when I approved it.
+5. Remove what the harness added.
+6. Show it.
+7. Get the wording approved, then send when the goal allows.
 
-Never reorder these. After recipient rules and placement are settled, approved wording and active send authorization are the final gates on sending.
+Keep this order. Approved wording and permission to send are the last gates before sending.
 
 ## 1. Read the context
 
-Open what you are answering. The earlier messages, the request, the thread, the document under discussion.
-
-Answering something you did not read is how a reply lands beside the point.
+Open what you are answering: the earlier messages, the request, the thread, the document. A reply to something you did not read lands beside the point.
 
 ## 2. Know the recipient's rules
 
-Every recipient has expectations about form. A project has a template. A support desk has required fields. An administration has a tone and a reference number.
-
-If a plan already recorded those rules, follow what it says. Do not go looking again.
-
-If no plan recorded them, inspect the available destination, thread, template, and recipient evidence. Ask the user only when that inspection does not establish who the text goes to or which form it requires. Never guess it. Text that ignores the expected form gets ignored back.
+A project has a template, a support desk has required fields, an administration has a tone and a reference number. When a plan already recorded them, follow it. Otherwise look at the destination, the thread and the template. Ask me only when that does not show who the text goes to or which form it needs. Text that ignores the expected form gets ignored.
 
 ## 3. Draft
 
-### Register
+Write for a stranger, not in the register I use in chat: no bold hook phrases, no chopped short sentences, no list where a sentence works. Write as a person writes to another person.
 
-This is prose for a stranger. It is not the register the user asks for in chat.
+The reader has the text and what the destination delivers with it, never this session. A reply may rely on the thread they can see. Name what neither establishes, and never point at an exchange they cannot see.
 
-- No bold hook phrases.
+Every sentence carries a new fact. Match the length of what you answer: a short question gets a short answer, a decision that needs justifying gets the reasoning. Never pad to look thorough.
 
-- No chopped twenty-word sentences.
-
-- No bullet list where a sentence works.
-
-Write it as a person writes to another person.
-
-You MUST pass every outgoing text through the tone skill (`organic`), always, with no exception. Nothing leaves without that pass. It comes last on the wording, just before any collaboration block the user approved goes on.
-
-### Use only delivered context
-
-Whoever opens this has the text and any context the destination delivers with it. They do not have the private agent session.
-
-Write for that person. A reply may rely on the thread they can see. Name anything that neither the text nor its delivered context establishes. Never point back at an exchange they cannot see.
-
-Then keep it short, and here is the rule that decides between the two: every sentence carries a new fact. A sentence that only restates the one before it goes.
-
-### Length
-
-Match what you are answering. A short question gets a short answer. A decision that needs justifying gets the reasoning.
-
-Never pad to look thorough. Whoever reads this reads many of them.
+Pass every outgoing text through the organic skill, always. It is the last pass on the wording, before the collaboration block.
 
 ## 4. The collaboration block
 
-Before adding a generic collaboration attribution, ask (with a question tool if available) the user whether they want it included in this specific outgoing text. Do not draft or include the block unless the user approves it. Approval for one text does not apply to another. If the user approves it, place the block where it would make sense, which means that it is somewhere that doesn't really pollute the content of what is being sent, but is not either hidden from the final recipient, as is the goal with any attribution.
-
-Write it in the same language as the outgoing text. When the text mixes languages, use its dominant language. Translate the meaning naturally instead of preserving the English words or sentence structure.
+Ask me, for this text, whether to include a collaboration credit. Approval for one text does not carry to another. When approved, write it in the text's language, its main one when mixed, translating the meaning rather than the English words:
 
 ```
 <handle> directed the work and made every decision.
 <model>, running in <harness>, carried <handle>'s decisions out.
 ```
 
-This example defines the meaning, not fixed wording. Fill in the real handle, model, and harness. They are useful facts for the reader, so name them.
+This fixes the meaning, not the wording. Fill in the real handle, model and harness. The handle appears on both lines on purpose: it shows whose decisions the model carried out. No pronoun stays in these lines without its referent. Never more than two lines, and never say why I do not type: that is private.
 
-When approved, this block is the generic collaboration attribution. It does not automatically satisfy an exact disclosure required by the recipient, template, or delivery tool. Include target-required wording in its required form and location. Do not add another generic collaboration credit or paraphrase elsewhere.
+Put it at the top, visible but out of the way of the content, unless the destination needs the first position for something else: a commit subject stays first, with the block opening the body. Wording the destination requires, such as a required disclosure, goes in its required form and place, and the block adds no second credit. When those placements conflict, bring it to me. Text about how a model or agent works stays when it is the subject, not a credit.
 
-This rule does not remove necessary technical discussion. Text about how a model, harness, or agent works stays when that subject is the content rather than a credit or disclosure.
+The handle is my name on the platform the text goes to, the one the reader recognizes. Look it up: the git remote and the platform's command-line tool, or the signed-in account. Never invent it or reuse one from another platform. When nothing gives it, ask me once for that platform.
 
-The handle is the user's own name on the platform this text is going to.
+## 5. Remove what the harness added
 
-The handle appears twice, once per line. That is deliberate, and it is not a legal formality. Repeating the handle makes clear whose decisions the model carried out.
-
-No first-person pronoun stays in these two lines without its referent right there.
-
-Never stretch it past two lines. Never explain why the user does not type. That is private, and it is not the reader's business.
-
-Keep it at the top unless the destination has a functional first-position requirement. A commit subject stays first, with this block at the start of the body. Keep exact target-required content in its required location. If those placement rules are incompatible, return the conflict to the global decision tree.
-
-### Finding the handle
-
-Look it up. Do not invent one, and do not reuse one from another platform.
-
-- a git repository: read the remote, then the platform's own CLI
-
-- a signed-in session or an account page: read it there
-
-- nothing gives it: ask the user, once, for that platform
-
-The user is one person with many names. The name that belongs on this text is the one the reader can recognise.
-
-## 5. Strip what the harness added
-
-Apply the global "No automatic promotion" rule before showing the draft. Apply it again after sending, when the delivered text can be read back. That global rule owns generic cleanup; do not duplicate its instructions here.
+Apply "Text that leaves" from the global instructions before showing the draft, and again on what you sent when you can read it back.
 
 ## 6. Show it
 
-Output the full text in the chat, in a fenced code block tagged `text`.
+Write the full text in the chat in a `text` code block, not in a tool call, so I read exactly what leaves.
 
-No tool call for this step. Plain text, so the user reads exactly what leaves.
+## 7. Approve, then send
 
-## 7. Approve wording, then send when authorized
+When I asked for a draft only, stop after showing it.
 
-If the user requested a draft only, stop after showing it. Do not introduce sending as another choice.
+Unless the goal left the wording to you, ask through the question tool: Approve wording, Request changes, Cancel. Do not repeat the text in the question. On changes, redraft, show it, and ask again.
 
-The exact wording must be approved unless an active session premise delegates that choice. When the wording remains unresolved, ask through the globally preferred question mechanism: Approve wording / Request changes / Cancel. Do not put the message body in that question. It was already shown in step 6.
-
-If the user asks for changes, redraft, show it again, then ask again.
-
-Once the wording is approved or delegated, honor any active session premise that authorizes sending. Send directly when that authorization already exists. Otherwise ask through the globally preferred question mechanism: Send / Cancel. Once authorized, send with the right command for the target.
+Once the wording is settled, send when the goal's agreed side effects include sending it. Otherwise ask: Send, Cancel.

@@ -1,78 +1,70 @@
 ---
 name: cleanup-linux
-description: Use when the user wants to inspect and clean a Linux machine, including periodic maintenance, optional or distribution-provided packages, caches, build outputs, old installations, and application leftovers. Inspect first, offer multiple-selection questions, and confirm exact destructive targets before cleanup.
+description: Use when I want to inspect and clean a Linux machine, such as periodic maintenance, optional or distribution-installed packages, caches, build outputs, old installations, or leftovers of removed applications.
 ---
 
-# Clean up a Linux machine
+# cleanup-linux
 
-Help the user choose what to remove from their actual machine. This skill supports occasional maintenance, including a review every three or four months. It does not schedule maintenance or authorize unattended deletion.
+Help me choose what to remove from this machine. It is occasional maintenance, never a schedule and never unattended deletion. Discover the paths and tools on this machine; do not reuse another machine's paths, package list or commands.
 
-Discover locations and tools on the current machine. Do not reuse a previous machine's paths, package selection, or deletion commands as a cleanup recipe. Follow the shared agent instructions for choices, confirmations, privilege elevation, and visible execution.
+## Look first
 
-## Establish the current machine
+Use the environment skill. Find the distribution, package managers, storage layout, configuration source and deployed links. Keep the keep or remove choices I already made.
 
-Read the relevant parts of the environment inventory before using host capabilities. Identify the distribution, package managers, storage layout, configuration source and deployed links. Carry forward the user's stated keep/remove decisions; do not ask them to repeat settled choices.
+Inspect without changing anything before proposing. Start with disk usage to find the large areas, then see what they hold. Tell allocated size from apparent size, shared files and space kept by snapshots, and never add a parent's size to its children's. A folder's size is not what removing it frees.
 
-Inspect read-only before proposing deletions. Start with disk usage to find worthwhile areas, then examine what the large directories contain. Distinguish allocated size from apparent size, shared files, and space retained by filesystem snapshots. Do not add overlapping parent and child sizes together. A directory's total size is not automatically its removable size.
-
-Use the user's established elevation method for protected inspection. When pkexec is available and selected, use it for an explicit command rather than treating a permission error as the end of inspection. Report boundaries that remain inaccessible. Do not install another inspection tool when available tools suffice.
+For protected places, use the root method the environment record gives, for one explicit command at a time: a permission error does not end the inspection. Say what stayed out of reach. Do not install a tool when the existing ones suffice.
 
 ## Where to look
 
-Inspect the areas supported by the machine's inventory and initial measurements. These are categories to investigate, not automatic deletion targets.
+These are areas to inspect, not things to delete:
 
-- Package-manager download archives, old package versions, build-helper downloads and build trees. Check for modified package recipes and locally maintained source before classifying helper directories as disposable.
+- package-manager archives, old package versions, build-helper downloads and build trees. Check for modified recipes and local source first;
 
-- Language-tool download caches, dependency stores, compiler caches and project build outputs. Separate rebuildable development outputs from executables actually launched by the user, services, desktop entries or scripts. Check whether offline builds depend on cached downloads.
+- language caches, dependency stores, compiler caches and build outputs. Tell rebuildable outputs from programs something actually runs, and check whether offline builds need the cached downloads;
 
-- Application caches and data left after uninstalling an application. Distinguish temporary downloads from profiles, credentials, browser recovery, saved sessions, histories, models, language servers and installed libraries. A directory named cache can contain an application's only local model.
+- application caches and data of removed applications. A folder named cache can hold an application's only local model; profiles, credentials, sessions, histories and models are not caches;
 
-- Optional applications and command-line tools, including distribution defaults and packages formerly requested by configuration scripts. Inspect explicit installs, dependencies, optional dependencies and orphan reports. An orphan report is a starting point, not a removal list.
+- optional applications and tools, including distribution defaults and packages my configuration installed. An orphan report is a starting point, not a list;
 
-- Old manual installations, retained installation trees and backups in system application locations, home directories and configuration state. Resolve symbolic links and find the installation currently used before proposing an older copy for removal.
+- old manual installs, kept install trees and backups. Resolve links and find the copy in use first;
 
-- Downloads, trash, temporary work areas, generated reports, logs and container storage when present and materially large. Container volumes and databases are persistent data, not interchangeable with image or build caches. A directory name or modification date does not prove that its contents are unwanted.
+- downloads, trash, temporary work, logs, reports and container storage when large. Container volumes and databases are data, not cache. A name or a date does not prove something is unwanted.
 
-Do not inspect the contents of credentials or personal documents merely to estimate cleanup potential. Prefer sizes, ownership, package records and launch references.
+Do not open credentials or personal documents to estimate size. Use sizes, owners, package records and launch references.
 
-## Determine use and consequences
+## Know what each removal does
 
-For each candidate, establish what it does, what owns it, what invokes it, and what will remain after removal. Follow package dependencies and visible references through configurations, services, autostart entries, scripts and relevant projects. Pay particular attention to accessibility tools, input, audio, networking, the desktop and boot preparation.
+For each candidate, find what it does, what owns it, what calls it, and what stays after removal. Follow dependencies and references through configurations, services, autostart entries, scripts and projects. Take special care with accessibility, input, audio, network, the desktop and boot.
 
-The user not launching a command directly does not prove it is unused. An editor or application may call it in the background. Conversely, removing an installer's download cache does not uninstall libraries already installed elsewhere. Explain these distinctions using the paths and launch mechanism actually inspected.
+That I never run a command does not mean nothing does: an editor may call it in the background. Removing an installer's download cache does not uninstall what it installed. Explain these with the paths and launch mechanisms you found.
 
-Check running processes and active installation or compilation before removing their files. For a manual installation, distinguish its active payload from previous copies. Keep source code, tracked work and deployed configurations out of a build-cache deletion unless explicitly selected separately.
+Check running processes and ongoing installs or builds before removing their files. Keep source code, tracked work and deployed configuration out of a cache removal unless I pick them separately.
 
-When presenting distribution defaults, prove origin from local installation records, manifests or other available evidence. Label unproven origin as unknown. Also identify packages requested by the user's configuration scripts, since they may return on redeployment. Removing a package locally does not authorize changing those scripts.
+Prove a distribution default from local install records; otherwise say its origin is unknown. Flag packages my configuration installs, since a redeploy brings them back; removing them here does not mean changing that configuration.
 
-For packages, preview the complete transaction. Separate selected packages from dependencies a recursive removal would add. Check uses outside the package manager before proposing those extra dependencies. Never bypass dependency checks to force a cleanup.
+For packages, preview the whole transaction, and separate what I picked from the dependencies a recursive removal adds. Never force past a dependency check.
 
-## Ask for selections
+## Let me pick
 
-Use the question tool. Present independent choices together, grouped by function or consequence so the user can select multiple items without interpreting package names alone. Always offer the shared instructions' explanation option and allow a written answer.
+Use the question tool with several choices at once, grouped by function or consequence, so I can pick many items without decoding package names. Allow a written answer. Each option says what it is, its size, what I lose, what it costs to get back, and whether my configuration would reinstall it. Unpicked items stay.
 
-Explain each item's purpose in the question context. Each option states its concrete advantages and disadvantages, including disk size when known, lost functions, regeneration or download cost, and configuration scripts that would reinstall it. State whether selection only prepares a deletion list. Unselected items stay.
+Then settle the sub-choices: how many package versions to keep, whether to keep archives of removed packages, modified recipes, or installed programs while deleting their build outputs. Never invent a retention rule or widen a picked category.
 
-Resolve consequential subchoices after selection: how many package versions to retain, whether uninstalled-package archives should remain, whether to retain modified build recipes, and whether to keep installed executables while deleting development outputs. Do not invent a retention policy or silently expand a selected parent category.
+Keep uncertain items aside while you find their uses. Say what you checked and what is still unknown: not finding a reference does not prove nothing uses it.
 
-Keep uncertain candidates pending while resolving their uses. Report what was checked and what remains unknown; do not describe absence of a found reference as proof of universal non-use. Recommend a path only when the user's stated priorities or a verified requirement order the choices.
+## Confirm the exact list, then remove
 
-## Confirm and execute the exact lot
+Show the exact paths and packages, what is excluded and what follows, and confirm through the question tool. An earlier pick counts only when it already showed the exact targets.
 
-Once choices are settled, show the exact paths, packages or tool-resolved selection that will be removed, the exclusions and the consequences. Obtain destructive-action confirmation through the question tool. An earlier multiple-selection answer does not substitute for this confirmation unless it already showed the exact destructive targets and effects.
+Recheck the targets when the state changed. Use the owning tool's cleanup when it matches the picked scope; otherwise delete only the inspected, confirmed files. Elevate only what needs it. Never run a blanket purge of packages, home, caches or containers instead of the picked list. Restart nothing, change no installer rule, commit or publish nothing unless I picked it.
 
-Before acting, give the required intent update. Recheck targets if state has changed. Use the owning tool's cache or package cleanup mechanism when it matches the selected scope; otherwise delete only the inspected, confirmed files. Elevate only the operations that need it. Never run a blanket package, home-directory, cache or container purge as a substitute for the selected lot.
+Stop on an unexpected dependency or a changed target and tell me what changed. Report a partial cleanup as partial.
 
-Do not erase local modifications, recovery files or persistent application data under a broader cache label. Do not restart services, change appearance, alter installer rules, create a maintenance schedule, commit or publish unless those actions belong to the user's selected scope.
+## Check and report
 
-Stop on an unexpected dependency, changed target or broken premise and use the shared deviation procedure. Report partial completion instead of silently substituting another cleanup.
+Check that picked targets are gone, excluded ones remain, and packages still have their dependencies. Check affected services, such as accessibility, without disturbing my session.
 
-## Verify and report
+Measure free space before and after when it matters, and tell real space freed from file sizes and estimates. Report what was removed, kept, failed or left pending, and what will need rebuilding or downloading later.
 
-Check that selected targets are absent, excluded files and tools remain, and any package transaction preserved dependency integrity. Verify relevant running accessibility or other affected services without launching destructive checks or disturbing the user's session.
-
-Measure free space before and after when meaningful. Distinguish actual filesystem space recovered from removed file sizes and package estimates. Report what was removed, what was preserved, what failed or remains pending, and which future operations need rebuilding or downloading.
-
-Do not append an intervention log to the environment inventory. Update an existing capability entry only if availability, access or a useful limitation changed. Cache cleanup alone normally needs no inventory update. Do not store checksums, process IDs, temporary evidence or test counts there.
-
-If the user requests a cleanup record, keep it in the chosen document and distinguish completed local removals from installer changes still to do. Otherwise finish with the result in the conversation. A guide or filesystem readback is not evidence that an agent has successfully exercised the whole workflow; state verification limits accurately.
+Update `~/environment.md` only when what the machine offers changed; a cache cleanup usually changes nothing there.

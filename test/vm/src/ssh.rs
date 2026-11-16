@@ -215,6 +215,11 @@ impl Guest {
             .args(["-o", "UserKnownHostsFile=/dev/null"])
             .args(["-o", "LogLevel=ERROR"])
             .args(["-o", "ConnectTimeout=10"]);
+        // A guest that stops answering on an open connection ends the call with an error
+        // after about a minute, instead of blocking the cycle past its own time limits.
+        command
+            .args(["-o", "ServerAliveInterval=15"])
+            .args(["-o", "ServerAliveCountMax=4"]);
     }
 }
 

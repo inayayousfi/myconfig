@@ -135,8 +135,42 @@ jobs:
       - name: Test Rust workspace
         run: |
           cargo fmt --all -- --check
-          cargo test --workspace
-          cargo clippy --workspace --all-targets -- -D warnings
+          cargo test --workspace --locked
+          cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: Test Claude configuration helper
         run: python3 test/test-claude-config-helper.py
+
+  # The release workflow builds these targets; checking them here keeps a break from
+  # first appearing at tag time.
+  release-targets:
+    name: Release targets
+    runs-on: ubuntu-26.04
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Install the release targets
+        run: |
+          retry() {
+            for attempt in 1 2 3; do
+              "$@" && return
+              (( attempt < 3 )) || return 1
+              sleep $((attempt * 10))
+            done
+          }
+
+          retry sudo apt-get update
+          retry sudo apt-get install -y musl-tools
+          retry rustup target add x86_64-unknown-linux-musl x86_64-pc-windows-msvc
+
+      - name: Check the Windows target
+        run: cargo check --workspace --all-targets --locked --target x86_64-pc-windows-msvc
+
+      - name: Build the static Linux installers
+        run: |
+          cargo build --release --locked --target x86_64-unknown-linux-musl \
+            -p myconfig-cachyos -p myconfig-arch-wsl -p myconfig-ubuntu-devbox

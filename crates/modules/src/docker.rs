@@ -29,7 +29,8 @@ fn context() -> Setting {
 }
 
 /// Docker's setup tool copies the PATH it runs with into the unit, so it runs with the
-/// system PATH only.
+/// system PATH only. Besides the unit, the tool enables the service, creates the rootless
+/// context and selects it, so those are recorded first.
 fn create_user_unit(ctx: &Context) -> ModuleResult {
     let unit = ctx.home.join(".config/systemd/user/docker.service");
     if unit.is_file() {
@@ -37,6 +38,9 @@ fn create_user_unit(ctx: &Context) -> ModuleResult {
     }
     let tool = ctx.find_program("dockerd-rootless-setuptool.sh")?;
     ctx.created(&unit, false)?;
+    ctx.record_service("docker.service", ServiceScope::User)?;
+    ctx.record_setting(context())?;
+    ctx.record_setting(Setting::DockerCurrentContext)?;
     ctx.run(cmd!(ctx.shell, "{tool} install").env(
         "PATH",
         "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
@@ -82,7 +86,17 @@ impl Module for Docker {
         for unit in rootful {
             before.push(ctx.service_state(unit, ServiceScope::System)?);
         }
-        ctx.install_packages(PACKAGES)?;
+        // The docker package creates the docker group itself, and removing the package does
+        // not delete it. It is recorded even after a failed install, which may have created it.
+        let group = Setting::GroupExists {
+            group: "docker".to_owned(),
+        };
+        let group_before = group.read(ctx)?;
+        let installed = ctx.install_packages(PACKAGES);
+        if group_before.is_none() && group.read(ctx)?.is_some() {
+            ctx.record_setting_previous(group, None)?;
+        }
+        installed?;
         for (unit, before) in rootful.into_iter().zip(before) {
             ctx.disable_service_previous(unit, ServiceScope::System, before)?;
         }

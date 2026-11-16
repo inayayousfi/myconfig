@@ -4,7 +4,12 @@
 //! and fields, which are the serde names that `state.json` stores.
 use serde::{Deserialize, Serialize};
 
-use crate::{Context, ModuleResult};
+use crate::{Context, ModuleResult, support::config_home};
+
+pub(crate) use kde_key::Entries as KdeEntries;
+
+/// The value of a setting that only exists or not, such as a group membership.
+pub(crate) const PRESENT: &str = "present";
 
 mod accent_color;
 mod claude_mcp_server;
@@ -22,12 +27,11 @@ mod kde_key;
 mod login_shell;
 mod look_and_feel;
 mod machine_path_entry;
+mod plasma_panels;
 pub(crate) mod registry_value;
 mod rustup_default;
 mod tailscale_operator;
 mod taskbar_auto_hide;
-mod ufw_enabled;
-mod ufw_rule;
 mod user_environment;
 mod vscodium_extension;
 
@@ -42,6 +46,11 @@ pub enum Setting {
     LookAndFeel,
     /// The applied KDE cursor theme.
     CursorTheme,
+    /// The KDE Plasma panel file, changed while the Plasma shell of the user whose runtime
+    /// directory is `runtime` is stopped.
+    PlasmaPanels {
+        runtime: String,
+    },
     /// The KDE accent color, as `red,green,blue`.
     AccentColor,
     Gsettings {
@@ -55,11 +64,6 @@ pub enum Setting {
         user: String,
     },
     RustupDefault,
-    /// A `ufw` rule, given as the arguments that add it.
-    UfwRule {
-        rule: Vec<String>,
-    },
-    UfwEnabled,
     GroupExists {
         group: String,
     },
@@ -99,14 +103,21 @@ pub enum Setting {
     InitramfsHook {
         hook: String,
     },
-    /// An installed VSCodium extension.
+    /// An extension installed in VSCodium or VS Code, through the editor's `command`.
     VscodiumExtension {
         id: String,
+        #[serde(default = "vscodium_command")]
+        editor: String,
     },
     /// A program that Controlled Folder Access lets write to protected folders.
     ControlledFolderAccessApp {
         path: String,
     },
+}
+
+/// The editor of a recorded extension that names none.
+fn vscodium_command() -> String {
+    "codium".to_owned()
 }
 
 /// How one kind of setting is named, read, written and deleted.
@@ -125,6 +136,19 @@ trait Kind {
     fn reapplies(&self) -> bool {
         false
     }
+
+    /// Whether the setting only exists or not. Its `read` then returns `PRESENT`, and its
+    /// `write` adds it.
+    fn presence(&self) -> bool {
+        false
+    }
+
+    /// The KDE configuration files, by name under the config home, where `write` runs a
+    /// KDE tool that changes more keys than the value. `set` records each key the tool
+    /// changed there as its own KDE key setting.
+    fn kde_files(&self) -> &'static [&'static str] {
+        &[]
+    }
 }
 
 impl Setting {
@@ -141,13 +165,12 @@ impl Setting {
             Self::KdeKey { file, groups, key } => Box::new(kde_key::KdeKey { file, groups, key }),
             Self::LookAndFeel => Box::new(look_and_feel::LookAndFeel),
             Self::CursorTheme => Box::new(cursor_theme::CursorTheme),
+            Self::PlasmaPanels { runtime } => Box::new(plasma_panels::PlasmaPanels { runtime }),
             Self::AccentColor => Box::new(accent_color::AccentColor),
             Self::Gsettings { schema, key } => Box::new(gsettings::Gsettings { schema, key }),
             Self::GitConfig { key } => Box::new(git_config::GitConfig { key }),
             Self::LoginShell { user } => Box::new(login_shell::LoginShell { user }),
             Self::RustupDefault => Box::new(rustup_default::RustupDefault),
-            Self::UfwRule { rule } => Box::new(ufw_rule::UfwRule { rule }),
-            Self::UfwEnabled => Box::new(ufw_enabled::UfwEnabled),
             Self::GroupExists { group } => Box::new(group_exists::GroupExists { group }),
             Self::GroupMember { group, user } => {
                 Box::new(group_member::GroupMember { group, user })
@@ -168,8 +191,8 @@ impl Setting {
             }
             Self::TaskbarAutoHide => Box::new(taskbar_auto_hide::TaskbarAutoHide),
             Self::InitramfsHook { hook } => Box::new(initramfs_hook::InitramfsHook { hook }),
-            Self::VscodiumExtension { id } => {
-                Box::new(vscodium_extension::VscodiumExtension { id })
+            Self::VscodiumExtension { id, editor } => {
+                Box::new(vscodium_extension::VscodiumExtension { id, editor })
             }
             Self::ControlledFolderAccessApp { path } => {
                 Box::new(controlled_folder_access_app::ControlledFolderAccessApp { path })
@@ -179,6 +202,14 @@ impl Setting {
 
     pub(crate) fn reapplies(&self) -> bool {
         self.kind().reapplies()
+    }
+
+    pub(crate) fn presence(&self) -> bool {
+        self.kind().presence()
+    }
+
+    pub(crate) fn kde_files(&self) -> &'static [&'static str] {
+        self.kind().kde_files()
     }
 
     pub fn describe(&self) -> String {
@@ -197,4 +228,35 @@ impl Setting {
     pub fn delete(&self, ctx: &Context) -> ModuleResult {
         self.kind().delete(ctx)
     }
+}
+
+/// The keys of the KDE configuration file `file` under the config home, empty when the
+/// file does not exist.
+pub(crate) fn kde_entries(ctx: &Context, file: &str) -> ModuleResult<KdeEntries> {
+    match std::fs::read(config_home(ctx).join(file)) {
+        Ok(bytes) => Ok(kde_key::parse(&String::from_utf8_lossy(&bytes))),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(KdeEntries::new()),
+        Err(error) => Err(error.into()),
+    }
+}
+
+/// Each key of `file` whose value differs between `before` and `after`, as a KDE key
+/// setting with its value from `before`, or `None` when it was absent.
+pub(crate) fn kde_changes(
+    file: &str,
+    before: &KdeEntries,
+    after: &KdeEntries,
+) -> Vec<(Setting, Option<String>)> {
+    let keys: std::collections::BTreeSet<_> = before.keys().chain(after.keys()).collect();
+    keys.into_iter()
+        .filter(|entry| before.get(*entry) != after.get(*entry))
+        .map(|entry @ (groups, key)| {
+            let setting = Setting::KdeKey {
+                file: file.to_owned(),
+                groups: groups.clone(),
+                key: key.clone(),
+            };
+            (setting, before.get(entry).cloned())
+        })
+        .collect()
 }

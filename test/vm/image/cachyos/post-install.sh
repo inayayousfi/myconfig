@@ -1,6 +1,6 @@
 #!/bin/bash
-# The post_install script of cachyos-installer. It runs in the live session while the new
-# system is still mounted at $1, and lets the xtask log in to that system over SSH.
+# Runs in the live session after cachyos-installer finished, with the new system mounted at
+# $1 by start.sh, and lets the xtask log in to that system over SSH.
 set -euo pipefail
 
 target=$1
@@ -34,5 +34,4 @@ UNIT
     arch-chroot "$target" systemctl enable "$unit"
 fi
 
-touch /root/myconfig-post-install-done
 echo 'myconfig-image: SSH access prepared'

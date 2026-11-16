@@ -1,6 +1,6 @@
 //! Starts a guest with the fresh installers: builds them from the working tree, boots the
-//! guest on a new throwaway layer or on the kept failed layer, and copies them in once the
-//! guest accepts SSH.
+//! guest on a new throwaway layer, on the existing throwaway layer or on the kept failed
+//! layer, and copies them in once the guest accepts SSH.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -20,6 +20,8 @@ use crate::vm::{Vm, VmError};
 pub enum Disk {
     /// A new throwaway layer over the clean image, which replaces the previous one.
     Throwaway,
+    /// The existing throwaway layer, with what the previous run left on it.
+    Work,
     /// The kept layer of the last failed cycle.
     Failed,
 }
@@ -59,6 +61,8 @@ pub enum StartError {
     Displays(Os),
     #[error("no kept failed disk in {0}")]
     NoFailedDisk(PathBuf),
+    #[error("no throwaway disk in {0}")]
+    NoWorkDisk(PathBuf),
     #[error(transparent)]
     Disk(#[from] DiskError),
     #[error(transparent)]
@@ -79,7 +83,7 @@ pub enum ReadyError {
 }
 
 /// Builds the installers of `options.os` from the working tree at `repository` and boots the
-/// guest. The layer is checked before the build, so a missing image or failed disk does not
+/// guest. The layer is checked before the build, so a missing image or kept disk does not
 /// cost a build.
 pub fn start(options: Options, repository: &Path) -> Result<Started, StartError> {
     let Options {
@@ -101,6 +105,13 @@ pub fn start(options: Options, repository: &Path) -> Result<Started, StartError>
             return Err(DiskError::NoImage(image.dir().to_owned()).into());
         }
         Disk::Throwaway => paths.work(os),
+        Disk::Work => {
+            let layer = paths.work(os);
+            if !disk::is_bootable(&layer, os.boot()) {
+                return Err(StartError::NoWorkDisk(layer.dir().to_owned()));
+            }
+            layer
+        }
         Disk::Failed => {
             let layer = paths.failed(os);
             if !disk::is_bootable(&layer, os.boot()) {

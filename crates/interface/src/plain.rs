@@ -32,7 +32,7 @@ impl Interaction for Plain {
         if !std::io::stdin().is_terminal() {
             return Err(unanswered());
         }
-        print!("{question} [y/N] ");
+        print!("{question}{}", crate::QUESTION_END);
         std::io::stdout().flush().map_err(|_| unanswered())?;
         let mut answer = String::new();
         std::io::stdin()

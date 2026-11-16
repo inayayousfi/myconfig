@@ -1,7 +1,7 @@
 //! The PowerShell 7 profile that loads Oh My Posh.
 use std::path::PathBuf;
 
-use embedded_dotfiles::DOTFILES;
+use embedded_dotfiles::WINDOWS_ASSETS;
 use xshell::cmd;
 
 use crate::{
@@ -31,36 +31,36 @@ pub(crate) fn profile_paths(ctx: &Context) -> ModuleResult<Vec<PathBuf>> {
 }
 
 fn contents() -> &'static [u8] {
-    DOTFILES
-        .assets
-        .windows
+    WINDOWS_ASSETS
         .dotfiles
         .PowerShell
         .Microsoft_PowerShell_profile_ps1
         .content
 }
 
-/// Defender's Controlled Folder Access blocks pwsh.exe from writing to Documents, where
-/// PowerShell keeps its profile, so pwsh.exe goes on its allowed-apps list.
+/// Defender's Controlled Folder Access blocks unknown programs from writing to Documents,
+/// where PowerShell keeps its profile. This program writes the profile, so it goes on the
+/// allowed-apps list.
 fn allow_through_controlled_folder_access(ctx: &Context) -> ModuleResult {
     let pwsh = powershell_7(ctx)?;
-    let check = "$p = Get-MpPreference -ErrorAction SilentlyContinue; if (-not $p -or $p.EnableControlledFolderAccess -ne 1) { 'off' } elseif ($p.ControlledFolderAccessAllowedApplications -contains $env:MYCONFIG_PWSH) { 'allowed' } else { 'blocked' }";
+    let writer = std::env::current_exe()?;
+    let check = "$p = Get-MpPreference -ErrorAction SilentlyContinue; if (-not $p -or $p.EnableControlledFolderAccess -ne 1) { 'off' } elseif ($p.ControlledFolderAccessAllowedApplications -contains $env:MYCONFIG_APP) { 'allowed' } else { 'blocked' }";
     let state = ctx
-        .read(cmd!(ctx.shell, "{pwsh} -NoProfile -Command {check}").env("MYCONFIG_PWSH", &pwsh))?;
+        .read(cmd!(ctx.shell, "{pwsh} -NoProfile -Command {check}").env("MYCONFIG_APP", &writer))?;
     if state != "blocked" {
         return Ok(());
     }
     ctx.note(&format!(
         "Controlled Folder Access is on; allowing {} to write to protected folders",
-        pwsh.display()
+        writer.display()
     ));
     let app = Setting::ControlledFolderAccessApp {
-        path: pwsh.display().to_string(),
+        path: writer.display().to_string(),
     };
-    ctx.set(app, "allowed").map_err(|error| {
+    ctx.add(app).map_err(|error| {
         format!(
             "could not allow {} through Controlled Folder Access; it needs administrator privileges, and Defender may be managed by company policy: {error}",
-            pwsh.display()
+            writer.display()
         )
         .into()
     })
@@ -84,7 +84,6 @@ impl Module for PowerShellProfile {
 
     fn install(&self, ctx: &Context) -> ModuleResult {
         allow_through_controlled_folder_access(ctx)?;
-        let pwsh = powershell_7(ctx)?;
         for profile in profile_paths(ctx)? {
             if std::fs::symlink_metadata(&profile)
                 .is_ok_and(|metadata| !metadata.is_file() || metadata.file_type().is_symlink())
@@ -96,11 +95,6 @@ impl Module for PowerShellProfile {
                 .into());
             }
             ctx.write_file(&profile, contents(), false)?;
-            let command = "Unblock-File -LiteralPath $env:MYCONFIG_PROFILE_PATH";
-            ctx.run(
-                cmd!(ctx.shell, "{pwsh} -NoProfile -Command {command}")
-                    .env("MYCONFIG_PROFILE_PATH", &profile),
-            )?;
         }
         Ok(())
     }

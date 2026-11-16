@@ -1,5 +1,7 @@
-//! A fresh Arch Linux WSL distribution named after this computer, set up by the
-//! Arch WSL installer from the release that matches this Windows installer.
+//! An Arch Linux WSL distribution named after this computer, created when it is not
+//! registered, and set up by the Arch WSL installer from the release that matches this
+//! Windows installer. A registered distribution of that name that this repository did
+//! not create is replaced only after a confirmation.
 use std::{
     fs, io,
     path::{Path, PathBuf},
@@ -8,21 +10,30 @@ use std::{
 use xshell::cmd;
 
 use crate::{
-    Context, Footprint, Module, ModuleResult, Need, Package,
+    Context, Footprint, Module, ModuleResult, Need, Package, Setting,
     state::Change,
-    support::{powershell, powershell_7, startup_directory},
+    support::{
+        StartupShortcut, powershell, powershell_7, startup_directory, write_startup_shortcut,
+    },
 };
 
 pub struct ArchWsl;
+
+impl ArchWsl {
+    pub const NAME: &'static str = "arch-wsl";
+}
 
 type Value<T> = ModuleResult<T>;
 
 const ARCH_ASSET: &str = "myconfig-arch-wsl-x86_64-unknown-linux-musl";
 const WSL_CONFIG: &str = "[general]\ninstanceIdleTimeout=-1\n\n[wsl2]\nvmIdleTimeout=-1\n";
+const SHORTCUT: &str = "myconfig-wsl-autostart.lnk";
+const SHUTDOWN_QUESTION: &str =
+    "The setup will shut down all running WSL distributions to apply Arch WSL settings. Continue?";
 
 /// Where the Linux installer that runs inside the distribution comes from.
 enum ArchInstaller {
-    /// The asset of this release on GitHub, checked against its published SHA-256.
+    /// The URL of this release's asset, checked against its published SHA-256.
     Release(String),
     /// A file already on this computer, as a path inside WSL. `MYCONFIG_ARCH_WSL_BINARY`
     /// names it, so a test can run an installer built from a working tree.
@@ -35,7 +46,11 @@ fn arch_installer(ctx: &Context) -> Value<ArchInstaller> {
         .var_os("MYCONFIG_ARCH_WSL_BINARY")
         .filter(|value| !value.is_empty())
     else {
-        return Ok(ArchInstaller::Release(release_tag()?));
+        return Ok(ArchInstaller::Release(format!(
+            "{}/{}/{ARCH_ASSET}",
+            release_base(ctx)?,
+            release_tag(ctx)?
+        )));
     };
     let path = PathBuf::from(path);
     if !path.is_file() {
@@ -44,10 +59,29 @@ fn arch_installer(ctx: &Context) -> Value<ArchInstaller> {
     Ok(ArchInstaller::Local(windows_path_in_wsl(&path)?))
 }
 
-fn release_tag() -> Value<String> {
+/// Where the releases of this repository publish their assets, one folder per tag.
+/// release.yml embeds it in a published binary, and `MYCONFIG_RELEASE_BASE` replaces it
+/// at run time.
+fn release_base(ctx: &Context) -> Value<String> {
+    let base = ctx
+        .shell
+        .var("MYCONFIG_RELEASE_BASE")
+        .ok()
+        .filter(|base| !base.is_empty())
+        .or_else(|| option_env!("MYCONFIG_RELEASE_BASE").map(str::to_owned))
+        .ok_or(
+            "release location is unavailable; Arch WSL setup needs its matching Linux release",
+        )?;
+    if !base.starts_with("https://") || base.contains(char::is_whitespace) {
+        return Err(format!("invalid release location: {base}").into());
+    }
+    Ok(base.trim_end_matches('/').to_owned())
+}
+
+fn release_tag(ctx: &Context) -> Value<String> {
     let tag = option_env!("MYCONFIG_RELEASE_TAG")
         .map(str::to_owned)
-        .or_else(|| std::env::var("MYCONFIG_RELEASE_TAG").ok())
+        .or_else(|| ctx.shell.var("MYCONFIG_RELEASE_TAG").ok())
         .ok_or("release tag is unavailable; Arch WSL setup needs its matching Linux release")?;
     if !tag.starts_with('v')
         || tag.len() < 2
@@ -128,7 +162,7 @@ fn windows_user(ctx: &Context) -> Value<String> {
     Ok(user)
 }
 
-fn distributions(ctx: &Context) -> Value<Vec<String>> {
+pub(crate) fn distributions(ctx: &Context) -> Value<Vec<String>> {
     // wsl.exe fails when no distribution is registered, which is an empty list here.
     let bytes = ctx.read_bytes_unchecked(cmd!(ctx.shell, "wsl.exe --list --quiet"))?;
     Ok(decode_distro_list(&bytes)?
@@ -138,11 +172,26 @@ fn distributions(ctx: &Context) -> Value<Vec<String>> {
         .collect())
 }
 
-fn confirm(ctx: &Context, question: &str, refused: &str) -> ModuleResult {
-    match ctx.confirm(question) {
-        Ok(true) => Ok(()),
-        Ok(false) => Err(refused.into()),
-        Err(unanswered) => Err(format!("{refused}: {unanswered}").into()),
+fn registered(ctx: &Context, distro: &str) -> Value<bool> {
+    Ok(distributions(ctx)?
+        .iter()
+        .any(|name| name.eq_ignore_ascii_case(distro)))
+}
+
+/// Whether a run that was not removed yet recorded creating `distro`.
+fn distribution_recorded(ctx: &Context, distro: &str) -> bool {
+    ctx.state()
+        .borrow()
+        .pending(ArchWsl::NAME)
+        .iter()
+        .any(|entry| matches!(&entry.change, Change::WslDistribution { name } if name.eq_ignore_ascii_case(distro)))
+}
+
+/// The registry value where WSL keeps the default distribution, which `wsl.exe -s` sets.
+fn default_distribution() -> Setting {
+    Setting::RegistryValue {
+        key: r"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Lxss".to_owned(),
+        name: "DefaultDistribution".to_owned(),
     }
 }
 
@@ -174,10 +223,6 @@ fn root_write(
 }
 
 fn configure_root(ctx: &Context, distro: &str) -> ModuleResult {
-    ctx.run_with_input(
-        cmd!(ctx.shell, "wsl.exe -d {distro} -u root -- chpasswd"),
-        b"root:root\n",
-    )?;
     root(ctx, distro, "pacman-key", &["--init"])?;
     root(ctx, distro, "pacman-key", &["--populate", "archlinux"])?;
     root(ctx, distro, "pacman", &["-Syu", "--noconfirm"])?;
@@ -187,6 +232,7 @@ fn configure_root(ctx: &Context, distro: &str) -> ModuleResult {
         "pacman",
         &[
             "-S",
+            "--needed",
             "--noconfirm",
             "sudo",
             "git",
@@ -200,6 +246,7 @@ fn configure_root(ctx: &Context, distro: &str) -> ModuleResult {
             "vi",
             "rustup",
             "polkit",
+            "zsh",
         ],
     )?;
     root_write(
@@ -215,13 +262,14 @@ fn configure_root(ctx: &Context, distro: &str) -> ModuleResult {
 
 fn configure_user(ctx: &Context, distro: &str, user: &str) -> ModuleResult {
     let sh = ctx.shell;
+    // The first password only; a later run keeps the one the person chose.
     if !ctx.succeeds(cmd!(sh, "wsl.exe -d {distro} -u root -- id {user}"))? {
         root(ctx, distro, "useradd", &["-m", "-G", "wheel", user])?;
+        ctx.run_with_input(
+            cmd!(sh, "wsl.exe -d {distro} -u root -- chpasswd"),
+            format!("{user}:{user}\n").as_bytes(),
+        )?;
     }
-    ctx.run_with_input(
-        cmd!(sh, "wsl.exe -d {distro} -u root -- chpasswd"),
-        format!("{user}:{user}\n").as_bytes(),
-    )?;
     let sed_wheel = "s/^# *%wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/";
     ctx.run(cmd!(
         sh,
@@ -281,16 +329,14 @@ fn download_and_run_arch(ctx: &Context, distro: &str, installer: &ArchInstaller)
     }
     let result = (|| -> ModuleResult {
         let binary = format!("{directory}/{ARCH_ASSET}");
-        let tag = match installer {
-            ArchInstaller::Release(tag) => tag,
+        let url = match installer {
+            ArchInstaller::Release(url) => url,
             ArchInstaller::Local(path) => {
                 ctx.run(cmd!(sh, "wsl.exe -d {distro} --exec cp {path} {binary}"))?;
                 return run_arch(ctx, distro, &binary);
             }
         };
         let checksum = format!("{binary}.sha256");
-        let url =
-            format!("https://github.com/inayayousfi/myconfig/releases/download/{tag}/{ARCH_ASSET}");
         let checksum_url = format!("{url}.sha256");
         ctx.run(cmd!(sh, "wsl.exe -d {distro} --exec curl --fail --location --show-error --silent --output {binary} {url}"))?;
         ctx.run(cmd!(sh, "wsl.exe -d {distro} --exec curl --fail --location --show-error --silent --output {checksum} {checksum_url}"))?;
@@ -337,11 +383,11 @@ fn run_arch(ctx: &Context, distro: &str, binary: &str) -> ModuleResult {
         String::new()
     };
     let ssh_env = format!("MYCONFIG_WINDOWS_SSH={ssh}");
-    // The Arch WSL installer runs non-interactively inside the distribution.
-    ctx.run(cmd!(
-        sh,
-        "wsl.exe -d {distro} --exec env {ssh_env} {binary} install"
-    ))
+    // With the console attached, the installer inside can ask whether to turn on its SSH
+    // server and to log in to the GitHub CLI and Tailscale.
+    let mut command = std::process::Command::new(ctx.find_program("wsl.exe")?);
+    command.args(["-d", distro, "--exec", "env", &ssh_env, binary, "install"]);
+    ctx.with_terminal(command)
 }
 
 fn configure_shell(ctx: &Context, distro: &str, user: &str) -> ModuleResult {
@@ -364,57 +410,46 @@ fn configure_shell(ctx: &Context, distro: &str, user: &str) -> ModuleResult {
     Ok(())
 }
 
-fn shortcut_path(ctx: &Context) -> ModuleResult<PathBuf> {
-    Ok(startup_directory(ctx)?.join("myconfig-wsl-autostart.lnk"))
-}
-
 fn configure_autostart(ctx: &Context, distro: &str) -> ModuleResult {
-    let sh = ctx.shell;
-    let path = ctx.home.join(".wslconfig");
-    match fs::read(&path) {
-        Ok(contents) if contents != WSL_CONFIG.as_bytes() => confirm(
-            ctx,
-            &format!(
-                "Replace {} with the following WSL idle settings?\n{WSL_CONFIG}",
-                path.display()
-            ),
-            "WSL idle settings were not replaced",
-        )?,
-        Ok(_) => {}
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error.into()),
-    }
-    ctx.write_file(&path, WSL_CONFIG.as_bytes(), false)?;
-
-    let shortcut = shortcut_path(ctx)?;
-    if shortcut.exists() {
-        ctx.record_path(&shortcut)?;
-    } else {
-        ctx.created(&shortcut, false)?;
-    }
-    let root = sh.var_os("SystemRoot").ok_or("SystemRoot is unset")?;
+    ctx.write_file(&ctx.home.join(".wslconfig"), WSL_CONFIG.as_bytes(), false)?;
+    let root = ctx
+        .shell
+        .var_os("SystemRoot")
+        .ok_or("SystemRoot is unset")?;
     let windows_powershell =
         Path::new(&root).join("System32/WindowsPowerShell/v1.0/powershell.exe");
     if !windows_powershell.is_file() {
         return Err("Windows PowerShell for WSL autostart is unavailable".into());
     }
-    let pwsh = powershell_7(ctx)?;
-    let script = r#"$ErrorActionPreference = 'Stop'; $shell = New-Object -ComObject WScript.Shell; $link = $shell.CreateShortcut($env:MYCONFIG_WSL_SHORTCUT); $arguments = '-NoLogo -NoProfile -WindowStyle Hidden -Command "wsl.exe -d ' + $env:MYCONFIG_WSL_DISTRO + ' --exec /bin/true"'; $link.TargetPath = $env:MYCONFIG_WSL_POWERSHELL; $link.Arguments = $arguments; $link.Description = 'Boot the ' + $env:MYCONFIG_WSL_DISTRO + ' WSL instance at logon so its SSH server stays available.'; $link.WindowStyle = 7; $link.Save(); $saved = $shell.CreateShortcut($env:MYCONFIG_WSL_SHORTCUT); if ($saved.TargetPath -ine $env:MYCONFIG_WSL_POWERSHELL -or $saved.Arguments -cne $arguments) { throw 'WSL startup shortcut does not match this distribution' }"#;
-    ctx.run(
-        cmd!(sh, "{pwsh} -NoProfile -Command {script}")
-            .env("MYCONFIG_WSL_SHORTCUT", &shortcut)
-            .env("MYCONFIG_WSL_POWERSHELL", &windows_powershell)
-            .env("MYCONFIG_WSL_DISTRO", distro),
-    )?;
-    if !shortcut.is_file() {
-        return Err("WSL logon shortcut was not created".into());
+    write_startup_shortcut(
+        ctx,
+        &StartupShortcut {
+            name: SHORTCUT,
+            target: &windows_powershell,
+            arguments: &format!(
+                "-NoLogo -NoProfile -WindowStyle Hidden -Command \"wsl.exe -d {distro} --exec /bin/true\""
+            ),
+            working_directory: ctx.home,
+            description: &format!(
+                "Boot the {distro} WSL instance at logon so its SSH server stays available."
+            ),
+            minimized: true,
+        },
+    )
+}
+
+/// Whether `~/.wslconfig` holds other settings, which the install replaces.
+fn other_wsl_config(ctx: &Context) -> Value<bool> {
+    match fs::read(ctx.home.join(".wslconfig")) {
+        Ok(contents) => Ok(contents != WSL_CONFIG.as_bytes()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error.into()),
     }
-    Ok(())
 }
 
 impl Module for ArchWsl {
     fn name(&self) -> &'static str {
-        "arch-wsl"
+        Self::NAME
     }
 
     fn needs(&self) -> &'static [Need] {
@@ -438,58 +473,77 @@ impl Module for ArchWsl {
         let user = windows_user(ctx)?;
         powershell_7(ctx)?;
         ctx.find_program("wsl.exe")?;
-        confirm(
-            ctx,
-            "The setup will shut down all running WSL distributions to apply Arch WSL settings. Continue?",
-            "Arch WSL setup cancelled before changing distributions",
-        )?;
-        if distributions(ctx)?
-            .iter()
-            .any(|name| name.eq_ignore_ascii_case(&distro))
-        {
-            confirm(
-                ctx,
-                &format!(
-                    "Unregister the existing WSL distribution '{distro}' and delete all its contents?"
-                ),
-                "the existing Arch WSL distribution was preserved",
-            )?;
-            let _ = ctx.succeeds(cmd!(sh, "wsl.exe --terminate {distro}"));
+        // A registered distribution that no pending record names was not created by this
+        // repository. `remove` cannot undo changes inside it, so install never configures
+        // it and replaces it only when the person agrees.
+        let foreign = registered(ctx, &distro)? && !distribution_recorded(ctx, &distro);
+        // Every question comes before the first change, so a no leaves nothing half done.
+        let path = ctx.home.join(".wslconfig");
+        let accepted = ctx.confirm(SHUTDOWN_QUESTION)?
+            && (!other_wsl_config(ctx)?
+                || ctx.confirm(&format!(
+                    "Replace {} with the following WSL idle settings?\n{WSL_CONFIG}",
+                    path.display()
+                ))?)
+            && (!foreign
+                || ctx.confirm(&format!(
+                    "The WSL distribution {distro} exists, and myconfig did not create it. Unregister it, delete everything inside it, and create a new one? Remove cannot bring it back."
+                ))?);
+        if !accepted {
+            ctx.note("Arch WSL not set up; the next install asks again");
+            return ctx.record_declined();
+        }
+        ctx.record_accepted()?;
+        if foreign {
             ctx.run(cmd!(sh, "wsl.exe --unregister {distro}"))?;
         }
-        ctx.record(Change::WslDistribution {
-            name: distro.clone(),
-        })?;
-        if !ctx.succeeds(cmd!(
-            sh,
-            "wsl.exe --install archlinux --name {distro} --no-launch"
-        ))? {
-            ctx.run(cmd!(sh, "wsl.exe --install archlinux --name {distro}"))?;
+        // A distribution that an earlier run created is configured as it is.
+        if !registered(ctx, &distro)? {
+            // The undo counts a missing distribution as done, so one record covers every
+            // run that creates it again.
+            if !distribution_recorded(ctx, &distro) {
+                ctx.record(Change::WslDistribution {
+                    name: distro.clone(),
+                })?;
+            }
+            if !ctx.succeeds(cmd!(
+                sh,
+                "wsl.exe --install archlinux --name {distro} --no-launch"
+            ))? {
+                ctx.run(cmd!(sh, "wsl.exe --install archlinux --name {distro}"))?;
+            }
+            ctx.run_with_input(
+                cmd!(sh, "wsl.exe -d {distro} -u root -- chpasswd"),
+                b"root:root\n",
+            )?;
         }
         configure_root(ctx, &distro)?;
         ctx.run(cmd!(sh, "wsl.exe --shutdown"))?;
+        ctx.record_setting(default_distribution())?;
         ctx.run(cmd!(sh, "wsl.exe -s {distro}"))?;
         configure_user(ctx, &distro, &user)?;
+        // Every change this module makes inside the distribution comes before the Arch WSL
+        // installer, so that installer's remove brings the distribution back to this point.
+        configure_shell(ctx, &distro, &user)?;
         ctx.run(cmd!(sh, "wsl.exe --shutdown"))?;
         download_and_run_arch(ctx, &distro, &installer)?;
-        configure_shell(ctx, &distro, &user)?;
         configure_autostart(ctx, &distro)?;
         ctx.run(cmd!(sh, "wsl.exe --shutdown"))?;
         ctx.run(cmd!(sh, "wsl.exe -d {distro} --exec /bin/true"))
     }
 
     fn verify(&self, ctx: &Context) -> ModuleResult {
+        if ctx.declined() {
+            return Ok(());
+        }
         let distro = distro_name(ctx)?;
-        if !distributions(ctx)?
-            .iter()
-            .any(|name| name.eq_ignore_ascii_case(&distro))
-        {
+        if !registered(ctx, &distro)? {
             return Err(format!("the WSL distribution {distro} is not registered").into());
         }
         if fs::read(ctx.home.join(".wslconfig"))? != WSL_CONFIG.as_bytes() {
             return Err("~/.wslconfig differs from the WSL idle settings".into());
         }
-        if !shortcut_path(ctx)?.is_file() {
+        if !startup_directory(ctx)?.join(SHORTCUT).is_file() {
             return Err("the WSL logon shortcut is missing".into());
         }
         Ok(())

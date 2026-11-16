@@ -8,8 +8,8 @@ use crate::{
 };
 
 pub struct Zsh {
-    /// Arch WSL leaves the login shell to the Windows side, which sets it when it
-    /// creates the distribution.
+    /// Arch WSL leaves the login shell to the Windows side, which sets it before it runs
+    /// the Arch WSL installer.
     pub set_login_shell: bool,
 }
 
@@ -60,6 +60,8 @@ impl Module for Zsh {
             let url = "https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh";
             let script = ctx.read_bytes(cmd!(sh, "curl -fsSL {url}"))?;
             ctx.created(&oh_my_zsh, false)?;
+            // The installer writes its own ~/.zshrc when there is none.
+            ctx.record_path(&ctx.home.join(".zshrc"))?;
             ctx.run_with_input(
                 cmd!(sh, "sh -s")
                     .env("HOME", ctx.home)

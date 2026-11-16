@@ -18,6 +18,9 @@ pub fn allowed_changes(os: Os) -> &'static str {
     }
 }
 
+/// The allowed-changes file of the Arch WSL distribution in the Windows guest.
+pub const ARCH_WSL_ALLOWED_CHANGES: &str = include_str!("../allowed-changes/arch-wsl.txt");
+
 /// One entry that differs between two snapshots.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Difference {
@@ -76,22 +79,38 @@ impl fmt::Display for Difference {
     }
 }
 
+/// What a comparison checks, which decides the rules that apply to it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Comparison {
+    /// A second install, which must change nothing.
+    Install,
+    /// A removal, which must leave nothing.
+    Removal,
+}
+
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
-#[error("line {line} of the allowed-changes file is not `<list> <pattern>`: {text}")]
+#[error("line {line} of the allowed-changes file is not `[removal] <list> <pattern>`: {text}")]
 pub struct AllowedError {
     pub line: usize,
     pub text: String,
 }
 
 /// The entries allowed to differ. Each rule names a list, or `*` for every list, and a
-/// pattern for the key in which `*` stands for any text, `/` and `\` included.
+/// pattern for the key in which `*` stands for any text, `/` and `\` included. A rule marked
+/// `removal` applies only to a removal.
 pub struct Allowed {
-    rules: Vec<(String, Regex)>,
+    rules: Vec<Rule>,
+}
+
+struct Rule {
+    removal_only: bool,
+    list: String,
+    pattern: Regex,
 }
 
 impl Allowed {
-    /// Reads an allowed-changes file: one `<list> <pattern>` rule per line. Blank lines and
-    /// lines that start with `#` are skipped.
+    /// Reads an allowed-changes file: one `[removal] <list> <pattern>` rule per line. Blank
+    /// lines and lines that start with `#` are skipped.
     pub fn parse(text: &str) -> Result<Allowed, AllowedError> {
         let mut rules = Vec::new();
         for (index, line) in text.lines().enumerate() {
@@ -99,28 +118,42 @@ impl Allowed {
             if line.is_empty() || line.starts_with('#') {
                 continue;
             }
-            let Some((list, pattern)) = line.split_once(char::is_whitespace) else {
-                return Err(AllowedError {
-                    line: index + 1,
-                    text: line.to_owned(),
-                });
+            let error = || AllowedError {
+                line: index + 1,
+                text: line.to_owned(),
             };
-            rules.push((list.to_owned(), glob(pattern.trim())));
+            let (removal_only, rule) = match line.split_once(char::is_whitespace) {
+                Some(("removal", rest)) => (true, rest.trim_start()),
+                _ => (false, line),
+            };
+            let (list, pattern) = rule.split_once(char::is_whitespace).ok_or_else(error)?;
+            rules.push(Rule {
+                removal_only,
+                list: list.to_owned(),
+                pattern: glob(pattern.trim()),
+            });
         }
         Ok(Allowed { rules })
     }
 
-    fn allows(&self, difference: &Difference) -> bool {
+    fn allows(&self, difference: &Difference, comparison: Comparison) -> bool {
         let (list, key) = difference.place();
-        self.rules.iter().any(|(rule_list, pattern)| {
-            (rule_list == "*" || rule_list == list) && pattern.is_match(key)
+        self.rules.iter().any(|rule| {
+            (!rule.removal_only || comparison == Comparison::Removal)
+                && (rule.list == "*" || rule.list == list)
+                && rule.pattern.is_match(key)
         })
     }
 }
 
-/// The differences between `before` and `after` that `allowed` does not allow, list by list
-/// and key by key in sorted order.
-pub fn compare(before: &Snapshot, after: &Snapshot, allowed: &Allowed) -> Vec<Difference> {
+/// The differences between `before` and `after` that `allowed` does not allow in
+/// `comparison`, list by list and key by key in sorted order.
+pub fn compare(
+    before: &Snapshot,
+    after: &Snapshot,
+    allowed: &Allowed,
+    comparison: Comparison,
+) -> Vec<Difference> {
     let empty = BTreeMap::new();
     let mut names: Vec<&String> = before.lists.keys().chain(after.lists.keys()).collect();
     names.sort();
@@ -156,7 +189,7 @@ pub fn compare(before: &Snapshot, after: &Snapshot, allowed: &Allowed) -> Vec<Di
             }
         }
     }
-    differences.retain(|difference| !allowed.allows(difference));
+    differences.retain(|difference| !allowed.allows(difference, comparison));
     differences
 }
 
@@ -185,7 +218,7 @@ mod tests {
         );
         let allowed = Allowed::parse("files /home/tester/.cache/*\n").unwrap();
         assert_eq!(
-            compare(&snapshot(BEFORE), &after, &allowed),
+            compare(&snapshot(BEFORE), &after, &allowed, Comparison::Removal),
             vec![
                 Difference::Added {
                     list: "files".to_owned(),
@@ -206,7 +239,7 @@ mod tests {
         let after = snapshot("## packages\nbash\n## files\n/home/tester/.bashrc\tbbb\n");
         let allowed = Allowed::parse("").unwrap();
         assert_eq!(
-            compare(&snapshot(BEFORE), &after, &allowed),
+            compare(&snapshot(BEFORE), &after, &allowed, Comparison::Removal),
             vec![Difference::Changed {
                 list: "files".to_owned(),
                 key: "/home/tester/.bashrc".to_owned(),
@@ -222,7 +255,10 @@ mod tests {
             "## packages\nbash\n## files\n/home/tester/.bashrc\taaa\n/home/tester/.cache/fontconfig/x.cache\tccc\n",
         );
         let allowed = Allowed::parse("# Caches\nfiles /home/tester/.cache/*\n").unwrap();
-        assert_eq!(compare(&snapshot(BEFORE), &after, &allowed), Vec::new());
+        assert_eq!(
+            compare(&snapshot(BEFORE), &after, &allowed, Comparison::Removal),
+            Vec::new()
+        );
     }
 
     #[test]
@@ -230,7 +266,25 @@ mod tests {
         // A package named like an allowed path is still a leftover.
         let after = snapshot(&format!("{BEFORE}## packages\nbash\ncache\n"));
         let allowed = Allowed::parse("files cache\n").unwrap();
-        assert_eq!(compare(&snapshot(BEFORE), &after, &allowed).len(), 1);
+        assert_eq!(
+            compare(&snapshot(BEFORE), &after, &allowed, Comparison::Removal).len(),
+            1
+        );
+    }
+
+    #[test]
+    fn a_removal_rule_allows_a_leftover_but_not_a_second_install_change() {
+        let after = snapshot(&format!("{BEFORE}/home/tester/.gitconfig\tddd\n"));
+        let allowed = Allowed::parse("removal files /home/tester/.gitconfig\n").unwrap();
+        let before = snapshot(BEFORE);
+        assert_eq!(
+            compare(&before, &after, &allowed, Comparison::Removal),
+            Vec::new()
+        );
+        assert_eq!(
+            compare(&before, &after, &allowed, Comparison::Install).len(),
+            1
+        );
     }
 
     #[test]
@@ -238,5 +292,6 @@ mod tests {
         for os in [Os::Cachyos, Os::Ubuntu, Os::Windows] {
             assert!(Allowed::parse(allowed_changes(os)).is_ok(), "{os}");
         }
+        assert!(Allowed::parse(ARCH_WSL_ALLOWED_CHANGES).is_ok(), "arch-wsl");
     }
 }

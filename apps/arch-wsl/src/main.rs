@@ -18,7 +18,7 @@ static MODULES: &[&dyn Module] = &[
         unwanted: &[],
         needs: &[],
     },
-    &Ssh,
+    &Ssh { keys_only: true },
     &Cli,
     &SystemMonitor,
     &Runtimes {
@@ -40,6 +40,8 @@ static MODULES: &[&dyn Module] = &[
     &EnvironmentInventory::ARCH_WSL,
 ];
 
+const PACKAGE_SYSTEM: PackageSystem = PackageSystem::Arch;
+
 fn main() -> ExitCode {
     if std::env::consts::OS != "linux" || !running_in_wsl() {
         eprintln!("error: the Arch WSL installer requires Linux inside WSL");
@@ -47,20 +49,33 @@ fn main() -> ExitCode {
     }
     myconfig_interface::main(Profile {
         title: "Arch WSL",
-        package_system: PackageSystem::Arch,
+        package_system: PACKAGE_SYSTEM,
         modules: MODULES,
     })
 }
 
 #[cfg(test)]
 mod tests {
-    use myconfig_modules::runner::need_problems;
+    use myconfig_modules::{EnvironmentInventory, runner::need_problems, unnamed_packages};
 
-    use super::MODULES;
+    use super::{MODULES, PACKAGE_SYSTEM};
 
     #[test]
     fn every_need_comes_earlier_and_every_hard_need_is_in_the_profile() {
         assert_eq!(need_problems(MODULES), Vec::<String>::new());
+    }
+
+    #[test]
+    fn the_environment_inventory_describes_the_modules_of_the_profile() {
+        assert_eq!(
+            EnvironmentInventory::ARCH_WSL.claim_problems(MODULES),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn every_package_has_a_name_on_the_package_system() {
+        assert_eq!(unnamed_packages(MODULES, PACKAGE_SYSTEM), []);
     }
 
     #[test]

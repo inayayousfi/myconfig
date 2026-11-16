@@ -1,6 +1,7 @@
 # Changes that a Windows cycle allows between the state lists it compares.
 # Each line is `<list> <pattern>`. The list is a `## <list>` name of the state lists, or `*`
 # for every list. In the pattern, `*` stands for any text, `\` included.
+# A line that starts with `removal` applies only to the removal comparison.
 
 # The user registry hive and its logs, which Windows writes all the time.
 files C:\Users\tester\NTUSER.DAT*
@@ -12,10 +13,13 @@ files C:\Users\tester\AppData\Local\Temp
 files C:\Users\tester\AppData\Local\Temp\*
 files C:\Users\tester\AppData\Local\Microsoft\Windows\*
 files C:\Users\tester\AppData\Local\Microsoft\Edge\*
-files C:\Users\tester\AppData\Local\Microsoft\WinGet\*
+files C:\Users\tester\AppData\Local\Microsoft\WinGet
+files C:\Users\tester\AppData\Local\Microsoft\WinGet\State
+files C:\Users\tester\AppData\Local\Microsoft\WinGet\State\*
+files C:\Users\tester\AppData\Local\Microsoft\WinGet\Cache
+files C:\Users\tester\AppData\Local\Microsoft\WinGet\Cache\*
 files C:\Users\tester\AppData\Local\Microsoft\PowerShell\*
 files C:\Users\tester\AppData\Local\Microsoft\CLR_v4.0*
-files C:\Users\tester\AppData\Local\Packages\*
 files C:\Users\tester\AppData\Local\ConnectedDevicesPlatform\*
 files C:\Users\tester\AppData\Local\D3DSCache\*
 files C:\Users\tester\AppData\Local\CrashDumps
@@ -24,9 +28,33 @@ files C:\Users\tester\AppData\Local\IconCache.db
 files C:\Users\tester\AppData\Roaming\Microsoft\Windows\Recent\*
 files C:\Users\tester\AppData\Roaming\Microsoft\Windows\PowerShell\PSReadLine\*
 
-# The disks of WSL distributions. Each registration gets a new folder, and the second install
-# registers the Arch distribution again. The wsl-distributions list checks that the
-# distribution itself is gone after removal.
+# The app packages. Every package keeps caches and settings that its app rewrites, and the
+# packages of Windows itself and of winget change all of their data. The data of other apps,
+# such as the settings file of Windows Terminal, stays checked.
+files C:\Users\tester\AppData\Local\Packages\*\AC\*
+files C:\Users\tester\AppData\Local\Packages\*\LocalCache\*
+files C:\Users\tester\AppData\Local\Packages\*\TempState\*
+files C:\Users\tester\AppData\Local\Packages\*\Settings\*
+files C:\Users\tester\AppData\Local\Packages\*\SystemAppData\*
+files C:\Users\tester\AppData\Local\Packages\Microsoft.Windows.*
+files C:\Users\tester\AppData\Local\Packages\MicrosoftWindows.*
+files C:\Users\tester\AppData\Local\Packages\windows.*
+files C:\Users\tester\AppData\Local\Packages\Microsoft.AAD.BrokerPlugin_*
+files C:\Users\tester\AppData\Local\Packages\Microsoft.DesktopAppInstaller_*\LocalState\*
+
+# Files that a running T3 Code and Claude Code rewrite.
+files C:\Users\tester\.t3\caches\*.json
+files C:\Users\tester\.t3\userdata\logs\*
+files C:\Users\tester\.t3\userdata\server-owner.sqlite-journal
+files C:\Users\tester\.t3\userdata\server-runtime.json
+files C:\Users\tester\.t3\userdata\statev2.sqlite
+files C:\Users\tester\.t3\userdata\statev2.sqlite-shm
+files C:\Users\tester\.t3\userdata\statev2.sqlite-wal
+files C:\Users\tester\.claude\plugins\store\*.json
+
+# The disks of WSL distributions, which WSL keeps in a new folder for each registration. The
+# wsl-distributions list checks that the distribution itself is gone after removal, and the
+# cycle checks what is inside it with the state lists of the distribution.
 files C:\Users\tester\AppData\Local\wsl
 files C:\Users\tester\AppData\Local\wsl\*
 

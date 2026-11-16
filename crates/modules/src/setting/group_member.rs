@@ -1,7 +1,7 @@
 //! A user's membership in a group.
 use xshell::cmd;
 
-use super::Kind;
+use super::{Kind, PRESENT};
 use crate::{Context, ModuleResult};
 
 pub(super) struct GroupMember<'a> {
@@ -14,13 +14,17 @@ impl Kind for GroupMember<'_> {
         format!("{} in group {}", self.user, self.group)
     }
 
+    fn presence(&self) -> bool {
+        true
+    }
+
     fn read(&self, ctx: &Context) -> ModuleResult<Option<String>> {
         let Self { group, user } = *self;
         let groups = ctx.read(cmd!(ctx.shell, "id -nG {user}"))?;
         Ok(groups
             .split_whitespace()
             .any(|name| name == group)
-            .then(|| "member".to_owned()))
+            .then(|| PRESENT.to_owned()))
     }
 
     fn write(&self, ctx: &Context, _value: &str) -> ModuleResult {

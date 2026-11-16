@@ -1,5 +1,9 @@
 //! VSCodium with its settings, theme and extensions, as the default text editor.
-use std::{fs, path::Path};
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::{Path, PathBuf},
+};
 
 use xshell::cmd;
 
@@ -31,10 +35,81 @@ fn text_types() -> Vec<String> {
     TEXT_TYPES.iter().map(|kind| (*kind).to_owned()).collect()
 }
 
+/// The files under `folder`, by their path relative to it.
+fn files_under(folder: &Path) -> ModuleResult<BTreeMap<PathBuf, Vec<u8>>> {
+    let mut files = BTreeMap::new();
+    let mut pending = vec![folder.to_path_buf()];
+    while let Some(directory) = pending.pop() {
+        for entry in fs::read_dir(&directory)? {
+            let path = entry?.path();
+            if path.is_dir() {
+                pending.push(path);
+            } else {
+                files.insert(path.strip_prefix(folder)?.to_path_buf(), fs::read(&path)?);
+            }
+        }
+    }
+    Ok(files)
+}
+
+/// Whether VSCodium lists the theme in `theme` at its version, in a folder that holds the
+/// same files. VSCodium adds a `__metadata` block with the install time to the installed
+/// `package.json`, so that file is compared without it.
+fn theme_is_installed(ctx: &Context, theme: &Path) -> ModuleResult<bool> {
+    let mut source = files_under(theme)?;
+    let manifest = Path::new("package.json");
+    let package: serde_json::Value =
+        serde_json::from_slice(source.remove(manifest).as_deref().unwrap_or_default())?;
+    let field = |name: &str| package.get(name).and_then(serde_json::Value::as_str);
+    let (Some(publisher), Some(name), Some(version)) =
+        (field("publisher"), field("name"), field("version"))
+    else {
+        return Err(
+            "the VSCodium theme's package.json lacks its publisher, name or version".into(),
+        );
+    };
+    let id = format!("{publisher}.{name}");
+    let folder_name = format!("{id}-{version}");
+    let extensions = ctx.home.join(".vscode-oss/extensions");
+    let Ok(listed) = fs::read(extensions.join("extensions.json")) else {
+        return Ok(false);
+    };
+    let listed: serde_json::Value = serde_json::from_slice(&listed)?;
+    let registered = listed.as_array().is_some_and(|entries| {
+        entries.iter().any(|entry| {
+            entry
+                .pointer("/identifier/id")
+                .and_then(serde_json::Value::as_str)
+                == Some(&id)
+                && entry.get("version").and_then(serde_json::Value::as_str) == Some(version)
+                && entry
+                    .get("relativeLocation")
+                    .and_then(serde_json::Value::as_str)
+                    == Some(&folder_name)
+        })
+    });
+    let folder = extensions.join(&folder_name);
+    if !registered || !folder.is_dir() {
+        return Ok(false);
+    }
+    let mut installed = files_under(&folder)?;
+    let Some(installed_manifest) = installed.remove(manifest) else {
+        return Ok(false);
+    };
+    let mut installed_package: serde_json::Value = serde_json::from_slice(&installed_manifest)?;
+    if let Some(object) = installed_package.as_object_mut() {
+        object.remove("__metadata");
+    }
+    Ok(installed_package == package && installed == source)
+}
+
 /// VSCodium forgets extension folders it did not install itself, so the theme goes in as
 /// a package: a zip with the extension under `extension/`.
 fn install_theme(ctx: &Context, config: &Path) -> ModuleResult {
     let theme = config.join("blacknpink-theme");
+    if theme_is_installed(ctx, &theme)? {
+        return Ok(());
+    }
     with_temporary_directory("vscodium-theme", |directory| {
         let package = directory.join("blacknpink-theme.vsix");
         let rename = ",^\\.,extension,";
@@ -104,7 +179,11 @@ impl Module for Vscodium {
         // come from comparing its lists, even after a failed install.
         for extension in installed_extensions(ctx)? {
             if !before.contains(&extension) {
-                ctx.record_setting_previous(Setting::VscodiumExtension { id: extension }, None)?;
+                let setting = Setting::VscodiumExtension {
+                    id: extension,
+                    editor: "codium".to_owned(),
+                };
+                ctx.record_setting_previous(setting, None)?;
             }
         }
         result

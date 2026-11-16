@@ -1,66 +1,35 @@
 //! Windows: copies of the agent instructions, skills and Claude settings.
 use std::path::{Path, PathBuf};
 
-use embedded_dotfiles::DOTFILES;
-use typed_fs_rs::EmbeddedDirectory;
+use embedded_dotfiles::AI;
+use typed_fs_rs::{EmbeddedDirectory, EmbeddedFile};
 use xshell::cmd;
 
 use crate::{Context, Footprint, Module, ModuleResult, Need, Package};
 
 pub struct AgentConfigCopied;
 
-/// Where each embedded file goes under the home directory. Skills also go to Claude.
-fn destinations(home: &Path, path: &Path) -> Vec<PathBuf> {
-    if let Ok(skill) = path.strip_prefix("ai/.agents/skills") {
-        return vec![
-            home.join(".agents/skills").join(skill),
-            home.join(".claude/skills").join(skill),
-        ];
-    }
-    [
-        ("ai/.agents/AGENTS.md", ".agents/AGENTS.md"),
-        ("ai/.claude/CLAUDE.md", ".claude/CLAUDE.md"),
-        ("ai/.claude/settings.json", ".claude/settings.json"),
-        (
-            "ai/.local/bin/claude-config-helper",
-            ".local/bin/claude-config-helper",
-        ),
-        (
-            "ai/.config/claude-config-helper/mcp-servers.json",
-            ".config/claude-config-helper/mcp-servers.json",
-        ),
-    ]
-    .into_iter()
-    .filter(|(source, _)| path == Path::new(source))
-    .map(|(_, destination)| home.join(destination))
-    .collect()
-}
-
-const REQUIRED: [&str; 5] = [
-    ".agents/AGENTS.md",
-    ".claude/CLAUDE.md",
-    ".claude/settings.json",
-    ".local/bin/claude-config-helper",
-    ".config/claude-config-helper/mcp-servers.json",
+/// The files that go to the same path under the home directory.
+static FILES: [&EmbeddedFile; 5] = [
+    &AI._agents.AGENTS_md,
+    &AI._claude.CLAUDE_md,
+    &AI._claude.settings_json,
+    &AI._local.bin.claude_config_helper,
+    &AI._config.claude_config_helper.mcp_servers_json,
 ];
 
-/// T3 Code plays its own sound when an agent finishes, so peon-ping is removed through its
-/// own uninstaller, which also clears its hooks.
-fn remove_peon_ping(ctx: &Context) {
-    let uninstaller = ctx.home.join(".claude/hooks/peon-ping/uninstall.ps1");
-    if !uninstaller.is_file() {
-        return;
+/// Each copied file with its destination under the home directory. Skills also go to Claude.
+fn copies(home: &Path) -> ModuleResult<Vec<(&'static EmbeddedFile, PathBuf)>> {
+    let mut copies: Vec<_> = FILES
+        .iter()
+        .map(|file| (*file, home.join(file.path_from_root)))
+        .collect();
+    for file in AI._agents.skills.files() {
+        let skill = Path::new(file.path_from_root).strip_prefix(".agents/skills")?;
+        copies.push((file, home.join(".agents/skills").join(skill)));
+        copies.push((file, home.join(".claude/skills").join(skill)));
     }
-    let result = ctx.run(cmd!(
-        ctx.shell,
-        "powershell.exe -NoProfile -ExecutionPolicy Bypass -File {uninstaller} -Force"
-    ));
-    if result.is_err() {
-        ctx.note(&format!(
-            "WARNING: the peon-ping uninstaller failed; run {} by hand",
-            uninstaller.display()
-        ));
-    }
+    Ok(copies)
 }
 
 impl Module for AgentConfigCopied {
@@ -80,24 +49,13 @@ impl Module for AgentConfigCopied {
     }
 
     fn install(&self, ctx: &Context) -> ModuleResult {
-        remove_peon_ping(ctx);
-        let files = DOTFILES.ai.files();
-        for file in &files {
-            for destination in destinations(ctx.home, Path::new(file.path_from_root)) {
-                ctx.write_file(&destination, file.content, file.executable)?;
-            }
-        }
-        for required in REQUIRED {
-            if !ctx.home.join(required).is_file() {
-                return Err(format!("embedded agent configuration is missing {required}").into());
-            }
+        for (file, destination) in copies(ctx.home)? {
+            ctx.write_file(&destination, file.content, file.executable)?;
         }
         if ctx.find_program("py").is_ok() && ctx.find_program("claude").is_ok() {
             let helper = ctx.home.join(".local/bin/claude-config-helper");
             super::record_mcp_servers(ctx)?;
-            if let Err(error) = ctx.run(cmd!(ctx.shell, "py -3 {helper} mcp apply")) {
-                ctx.note(&format!("Claude MCP servers were not applied: {error}"));
-            }
+            ctx.run(cmd!(ctx.shell, "py -3 {helper} mcp apply"))?;
         } else {
             ctx.note("Python or Claude Code not found; run claude-config-helper mcp apply later");
         }
@@ -105,13 +63,11 @@ impl Module for AgentConfigCopied {
     }
 
     fn verify(&self, ctx: &Context) -> ModuleResult {
-        for file in DOTFILES.ai.files() {
-            for destination in destinations(ctx.home, Path::new(file.path_from_root)) {
-                if std::fs::read(&destination)? != file.content {
-                    return Err(
-                        format!("{} differs from the repository", destination.display()).into(),
-                    );
-                }
+        for (file, destination) in copies(ctx.home)? {
+            if std::fs::read(&destination)? != file.content {
+                return Err(
+                    format!("{} differs from the repository", destination.display()).into(),
+                );
             }
         }
         Ok(())

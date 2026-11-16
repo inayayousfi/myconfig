@@ -12,7 +12,7 @@ static MODULES: &[&dyn Module] = &[
     },
     &CachyosSetup,
     &Media,
-    &Ssh,
+    &Ssh { keys_only: false },
     &Cli,
     &Runtimes {
         bun_installer: false,
@@ -49,6 +49,8 @@ static MODULES: &[&dyn Module] = &[
     &EnvironmentInventory::CACHYOS,
 ];
 
+const PACKAGE_SYSTEM: PackageSystem = PackageSystem::Arch;
+
 fn main() -> ExitCode {
     let id = std::fs::read_to_string("/etc/os-release")
         .unwrap_or_default()
@@ -66,20 +68,33 @@ fn main() -> ExitCode {
     }
     myconfig_interface::main(Profile {
         title: "CachyOS",
-        package_system: PackageSystem::Arch,
+        package_system: PACKAGE_SYSTEM,
         modules: MODULES,
     })
 }
 
 #[cfg(test)]
 mod tests {
-    use myconfig_modules::{Need, runner::need_problems};
+    use myconfig_modules::{EnvironmentInventory, Need, runner::need_problems, unnamed_packages};
 
-    use super::MODULES;
+    use super::{MODULES, PACKAGE_SYSTEM};
 
     #[test]
     fn every_need_comes_earlier_and_every_hard_need_is_in_the_profile() {
         assert_eq!(need_problems(MODULES), Vec::<String>::new());
+    }
+
+    #[test]
+    fn the_environment_inventory_describes_the_modules_of_the_profile() {
+        assert_eq!(
+            EnvironmentInventory::CACHYOS.claim_problems(MODULES),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn every_package_has_a_name_on_the_package_system() {
+        assert_eq!(unnamed_packages(MODULES, PACKAGE_SYSTEM), []);
     }
 
     /// Whether `name` needs the Plasma version check, directly or through other needs.

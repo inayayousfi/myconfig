@@ -13,7 +13,7 @@ on:
 
 jobs:
   build-linux:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -86,41 +86,6 @@ jobs:
                   link.write_bytes(content(link, set()))
           '@ | python -
 
-      - name: Sign PowerShell files before embedding
-        shell: pwsh
-        env:
-          CODESIGN_PFX_B64: ${{ secrets.CODESIGN_PFX_B64 }}
-          CODESIGN_PFX_PASSWORD: ${{ secrets.CODESIGN_PFX_PASSWORD }}
-        run: |
-          if ([string]::IsNullOrEmpty($env:CODESIGN_PFX_B64)) {
-            Write-Warning "CODESIGN_PFX_B64 secret is not set; embedded PowerShell files will be unsigned."
-            exit 0
-          }
-
-          $pfxPath = Join-Path $env:RUNNER_TEMP "codesign.pfx"
-          try {
-            [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:CODESIGN_PFX_B64))
-            $securePassword = ConvertTo-SecureString -String $env:CODESIGN_PFX_PASSWORD -AsPlainText -Force
-            $cert = [Security.Cryptography.X509Certificates.X509Certificate2]::new(
-              $pfxPath,
-              $securePassword,
-              [Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet
-            )
-            $scripts = Get-ChildItem -Path dotfiles -Recurse -Filter *.ps1 -File
-            foreach ($script in $scripts) {
-              Set-AuthenticodeSignature -FilePath $script.FullName -Certificate $cert -TimestampServer 'http://timestamp.digicert.com' | Out-Null
-              $signature = Get-AuthenticodeSignature -FilePath $script.FullName
-              if ($signature.Status -ne 'Valid') {
-                throw "Embedded PowerShell signature invalid: $($script.FullName): $($signature.Status)"
-              }
-            }
-          }
-          finally {
-            if (Test-Path $pfxPath) {
-              Remove-Item -Path $pfxPath -Force
-            }
-          }
-
       - name: Test Rust workspace
         shell: pwsh
         run: cargo test --workspace --locked --exclude repository-tests
@@ -129,6 +94,7 @@ jobs:
         shell: pwsh
         env:
           MYCONFIG_RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
+          MYCONFIG_RELEASE_BASE: ${{ github.server_url }}/${{ github.repository }}/releases/download
         run: |
           cargo build --release --locked -p myconfig-windows
           New-Item -ItemType Directory -Path release-assets | Out-Null
@@ -145,7 +111,7 @@ jobs:
 
   release:
     needs: [build-linux, build-windows]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: write
 

@@ -18,7 +18,11 @@ use xshell::Shell;
 
 /// Exit code when a question had no answer, so a remove kept something or an install
 /// skipped a module, and nothing failed.
-const UNANSWERED: u8 = 3;
+pub const UNANSWERED: u8 = 3;
+
+/// The text that ends every question of the plain command line, after which it reads the
+/// answer.
+pub const QUESTION_END: &str = " [y/N] ";
 
 #[derive(Parser)]
 #[command(about = "Installs, verifies and removes this machine's configuration")]
@@ -56,8 +60,13 @@ enum Internal {
 
 #[derive(Subcommand)]
 enum SharedDesktopStep {
-    /// Moves the shared desktop items, writing each move to RECORD.
-    Move { record: PathBuf, desktop: PathBuf },
+    /// Moves the shared desktop items, writing each move to RECORD. Replaces an item
+    /// already on DESKTOP only when the JSON list in REPLACE names its shared item.
+    Move {
+        record: PathBuf,
+        desktop: PathBuf,
+        replace: PathBuf,
+    },
     /// Undoes the move described in CHANGE.
     MoveBack { change: PathBuf },
 }
@@ -170,9 +179,11 @@ fn with_context<T>(
 fn run_internal(step: Internal) -> ModuleResult {
     use myconfig_modules::internal;
     match step {
-        Internal::SharedDesktop(SharedDesktopStep::Move { record, desktop }) => {
-            internal::elevated_move(&record, &desktop)
-        }
+        Internal::SharedDesktop(SharedDesktopStep::Move {
+            record,
+            desktop,
+            replace,
+        }) => internal::elevated_move(&record, &desktop, &replace),
         Internal::SharedDesktop(SharedDesktopStep::MoveBack { change }) => {
             internal::elevated_move_back(&change)
         }

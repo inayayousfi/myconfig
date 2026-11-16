@@ -44,4 +44,9 @@ impl Kind for AccentColor {
     fn reapplies(&self) -> bool {
         true
     }
+
+    /// The tool writes the colors it derives from the accent in the same file.
+    fn kde_files(&self) -> &'static [&'static str] {
+        &["kdeglobals"]
+    }
 }

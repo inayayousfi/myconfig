@@ -29,46 +29,38 @@ impl Parse for StaticInput {
     }
 }
 
-/// Embeds a directory tree as a typed value or a global static.
+/// Embeds a directory tree as a global static: `static NAME = "path"`.
 ///
-/// Pass a string literal containing the directory path to produce a value, or
-/// use `static NAME = "path"` to declare a global static. The path is resolved
-/// relative to the compiler process's current working directory. Files become
-/// [`::typed_fs_rs::EmbeddedFile`] values, and subdirectories become nested
-/// structures with public fields named from their entries. Non-alphanumeric
-/// Entry names normally use underscores for punctuation in generated Rust fields.
-/// If two entries would get the same field name, the colliding names instead
-/// spell out punctuation, such as `_dash_`, `_dot_`, or `_tilde_`. Other
-/// characters use their Unicode code point. A numeric suffix resolves any
-/// remaining collision. Embedded paths always keep the original entry names.
+/// The path is resolved relative to the folder of the calling crate's `Cargo.toml`.
+/// Files become [`::typed_fs_rs::EmbeddedFile`] values, and subdirectories become nested
+/// structures whose public fields are named after their entries. A field name replaces
+/// each character that a Rust identifier cannot hold with an underscore. Embedded paths
+/// keep the original entry names.
 ///
-/// Each embedded file contains its bytes and its path relative to the embedded
-/// root, using `/` separators. The returned directory structures implement
+/// Each embedded file holds its bytes and its path relative to the embedded root, with
+/// `/` separators. The directory structures implement
 /// [`::typed_fs_rs::EmbeddedDirectory`].
 ///
 /// # Example
 ///
 /// ```ignore
-/// let assets = typed_fs_rs::embed_dir!("assets");
-/// let bytes: &[u8] = assets.logo_png.content;
 /// typed_fs_rs::embed_dir!(pub static ASSETS = "assets");
+/// let bytes: &[u8] = ASSETS.logo_png.content;
 /// ```
 ///
-/// The generated field for `logo.png` is `logo_png`.
+/// # Errors
 ///
-/// # Panics
+/// Compilation fails if the path is not a readable directory, if an entry name is not
+/// valid UTF-8 or cannot become a Rust field, or if two entries of one directory become
+/// the same field.
 ///
-/// Compilation fails if the path cannot be read, an entry name is not valid
-/// UTF-8.
+/// Cargo does not see which folders the macro lists, so a file added to the tree is not
+/// embedded until the calling crate rebuilds. The calling crate needs a build script that
+/// prints `cargo:rerun-if-changed` for the embedded folder.
 #[proc_macro]
 pub fn embed_dir(input: TokenStream) -> TokenStream {
-    let input = proc_macro2::TokenStream::from(input);
-    if let Ok(input) = syn::parse2::<StaticInput>(input.clone()) {
-        embed_dir::expand_static(input.visibility, input.name, input.path.value()).into()
-    } else {
-        match syn::parse2::<syn::LitStr>(input) {
-            Ok(path) => embed_dir::expand(path.value()).into(),
-            Err(error) => error.into_compile_error().into(),
-        }
+    match syn::parse::<StaticInput>(input) {
+        Ok(input) => embed_dir::expand_static(input.visibility, input.name, input.path).into(),
+        Err(error) => error.into_compile_error().into(),
     }
 }

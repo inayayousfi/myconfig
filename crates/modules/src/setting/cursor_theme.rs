@@ -32,4 +32,9 @@ impl Kind for CursorTheme {
     fn reapplies(&self) -> bool {
         true
     }
+
+    /// The tool also writes the cursor size there.
+    fn kde_files(&self) -> &'static [&'static str] {
+        &["kcminputrc"]
+    }
 }

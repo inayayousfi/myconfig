@@ -1,17 +1,11 @@
 //! The only code that loops over modules. The command line and the screen call it.
-use std::{
-    collections::{HashMap, HashSet},
-    fs,
-};
+use std::collections::{HashMap, HashSet};
 
 use myconfig_utils::resolve_package;
-use xshell::cmd;
 
 use crate::{
-    Context, Event, Module, ModuleResult, Need, Package, Setting, Step, Unanswered,
-    context::{remove_user_path, scope_argument},
-    state::{Action, Change, Previous},
-    support,
+    Context, Event, Module, ModuleResult, Need, Package, Step, Unanswered,
+    state::{Action, Change, Needed, Outcome, Questions},
 };
 
 /// Packages that `remove` itself runs, so removing them first would break later undos.
@@ -23,13 +17,13 @@ pub struct RemoveReport {
     pub unanswered: bool,
 }
 
-enum Outcome {
-    /// The change was undone, or there was nothing left to undo.
-    Done,
-    /// The person chose to keep it.
-    Kept,
-    /// Nobody could answer, so it stays recorded for a later remove.
-    Unanswered,
+/// The question that made a failed install a skip. An install is skipped only when the
+/// error it returns is `Unanswered`, so a failure after an unanswered question still
+/// counts as a failure.
+fn unanswered(error: &crate::Error) -> Option<String> {
+    error
+        .downcast_ref::<Unanswered>()
+        .map(|unanswered| unanswered.question.clone())
 }
 
 fn step(
@@ -48,7 +42,7 @@ fn step(
     // An install that nobody could answer is a skip, which the runner reports itself.
     if step == Step::Install
         && let Err(error) = &result
-        && error.is::<Unanswered>()
+        && unanswered(error).is_some()
     {
         return result;
     }
@@ -64,15 +58,6 @@ fn step(
         });
     }
     result
-}
-
-/// Refreshes the package database so installs get current versions.
-fn prepare_packages(ctx: &Context) -> ModuleResult {
-    match ctx.package_system {
-        crate::PackageSystem::Arch => ctx.run(cmd!(ctx.shell, "sudo pacman -Syu --noconfirm")),
-        crate::PackageSystem::Apt => ctx.run(cmd!(ctx.shell, "sudo apt-get update")),
-        crate::PackageSystem::Winget => Ok(()),
-    }
 }
 
 /// Why a needed module is not in place.
@@ -216,7 +201,7 @@ enum Reached {
 
 /// Installs and verifies each module in profile order, going on after a failed one. A
 /// module whose need failed or was skipped is not installed, and a module whose install
-/// returns `Unanswered` is skipped. `profile` holds the modules that a hard need left out
+/// returns `Unanswered`, or fails after a question that nobody could answer, is skipped. `profile` holds the modules that a hard need left out
 /// of `modules` is looked up in.
 pub fn install(
     ctx: &Context,
@@ -229,7 +214,11 @@ pub fn install(
         .map_err(InstallError::NotStarted)?;
     // Installing packages right after a failed `pacman -Syu` would leave a partly upgraded
     // system, so only the modules that leave packages alone run after a failed refresh.
-    let refresh_error = prepare_packages(ctx).err().map(|error| error.to_string());
+    let refresh_error = ctx
+        .packages()
+        .refresh(ctx)
+        .err()
+        .map(|error| error.to_string());
     let mut reached: HashMap<&'static str, Reached> = HashMap::new();
     let mut report = InstallReport::default();
     for module in modules {
@@ -258,12 +247,12 @@ pub fn install(
             continue;
         }
         let result = match step(ctx, *module, Step::Install, || module.install(ctx)) {
-            Err(error) => match error.downcast::<Unanswered>() {
-                Ok(unanswered) => {
-                    skip(&mut reached, SkipReason::Unanswered(unanswered.question));
+            Err(error) => match unanswered(&error) {
+                Some(question) => {
+                    skip(&mut reached, SkipReason::Unanswered(question));
                     continue;
                 }
-                Err(error) => Err(error),
+                None => Err(error),
             },
             Ok(()) => step(ctx, *module, Step::Verify, || module.verify(ctx)),
         };
@@ -395,15 +384,26 @@ pub fn remove(
 ) -> ModuleResult<RemoveReport> {
     ctx.state().borrow_mut().begin(Action::Remove)?;
     let removing: HashSet<_> = modules.iter().map(|module| module.name()).collect();
+    // Only a module that is still installed can need something.
     let others: Vec<_> = profile
         .iter()
-        .filter(|module| !removing.contains(module.name()))
+        .filter(|module| !removing.contains(module.name()) && installed(ctx, **module))
         .copied()
         .collect();
+    let questions = RemoveQuestions { ctx, others, force };
     let mut report = RemoveReport::default();
-    for module in modules {
+    // A module needs only modules before it in the profile, so removing in reverse profile
+    // order removes each module while what it needs is still in place.
+    let position = |module: &&dyn Module| {
+        profile
+            .iter()
+            .position(|other| other.name() == module.name())
+    };
+    let mut ordered = modules.to_vec();
+    ordered.sort_by_key(|module| std::cmp::Reverse(position(module)));
+    for module in &ordered {
         step(ctx, *module, Step::Remove, || {
-            remove_one(ctx, &others, *module, force, &mut report)
+            remove_one(ctx, &questions, *module, &mut report)
         })?;
     }
     Ok(report)
@@ -411,26 +411,35 @@ pub fn remove(
 
 fn remove_one(
     ctx: &Context,
-    others: &[&dyn Module],
+    questions: &RemoveQuestions,
     module: &dyn Module,
-    force: bool,
     report: &mut RemoveReport,
 ) -> ModuleResult {
     module.remove(ctx)?;
     let pending = ctx.state().borrow().pending(module.name());
     let mut complete = true;
     for entry in pending.into_iter().rev() {
-        let outcome = undo(ctx, others, &entry.change, force).map_err(|error| {
+        let outcome = entry.change.undo(ctx, questions).map_err(|error| {
             format!(
                 "could not undo {}: {error}. This change and the older ones are still in place; run remove again after fixing it",
                 entry.change.describe()
             )
         })?;
+        let undone = Change::Undone {
+            snapshot: entry.snapshot,
+            index: entry.index,
+        };
         match outcome {
-            Outcome::Done | Outcome::Kept => ctx.record(Change::Undone {
-                snapshot: entry.snapshot,
-                index: entry.index,
-            })?,
+            Outcome::Done | Outcome::Kept => ctx.record(undone)?,
+            Outcome::PassedTo(owner) => {
+                // The new owner records the change first, so a crash in between leaves
+                // it owned twice rather than not at all.
+                ctx.state()
+                    .borrow_mut()
+                    .record(owner, entry.change.clone())?;
+                ctx.record(undone)?;
+            }
+            Outcome::Stays => complete = false,
             Outcome::Unanswered => {
                 complete = false;
                 report.unanswered = true;
@@ -458,249 +467,88 @@ fn ask(ctx: &Context, question: &str, kept: &str) -> Outcome {
     }
 }
 
-/// Asks before undoing something that other modules or packages still need.
-fn still_needed(ctx: &Context, needers: &[String], what: &str, force: bool) -> Option<Outcome> {
-    if needers.is_empty() || force {
-        return None;
-    }
-    match ask(
-        ctx,
-        &format!(
-            "{what} is still needed by {}. Remove it anyway?",
-            needers.join(", ")
-        ),
-        what,
-    ) {
-        Outcome::Done => None,
-        outcome => Some(outcome),
-    }
-}
-
-fn undo(
-    ctx: &Context,
-    others: &[&dyn Module],
-    change: &Change,
+/// The questions of one remove run. `others` holds the installed modules that the run
+/// does not remove.
+struct RemoveQuestions<'a, 'c> {
+    ctx: &'a Context<'c>,
+    others: Vec<&'a dyn Module>,
     force: bool,
-) -> ModuleResult<Outcome> {
-    let sh = ctx.shell;
-    match change {
-        Change::PackageInstalled(package) => {
-            let spec = resolve_package(*package, ctx.package_system)
-                .ok_or_else(|| format!("no package mapping for {package:?}"))?;
-            if !ctx.package_installed(spec)? {
-                return Ok(Outcome::Done);
-            }
-            if support::running_kernel_package(ctx)?.as_deref() == Some(spec.name) {
-                ctx.note(&format!("Kept {}: it is the running kernel", spec.name));
-                return Ok(Outcome::Kept);
-            }
-            let mut needers: Vec<String> = INSTALLER_NEEDS
-                .contains(package)
-                .then(|| "myconfig itself, to remove the other modules".to_owned())
-                .into_iter()
-                .collect();
-            needers.extend(
-                others
-                    .iter()
-                    .filter(|module| module.footprint(ctx).packages.contains(package))
-                    .map(|module| format!("module {}", module.name())),
-            );
-            needers.extend(
-                support::dependents(ctx, spec)?
-                    .into_iter()
-                    .map(|name| format!("package {name}")),
-            );
-            if let Some(outcome) =
-                still_needed(ctx, &needers, &format!("package {}", spec.name), force)
-            {
-                return Ok(outcome);
-            }
-            ctx.uninstall_specs(&[spec])?;
-        }
-        Change::PackageUninstalled(package) => {
-            let spec = resolve_package(*package, ctx.package_system)
-                .ok_or_else(|| format!("no package mapping for {package:?}"))?;
-            if ctx.package_installed(spec)? {
-                return Ok(Outcome::Done);
-            }
-            let outcome = ask(
-                ctx,
-                &format!(
-                    "Install {} again? Install uninstalled it on purpose.",
-                    spec.name
-                ),
-                &format!("{} uninstalled", spec.name),
-            );
-            if !matches!(outcome, Outcome::Done) {
-                return Ok(outcome);
-            }
-            ctx.install_specs(&[spec])?;
-        }
-        Change::Setting { setting, previous } => {
-            let needers = setting_needers(ctx, others, setting);
-            if let Some(outcome) = still_needed(ctx, &needers, &setting.describe(), force) {
-                return Ok(outcome);
-            }
-            let current = setting.read(ctx)?;
-            match previous {
-                Some(value) if current.as_deref() != Some(value) => setting.write(ctx, value)?,
-                None if current.is_some() => setting.delete(ctx)?,
-                _ => {}
-            }
-        }
-        Change::File {
-            path,
-            system: false,
-            previous,
-        } => {
-            remove_user_path(path)?;
-            previous.restore(path)?;
-        }
-        Change::File {
-            path,
-            system: true,
-            previous,
-        } => match previous {
-            Previous::File { contents, .. } => {
-                support::install_system_file(ctx, path, &Previous::contents(contents)?, "0644")?;
-            }
-            Previous::Missing => ctx.run(cmd!(sh, "sudo rm -f -- {path}"))?,
-            _ => return Err(format!("unexpected recorded system path: {}", path.display()).into()),
-        },
-        Change::Created {
-            path,
-            system,
-            ask: confirm,
-        } => {
-            if fs::symlink_metadata(path).is_err()
-                && !(*system && ctx.succeeds(cmd!(sh, "sudo test -e {path}"))?)
-            {
-                return Ok(Outcome::Done);
-            }
-            if *confirm {
-                let outcome = ask(
-                    ctx,
-                    &format!(
-                        "Delete {}? It may hold changes made after install.",
-                        path.display()
-                    ),
-                    &path.display().to_string(),
-                );
-                if !matches!(outcome, Outcome::Done) {
-                    return Ok(outcome);
-                }
-            }
-            if *system {
-                ctx.run(cmd!(sh, "sudo rm -rf -- {path}"))?;
-            } else {
-                remove_user_path(path)?;
-            }
-        }
-        Change::CreatedDirectory { path, system } => {
-            if *system {
-                ctx.succeeds(cmd!(sh, "sudo rmdir -- {path}"))?;
-            } else if let Err(error) = fs::remove_dir(path)
-                && error.kind() != std::io::ErrorKind::NotFound
-            {
-                ctx.note(&format!("Kept {}: it is not empty", path.display()));
-            }
-        }
-        Change::Service {
-            unit,
-            scope,
-            was_enabled,
-        } => {
-            let user = scope_argument(*scope);
-            let (_, state) =
-                ctx.read_unchecked(cmd!(sh, "systemctl {user...} is-enabled {unit}"))?;
-            if !*was_enabled && state == "enabled" {
-                match scope {
-                    crate::ServiceScope::System => {
-                        ctx.run(cmd!(sh, "sudo systemctl disable --now {unit}"))?
-                    }
-                    crate::ServiceScope::User => {
-                        ctx.run(cmd!(sh, "systemctl --user disable --now {unit}"))?
-                    }
-                }
-            }
-        }
-        Change::ServiceDisabled {
-            unit,
-            scope,
-            was_enabled,
-            was_active,
-        } => {
-            let user: &[&str] = &scope_argument(*scope);
-            let (_, state) =
-                ctx.read_unchecked(cmd!(sh, "systemctl {user...} is-enabled {unit}"))?;
-            let systemctl = |action: &str| match scope {
-                crate::ServiceScope::System => ctx.run(cmd!(sh, "sudo systemctl {action} {unit}")),
-                crate::ServiceScope::User => ctx.run(cmd!(sh, "systemctl --user {action} {unit}")),
-            };
-            if *was_enabled && state != "enabled" {
-                systemctl("enable")?;
-            }
-            if *was_active
-                && !ctx.succeeds(cmd!(sh, "systemctl {user...} --quiet is-active {unit}"))?
-            {
-                systemctl("start")?;
-            }
-        }
-        Change::UndoCommand { program, args } => ctx.run(cmd!(sh, "{program} {args...}"))?,
-        Change::Stowed { package } => {
-            crate::deploy::unstow(ctx, package)?;
-            remove_user_path(&ctx.home.join("dotfiles").join(package))?;
-        }
-        Change::Unstowed { package } => {
-            if !ctx.home.join("dotfiles").join(package).is_dir() {
-                return Ok(Outcome::Done);
-            }
-            let outcome = ask(
-                ctx,
-                &format!("Link the retired config package {package} into your home again?"),
-                &format!("{package} unstowed"),
-            );
-            if !matches!(outcome, Outcome::Done) {
-                return Ok(outcome);
-            }
-            crate::deploy::restow(ctx, package)?;
-        }
-        Change::Moved { from, to, replaced } => {
-            let outcome = ask(
-                ctx,
-                &format!("Move {} back to {}?", to.display(), from.display()),
-                &format!("{} on your desktop", to.display()),
-            );
-            if !matches!(outcome, Outcome::Done) {
-                return Ok(outcome);
-            }
-            crate::shared_desktop::move_back(ctx, from, to, replaced)?;
-        }
-        Change::WslDistribution { name } => {
-            let outcome = ask(
-                ctx,
-                &format!("Unregister the WSL distribution {name} and delete everything inside it?"),
-                &format!("WSL distribution {name}"),
-            );
-            if !matches!(outcome, Outcome::Done) {
-                return Ok(outcome);
-            }
-            ctx.run(cmd!(sh, "wsl.exe --unregister {name}"))?;
-        }
-        Change::LocalPackage { name } => {
-            if ctx.succeeds(cmd!(sh, "pacman -Q {name}"))? {
-                ctx.run(cmd!(sh, "sudo pacman -R --noconfirm {name}"))?;
-            }
-        }
-        Change::Declined | Change::Undone { .. } | Change::Removed => {}
-    }
-    Ok(Outcome::Done)
 }
 
-fn setting_needers(ctx: &Context, others: &[&dyn Module], setting: &Setting) -> Vec<String> {
-    others
-        .iter()
-        .filter(|module| module.footprint(ctx).settings.contains(setting))
-        .map(|module| format!("module {}", module.name()))
-        .collect()
+impl Questions for RemoveQuestions<'_, '_> {
+    fn confirm(&self, question: &str, kept: &str) -> Outcome {
+        ask(self.ctx, question, kept)
+    }
+
+    fn still_needed(&self, needed: Needed<'_>, dependents: Vec<String>) -> Option<Outcome> {
+        let ctx = self.ctx;
+        // Two catalog packages can share a name on one system, so packages compare by name.
+        let same_package = |spec: myconfig_utils::PackageSpec, package: &Package| {
+            resolve_package(*package, ctx.package_system)
+                .is_some_and(|candidate| candidate.name == spec.name)
+        };
+        let (what, mut needers) = match needed {
+            Needed::Package(spec) => (
+                format!("package {}", spec.name),
+                INSTALLER_NEEDS
+                    .iter()
+                    .any(|package| same_package(spec, package))
+                    .then(|| "myconfig itself, to remove the other modules".to_owned())
+                    .into_iter()
+                    .collect::<Vec<_>>(),
+            ),
+            Needed::Setting(setting) => (setting.describe(), Vec::new()),
+        };
+        let modules: Vec<&'static str> = self
+            .others
+            .iter()
+            .filter(|module| {
+                let footprint = module.footprint(ctx);
+                match needed {
+                    Needed::Package(spec) => footprint
+                        .packages
+                        .iter()
+                        .any(|package| same_package(spec, package)),
+                    Needed::Setting(setting) => footprint.settings.contains(setting),
+                }
+            })
+            .map(|module| module.name())
+            .collect();
+        needers.extend(modules.iter().map(|name| format!("module {name}")));
+        let dependents: Vec<String> = dependents
+            .into_iter()
+            .map(|name| format!("package {name}"))
+            .collect();
+        needers.extend(dependents.iter().cloned());
+        if needers.is_empty() || self.force {
+            return None;
+        }
+        let also = if dependents.is_empty() {
+            String::new()
+        } else {
+            format!(" Removing it also removes {}.", dependents.join(", "))
+        };
+        let question = format!(
+            "{what} is still needed by {}.{also} Remove it anyway?",
+            needers.join(", ")
+        );
+        match ask(ctx, &question, &what) {
+            Outcome::Done => None,
+            Outcome::Kept => Some(match modules.first() {
+                Some(owner) => {
+                    ctx.note(&format!(
+                        "{what} now belongs to module {owner}, so removing that module removes it"
+                    ));
+                    Outcome::PassedTo(owner)
+                }
+                None => {
+                    ctx.note(&format!(
+                        "{what} stays recorded, so a later remove asks again"
+                    ));
+                    Outcome::Stays
+                }
+            }),
+            outcome => Some(outcome),
+        }
+    }
 }

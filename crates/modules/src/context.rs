@@ -8,13 +8,14 @@ use std::{
     sync::mpsc,
 };
 
-use myconfig_utils::{PackageSpec, PackageSystem, PackageTool, find_program, resolve_package};
+use myconfig_utils::{PackageSpec, PackageSystem, find_program, resolve_package};
 use package_catalog::Package;
 use serde::{Deserialize, Serialize};
 use xshell::{Cmd, Shell, cmd};
 
 use crate::{
     ModuleResult, Setting,
+    package_manager::PackageManager,
     state::{Change, Previous, StateStore},
 };
 
@@ -135,6 +136,11 @@ impl<'a> Context<'a> {
 
     pub(crate) fn set_module(&self, module: &'static str) {
         self.module.set(module);
+    }
+
+    /// The changes of the current module that its last removal did not undo, oldest first.
+    pub(crate) fn pending(&self) -> Vec<crate::state::Pending> {
+        self.state.borrow().pending(self.module.get())
     }
 
     pub(crate) fn interaction(&self) -> &dyn Interaction {
@@ -285,8 +291,17 @@ impl<'a> Context<'a> {
         self.io.has_terminal()
     }
 
+    /// Asks a question that the module needs answered. When nobody can answer, it returns
+    /// `Unanswered`, and the runner skips the module if its install returns that error
+    /// unchanged.
     pub fn confirm(&self, question: &str) -> Result<bool, Unanswered> {
         self.io.confirm(question)
+    }
+
+    /// Asks an optional question after the install itself. Nobody answering counts as a
+    /// no, and the runner does not skip the module for it.
+    pub fn confirm_optional(&self, question: &str) -> bool {
+        self.io.confirm(question).unwrap_or(false)
     }
 
     pub fn note(&self, message: &str) {
@@ -297,7 +312,7 @@ impl<'a> Context<'a> {
 
     pub(crate) fn record(&self, change: Change) -> ModuleResult {
         let mut state = self.state.borrow_mut();
-        if state.recorded_in_run(&change) {
+        if state.recorded_in_run(self.module.get(), &change) {
             return Ok(());
         }
         state.record(self.module.get(), change)
@@ -320,155 +335,127 @@ impl<'a> Context<'a> {
             .collect()
     }
 
-    pub(crate) fn package_installed(&self, spec: PackageSpec) -> ModuleResult<bool> {
-        let sh = self.shell;
-        let name = spec.name;
-        match spec.tool {
-            PackageTool::Pacman | PackageTool::Paru => self.succeeds(cmd!(sh, "pacman -Q {name}")),
-            PackageTool::Apt => {
-                let format = "-f=${Status}";
-                let (_, status) = self.read_unchecked(cmd!(sh, "dpkg-query -W {format} {name}"))?;
-                Ok(status.ends_with("install ok installed"))
-            }
-            PackageTool::Winget => self.succeeds(cmd!(
-                sh,
-                "winget list --id {name} --exact --accept-source-agreements"
-            )),
-        }
+    /// How this run's package system names `package`.
+    pub(crate) fn spec(&self, package: Package) -> ModuleResult<PackageSpec> {
+        Ok(self.specs(&[package])?[0].1)
     }
 
-    /// Installs packages without recording them.
-    pub(crate) fn install_specs(&self, specs: &[PackageSpec]) -> ModuleResult {
-        let sh = self.shell;
-        let names = |tool: PackageTool| -> Vec<&str> {
-            specs
-                .iter()
-                .filter(|spec| spec.tool == tool)
-                .map(|spec| spec.name)
-                .collect()
-        };
-        let official = names(PackageTool::Pacman);
-        if !official.is_empty() {
-            self.run(cmd!(
-                sh,
-                "sudo pacman -S --needed --noconfirm {official...}"
-            ))?;
-        }
-        let aur = names(PackageTool::Paru);
-        if !aur.is_empty() {
-            crate::support::ensure_paru(self)?;
-            self.run(cmd!(
-                sh,
-                "paru -S --needed --noconfirm --skipreview {aur...}"
-            ))?;
-        }
-        let apt = names(PackageTool::Apt);
-        if !apt.is_empty() {
-            self.run(cmd!(sh, "sudo apt-get install -y {apt...}"))?;
-        }
-        let winget = names(PackageTool::Winget);
-        if !winget.is_empty() {
-            crate::support::import_winget_packages(self, &winget)?;
-        }
-        Ok(())
+    /// The package system this run installs with.
+    pub(crate) fn packages(&self) -> &'static dyn PackageManager {
+        crate::package_manager::for_system(self.package_system)
     }
 
-    /// Uninstalls packages without recording them.
-    pub(crate) fn uninstall_specs(&self, specs: &[PackageSpec]) -> ModuleResult {
-        let sh = self.shell;
-        let arch: Vec<_> = specs
-            .iter()
-            .filter(|spec| matches!(spec.tool, PackageTool::Pacman | PackageTool::Paru))
-            .map(|spec| spec.name)
-            .collect();
-        if !arch.is_empty() {
-            self.run(cmd!(sh, "sudo pacman -R --noconfirm {arch...}"))?;
-        }
-        let apt: Vec<_> = specs
-            .iter()
-            .filter(|spec| spec.tool == PackageTool::Apt)
-            .map(|spec| spec.name)
-            .collect();
-        if !apt.is_empty() {
-            self.run(cmd!(sh, "sudo apt-get remove -y {apt...}"))?;
-        }
-        for spec in specs.iter().filter(|spec| spec.tool == PackageTool::Winget) {
-            let name = spec.name;
-            self.run(cmd!(
-                sh,
-                "winget uninstall --id {name} --exact --silent --accept-source-agreements"
-            ))?;
-        }
-        Ok(())
-    }
-
-    /// Installs the missing packages and records them, so `remove` uninstalls only those.
+    /// Installs the missing packages and records each one before installing it, so
+    /// `remove` uninstalls only those.
     pub fn install_packages(&self, packages: &[Package]) -> ModuleResult {
-        let specs = self.specs(packages)?;
+        let manager = self.packages();
         let mut missing = Vec::new();
-        for (package, spec) in specs {
-            if !self.package_installed(spec)? {
-                missing.push((package, spec));
+        let mut targets = Vec::new();
+        for (package, spec) in self.specs(packages)? {
+            let installed = manager.installed(self, spec)?;
+            if !installed {
+                self.record(Change::PackageInstalled(package))?;
+                missing.push(spec);
+            }
+            if !installed || manager.moves_installed(spec) {
+                targets.push(spec);
             }
         }
-        if missing.is_empty() {
+        if targets.is_empty() {
             return Ok(());
         }
-        let missing_specs: Vec<_> = missing.iter().map(|(_, spec)| *spec).collect();
-        if self.package_system == PackageSystem::Apt {
-            crate::apt_repository::add_repositories(
-                self,
-                &missing_specs,
-                &crate::apt_repository::codename()?,
-            )?;
-        }
-        self.install_specs(&missing_specs)?;
-        for (package, spec) in missing {
-            if self.package_installed(spec)? {
-                self.record(Change::PackageInstalled(package))?;
-            } else if spec.tool == PackageTool::Winget {
-                self.note(&format!("Winget could not install {}", spec.name));
-            } else {
-                return Err(format!("{} is not installed after installation", spec.name).into());
+        manager.install(self, &targets)?;
+        for spec in missing {
+            if !manager.installed(self, spec)? {
+                manager.still_missing(self, spec)?;
             }
         }
         Ok(())
     }
 
-    /// Uninstalls the installed packages and records them, so `remove` can reinstall them.
+    /// Uninstalls the installed packages and records each one before uninstalling it, so
+    /// `remove` can reinstall them.
     pub fn uninstall_packages(&self, packages: &[Package]) -> ModuleResult {
+        let manager = self.packages();
         let mut installed = Vec::new();
         for (package, spec) in self.specs(packages)? {
-            if self.package_installed(spec)? {
-                installed.push((package, spec));
+            if manager.installed(self, spec)? {
+                self.record(Change::PackageUninstalled(package))?;
+                installed.push(spec);
             }
         }
         if installed.is_empty() {
             return Ok(());
         }
-        let specs: Vec<_> = installed.iter().map(|(_, spec)| *spec).collect();
-        self.uninstall_specs(&specs)?;
-        for (package, _) in installed {
-            self.record(Change::PackageUninstalled(package))?;
-        }
-        Ok(())
+        manager.uninstall(self, &installed)
     }
 
-    /// Changes a setting after recording its current value.
+    /// Changes a setting after recording its current value, or records around the call
+    /// each key that its KDE tool changes. A setting that only exists or not goes through
+    /// `add` instead.
     pub fn set(&self, setting: Setting, value: &str) -> ModuleResult {
-        let previous = setting.read(self)?;
-        if previous.as_deref() == Some(value) {
-            return if setting.reapplies() {
-                setting.write(self, value)
-            } else {
-                Ok(())
-            };
+        if setting.presence() {
+            return Err(format!("{} has no value to set; add it", setting.describe()).into());
         }
-        self.record(Change::Setting {
-            setting: setting.clone(),
-            previous,
-        })?;
+        self.change(setting, value)
+    }
+
+    /// Adds a setting that only exists or not, after recording that it was missing.
+    pub fn add(&self, setting: Setting) -> ModuleResult {
+        if !setting.presence() {
+            return Err(format!("{} needs a value", setting.describe()).into());
+        }
+        self.change(setting, crate::setting::PRESENT)
+    }
+
+    fn change(&self, setting: Setting, value: &str) -> ModuleResult {
+        let previous = setting.read(self)?;
+        let unchanged = previous.as_deref() == Some(value);
+        if unchanged && !setting.reapplies() {
+            return Ok(());
+        }
+        let files = setting.kde_files();
+        if !files.is_empty() {
+            return self.write_recording_kde_keys(&setting, value, files);
+        }
+        if !unchanged {
+            self.record(Change::Setting {
+                setting: setting.clone(),
+                previous,
+            })?;
+        }
         setting.write(self, value)
+    }
+
+    /// Writes a setting whose KDE tool changes more keys than the value, then records each
+    /// key it changed in `files` with the value from before, also when the tool fails part
+    /// way. This is the one recording that follows the change: which keys the tool changes is
+    /// known only afterwards. `remove` then puts back only those keys, so keys that the
+    /// person or another module writes in the same files later stay.
+    fn write_recording_kde_keys(
+        &self,
+        setting: &Setting,
+        value: &str,
+        files: &[&str],
+    ) -> ModuleResult {
+        let before = files
+            .iter()
+            .map(|file| crate::setting::kde_entries(self, file))
+            .collect::<ModuleResult<Vec<_>>>()?;
+        let written = setting.write(self, value);
+        // Every changed key is recorded even when one record fails, so remove can still put
+        // back the others; the first failure is reported after the loop.
+        let mut recorded = Ok(());
+        for (file, before) in files.iter().zip(&before) {
+            let after = crate::setting::kde_entries(self, file)?;
+            for (setting, previous) in crate::setting::kde_changes(file, before, &after) {
+                let result = self.record(Change::Setting { setting, previous });
+                if recorded.is_ok() {
+                    recorded = result;
+                }
+            }
+        }
+        written.and(recorded)
     }
 
     /// Deletes a setting after recording its current value.
@@ -702,22 +689,31 @@ impl<'a> Context<'a> {
     }
 
     pub fn enable_service(&self, unit: &str, scope: ServiceScope) -> ModuleResult {
-        let sh = self.shell;
-        let user = scope_argument(scope);
-        let (_, state) = self.read_unchecked(cmd!(sh, "systemctl {user...} is-enabled {unit}"))?;
-        let was_enabled = state == "enabled";
-        if was_enabled {
+        if self.record_service(unit, scope)? {
             return Ok(());
         }
-        self.record(Change::Service {
-            unit: unit.to_owned(),
-            scope,
-            was_enabled,
-        })?;
+        let sh = self.shell;
         match scope {
             ServiceScope::System => self.run(cmd!(sh, "sudo systemctl enable {unit}")),
             ServiceScope::User => self.run(cmd!(sh, "systemctl --user enable {unit}")),
         }
+    }
+
+    /// Records the enabled state of a service that a program is about to enable by itself.
+    /// Returns whether the service is already enabled, which leaves nothing to record.
+    pub fn record_service(&self, unit: &str, scope: ServiceScope) -> ModuleResult<bool> {
+        let user = scope_argument(scope);
+        let (_, state) =
+            self.read_unchecked(cmd!(self.shell, "systemctl {user...} is-enabled {unit}"))?;
+        if state == "enabled" {
+            return Ok(true);
+        }
+        self.record(Change::Service {
+            unit: unit.to_owned(),
+            scope,
+            was_enabled: false,
+        })?;
+        Ok(false)
     }
 
     /// Whether a service is enabled, and whether it is active.

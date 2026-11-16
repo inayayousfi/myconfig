@@ -37,6 +37,11 @@ fn install_claude(ctx: &Context) -> ModuleResult {
         .read(cmd!(sh, "curl -fsSL https://claude.ai/install.sh"))
         .map_err(|error| format!("could not download the Claude Code installer: {error}"))?;
     ctx.created(&claude, false)?;
+    // The installer keeps the real binaries there, and ~/.local/bin/claude links to them.
+    let versions = ctx.home.join(".local/share/claude");
+    if !versions.exists() {
+        ctx.created(&versions, false)?;
+    }
     ctx.run(cmd!(sh, "bash -c {installer}"))
         .map_err(|error| format!("the Claude Code installer failed: {error}"))?;
     require_executable(&claude)

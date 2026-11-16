@@ -2,7 +2,7 @@
 use xshell::cmd;
 
 use super::Kind;
-use crate::{Context, ModuleResult};
+use crate::{Context, ModuleResult, support::agent_tool_path};
 
 pub(super) struct ClaudeMcpServer<'a> {
     pub name: &'a str,
@@ -33,6 +33,7 @@ impl Kind for ClaudeMcpServer<'_> {
             self.delete(ctx)?;
         }
         let name = self.name;
+        let _path = ctx.shell.push_env("PATH", agent_tool_path(ctx)?);
         ctx.run(cmd!(
             ctx.shell,
             "claude mcp add-json --scope user {name} {value}"
@@ -41,6 +42,8 @@ impl Kind for ClaudeMcpServer<'_> {
 
     fn delete(&self, ctx: &Context) -> ModuleResult {
         let name = self.name;
+        // remove can run from a shell whose PATH lacks the folder Claude Code installs into.
+        let _path = ctx.shell.push_env("PATH", agent_tool_path(ctx)?);
         ctx.run(cmd!(ctx.shell, "claude mcp remove --scope user {name}"))
     }
 }

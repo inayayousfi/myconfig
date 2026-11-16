@@ -38,6 +38,17 @@ impl Drop for Scratch {
     }
 }
 
+/// Writes a shell script at `path` and makes it executable. A child process writes it,
+/// so the test process never holds the script open for writing. A program that another
+/// test thread starts meanwhile would inherit such a descriptor, and running the script
+/// would then fail with "Text file busy".
+pub fn program(path: &Path, script: &str) {
+    run(Command::new("/bin/sh")
+        .args(["-c", r#"printf '%s\n' "$1" > "$2" && chmod 755 "$2""#, "sh"])
+        .arg(format!("#!/bin/sh\n{script}"))
+        .arg(path));
+}
+
 /// Runs a command and fails the test with its output when it does not succeed.
 pub fn run(command: &mut Command) -> Output {
     let output = command

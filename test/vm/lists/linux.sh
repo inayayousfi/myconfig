@@ -9,15 +9,21 @@
 
 set -euo pipefail
 
+# Folders and files carry their mode and owner, because an undo that brings back the content
+# of a file but not its mode or owner leaves the machine changed.
 files() {
-    local root=$1
+    local root=$1 modes
     [ -e "$root" ] || return 0
     # A path that disappears while the list is made is left out of the list.
-    find "$root" -xdev -type d -printf '%p\tdirectory\n' 2>/dev/null || true
+    find "$root" -xdev -type d -printf '%p\tdirectory %m %u:%g\n' 2>/dev/null || true
     find "$root" -xdev -type l -printf '%p\tlink %l\n' 2>/dev/null || true
+    modes=$(mktemp)
+    find "$root" -xdev -type f -printf '%p\t%m %u:%g\n' 2>/dev/null >"$modes" || true
     { find "$root" -xdev -type f -print0 2>/dev/null || true; } \
         | { xargs -0 -r sha256sum 2>/dev/null || true; } \
-        | sed -E 's/^\\?([0-9a-f]{64}) [ *](.*)$/\2\t\1/'
+        | sed -E 's/^\\?([0-9a-f]{64}) [ *](.*)$/\2\t\1/' \
+        | awk -F '\t' 'FILENAME == ARGV[1] { mode[$1] = $2; next } { print $1 "\t" $2 (($1 in mode) ? " " mode[$1] : "") }' "$modes" -
+    rm -f "$modes"
 }
 
 case ${1:-} in
@@ -44,6 +50,9 @@ system)
     echo '## files'
     files /etc
     files /boot
+    files /usr/local
+    files /opt
+    files /var/lib/flatpak
     files "$home"
     ;;
 *)

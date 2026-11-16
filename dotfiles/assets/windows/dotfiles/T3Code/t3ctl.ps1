@@ -1,7 +1,7 @@
 # Manage the T3 Code server on this machine: its install, its boot task, and
 # the two remote routes (T3 Connect and Tailscale Serve).
 # Written for Windows PowerShell 5.1, which the boot task runs.
-param([string]$Command)
+param([string]$Command, [Parameter(ValueFromRemainingArguments)][string[]]$Parts)
 
 $T3Home = if ($env:T3CODE_HOME) { $env:T3CODE_HOME } else { Join-Path $HOME ".t3" }
 $TaskName = "T3 Code"
@@ -25,6 +25,8 @@ Usage: t3ctl <command>
   remote    Turn T3 Connect or Tailscale on or off, signing in and pairing as needed.
   update    Install the newest t3 from npm and restart the server on it.
   repair    Reinstall what is missing and recreate the boot task.
+  uninstall [task] [package]
+            Remove the boot task, the t3 npm package, or both.
 "@
 }
 
@@ -267,10 +269,14 @@ function Install-T3Package($Spec) {
     if ($LASTEXITCODE -ne 0 -or -not (Get-T3Runtime)) { Stop-WithError "t3 could not download its runtime." }
 }
 
-function Register-BootTask {
+function Test-Administrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = [Security.Principal.WindowsPrincipal]::new($identity)
-    if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function Register-BootTask {
+    if (-not (Test-Administrator)) {
         Write-Info "Registering the boot task needs administrator rights; a new window will ask."
         $process = Start-Process -FilePath (Get-Process -Id $PID).Path -Verb RunAs -Wait -PassThru `
             -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"", "register-task"
@@ -291,6 +297,46 @@ function Register-BootTask {
         -User $credential.UserName -Password $credential.GetNetworkCredential().Password -RunLevel Limited -Force | Out-Null
     if (-not (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue)) { Stop-WithError "The $TaskName boot task was not registered." }
     Write-Ok "Registered the $TaskName boot task"
+}
+
+function Stop-T3Server {
+    $runtimeRoot = Join-Path $T3Home "runtime"
+    Get-Process t3 -ErrorAction SilentlyContinue |
+        Where-Object { $_.Path -and $_.Path.StartsWith($runtimeRoot, [StringComparison]::OrdinalIgnoreCase) } |
+        Stop-Process -Force
+}
+
+function Unregister-BootTask {
+    if (-not (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue)) { return }
+    if (-not (Test-Administrator)) {
+        Write-Info "Removing the boot task needs administrator rights; a new window will ask."
+        $process = Start-Process -FilePath (Get-Process -Id $PID).Path -Verb RunAs -Wait -PassThru `
+            -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"", "uninstall", "task"
+        if ($process.ExitCode -ne 0) { Stop-WithError "The $TaskName boot task was not removed." }
+        return
+    }
+    Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction Stop
+    Stop-T3Server
+    Write-Ok "Removed the $TaskName boot task and the password Windows stored for it"
+}
+
+function Uninstall-T3Package {
+    Stop-T3Server
+    if (-not (Get-Command t3.cmd -ErrorAction SilentlyContinue)) { return }
+    if (-not (Get-Command npm -ErrorAction SilentlyContinue)) { Stop-WithError "npm is not installed or is not in PATH." }
+    Write-Info "Uninstalling t3 from npm"
+    & npm uninstall -g t3
+    if ($LASTEXITCODE -ne 0) { Stop-WithError "npm could not uninstall t3." }
+}
+
+# Removes only the parts that are there, so it also succeeds when they are gone.
+function Invoke-Uninstall {
+    foreach ($part in $Parts) {
+        if ($part -notin "task", "package") { Stop-WithError "Unknown part to uninstall: $part" }
+    }
+    if ($Parts -contains "task") { Unregister-BootTask }
+    if ($Parts -contains "package") { Uninstall-T3Package }
 }
 
 # The boot task runs this. It restarts the server whenever it exits, which is
@@ -334,6 +380,7 @@ switch ($Command) {
     "repair" { Invoke-Repair }
     "serve" { Invoke-Serve }
     "register-task" { Register-BootTask }
+    "uninstall" { Invoke-Uninstall }
     { $_ -in "help", "-h", "--help" } { Show-Usage }
     default {
         Show-Usage

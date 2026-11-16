@@ -121,7 +121,6 @@ pub fn seed_files(public_key: &str) -> Vec<SeedFile> {
         "kernel": "linux-cachyos",
         "desktop": "kde",
         "bootloader": "refind",
-        "post_install": "/root/myconfig-post-install.sh",
     });
     vec![
         SeedFile {

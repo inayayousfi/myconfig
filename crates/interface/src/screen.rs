@@ -248,10 +248,10 @@ fn drain(
                     ));
                 }
                 app.status[index] = match (step, error.is_none()) {
+                    (_, false) => Status::Broken,
                     (Step::Verify, true) => Status::Installed,
-                    (Step::Verify, false) | (Step::Install, false) => Status::Broken,
                     (Step::Remove, true) => Status::Missing,
-                    _ => app.status[index],
+                    (Step::Install, true) => app.status[index],
                 };
             }
             Message::Event(Event::Skipped { module, reason }) => {

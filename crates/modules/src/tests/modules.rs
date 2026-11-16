@@ -1,28 +1,25 @@
 //! What each module installs, writes, enables and refuses, against fake system programs.
-use std::{fs, os::unix::fs::PermissionsExt, path::Path};
+use std::{
+    fs,
+    os::unix::fs::PermissionsExt,
+    path::{Path, PathBuf},
+};
 
 use super::{Answers, Sandbox};
 use crate::{
-    AgentConfigStowed, Base, CachyosSetup, Cli, Context, Docker, EnvironmentInventory, Footprint,
-    Ghostty, Handy, Kanata, KanataKde, Module, ModuleResult, Need, Package, PackageSystem,
-    Runtimes, ServiceScope, runner,
+    Base, CachyosSetup, Cli, Context, Docker, Footprint, Ghostty, Handy, Kanata, KanataKde, Module,
+    ModuleResult, Need, Package, PackageSystem, Runtimes, ServiceScope, runner,
 };
 
 /// Fake system programs that keep their state under the sandbox, so modules run as on a
 /// real machine without root: `sudo` moves `/etc`, `/usr`, `/boot` and `/efi` paths under
 /// `system/`, groups live in `groups/`, `systemctl` remembers enabled system units in
-/// `units/system/` and user units in `units/user/` and counts every unit active until
-/// `disable --now` stops it, KDE keys live in `kde/`, and `ufw` prints its rules in ufw's
-/// own word order.
+/// `units/system/` and user units in `units/user/`, and KDE keys live in `kde/`. A unit is
+/// active only while `<unit>.active` exists beside it: `start`, `restart` and
+/// `enable --now` create that marker, and `stop` and `disable --now` remove it. A unit
+/// fails to start while `<unit>.broken` exists.
 fn system(sandbox: &Sandbox) {
-    for directory in [
-        "system",
-        "groups",
-        "units/system",
-        "units/user",
-        "kde",
-        "ufw",
-    ] {
+    for directory in ["system", "groups", "units/system", "units/user", "kde"] {
         fs::create_dir_all(sandbox.root.join(directory)).unwrap();
     }
     sandbox.fake(
@@ -82,18 +79,21 @@ for argument in "$@"; do
     esac
 done
 units="$MYCONFIG_TEST_ROOT/units/$scope"
+start() { if [ -e "$units/$unit.broken" ]; then exit 1; fi; : > "$units/$unit.active"; }
 for unit in $names; do
     case "$command" in
-        enable) : > "$units/$unit"; [ -n "$now" ] && rm -f "$units/$unit.stopped" ;;
-        disable) rm -f "$units/$unit"; [ -n "$now" ] && : > "$units/$unit.stopped" ;;
-        start) rm -f "$units/$unit.stopped" ;;
+        enable) : > "$units/$unit"; [ -n "$now" ] && start ;;
+        disable) rm -f "$units/$unit"; [ -n "$now" ] && rm -f "$units/$unit.active" ;;
+        start | restart) start ;;
+        stop) rm -f "$units/$unit.active" ;;
         is-enabled) if [ -e "$units/$unit" ]; then echo enabled; else echo disabled; exit 1; fi ;;
-        is-active) case "$unit" in graphical-session.target) exit 1 ;; esac
-            if [ -e "$units/$unit.stopped" ]; then echo inactive; exit 3; else echo active; fi ;;
+        is-active) if [ -e "$units/$unit.active" ]; then echo active; else echo inactive; exit 3; fi ;;
+        show) cat "$MYCONFIG_TEST_ROOT/manager-pid" 2>/dev/null ;;
     esac
 done
 exit 0"#,
     );
+    sandbox.fake("ps", r#"cat "$MYCONFIG_TEST_ROOT/manager-groups""#);
     sandbox.fake(
         "kwriteconfig6",
         r#"printf 'kwriteconfig6 %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
@@ -113,7 +113,8 @@ mkdir -p "$(dirname "$path/$key")" && printf '%s' "$value" > "$path/$key""#,
         r#"path="$MYCONFIG_TEST_ROOT/kde"
 while [ "$#" -gt 0 ]; do
     case "$1" in
-        --file | --group) path="$path/$2"; shift 2 ;;
+        --file) path="$path/${2##*/}"; shift 2 ;;
+        --group) path="$path/$2"; shift 2 ;;
         --key) key="$2"; shift 2 ;;
         --default) default="$2"; shift 2 ;;
         *) shift ;;
@@ -122,31 +123,6 @@ done
 if [ -e "$path/$key" ]; then cat "$path/$key"; else printf '%s' "$default"; fi"#,
     );
     sandbox.fake("python", r#"exec python3 "$@""#);
-    sandbox.fake(
-        "ufw",
-        r#"printf 'ufw %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
-rules="$MYCONFIG_TEST_ROOT/ufw/rules"
-case "$1" in
-    show) [ -e "$rules" ] && cat "$rules"; exit 0 ;;
-    status) if [ -e "$MYCONFIG_TEST_ROOT/ufw/active" ]; then echo 'Status: active'; else echo 'Status: inactive'; fi; exit 0 ;;
-    --force) : > "$MYCONFIG_TEST_ROOT/ufw/active"; exit 0 ;;
-    disable) rm -f "$MYCONFIG_TEST_ROOT/ufw/active"; exit 0 ;;
-    delete) shift; delete=1 ;;
-esac
-# Print the rule as ufw lists it: action, from, to, port, proto, comment.
-action="$1"; shift
-while [ "$#" -gt 0 ]; do
-    case "$1" in
-        in) shift ;;
-        from | to | port | proto | comment) eval "$1=\"\$2\""; shift 2 ;;
-        *) shift ;;
-    esac
-done
-line="ufw $action from $from to $to port $port proto $proto comment '$comment'"
-touch "$rules"
-if [ -n "${delete:-}" ]; then grep -Fxv "$line" "$rules" > "$rules.new"; mv "$rules.new" "$rules"
-else printf '%s\n' "$line" >> "$rules"; fi"#,
-    );
 }
 
 fn system_file(sandbox: &Sandbox, path: &str) -> Option<String> {
@@ -172,107 +148,27 @@ fn kde(sandbox: &Sandbox, path: &str) -> Option<String> {
     fs::read_to_string(sandbox.root.join("kde").join(path)).ok()
 }
 
-fn enabled(sandbox: &Sandbox, scope: ServiceScope, unit: &str) -> bool {
+/// The file that the fake `systemctl` keeps for `name`, a unit or one of its markers.
+fn unit_file(sandbox: &Sandbox, scope: ServiceScope, name: &str) -> PathBuf {
     let folder = match scope {
         ServiceScope::System => "units/system",
         ServiceScope::User => "units/user",
     };
-    sandbox.root.join(folder).join(unit).exists()
+    sandbox.root.join(folder).join(name)
+}
+
+fn enabled(sandbox: &Sandbox, scope: ServiceScope, unit: &str) -> bool {
+    unit_file(sandbox, scope, unit).exists()
+}
+
+fn active(sandbox: &Sandbox, scope: ServiceScope, unit: &str) -> bool {
+    unit_file(sandbox, scope, &format!("{unit}.active")).exists()
 }
 
 fn install_everything(sandbox: &Sandbox, packages: &[&str]) {
     for package in packages {
         fs::write(sandbox.root.join("installed").join(package), "").unwrap();
     }
-}
-
-#[test]
-fn every_linux_module_package_has_a_name_on_its_package_manager() {
-    // A package without a name fails the install before the module changes anything.
-    let sandbox = Sandbox::new("package-names");
-    let arch: [&dyn Module; 5] = [
-        &Base {
-            packages: Base::ARCH,
-            unwanted: &[Package::CachyUpdate],
-            needs: &[],
-        },
-        &CachyosSetup,
-        &Cli,
-        &Runtimes {
-            bun_installer: false,
-        },
-        &crate::KdePlasma,
-    ];
-    let more: [&dyn Module; 13] = [
-        &crate::Ssh,
-        &crate::TerminalTools,
-        &Ghostty,
-        &crate::AxidevOsk,
-        &crate::Tailscale,
-        &crate::AgentsPackages {
-            extra: &[Package::Ydotool, Package::WslSshAgent],
-        },
-        &crate::AndroidPhone,
-        &Kanata {
-            start_at_login: true,
-        },
-        &KanataKde,
-        &Handy,
-        &crate::Pipewire,
-        &Docker { setup_tool: false },
-        &AgentConfigStowed { ydotool: true },
-    ];
-    sandbox.with(&Answers::new(None), |ctx| {
-        for module in arch.iter().chain(more.iter()) {
-            ctx.specs(&module.footprint(ctx).packages)
-                .unwrap_or_else(|error| panic!("{}: {error}", module.name()));
-        }
-    });
-    let apt = |package| myconfig_utils::resolve_package(package, PackageSystem::Apt);
-    let ubuntu: [&dyn Module; 12] = [
-        &Base {
-            packages: Base::UBUNTU,
-            unwanted: &[],
-            needs: &[],
-        },
-        &Cli,
-        &crate::SystemMonitor,
-        &Runtimes {
-            bun_installer: true,
-        },
-        &crate::Zsh {
-            set_login_shell: true,
-        },
-        &crate::TerminalTools,
-        &crate::Tailscale,
-        &crate::AgentsPackages { extra: &[] },
-        &Docker { setup_tool: true },
-        &AgentConfigStowed { ydotool: false },
-        &crate::T3Code,
-        &crate::GitConfig { windows_ssh: false },
-    ];
-    sandbox.with(&Answers::new(None), |ctx| {
-        for module in ubuntu {
-            // Bun comes from its own installer on Ubuntu.
-            for package in module.footprint(ctx).packages {
-                assert!(
-                    package == Package::Bun || apt(package).is_some(),
-                    "{}: {package:?} has no APT name",
-                    module.name()
-                );
-            }
-        }
-    });
-    let arch_name = |package| {
-        myconfig_utils::resolve_package(package, PackageSystem::Arch)
-            .unwrap()
-            .name
-    };
-    assert_eq!(arch_name(Package::Kanata), "kanata-bin");
-    assert_eq!(arch_name(Package::Handy), "handy-bin");
-    assert_eq!(arch_name(Package::GithubCli), "github-cli-git");
-    assert_eq!(arch_name(Package::IosevkaFont), "ttf-iosevka-nerd");
-    assert_eq!(apt(Package::Fd).unwrap().name, "fd-find");
 }
 
 const MKINITCPIO: &str = "# vim:set ft=sh
@@ -471,12 +367,41 @@ fn packages_are_uninstalled_only_when_installed() {
         ctx.uninstall_packages(&[Package::Alacritty, Package::Wezterm])
             .unwrap();
     });
-    assert_eq!(sandbox.calls("pacman -R --noconfirm kitty konsole"), 1);
+    assert_eq!(sandbox.calls("pacman -Rs --noconfirm kitty konsole"), 1);
     assert_eq!(
         sandbox.calls("pacman -R"),
         1,
         "no removal runs when nothing is installed"
     );
+}
+
+#[test]
+fn apt_packages_are_uninstalled_only_when_installed() {
+    let sandbox = Sandbox::for_system("uninstall-apt", PackageSystem::Apt);
+    install_everything(&sandbox, &["ripgrep", "btop"]);
+    let io = Answers::new(None);
+    sandbox.with(&io, |ctx| {
+        ctx.state()
+            .borrow_mut()
+            .begin(crate::state::Action::Install)
+            .unwrap();
+        let packages = [
+            Package::Ripgrep,
+            Package::Jq,
+            Package::Fastfetch,
+            Package::Btop,
+        ];
+        ctx.uninstall_packages(&packages).unwrap();
+        ctx.uninstall_packages(&[Package::Jq, Package::Fastfetch])
+            .unwrap();
+    });
+    assert_eq!(sandbox.calls("apt-get purge -y ripgrep btop"), 1);
+    assert_eq!(
+        sandbox.calls("apt-get purge"),
+        1,
+        "no removal runs when nothing is installed"
+    );
+    assert!(!sandbox.installed("ripgrep") && !sandbox.installed("btop"));
 }
 
 /// Deploys one real config package.
@@ -562,6 +487,7 @@ fn folders_that_programs_write_into_stay_real_folders() {
     let sandbox = Sandbox::new("app-folders");
     let io = Answers::new(None);
     for (package, folder) in [
+        ("plasma", ".local/share/applications"),
         ("plasma", ".local/share/kwin/scripts"),
         ("plasma", ".local/share/plasma/plasmoids"),
         ("plasma", ".local/share/kio/servicemenus"),
@@ -572,6 +498,8 @@ fn folders_that_programs_write_into_stay_real_folders() {
         ),
         ("vscodium", ".config/VSCodium/User"),
         ("t3code-desktop", ".t3/userdata"),
+        ("ai", ".fx"),
+        ("ai", ".config/opencode"),
     ] {
         sandbox
             .with(&io, |ctx| {
@@ -655,8 +583,15 @@ fn kanata_gets_input_access_and_waits_for_the_new_groups() {
     assert_eq!(
         sandbox.calls("restart myconfig-kanata.service"),
         0,
-        "the user's session lacks the new groups"
+        "the user's systemd manager started before the new groups"
     );
+    // After a new login, the user's systemd manager has the groups, so a rerun starts Kanata.
+    fs::write(sandbox.root.join("manager-pid"), "4242\n").unwrap();
+    fs::write(sandbox.root.join("manager-groups"), "users,input,uinput\n").unwrap();
+    sandbox
+        .with(&io, |ctx| runner::install(ctx, &[&kanata], &[&kanata]))
+        .unwrap();
+    assert_eq!(sandbox.calls("restart myconfig-kanata.service"), 1);
 
     sandbox
         .with(&io, |ctx| {
@@ -678,15 +613,6 @@ fn kanata_started_by_the_kde_tray_is_not_enabled_on_its_own() {
     system(&sandbox);
     sandbox.fake("kanata", "exit 0");
     sandbox.fake("plasmashell", "exit 0");
-    let wants = sandbox
-        .home
-        .join(".config/systemd/user/default.target.wants");
-    fs::create_dir_all(&wants).unwrap();
-    std::os::unix::fs::symlink(
-        "../myconfig-kanata.service",
-        wants.join("myconfig-kanata.service"),
-    )
-    .unwrap();
     let modules: [&dyn Module; 2] = [
         &Kanata {
             start_at_login: false,
@@ -703,7 +629,6 @@ fn kanata_started_by_the_kde_tray_is_not_enabled_on_its_own() {
         ServiceScope::User,
         "myconfig-kanata.service"
     ));
-    assert!(fs::symlink_metadata(wants.join("myconfig-kanata.service")).is_err());
     assert!(enabled(
         &sandbox,
         ServiceScope::User,
@@ -808,8 +733,8 @@ fn docker_refuses_a_docker_group_member_without_changing_anything() {
     assert!(!enabled(&sandbox, ServiceScope::User, "docker.service"));
 }
 
-/// Makes the fake `docker` package enable the rootful daemon when it installs, as
-/// Ubuntu's docker-ce package does.
+/// Makes the fake `docker` package enable and start the rootful daemon and create the
+/// docker group when it installs, as Ubuntu's docker-ce package does.
 fn docker_package_enables_the_rootful_daemon(sandbox: &Sandbox) {
     fs::rename(
         sandbox.root.join("bin/pacman"),
@@ -818,7 +743,7 @@ fn docker_package_enables_the_rootful_daemon(sandbox: &Sandbox) {
     .unwrap();
     sandbox.fake(
         "pacman",
-        r#"if [ "$1" = -S ]; then for name in "$@"; do [ "$name" = docker ] && : > "$MYCONFIG_TEST_ROOT/units/system/docker.service" && : > "$MYCONFIG_TEST_ROOT/units/system/docker.socket"; done; fi
+        r#"if [ "$1" = -S ]; then for name in "$@"; do [ "$name" = docker ] && mkdir -p "$MYCONFIG_TEST_ROOT/groups/docker" && for unit in docker.service docker.socket; do : > "$MYCONFIG_TEST_ROOT/units/system/$unit"; : > "$MYCONFIG_TEST_ROOT/units/system/$unit.active"; done; done; fi
 exec pacman-base "$@""#,
     );
 }
@@ -845,13 +770,15 @@ fn docker_runs_rootless_through_its_own_context_and_remove_restores_the_default(
     ] {
         assert!(sandbox.installed(package), "{package} was not installed");
     }
-    let stopped = |unit: &str| sandbox.root.join(format!("units/system/{unit}.stopped"));
     for unit in ["docker.service", "docker.socket"] {
         assert!(
             !enabled(&sandbox, ServiceScope::System, unit),
             "the rootful {unit} is still enabled"
         );
-        assert!(stopped(unit).exists(), "the rootful {unit} still runs");
+        assert!(
+            !active(&sandbox, ServiceScope::System, unit),
+            "the rootful {unit} still runs"
+        );
     }
     assert!(enabled(&sandbox, ServiceScope::User, "docker.service"));
     assert_eq!(
@@ -863,6 +790,7 @@ fn docker_runs_rootless_through_its_own_context_and_remove_restores_the_default(
         fs::read_to_string(sandbox.root.join("docker/.current")).unwrap(),
         "rootless"
     );
+    assert!(sandbox.root.join("groups/docker").is_dir());
     sandbox
         .with(&io, |ctx| {
             runner::remove(ctx, &[&DOCKER], &[&DOCKER], false)
@@ -875,10 +803,18 @@ fn docker_runs_rootless_through_its_own_context_and_remove_restores_the_default(
     assert!(!sandbox.root.join("docker/rootless").exists());
     assert!(!enabled(&sandbox, ServiceScope::User, "docker.service"));
     assert!(!sandbox.installed("docker"));
+    assert!(
+        !sandbox.root.join("groups/docker").exists(),
+        "the docker group that the package created is still there"
+    );
     for unit in ["docker.service", "docker.socket"] {
         assert!(
             !enabled(&sandbox, ServiceScope::System, unit),
             "remove turned on the rootful {unit}, which only the package install had turned on"
+        );
+        assert!(
+            !active(&sandbox, ServiceScope::System, unit),
+            "remove started the rootful {unit}, which only the package install had started"
         );
     }
 }
@@ -889,8 +825,14 @@ fn removing_docker_turns_back_on_a_rootful_daemon_that_was_on_before() {
     system(&sandbox);
     docker(&sandbox);
     install_everything(&sandbox, &["docker"]);
+    fs::create_dir_all(sandbox.root.join("groups/docker")).unwrap();
     for unit in ["docker.service", "docker.socket"] {
-        fs::write(sandbox.root.join("units/system").join(unit), "").unwrap();
+        fs::write(unit_file(&sandbox, ServiceScope::System, unit), "").unwrap();
+        fs::write(
+            unit_file(&sandbox, ServiceScope::System, &format!("{unit}.active")),
+            "",
+        )
+        .unwrap();
     }
     let io = Answers::new(None);
     sandbox
@@ -902,28 +844,36 @@ fn removing_docker_turns_back_on_a_rootful_daemon_that_was_on_before() {
             runner::remove(ctx, &[&DOCKER], &[&DOCKER], false)
         })
         .unwrap();
-    let stopped = |unit: &str| sandbox.root.join(format!("units/system/{unit}.stopped"));
     for unit in ["docker.service", "docker.socket"] {
         assert!(
             enabled(&sandbox, ServiceScope::System, unit),
             "the rootful {unit} was not enabled again"
         );
         assert!(
-            !stopped(unit).exists(),
+            active(&sandbox, ServiceScope::System, unit),
             "the rootful {unit} was not started again"
         );
     }
+    assert!(
+        sandbox.root.join("groups/docker").is_dir(),
+        "remove deleted a docker group that was there before install"
+    );
 }
 
 #[test]
-fn docker_creates_the_user_service_with_the_setup_tool_and_the_system_path() {
+fn docker_creates_the_user_service_with_the_setup_tool_and_remove_undoes_what_the_tool_did() {
     let sandbox = Sandbox::new("docker-setup-tool");
     system(&sandbox);
     docker(&sandbox);
+    // Like Docker's tool, it also enables the service and creates and selects the context.
     sandbox.fake(
         "dockerd-rootless-setuptool.sh",
         r#"printf 'setuptool %s PATH=%s\n' "$*" "$PATH" >> "$MYCONFIG_TEST_LOG"
-mkdir -p "$HOME/.config/systemd/user" && : > "$HOME/.config/systemd/user/docker.service""#,
+mkdir -p "$HOME/.config/systemd/user" && : > "$HOME/.config/systemd/user/docker.service"
+: > "$MYCONFIG_TEST_ROOT/units/user/docker.service"
+mkdir -p "$MYCONFIG_TEST_ROOT/docker"
+printf 'unix:///run/user/1000/docker.sock' > "$MYCONFIG_TEST_ROOT/docker/rootless"
+printf rootless > "$MYCONFIG_TEST_ROOT/docker/.current""#,
     );
     let docker = Docker { setup_tool: true };
     let io = Answers::new(None);
@@ -938,13 +888,29 @@ mkdir -p "$HOME/.config/systemd/user" && : > "$HOME/.config/systemd/user/docker.
         ),
         1
     );
+    sandbox
+        .with(&io, |ctx| {
+            runner::remove(ctx, &[&docker], &[&docker], false)
+        })
+        .unwrap();
+    assert!(!enabled(&sandbox, ServiceScope::User, "docker.service"));
+    assert!(!sandbox.root.join("docker/rootless").exists());
+    assert_eq!(
+        fs::read_to_string(sandbox.root.join("docker/.current")).unwrap(),
+        "default"
+    );
+    assert!(
+        !sandbox
+            .home
+            .join(".config/systemd/user/docker.service")
+            .exists()
+    );
 }
 
 #[test]
-fn ghostty_becomes_the_kde_terminal_when_plasma_is_present() {
+fn ghostty_becomes_the_kde_terminal_until_removed() {
     let sandbox = Sandbox::new("ghostty-kde");
     system(&sandbox);
-    sandbox.fake("plasmashell", "exit 0");
     let io = Answers::new(None);
     sandbox
         .with(&io, |ctx| runner::install(ctx, &[&Ghostty], &[&Ghostty]))
@@ -954,35 +920,60 @@ fn ghostty_becomes_the_kde_terminal_when_plasma_is_present() {
         kde(&sandbox, "kdeglobals/General/TerminalService").as_deref(),
         Some("com.mitchellh.ghostty.desktop")
     );
+    assert_eq!(
+        kde(&sandbox, "kdeglobals/General/TerminalApplication").as_deref(),
+        Some("/usr/bin/ghostty --gtk-single-instance=true")
+    );
     sandbox
         .with(&io, |ctx| {
             runner::remove(ctx, &[&Ghostty], &[&Ghostty], false)
         })
         .unwrap();
     assert_eq!(kde(&sandbox, "kdeglobals/General/TerminalService"), None);
+    assert_eq!(
+        kde(&sandbox, "kdeglobals/General/TerminalApplication"),
+        None
+    );
 }
 
 #[test]
-fn axidev_installs_once_then_upgrades_through_its_lifecycle_installer() {
+fn axidev_installs_once_upgrades_to_a_newer_release_and_remove_uninstalls_what_it_installed() {
     let sandbox = Sandbox::new("axidev");
     system(&sandbox);
     let lifecycle = sandbox.root.join("bin/axidev-osk-install");
     let app = sandbox.root.join("bin/axidev-osk");
-    // The downloaded installer puts the application and its lifecycle installer in place.
+    let payload = sandbox.root.join("opt/axidev-osk");
+    fs::write(sandbox.root.join("latest"), "0.18.1").unwrap();
+    // GitHub's redirect names the release in the `latest` file. The downloaded installer
+    // puts the application, its lifecycle installer and a 0.18.1 payload in place.
     sandbox.fake(
         "curl",
         &format!(
             r#"printf 'curl %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+case " $* " in *" --write-out "*)
+    printf 'https://github.com/axide-dev/axidev-osk/releases/tag/v%s' "$(cat "$MYCONFIG_TEST_ROOT/latest")"
+    exit 0 ;;
+esac
 while [ "$#" -gt 1 ]; do [ "$1" = --output ] && output="$2"; shift; done
 cat > "$output" <<'SCRIPT'
 #!/bin/sh
 printf 'installer %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
-printf '#!/bin/sh\nprintf "app %%s\\n" "$*" >> "$MYCONFIG_TEST_LOG"\n' > {app}
+cat > {app} <<'APP'
+#!/bin/sh
+printf 'app %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+case "$*" in "linux setup-permissions"*)
+    mkdir -p "$MYCONFIG_TEST_ROOT/groups/uinput" "$MYCONFIG_TEST_ROOT/system/etc/udev/rules.d"
+    : > "$MYCONFIG_TEST_ROOT/groups/uinput/tester"
+    ln -sf /dev/null "$MYCONFIG_TEST_ROOT/system/etc/udev/rules.d/70-axidev-io-uinput.rules" ;;
+esac
+APP
 printf '#!/bin/sh\nprintf "lifecycle %%s\\n" "$*" >> "$MYCONFIG_TEST_LOG"\n' > {lifecycle}
 chmod +x {app} {lifecycle}
+mkdir -p {payload}/lib/python/axidev_osk-0.18.1.dist-info
 SCRIPT"#,
             app = app.display(),
-            lifecycle = lifecycle.display()
+            lifecycle = lifecycle.display(),
+            payload = payload.display()
         ),
     );
     let io = Answers::new(None);
@@ -992,7 +983,8 @@ SCRIPT"#,
                 .borrow_mut()
                 .begin(crate::state::Action::Install)
                 .unwrap();
-            crate::axidev_osk::configure(ctx, &lifecycle, &app).unwrap();
+            ctx.set_module("axidev-osk");
+            crate::axidev_osk::configure(ctx, &lifecycle, &app, &payload).unwrap();
         })
     };
     run();
@@ -1000,22 +992,41 @@ SCRIPT"#,
     for step in [
         "setup-permissions --user tester",
         "setup-autostart --user tester",
-        "setup-greeter",
+        "setup-greeter --manager plasma-login",
     ] {
         assert_eq!(sandbox.calls(&format!("app linux {step}")), 1, "{step}");
     }
     run();
-    assert_eq!(sandbox.calls("lifecycle upgrade --user tester"), 1);
     assert_eq!(
-        sandbox.calls("curl "),
+        sandbox.calls("lifecycle upgrade"),
+        0,
+        "the installed release was upgraded again"
+    );
+    assert_eq!(
+        sandbox.calls("releases/latest/download/axidev-osk-install"),
         1,
         "a rerun must not download the installer again"
     );
-    // Without a terminal, the module stops before installing anything.
-    let error = sandbox
-        .with(&io, |ctx| crate::AxidevOsk.install(ctx))
-        .unwrap_err();
-    assert!(error.to_string().contains("requires a terminal"));
+    fs::write(sandbox.root.join("latest"), "0.19.0").unwrap();
+    run();
+    assert_eq!(sandbox.calls("lifecycle upgrade --user tester"), 1);
+    sandbox
+        .with(&io, |ctx| {
+            runner::remove(ctx, &[&crate::AxidevOsk], &[&crate::AxidevOsk], false)
+        })
+        .unwrap();
+    assert_eq!(sandbox.calls("lifecycle uninstall --user tester"), 1);
+    // Axidev's own uninstall leaves the uinput group, the membership in it and the masked
+    // udev rule. The group did not exist before the install, so remove deletes it.
+    assert!(!sandbox.root.join("groups/uinput").exists());
+    assert!(
+        fs::symlink_metadata(
+            sandbox
+                .root
+                .join("system/etc/udev/rules.d/70-axidev-io-uinput.rules")
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -1089,51 +1100,6 @@ fn agent_links_share_one_instruction_file_and_leave_other_skill_links() {
 }
 
 #[test]
-fn the_inventory_describes_only_what_the_profile_installs() {
-    let cachyos = EnvironmentInventory::CACHYOS.template();
-    for line in [
-        "- **Terminal tools**: Yazi, ripgrep, and jq.",
-        "- **Coding agents**: Claude Code, installed by Anthropic's installer",
-        "the desktop app (AUR package `t3code-bin`)",
-        "VSCodium with the Black & Pink theme and Open Remote SSH",
-        "Axidev OSK with desktop and login-screen startup",
-        "Breeze Dark with a pink accent color",
-        "Kanata keyboard remapping with a KDE tray profile selector",
-        "Handy offline push-to-talk dictation on Ctrl+Space",
-        "ydotool with a persistent user service",
-    ] {
-        assert!(cachyos.contains(line), "CachyOS inventory lacks: {line}");
-    }
-    let arch_wsl = EnvironmentInventory::ARCH_WSL.template();
-    for line in [
-        "This profile does not install an editor.",
-        "- **Terminal tools**: Yazi, ripgrep, jq, and btop.",
-        "user service `t3code.service`",
-    ] {
-        assert!(arch_wsl.contains(line), "Arch WSL inventory lacks: {line}");
-    }
-    let devbox = EnvironmentInventory::UBUNTU_DEVBOX.template();
-    for line in [
-        "remote SSH extensions",
-        "the `rootless` Docker context is selected",
-        "user service `t3code.service`",
-    ] {
-        assert!(
-            devbox.contains(line),
-            "Ubuntu Devbox inventory lacks: {line}"
-        );
-    }
-    for (name, inventory) in [("Arch WSL", &arch_wsl), ("Ubuntu Devbox", &devbox)] {
-        for absent in ["Axidev OSK", "KDE Plasma", "Kanata", "Handy", "ydotool"] {
-            assert!(
-                !inventory.contains(absent),
-                "{name} inventory mentions {absent}"
-            );
-        }
-    }
-}
-
-#[test]
 fn paru_comes_from_a_repository_or_else_from_the_prebuilt_aur_package() {
     let sandbox = Sandbox::new("paru-repository");
     fs::remove_file(sandbox.root.join("installed/paru")).unwrap();
@@ -1144,7 +1110,7 @@ fn paru_comes_from_a_repository_or_else_from_the_prebuilt_aur_package() {
             .borrow_mut()
             .begin(crate::state::Action::Install)
             .unwrap();
-        crate::support::ensure_paru(ctx).unwrap();
+        crate::package_manager::ensure_paru(ctx).unwrap();
     });
     assert!(sandbox.installed("paru"));
     assert_eq!(sandbox.calls("git clone"), 0);
@@ -1165,7 +1131,7 @@ fn paru_comes_from_a_repository_or_else_from_the_prebuilt_aur_package() {
             .borrow_mut()
             .begin(crate::state::Action::Install)
             .unwrap();
-        crate::support::ensure_paru(ctx).unwrap();
+        crate::package_manager::ensure_paru(ctx).unwrap();
     });
     assert_eq!(
         sandbox.calls("git clone https://aur.archlinux.org/paru-bin.git"),
@@ -1248,6 +1214,21 @@ fn the_refind_banner_keeps_its_historical_colors_and_size() {
         assert!(
             fs::metadata(output.join(name)).unwrap().len() > 0,
             "{name} is empty"
+        );
+    }
+
+    // A later install writes the same bytes, even a second later.
+    let again = sandbox.root.join("theme-again");
+    fs::create_dir_all(&again).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    sandbox.with(&Answers::new(None), |ctx| {
+        crate::refind::generate_images(ctx, &again).unwrap()
+    });
+    for name in ["banner.png", "selection_big.png", "selection_small.png"] {
+        assert_eq!(
+            fs::read(output.join(name)).unwrap(),
+            fs::read(again.join(name)).unwrap(),
+            "{name} changed between two runs"
         );
     }
 }
@@ -1370,16 +1351,85 @@ esac"#,
     sandbox
         .shell
         .set_var("XDG_DATA_DIRS", sandbox.root.join("share"));
+    let runtime = sandbox.root.join("runtime");
+    fs::create_dir_all(&runtime).unwrap();
+    sandbox.shell.set_var("XDG_RUNTIME_DIR", runtime);
 }
 
 #[test]
 fn kde_plasma_applies_breeze_dark_with_the_pink_accent_and_remove_puts_it_back() {
     let sandbox = Sandbox::new("kde-plasma");
     plasma(&sandbox);
+    // The fake `kreadconfig6` reads its own store, and the module reads the theme tools'
+    // changes from the configuration files. `kwriteconfig6` therefore writes to both.
+    fs::rename(
+        sandbox.root.join("bin/kwriteconfig6"),
+        sandbox.root.join("bin/kwriteconfig6-store"),
+    )
+    .unwrap();
+    sandbox.fake(
+        "kwriteconfig6",
+        r#"parse() {
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --file) file="$2"; shift 2 ;;
+            --group) groups="$groups[$2]"; shift 2 ;;
+            --key) key="$2"; shift 2 ;;
+            --delete) return 1 ;;
+            --*) shift ;;
+            *) value="$1"; shift ;;
+        esac
+    done
+}
+if parse "$@"; then printf '%s\n%s=%s\n' "$groups" "$key" "$value" >> "$XDG_CONFIG_HOME/$file"; fi
+exec kwriteconfig6-store "$@""#,
+    );
     let rules = sandbox.root.join("kde/kwinrulesrc/General");
     fs::create_dir_all(&rules).unwrap();
     fs::write(rules.join("rules"), "user-rule").unwrap();
     fs::write(rules.join("count"), "1").unwrap();
+    // The theme tools change keys beyond the theme, here the colors derived from the
+    // accent and the window decoration, and create the Plasma style file.
+    let config = sandbox.home.join(".config");
+    fs::create_dir_all(&config).unwrap();
+    let kdeglobals = "[Colors:View]\nBackgroundNormal=35,38,41\n";
+    let kwinrc = "[org.kde.kdecoration2]\ntheme=Oxygen\n";
+    fs::write(config.join("kdeglobals"), kdeglobals).unwrap();
+    fs::write(config.join("kwinrc"), kwinrc).unwrap();
+    let applets = config.join("plasma-org.kde.plasma.desktop-appletsrc");
+    fs::write(&applets, "default panels\n").unwrap();
+    sandbox.fake(
+        "plasma-apply-colorscheme",
+        r#"printf 'plasma-apply-colorscheme %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+printf '[Colors:View]\nBackgroundNormal=255,78,173\n' >> "$XDG_CONFIG_HOME/kdeglobals""#,
+    );
+    sandbox.fake(
+        "plasma-apply-lookandfeel",
+        r#"printf 'plasma-apply-lookandfeel %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+mkdir -p "$MYCONFIG_TEST_ROOT/kde/kdeglobals/KDE"
+printf '%s' "$2" > "$MYCONFIG_TEST_ROOT/kde/kdeglobals/KDE/LookAndFeelPackage"
+printf '[org.kde.kdecoration2]\ntheme=Breeze\n' >> "$XDG_CONFIG_HOME/kwinrc"
+printf '[Theme]\nname=default\n' > "$XDG_CONFIG_HOME/plasmarc"
+mkdir -p "$MYCONFIG_TEST_ROOT/kde/plasmarc/Theme"
+printf 'default' > "$MYCONFIG_TEST_ROOT/kde/plasmarc/Theme/name""#,
+    );
+    // GSettings keeps only the values the user set in dconf, and `get` would show the
+    // schema default for the others.
+    sandbox.fake(
+        "gsettings",
+        r#"printf 'gsettings %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+store="$MYCONFIG_TEST_ROOT/dconf"
+case "$1" in
+    list-keys) printf 'cursor-size\n' ;;
+    list-schemas) printf 'org.gnome.desktop.interface /org/gnome/desktop/interface/\n' ;;
+    set) mkdir -p "$store" && printf '%s' "$4" > "$store/$3" ;;
+    reset) rm -f "$store/$3" ;;
+esac"#,
+    );
+    sandbox.fake(
+        "dconf",
+        r#"[ "$1" = read ] && cat "$MYCONFIG_TEST_ROOT/dconf/${2##*/}" 2>/dev/null; exit 0"#,
+    );
     let io = Answers::new(None);
     for _ in 0..2 {
         sandbox
@@ -1388,6 +1438,19 @@ fn kde_plasma_applies_breeze_dark_with_the_pink_accent_and_remove_puts_it_back()
             })
             .unwrap();
     }
+    assert_ne!(
+        fs::read_to_string(config.join("kdeglobals")).unwrap(),
+        kdeglobals
+    );
+    // Another module, or the person in System Settings, writes to the same file later.
+    let later = "[General]\nTerminalApplication=ghostty\n";
+    let mut themed = fs::read_to_string(config.join("kdeglobals")).unwrap();
+    themed.push_str(later);
+    fs::write(config.join("kdeglobals"), &themed).unwrap();
+    assert_eq!(
+        fs::read_to_string(sandbox.root.join("dconf/cursor-size")).ok(),
+        Some("24".to_owned())
+    );
     for package in ["otf-ibm-plex", "ttf-ibmplex-mono-nerd", "libinput"] {
         assert!(sandbox.installed(package), "{package} was not installed");
     }
@@ -1440,16 +1503,65 @@ fn kde_plasma_applies_breeze_dark_with_the_pink_accent_and_remove_puts_it_back()
             .contains("NoDisplay=true")
     );
 
+    // The layout script rewrote the panels of the running Plasma shell, which writes the
+    // panels it holds when it stops and reads the panel file when it starts.
+    fs::write(&applets, "myconfig panels\n").unwrap();
+    fs::write(
+        sandbox
+            .root
+            .join("units/user/plasma-plasmashell.service.active"),
+        "",
+    )
+    .unwrap();
+    fs::rename(
+        sandbox.root.join("bin/systemctl"),
+        sandbox.root.join("bin/systemctl-units"),
+    )
+    .unwrap();
+    sandbox.fake(
+        "systemctl",
+        r#"applets="$HOME/.config/plasma-org.kde.plasma.desktop-appletsrc"
+case "$*" in
+    "--user stop plasma-plasmashell.service") printf 'myconfig panels\n' > "$applets" ;;
+    "--user start plasma-plasmashell.service") cp "$applets" "$MYCONFIG_TEST_ROOT/shown-panels" ;;
+esac
+exec systemctl-units "$@""#,
+    );
     sandbox
         .with(&io, |ctx| {
             runner::remove(ctx, &[&crate::KdePlasma], &[&crate::KdePlasma], false)
         })
         .unwrap();
+    assert_eq!(fs::read_to_string(&applets).unwrap(), "default panels\n");
+    assert_eq!(
+        fs::read_to_string(sandbox.root.join("shown-panels")).unwrap(),
+        "default panels\n",
+        "the restarted Plasma shell did not read the restored panels"
+    );
     assert_eq!(
         kde(&sandbox, "kwinrulesrc/General/rules").as_deref(),
         Some("user-rule")
     );
     assert_eq!(kde(&sandbox, "kdeglobals/General/AccentColor"), None);
+    // Only the keys the theme tools changed go back, each through `kwriteconfig6`, and
+    // the file keeps what was written after install.
+    for restore in [
+        "kwriteconfig6 --notify --file kdeglobals --group Colors:View --key BackgroundNormal 35,38,41\n",
+        "kwriteconfig6 --notify --file kwinrc --group org.kde.kdecoration2 --key theme Oxygen\n",
+        "kwriteconfig6 --file plasmarc --group Theme --key name --delete\n",
+    ] {
+        assert_eq!(sandbox.calls(restore), 1, "{restore}");
+    }
+    assert_eq!(sandbox.calls("--key TerminalApplication"), 0);
+    assert!(
+        fs::read_to_string(config.join("kdeglobals"))
+            .unwrap()
+            .contains(later)
+    );
+    assert!(
+        !sandbox.root.join("dconf/cursor-size").exists(),
+        "remove stored the schema default instead of resetting the key"
+    );
     assert!(!enabled(
         &sandbox,
         ServiceScope::User,
@@ -1465,30 +1577,100 @@ fn kde_plasma_applies_breeze_dark_with_the_pink_accent_and_remove_puts_it_back()
     );
 }
 
-/// A systemctl stand-in whose sshd.service is enabled while `units/system/sshd.service`
-/// exists, is active only while `units/sshd-active` exists, and fails to start while
-/// `units/sshd-broken` exists.
-fn sshd(sandbox: &Sandbox, active: bool, broken: bool) {
-    system(sandbox);
-    let units = sandbox.root.join("units");
-    if active {
-        fs::write(units.join("sshd-active"), "").unwrap();
+/// Records the KDE Plasma panels, then rewrites the panel file as the layout script does.
+struct PlasmaPanelsRewrite;
+
+impl Module for PlasmaPanelsRewrite {
+    fn name(&self) -> &'static str {
+        "plasma-panels-rewrite"
     }
-    if broken {
-        fs::write(units.join("sshd-broken"), "").unwrap();
+
+    fn needs(&self) -> &'static [Need] {
+        &[]
     }
+    fn footprint(&self, _ctx: &Context) -> Footprint {
+        Footprint::default()
+    }
+    fn install(&self, ctx: &Context) -> ModuleResult {
+        let runtime = ctx.home.join("runtime");
+        ctx.record_setting(crate::Setting::PlasmaPanels {
+            runtime: runtime.to_string_lossy().into_owned(),
+        })?;
+        fs::write(
+            ctx.home
+                .join(".config/plasma-org.kde.plasma.desktop-appletsrc"),
+            "myconfig panels\n",
+        )?;
+        Ok(())
+    }
+    fn verify(&self, _ctx: &Context) -> ModuleResult {
+        Ok(())
+    }
+    fn remove(&self, _ctx: &Context) -> ModuleResult {
+        Ok(())
+    }
+}
+
+#[test]
+fn a_failed_panel_restore_starts_the_stopped_plasma_shell_again() {
+    let sandbox = Sandbox::new("plasma-panels-failure");
+    let applets = sandbox
+        .home
+        .join(".config/plasma-org.kde.plasma.desktop-appletsrc");
+    fs::create_dir_all(applets.parent().unwrap()).unwrap();
+    fs::write(&applets, "default panels\n").unwrap();
+    // The Plasma shell runs. Something takes the panel file's place while it is stopped,
+    // so the restore cannot write it.
     sandbox.fake(
         "systemctl",
         r#"printf 'systemctl %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
-units="$MYCONFIG_TEST_ROOT/units"
+applets="$HOME/.config/plasma-org.kde.plasma.desktop-appletsrc"
 case "$*" in
-    "is-active --quiet sshd.service") [ -e "$units/sshd-active" ] ;;
-    "is-enabled sshd.service") if [ -e "$units/system/sshd.service" ]; then echo enabled; else echo disabled; exit 1; fi ;;
-    "enable sshd.service") : > "$units/system/sshd.service" ;;
-    "disable sshd.service") rm -f "$units/system/sshd.service" ;;
-    "start sshd.service" | "restart sshd.service") [ ! -e "$units/sshd-broken" ] ;;
-esac"#,
+    "--user stop plasma-plasmashell.service") rm -f "$applets" && mkdir "$applets" ;;
+esac
+exit 0"#,
     );
+    let io = Answers::new(None);
+    sandbox
+        .with(&io, |ctx| {
+            runner::install(ctx, &[&PlasmaPanelsRewrite], &[&PlasmaPanelsRewrite])
+        })
+        .unwrap();
+    let removed = sandbox.with(&io, |ctx| {
+        runner::remove(ctx, &[&PlasmaPanelsRewrite], &[&PlasmaPanelsRewrite], false)
+    });
+    assert!(
+        removed.is_err(),
+        "the failed panel restore was not reported"
+    );
+    assert_eq!(
+        sandbox.calls("systemctl --user stop plasma-plasmashell.service"),
+        1
+    );
+    assert_eq!(
+        sandbox.calls("systemctl --user start plasma-plasmashell.service"),
+        1,
+        "the Plasma shell stayed stopped"
+    );
+}
+
+/// The shared system fakes with sshd.service active or not, and failing to start or not.
+fn sshd(sandbox: &Sandbox, active: bool, broken: bool) {
+    system(sandbox);
+    if active {
+        fs::write(
+            unit_file(sandbox, ServiceScope::System, "sshd.service.active"),
+            "",
+        )
+        .unwrap();
+    }
+    if broken {
+        fs::write(
+            unit_file(sandbox, ServiceScope::System, "sshd.service.broken"),
+            "",
+        )
+        .unwrap();
+    }
 }
 
 #[test]
@@ -1530,6 +1712,7 @@ fn a_stopped_ssh_server_stays_off_unless_you_turn_it_on() {
         })
         .unwrap();
     assert!(enabled(&accepted, ServiceScope::System, "sshd.service"));
+    assert!(active(&accepted, ServiceScope::System, "sshd.service"));
     assert_eq!(accepted.calls("sudo systemctl start sshd.service"), 1);
 }
 
@@ -1693,6 +1876,22 @@ cat "$MYCONFIG_TEST_ROOT/bun-installer""#,
     assert!(!sandbox.installed("bun"), "the Bun package was installed");
     assert_eq!(sandbox.calls("curl -fsSL https://bun.sh/install"), 1);
     assert_eq!(sandbox.calls("installer SHELL=/bin/sh"), 1);
+
+    // ~/.bun also holds the global packages people add later, so remove asks first.
+    let no = Answers::new(Some(false));
+    sandbox
+        .with(&no, |ctx| {
+            runner::remove(ctx, &[&runtimes], &[&runtimes], false)
+        })
+        .unwrap();
+    let bun = sandbox.home.join(".bun");
+    assert!(
+        no.questions
+            .borrow()
+            .iter()
+            .any(|question| question.contains(&bun.display().to_string()))
+    );
+    assert!(bun.join("bin/bun").is_file());
 }
 
 #[test]
@@ -1749,6 +1948,50 @@ done"#,
     }
     assert_eq!(sandbox.calls("bsdtar --format zip -cf "), 1);
     assert_eq!(sandbox.calls("codium --force --install-extension "), 1);
+
+    // What VSCodium leaves after installing the theme: its folder with a `__metadata`
+    // block added to package.json, and an entry in extensions.json.
+    let theme = sandbox
+        .home
+        .join("dotfiles/vscodium/.config/VSCodium/blacknpink-theme");
+    let extensions = sandbox.home.join(".vscode-oss/extensions");
+    let installed = extensions.join("myconfig.blacknpink-theme-1.0.0");
+    fs::create_dir_all(installed.join("themes")).unwrap();
+    fs::copy(
+        theme.join("themes/blacknpink-color-theme.json"),
+        installed.join("themes/blacknpink-color-theme.json"),
+    )
+    .unwrap();
+    let mut package: serde_json::Value =
+        serde_json::from_slice(&fs::read(theme.join("package.json")).unwrap()).unwrap();
+    assert_eq!(package["version"], "1.0.0");
+    package["__metadata"] = serde_json::json!({"installedTimestamp": 1792860770308_u64});
+    fs::write(installed.join("package.json"), package.to_string()).unwrap();
+    fs::write(
+        extensions.join("extensions.json"),
+        r#"[{"identifier":{"id":"myconfig.blacknpink-theme"},"version":"1.0.0","relativeLocation":"myconfig.blacknpink-theme-1.0.0","metadata":{"installedTimestamp":1792860770299}}]"#,
+    )
+    .unwrap();
+    let install = || {
+        sandbox
+            .with(&io, |ctx| {
+                runner::install(ctx, &[&crate::Vscodium], &[&crate::Vscodium])
+            })
+            .unwrap()
+    };
+    install();
+    assert_eq!(
+        sandbox.calls("codium --force --install-extension "),
+        1,
+        "a rerun reinstalled the unchanged theme"
+    );
+    fs::write(installed.join("themes/blacknpink-color-theme.json"), "{}").unwrap();
+    install();
+    assert_eq!(
+        sandbox.calls("codium --force --install-extension "),
+        2,
+        "a changed installed theme was not replaced"
+    );
     let calls = fs::read_to_string(sandbox.root.join("calls")).unwrap();
     let extensions = calls
         .lines()
@@ -1910,7 +2153,7 @@ fn removing_bootvine_takes_its_hook_out_of_the_initramfs_before_the_package() {
         "the initramfs was rebuilt while HOOKS still named sd-bootvine"
     );
     assert!(
-        rebuild < calls.find("pacman -R --noconfirm bootvine").unwrap(),
+        rebuild < calls.find("pacman -Rs --noconfirm bootvine").unwrap(),
         "the package left before the initramfs stopped using its hook"
     );
     for service in ["bootvine.service", "bootvine-shutdown.service"] {
@@ -2039,7 +2282,7 @@ fi"#,
 }
 
 #[test]
-fn t3code_repairs_the_server_through_the_deployed_t3ctl_and_remove_uninstalls_its_service() {
+fn t3code_repairs_the_server_through_the_deployed_t3ctl_and_remove_undoes_what_it_did() {
     let sandbox = Sandbox::new("t3code");
     system(&sandbox);
     sandbox.fake("npm", "exit 0");
@@ -2047,20 +2290,29 @@ fn t3code_repairs_the_server_through_the_deployed_t3ctl_and_remove_uninstalls_it
     // The deployed t3ctl runs as itself, so its own commands are faked through PATH.
     sandbox.fake(
         "loginctl",
-        r#"printf 'loginctl %s\n' "$*" >> "$MYCONFIG_TEST_LOG"; [ "$1" = show-user ] && echo yes"#,
+        r#"printf 'loginctl %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+linger="$MYCONFIG_TEST_ROOT/linger"
+case "$1" in
+    show-user) if [ -e "$linger" ]; then echo yes; else echo no; fi ;;
+    enable-linger) : > "$linger" ;;
+    disable-linger) rm -f "$linger" ;;
+esac"#,
     );
     sandbox.fake("curl", "exit 0");
-    let runtime = sandbox.home.join(".t3/userdata/server-runtime.json");
-    fs::create_dir_all(runtime.parent().unwrap()).unwrap();
-    fs::write(&runtime, "{}").unwrap();
+    // ~/.t3 is missing before install. The started server writes its runtime file there.
+    let t3_home = sandbox.home.join(".t3");
     let t3 = sandbox.home.join(".local/bin/t3");
     fs::create_dir_all(t3.parent().unwrap()).unwrap();
-    fs::write(
+    super::program(
         &t3,
-        "#!/bin/sh\nprintf 't3 %s\\n' \"$*\" >> \"$MYCONFIG_TEST_LOG\"\n",
-    )
-    .unwrap();
-    fs::set_permissions(&t3, fs::Permissions::from_mode(0o755)).unwrap();
+        &format!(
+            r#"printf 't3 %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+if [ "$*" = "service install" ]; then
+    mkdir -p '{userdata}' && echo '{{}}' > '{userdata}/server-runtime.json'
+fi"#,
+            userdata = t3_home.join("userdata").display()
+        ),
+    );
     sandbox
         .with(&io, |ctx| {
             runner::install(ctx, &[&crate::T3Code], &[&crate::T3Code])
@@ -2068,18 +2320,31 @@ fn t3code_repairs_the_server_through_the_deployed_t3ctl_and_remove_uninstalls_it
         .unwrap();
     assert!(sandbox.installed("qrencode"));
     assert_eq!(sandbox.calls("t3 service install"), 1);
+    assert!(sandbox.root.join("linger").exists());
+    assert!(sandbox.home.join(".t3/service.env").exists());
     let t3ctl = sandbox.home.join(".local/bin/t3ctl");
     assert_eq!(
         fs::canonicalize(&t3ctl).unwrap(),
         fs::canonicalize(sandbox.home.join("dotfiles/t3code/.local/bin/t3ctl")).unwrap()
     );
 
+    let yes = Answers::new(Some(true));
     sandbox
-        .with(&io, |ctx| {
+        .with(&yes, |ctx| {
             runner::remove(ctx, &[&crate::T3Code], &[&crate::T3Code], false)
         })
         .unwrap();
     assert_eq!(sandbox.calls("t3 service uninstall"), 1);
+    // Lingering was off and ~/.t3 was missing before install. Remove asks before
+    // deleting ~/.t3, because the server keeps its data there.
+    assert!(!sandbox.root.join("linger").exists());
+    assert!(
+        yes.questions
+            .borrow()
+            .iter()
+            .any(|question| question.contains(&t3_home.display().to_string()))
+    );
+    assert!(!t3_home.exists());
     assert!(!sandbox.installed("qrencode"));
     assert!(fs::symlink_metadata(&t3ctl).is_err());
 }
@@ -2114,7 +2379,7 @@ fn vendor_apt_repositories_are_added_once_with_their_keys() {
         r#"printf 'curl %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
 case "$*" in
     *docker*) printf -- '-----BEGIN PGP PUBLIC KEY BLOCK-----\nkey\n' ;;
-    *) printf 'binary key %s' "$2" ;;
+    *) printf '\231\001binary key %s' "$2" ;;
 esac"#,
     );
     sandbox.fake("dpkg", "echo amd64");
@@ -2148,9 +2413,15 @@ esac"#,
         "Types: deb\nURIs: https://download.docker.com/linux/ubuntu\nSuites: noble\nComponents: stable\nArchitectures: amd64\nSigned-By: /etc/apt/keyrings/myconfig-docker.asc\n"
     );
     assert!(system_file(&sandbox, "/etc/apt/keyrings/myconfig-docker.asc").is_some());
+    // A binary key is not text, and the second run must still compare it unchanged.
     assert_eq!(
-        system_file(&sandbox, "/etc/apt/keyrings/myconfig-tailscale.gpg").unwrap(),
-        "binary key https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg"
+        fs::read(
+            sandbox
+                .root
+                .join("system/etc/apt/keyrings/myconfig-tailscale.gpg")
+        )
+        .unwrap(),
+        b"\x99\x01binary key https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg"
     );
     assert!(system_file(&sandbox, "/etc/apt/sources.list.d/myconfig-github.sources").is_none());
     assert!(system_file(&sandbox, "/etc/apt/sources.list.d/myconfig-yazi.sources").is_none());
@@ -2328,8 +2599,12 @@ fn defender(sandbox: &Sandbox, refused: bool) {
 case "$3" in
     '$PROFILE') printf '%s\n' "$HOME/Documents/PowerShell/Microsoft.PowerShell_profile.ps1" ;;
     *Get-MpPreference*) if [ -e "$allowed" ]; then echo allowed; else echo blocked; fi ;;
-    *Add-MpPreference*-Verb\ RunAs*) printf 'defender %s\n' "$3" >> "$MYCONFIG_TEST_LOG"; {elevate}; : > "$allowed" ;;
-    *Remove-MpPreference*-Verb\ RunAs*) printf 'defender %s\n' "$3" >> "$MYCONFIG_TEST_LOG"; {elevate}; rm -f "$allowed" ;;
+    *-Verb\ RunAs*)
+        printf 'defender %s\n' "$MYCONFIG_ELEVATED_SCRIPT" >> "$MYCONFIG_TEST_LOG"; {elevate}
+        case "$MYCONFIG_ELEVATED_SCRIPT" in
+            *Add-MpPreference*) : > "$allowed" ;;
+            *Remove-MpPreference*) rm -f "$allowed" ;;
+        esac ;;
 esac"#
         ),
     );
@@ -2358,7 +2633,7 @@ fn a_refused_administrator_prompt_leaves_nothing_for_remove_to_ask_again() {
 }
 
 #[test]
-fn the_powershell_profile_allows_pwsh_through_controlled_folder_access_until_removed() {
+fn the_powershell_profile_allows_the_installer_through_controlled_folder_access_until_removed() {
     let sandbox = Sandbox::new("powershell-profile");
     defender(&sandbox, false);
     let io = Answers::new(None);
@@ -2372,11 +2647,12 @@ fn the_powershell_profile_allows_pwsh_through_controlled_folder_access_until_rem
         })
         .unwrap();
     assert!(sandbox.root.join("allowed").exists());
-    let pwsh = sandbox.root.join("bin/pwsh.exe");
+    // The installer itself writes the profile, so it is the program Defender must allow.
+    let installer = std::env::current_exe().unwrap();
     assert_eq!(
         sandbox.calls(&format!(
-            "Add-MpPreference -ControlledFolderAccessAllowedApplications ''{}''",
-            pwsh.display()
+            "Add-MpPreference -ControlledFolderAccessAllowedApplications '{}'",
+            installer.display()
         )),
         1
     );
@@ -2394,8 +2670,8 @@ fn the_powershell_profile_allows_pwsh_through_controlled_folder_access_until_rem
     assert!(!sandbox.root.join("allowed").exists());
     assert_eq!(
         sandbox.calls(&format!(
-            "Remove-MpPreference -ControlledFolderAccessAllowedApplications ''{}''",
-            pwsh.display()
+            "Remove-MpPreference -ControlledFolderAccessAllowedApplications '{}'",
+            installer.display()
         )),
         1
     );
@@ -2525,6 +2801,107 @@ fn an_unanswered_windows_t3code_is_skipped() {
     assert!(verified[0].1.is_err(), "nothing records a skip");
 }
 
+/// What `AsksThenFails` does after nobody answers its question.
+#[derive(Clone, Copy)]
+enum AfterQuestion {
+    /// Returns the `Unanswered` error unchanged.
+    PassesItOn,
+    /// Fails for another reason, the way a failed move does after a skipped question.
+    FailsAnyway,
+    /// Asked an optional follow-up, then fails.
+    FailsAfterOptional,
+}
+
+/// Asks a question during install that nobody answers, then fails as `after` says.
+struct AsksThenFails {
+    name: &'static str,
+    after: AfterQuestion,
+}
+
+impl Module for AsksThenFails {
+    fn name(&self) -> &'static str {
+        self.name
+    }
+    fn needs(&self) -> &'static [Need] {
+        &[]
+    }
+    fn footprint(&self, _ctx: &Context) -> Footprint {
+        Footprint::default()
+    }
+    fn install(&self, ctx: &Context) -> ModuleResult {
+        match self.after {
+            AfterQuestion::PassesItOn => {
+                ctx.confirm("Install?")?;
+                Ok(())
+            }
+            AfterQuestion::FailsAnyway => {
+                let _ = ctx.confirm("Replace it?");
+                Err("could not move the item".into())
+            }
+            AfterQuestion::FailsAfterOptional => {
+                ctx.confirm_optional("Log in now?");
+                Err("broken".into())
+            }
+        }
+    }
+    fn verify(&self, _ctx: &Context) -> ModuleResult {
+        Ok(())
+    }
+    fn remove(&self, _ctx: &Context) -> ModuleResult {
+        Ok(())
+    }
+}
+
+#[test]
+fn a_missing_answer_skips_the_module_only_when_it_is_the_only_problem() {
+    let sandbox = Sandbox::new("unanswered-or-failed");
+    let passes = AsksThenFails {
+        name: "passes",
+        after: AfterQuestion::PassesItOn,
+    };
+    let modules: [&dyn Module; 1] = [&passes];
+    let report = incomplete(sandbox.with(&Answers::new(None), |ctx| {
+        runner::install(ctx, &modules, &modules)
+    }));
+    assert!(report.failed.is_empty());
+    assert_eq!(
+        report.skipped[0].reason,
+        runner::SkipReason::Unanswered("Install?".to_owned())
+    );
+    assert!(
+        report.only_unanswered(),
+        "the command line exits with code 3 instead of reporting a failure"
+    );
+
+    // A failure after a missing answer is a failure, and its error is reported.
+    let io = Answers::new(None);
+    let fails = AsksThenFails {
+        name: "fails",
+        after: AfterQuestion::FailsAnyway,
+    };
+    let modules: [&dyn Module; 1] = [&fails];
+    let report = incomplete(sandbox.with(&io, |ctx| runner::install(ctx, &modules, &modules)));
+    assert!(report.skipped.is_empty());
+    assert!(report.failed[0].error.contains("could not move the item"));
+    assert!(io.events.borrow().iter().any(|event| matches!(
+        event,
+        crate::Event::Finished { module, error: Some(error), .. }
+            if module == "fails" && error.contains("could not move the item")
+    )));
+
+    // So does a failure after a missing answer to an optional question.
+    let optional = AsksThenFails {
+        name: "optional",
+        after: AfterQuestion::FailsAfterOptional,
+    };
+    let modules: [&dyn Module; 1] = [&optional];
+    let report = incomplete(sandbox.with(&Answers::new(None), |ctx| {
+        runner::install(ctx, &modules, &modules)
+    }));
+    assert_eq!(report.failed.len(), 1);
+    assert!(report.skipped.is_empty());
+}
+
 /// Asks before installing, the way `WindowsT3Code` does, and verifies that it installed
 /// unless the person declined.
 struct Asks;
@@ -2573,5 +2950,54 @@ fn accepting_after_a_decline_makes_verify_check_the_install_again() {
         report.failed.len(),
         1,
         "verify no longer passes on the decline"
+    );
+}
+
+#[test]
+fn remove_unregisters_the_arch_distribution_once_whatever_its_records_say() {
+    let sandbox = Sandbox::new("arch-wsl-remove");
+    sandbox.fake(
+        "wsl.exe",
+        r#"registered="$MYCONFIG_TEST_ROOT/distributions"
+case "$1" in
+    --list) cat "$registered" ;;
+    --unregister) printf 'wsl %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+        grep -Fxq "$2" "$registered" || exit 1
+        grep -Fxv "$2" "$registered" > "$registered.new"; mv "$registered.new" "$registered" ;;
+esac"#,
+    );
+    fs::write(
+        sandbox.root.join("distributions"),
+        "Ubuntu\nhost-subsystem\n",
+    )
+    .unwrap();
+    // Two installs that each recorded the distribution, as installs did before the record
+    // was kept to one.
+    let io = Answers::new(Some(true));
+    for _ in 0..2 {
+        sandbox.with(&io, |ctx| {
+            ctx.state()
+                .borrow_mut()
+                .begin(crate::state::Action::Install)
+                .unwrap();
+            ctx.set_module(crate::ArchWsl::NAME);
+            ctx.record(crate::state::Change::WslDistribution {
+                name: "host-subsystem".to_owned(),
+            })
+            .unwrap();
+        });
+    }
+    let modules: [&dyn Module; 1] = [&crate::ArchWsl];
+    sandbox
+        .with(&io, |ctx| runner::remove(ctx, &modules, &modules, false))
+        .unwrap();
+    assert_eq!(sandbox.calls("wsl --unregister host-subsystem"), 1);
+    assert_eq!(
+        fs::read_to_string(sandbox.root.join("distributions")).unwrap(),
+        "Ubuntu\n"
+    );
+    assert!(
+        sandbox.with(&io, |ctx| !runner::installed(ctx, &crate::ArchWsl)),
+        "the record of the distribution that was already gone still blocks remove"
     );
 }

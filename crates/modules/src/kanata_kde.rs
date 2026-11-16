@@ -51,11 +51,6 @@ impl Module for KanataKde {
         require_executable(&tray)?;
         ctx.run(cmd!(sh, "python -m py_compile {tray}"))?;
         ctx.set(overview_shortcut(), OVERVIEW)?;
-        // The tray starts Kanata itself. Earlier installs enabled Kanata on its own; undo that.
-        ctx.delete(
-            &ctx.home
-                .join(".config/systemd/user/default.target.wants/myconfig-kanata.service"),
-        )?;
         ctx.enable_service(SERVICE, ServiceScope::User)?;
         ctx.run(cmd!(sh, "systemctl --user daemon-reload"))?;
         if !active_group(ctx, "input")? || !active_group(ctx, "uinput")? {

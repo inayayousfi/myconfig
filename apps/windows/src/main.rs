@@ -15,7 +15,6 @@ static MODULES: &[&dyn Module] = &[
     &AutoHotkey,
     &AgentConfigCopied,
     &WindowsT3Code,
-    &PsReadLine,
     &OhMyPoshFont,
     &PlexSerifFont,
     &LlvmPath,
@@ -25,6 +24,8 @@ static MODULES: &[&dyn Module] = &[
     &SharedDesktop,
 ];
 
+const PACKAGE_SYSTEM: PackageSystem = PackageSystem::Winget;
+
 fn main() -> ExitCode {
     if !cfg!(windows) {
         eprintln!("error: the Windows Workstation installer requires Windows");
@@ -32,20 +33,25 @@ fn main() -> ExitCode {
     }
     myconfig_interface::main(Profile {
         title: "Windows Workstation",
-        package_system: PackageSystem::Winget,
+        package_system: PACKAGE_SYSTEM,
         modules: MODULES,
     })
 }
 
 #[cfg(test)]
 mod tests {
-    use myconfig_modules::runner::need_problems;
+    use myconfig_modules::{runner::need_problems, unnamed_packages};
 
-    use super::MODULES;
+    use super::{MODULES, PACKAGE_SYSTEM};
 
     #[test]
     fn every_need_comes_earlier_and_every_hard_need_is_in_the_profile() {
         assert_eq!(need_problems(MODULES), Vec::<String>::new());
+    }
+
+    #[test]
+    fn every_package_has_a_name_on_the_package_system() {
+        assert_eq!(unnamed_packages(MODULES, PACKAGE_SYSTEM), []);
     }
 
     #[test]

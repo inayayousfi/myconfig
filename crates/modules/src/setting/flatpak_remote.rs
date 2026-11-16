@@ -1,7 +1,7 @@
 //! A system-wide Flatpak remote, added from its `.flatpakrepo` file.
 use xshell::cmd;
 
-use super::Kind;
+use super::{Kind, PRESENT};
 use crate::{Context, ModuleResult};
 
 pub(super) struct FlatpakRemote<'a> {
@@ -14,12 +14,16 @@ impl Kind for FlatpakRemote<'_> {
         format!("Flatpak remote {}", self.name)
     }
 
+    fn presence(&self) -> bool {
+        true
+    }
+
     fn read(&self, ctx: &Context) -> ModuleResult<Option<String>> {
         Ok(ctx
             .read(cmd!(ctx.shell, "flatpak remotes --system --columns=name"))?
             .lines()
             .any(|remote| remote.trim() == self.name)
-            .then(|| "present".to_owned()))
+            .then(|| PRESENT.to_owned()))
     }
 
     fn write(&self, ctx: &Context, _value: &str) -> ModuleResult {

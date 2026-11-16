@@ -1,7 +1,7 @@
 //! KDE Plasma with Breeze Dark, the pink accent, IBM Plex fonts, a top bar and a dock.
 use std::{collections::BTreeSet, fs, path::Path};
 
-use embedded_dotfiles::DOTFILES;
+use embedded_dotfiles::KDE_PLASMA_ASSETS;
 use typed_fs_rs::EmbeddedDirectory;
 use xshell::cmd;
 
@@ -213,7 +213,9 @@ pub(crate) fn set_gtk_cursor_size(ctx: &Context) -> ModuleResult {
 fn configure_cursor(ctx: &Context) -> ModuleResult {
     ctx.set(Setting::CursorTheme, CURSOR_THEME)?;
     set_gtk_cursor_size(ctx)?;
+    // Without dconf, GSettings keeps no value between sessions.
     if ctx.find_program("gsettings").is_ok()
+        && ctx.find_program("dconf").is_ok()
         && ctx
             .read(cmd!(
                 ctx.shell,
@@ -245,9 +247,7 @@ fn require_default_fonts(ctx: &Context) -> ModuleResult {
 
 /// The libinput plugins, as their installed path and contents.
 fn libinput_plugins() -> Vec<(std::path::PathBuf, &'static [u8])> {
-    DOTFILES
-        .assets
-        .kde_plasma
+    KDE_PLASMA_ASSETS
         .libinput
         .files()
         .into_iter()
@@ -271,9 +271,6 @@ fn hide_launcher_entries(ctx: &Context) -> ModuleResult {
             })
             .unwrap_or_default()
     };
-    if !applications.exists() {
-        ctx.created(&applications, false)?;
-    }
     let before = listing(&applications);
     let command = ctx.home.join(LAUNCHER_HIDE_COMMAND);
     let result = ctx.run(cmd!(ctx.shell, "{command}"));
@@ -347,7 +344,6 @@ impl Module for KdePlasma {
         let _runtime = sh.push_env("XDG_RUNTIME_DIR", &runtime);
         let _bus = sh.push_env("DBUS_SESSION_BUS_ADDRESS", bus);
         ctx.run(cmd!(sh, "systemctl --user daemon-reload"))?;
-        ctx.enable_service(LAYOUT_SERVICE, ServiceScope::User)?;
         if ctx.succeeds(cmd!(sh, "qdbus6 org.kde.KWin /KWin"))? {
             ctx.run(cmd!(
                 sh,
@@ -356,8 +352,13 @@ impl Module for KdePlasma {
         }
 
         // The layout script rewrites the panel layout and records its own version.
-        ctx.record_path(&home.join(".config/plasma-org.kde.plasma.desktop-appletsrc"))?;
+        ctx.record_setting(Setting::PlasmaPanels {
+            runtime: runtime.to_string_lossy().into_owned(),
+        })?;
         ctx.record_path(&crate::state::state_directory(home).join("plasma-layout-version"))?;
+        // Undone before the panels, so the layout service cannot replace the restored
+        // panels.
+        ctx.enable_service(LAYOUT_SERVICE, ServiceScope::User)?;
         let layout = home.join(LAYOUT_COMMAND);
         match ctx.run_status(cmd!(sh, "{layout}").env("MYCONFIG_PLASMA_ENSURE_OVERVIEW", "1"))? {
             Some(0) => {

@@ -28,11 +28,18 @@ if ! cachyos-installer --config /root/settings.json; then
     echo 'myconfig-image: failed: cachyos-installer reported an error'
     exit 1
 fi
-# The installer treats a failed post-install script as a warning, so the script leaves a mark.
-if [ ! -e /root/myconfig-post-install-done ]; then
+# The installer unmounts the new system before it runs its own post_install hook, so this
+# script mounts the root and home subvolumes itself for the SSH setup.
+mount -o subvol=@ /dev/vda2 /mnt && mount -o subvol=@home /dev/vda2 /mnt/home || {
+    echo 'myconfig-image: failed: could not mount the installed system'
+    exit 1
+}
+if ! /root/myconfig-post-install.sh /mnt; then
+    umount -R /mnt
     echo 'myconfig-image: failed: the post-install script did not finish'
     exit 1
 fi
+umount -R /mnt
 sync
 echo 'myconfig-image: done'
 systemctl poweroff

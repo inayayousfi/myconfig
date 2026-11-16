@@ -3,8 +3,9 @@
 //! window of the desktop session, with its output copied to a log file that the xtask reads
 //! over SSH. Keys typed through QMP answer the console and the elevation prompts.
 //!
-//! Two parts are unverified on a real guest: that the console window has the keyboard focus
-//! when an answer is typed, and that Alt+Y presses Yes on the elevation prompt.
+//! No part of this driver has run on a real guest. The two parts most likely to fail are that
+//! the console window has the keyboard focus when an answer is typed, and that Alt+Y presses
+//! Yes on the elevation prompt.
 
 use std::fs;
 use std::path::{Path, PathBuf};

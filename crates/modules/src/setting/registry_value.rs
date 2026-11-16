@@ -72,16 +72,14 @@ fn registry(ctx: &Context, key: &str, arguments: &[&str]) -> ModuleResult {
     if !key.starts_with("HKEY_LOCAL_MACHINE") && !key.starts_with("HKLM") {
         return ctx.run(ctx.shell.cmd("reg.exe").args(arguments));
     }
-    let pwsh = crate::support::powershell_7(ctx)?;
-    let quoted: Vec<String> = arguments
+    let arguments: Vec<String> = arguments
         .iter()
-        .map(|argument| format!("'\"{}\"'", argument.replace('\'', "''")))
+        .map(|argument| crate::support::powershell_quote(argument))
         .collect();
-    let script = format!(
-        "$process = Start-Process -FilePath reg.exe -Verb RunAs -ArgumentList {} -Wait -PassThru -ErrorAction Stop; if ($process.ExitCode -ne 0) {{ throw 'Elevated registry change failed' }}",
-        quoted.join(", ")
-    );
-    ctx.run(cmd!(ctx.shell, "{pwsh} -NoProfile -Command {script}"))
+    crate::support::run_elevated(
+        ctx,
+        &format!("& reg.exe {}; exit $LASTEXITCODE", arguments.join(" ")),
+    )
 }
 
 #[cfg(test)]

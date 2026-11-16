@@ -1,11 +1,13 @@
 //! T3 Code: the server with its background service, or the desktop app that runs its own
 //! server.
+use std::path::{Path, PathBuf};
+
 use xshell::cmd;
 
 use crate::{
     Context, Footprint, Module, ModuleResult, Need, Package,
     deploy::verify_package,
-    support::{require_executable, require_programs, verify_packages},
+    support::{current_user, require_executable, require_programs, verify_packages},
 };
 
 /// The server from npm, run at boot by the user service `t3code.service`. The deployed
@@ -57,6 +59,28 @@ impl Module for T3Code {
             if !path.exists() {
                 ctx.created(&path, false)?;
             }
+        }
+        // t3ctl turns on lingering, so the service runs at boot and after logout, and
+        // writes the service address into service.env.
+        let user = current_user(ctx)?;
+        let (_, linger) = ctx.read_unchecked(cmd!(
+            ctx.shell,
+            "loginctl show-user {user} -p Linger --value"
+        ))?;
+        if linger != "yes" {
+            ctx.record_undo_command(Path::new("loginctl"), &["disable-linger", &user])?;
+        }
+        let t3_home = ctx
+            .shell
+            .var_os("T3CODE_HOME")
+            .filter(|value| !value.is_empty())
+            .map_or_else(|| ctx.home.join(".t3"), PathBuf::from);
+        // The server keeps its database in the T3 home, so remove asks before deleting a
+        // T3 home that install created.
+        if t3_home.exists() {
+            ctx.record_path(&t3_home.join("service.env"))?;
+        } else {
+            ctx.created_user_data(&t3_home)?;
         }
         let (_, service) = ctx.read_unchecked(cmd!(
             ctx.shell,

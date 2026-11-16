@@ -30,6 +30,8 @@ static MODULES: &[&dyn Module] = &[
     &EnvironmentInventory::UBUNTU_DEVBOX,
 ];
 
+const PACKAGE_SYSTEM: PackageSystem = PackageSystem::Apt;
+
 fn main() -> ExitCode {
     let has_apt = std::env::var_os("PATH").is_some_and(|path| {
         std::env::split_paths(&path).any(|directory| directory.join("apt-get").is_file())
@@ -40,20 +42,40 @@ fn main() -> ExitCode {
     }
     myconfig_interface::main(Profile {
         title: "Ubuntu Devbox",
-        package_system: PackageSystem::Apt,
+        package_system: PACKAGE_SYSTEM,
         modules: MODULES,
     })
 }
 
 #[cfg(test)]
 mod tests {
-    use myconfig_modules::runner::need_problems;
+    use myconfig_modules::{
+        EnvironmentInventory, Package, runner::need_problems, unnamed_packages,
+    };
 
-    use super::MODULES;
+    use super::{MODULES, PACKAGE_SYSTEM};
 
     #[test]
     fn every_need_comes_earlier_and_every_hard_need_is_in_the_profile() {
         assert_eq!(need_problems(MODULES), Vec::<String>::new());
+    }
+
+    #[test]
+    fn the_environment_inventory_describes_the_modules_of_the_profile() {
+        assert_eq!(
+            EnvironmentInventory::UBUNTU_DEVBOX.claim_problems(MODULES),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn every_package_has_a_name_on_the_package_system() {
+        // Bun comes from its own installer here. agents-packages lists it so that remove
+        // keeps it, and installs it from no package.
+        assert_eq!(
+            unnamed_packages(MODULES, PACKAGE_SYSTEM),
+            [("agents-packages", Package::Bun)]
+        );
     }
 
     #[test]

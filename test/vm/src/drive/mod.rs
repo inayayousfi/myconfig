@@ -9,6 +9,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use myconfig_interface::UNANSWERED;
+
 pub use desktop::Desktop;
 pub use terminal::Terminal;
 
@@ -19,8 +21,6 @@ use crate::vm::{Vm, VmError};
 
 /// How long one installer command may run. A full install downloads and builds packages.
 const TIMEOUT: Duration = Duration::from_secs(3 * 60 * 60);
-/// The exit code of the installer when a question had no answer and something was kept.
-const UNANSWERED: i32 = 3;
 /// More sudo prompts than this in one command means the password is refused.
 const MAX_PASSWORD_PROMPTS: u32 = 3;
 
@@ -55,7 +55,9 @@ pub enum DriveError {
         "sudo asked for the password more than {MAX_PASSWORD_PROMPTS} times; the output is in {log}"
     )]
     PasswordRefused { log: PathBuf },
-    #[error("a question went unanswered and the installer kept something; the output is in {log}")]
+    #[error(
+        "a question went unanswered, so the installer skipped a module or kept something; the output is in {log}"
+    )]
     Unanswered { log: PathBuf },
     #[error("`{command}` failed with {status}; the output is in {log}")]
     Failed {
@@ -71,7 +73,7 @@ pub enum DriveError {
 fn check_exit(command: &str, code: Option<i32>, log: &Path) -> Result<(), DriveError> {
     match code {
         Some(0) => Ok(()),
-        Some(UNANSWERED) => Err(DriveError::Unanswered {
+        Some(code) if code == i32::from(UNANSWERED) => Err(DriveError::Unanswered {
             log: log.to_owned(),
         }),
         Some(code) => Err(DriveError::Failed {
@@ -90,4 +92,30 @@ fn check_exit(command: &str, code: Option<i32>, log: &Path) -> Result<(), DriveE
 /// The text typed for a yes or no answer.
 fn answer_text(yes: bool) -> &'static str {
     if yes { "y\n" } else { "n\n" }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const LOG: &str = "install.log";
+
+    #[test]
+    fn exit_code_zero_is_success() {
+        assert!(check_exit("install", Some(0), Path::new(LOG)).is_ok());
+    }
+
+    #[test]
+    fn the_installer_exit_code_for_an_unanswered_question_is_reported_as_such() {
+        let result = check_exit("install", Some(i32::from(UNANSWERED)), Path::new(LOG));
+        assert!(matches!(result, Err(DriveError::Unanswered { .. })));
+    }
+
+    #[test]
+    fn any_other_exit_code_or_none_is_a_failure() {
+        for code in [Some(1), Some(101), None] {
+            let result = check_exit("install", code, Path::new(LOG));
+            assert!(matches!(result, Err(DriveError::Failed { .. })), "{code:?}");
+        }
+    }
 }

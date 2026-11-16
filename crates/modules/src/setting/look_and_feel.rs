@@ -4,6 +4,16 @@ use xshell::cmd;
 use super::Kind;
 use crate::{Context, ModuleResult, Setting};
 
+/// The files where `plasma-apply-lookandfeel` writes its color scheme, icons, cursor,
+/// widget style, window decoration, Plasma style and splash screen.
+const FILES: [&str; 5] = [
+    "kdeglobals",
+    "kcminputrc",
+    "kwinrc",
+    "plasmarc",
+    "ksplashrc",
+];
+
 pub(super) struct LookAndFeel;
 
 impl Kind for LookAndFeel {
@@ -28,5 +38,9 @@ impl Kind for LookAndFeel {
 
     fn reapplies(&self) -> bool {
         true
+    }
+
+    fn kde_files(&self) -> &'static [&'static str] {
+        &FILES
     }
 }

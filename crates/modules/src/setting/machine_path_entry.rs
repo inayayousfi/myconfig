@@ -1,80 +1,76 @@
 //! A folder in the Windows machine PATH.
-use xshell::cmd;
-
-use super::Kind;
-use crate::{Context, ModuleResult};
+use super::{Kind, PRESENT};
+use crate::{
+    Context, ModuleResult,
+    support::{powershell, powershell_quote, run_elevated},
+};
 
 pub(super) struct MachinePathEntry<'a> {
     pub entry: &'a str,
 }
+
+/// Opens the stored machine PATH as `$key`, writable when `$writable` is true,
+/// `$current` (its raw text, with `%NAME%` references unexpanded) and `$kind` (its
+/// registry type), with `$entry` the folder. `[Environment]` would expand the references
+/// and store the result as a plain string, which changes every other entry. `Test-Entry`
+/// is the one rule that decides whether an item names the entry.
+const OPEN: &str = "$key = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey('SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment', $writable); \
+    $current = [string]$key.GetValue('Path', '', 'DoNotExpandEnvironmentNames'); \
+    $kind = if ($key.GetValueNames() -contains 'Path') { $key.GetValueKind('Path') } else { [Microsoft.Win32.RegistryValueKind]::ExpandString }; \
+    function Test-Entry($item) { [Environment]::ExpandEnvironmentVariables($item).TrimEnd('\\') -ieq [Environment]::ExpandEnvironmentVariables($entry).TrimEnd('\\') }";
+
+/// Stores `$new` with the type the value had, and tells running programs that the
+/// environment changed, which a direct registry write does not do by itself.
+const STORE: &str = "$key.SetValue('Path', $new, $kind); \
+    Add-Type -Namespace MyConfig -Name Environment -MemberDefinition '[DllImport(\"user32.dll\", CharSet = CharSet.Unicode)] public static extern IntPtr SendMessageTimeout(IntPtr window, uint message, UIntPtr wParam, string lParam, uint flags, uint timeout, out UIntPtr result);'; \
+    $result = [UIntPtr]::Zero; \
+    [void][MyConfig.Environment]::SendMessageTimeout([IntPtr]0xffff, 0x1A, [UIntPtr]::Zero, 'Environment', 2, 5000, [ref]$result)";
 
 impl Kind for MachinePathEntry<'_> {
     fn describe(&self) -> String {
         format!("machine PATH entry {}", self.entry)
     }
 
+    fn presence(&self) -> bool {
+        true
+    }
+
     fn read(&self, ctx: &Context) -> ModuleResult<Option<String>> {
-        let pwsh = crate::support::powershell_7(ctx)?;
-        let read_path = "[Environment]::GetEnvironmentVariable('Path', 'Machine')";
-        let path = ctx.read(cmd!(ctx.shell, "{pwsh} -NoProfile -Command {read_path}"))?;
-        Ok(path
-            .split(';')
-            .any(|item| same_path(item, self.entry))
-            .then(|| "present".to_owned()))
+        let found = powershell(
+            ctx,
+            &format!(
+                "$writable = $false; $entry = {}; {OPEN}; \
+                 if (@($current -split ';') | Where-Object {{ Test-Entry $_ }}) {{ '{PRESENT}' }}",
+                powershell_quote(self.entry)
+            ),
+        )?;
+        Ok((found == PRESENT).then(|| PRESENT.to_owned()))
     }
 
+    /// Appends the entry and leaves the rest of the text as it was.
     fn write(&self, ctx: &Context, _value: &str) -> ModuleResult {
-        let quoted = self.entry.replace('\'', "''");
-        set_machine_path(
+        run_elevated(
             ctx,
             &format!(
-                "$entry = '{quoted}'; $current = [Environment]::GetEnvironmentVariable('Path', 'Machine'); \
-                 $entries = @($current -split ';' | Where-Object {{ $_ }}); \
-                 if (-not ($entries | Where-Object {{ $_.TrimEnd('\\') -ieq $entry.TrimEnd('\\') }})) {{ \
-                 [Environment]::SetEnvironmentVariable('Path', (($entries + $entry) -join ';'), 'Machine') }}"
+                "$writable = $true; $entry = {}; {OPEN}; \
+                 if (-not (@($current -split ';') | Where-Object {{ Test-Entry $_ }})) {{ \
+                 $separator = if ($current -and -not $current.EndsWith(';')) {{ ';' }} else {{ '' }}; \
+                 $new = $current + $separator + $entry; {STORE} }}",
+                powershell_quote(self.entry)
             ),
         )
     }
 
+    /// Drops every item that names the entry and keeps the other items as they were.
     fn delete(&self, ctx: &Context) -> ModuleResult {
-        let quoted = self.entry.replace('\'', "''");
-        set_machine_path(
+        run_elevated(
             ctx,
             &format!(
-                "$entry = '{quoted}'; $current = [Environment]::GetEnvironmentVariable('Path', 'Machine'); \
-                 $entries = @($current -split ';' | Where-Object {{ $_ -and $_.TrimEnd('\\') -ine $entry.TrimEnd('\\') }}); \
-                 [Environment]::SetEnvironmentVariable('Path', ($entries -join ';'), 'Machine')"
+                "$writable = $true; $entry = {}; {OPEN}; \
+                 $new = (@($current -split ';') | Where-Object {{ -not (Test-Entry $_) }}) -join ';'; \
+                 if ($new -cne $current) {{ {STORE} }}",
+                powershell_quote(self.entry)
             ),
         )
-    }
-}
-
-fn same_path(left: &str, right: &str) -> bool {
-    left.trim_end_matches(['\\', '/'])
-        .eq_ignore_ascii_case(right.trim_end_matches(['\\', '/']))
-}
-
-/// Runs a script that changes the machine PATH in an elevated PowerShell.
-fn set_machine_path(ctx: &Context, script: &str) -> ModuleResult {
-    let pwsh = crate::support::powershell_7(ctx)?;
-    let elevate = "$encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($env:MYCONFIG_PATH_SCRIPT)); $process = Start-Process -FilePath $env:MYCONFIG_PWSH -Verb RunAs -ArgumentList '-NoProfile', '-EncodedCommand', $encoded -Wait -PassThru -ErrorAction Stop; if ($process.ExitCode -ne 0) { throw 'Elevated PATH update failed' }";
-    ctx.run(
-        cmd!(ctx.shell, "{pwsh} -NoProfile -Command {elevate}")
-            .env("MYCONFIG_PATH_SCRIPT", script)
-            .env("MYCONFIG_PWSH", &pwsh),
-    )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn path_entries_compare_without_case_or_trailing_separator() {
-        assert!(same_path(
-            "C:\\Program Files\\LLVM\\bin\\",
-            "c:\\program files\\llvm\\bin"
-        ));
-        assert!(!same_path("C:\\LLVM", "C:\\LLVM\\bin"));
     }
 }

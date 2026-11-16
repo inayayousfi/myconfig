@@ -4,7 +4,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use myconfig_utils::{PackageSpec, PackageTool};
 use xshell::cmd;
 
 use crate::{Context, ModuleResult, Setting, context::temporary_path};
@@ -30,7 +29,7 @@ pub(crate) fn require_executable(path: &Path) -> ModuleResult {
 
 pub(crate) fn verify_packages(ctx: &Context, packages: &[crate::Package]) -> ModuleResult {
     for (package, spec) in ctx.specs(packages)? {
-        if !ctx.package_installed(spec)? {
+        if !ctx.packages().installed(ctx, spec)? {
             return Err(format!("package {} ({package:?}) is not installed", spec.name).into());
         }
     }
@@ -39,7 +38,7 @@ pub(crate) fn verify_packages(ctx: &Context, packages: &[crate::Package]) -> Mod
 
 pub(crate) fn verify_absent(ctx: &Context, packages: &[crate::Package]) -> ModuleResult {
     for (package, spec) in ctx.specs(packages)? {
-        if ctx.package_installed(spec)? {
+        if ctx.packages().installed(ctx, spec)? {
             return Err(format!(
                 "package {} ({package:?}) should not be installed",
                 spec.name
@@ -85,9 +84,21 @@ pub(crate) fn current_user(ctx: &Context) -> ModuleResult<String> {
     Ok(user)
 }
 
+/// Whether the user's systemd manager, which runs the user services, has `wanted` among its
+/// groups. A login made after the group was added has it, but a manager that started earlier
+/// keeps its old groups until every session of the user ends.
 pub(crate) fn active_group(ctx: &Context, wanted: &str) -> ModuleResult<bool> {
-    let groups = ctx.read(cmd!(ctx.shell, "id -Gn"))?;
-    Ok(groups.split_whitespace().any(|group| group == wanted))
+    let sh = ctx.shell;
+    let manager = format!("user@{}.service", ctx.read(cmd!(sh, "id -u"))?);
+    let pid = ctx.read(cmd!(
+        sh,
+        "systemctl show --property=MainPID --value {manager}"
+    ))?;
+    if pid.is_empty() || pid == "0" {
+        return Ok(false);
+    }
+    let groups = ctx.read(cmd!(sh, "ps -o supgrp= -p {pid}"))?;
+    Ok(groups.split(',').any(|group| group.trim() == wanted))
 }
 
 pub(crate) fn graphical_session(ctx: &Context) -> ModuleResult<bool> {
@@ -128,19 +139,13 @@ pub(crate) fn configure_input_access(ctx: &Context, owner: &str) -> ModuleResult
     let sh = ctx.shell;
     let user = current_user(ctx)?;
     for group in ["input", "uinput"] {
-        ctx.set(
-            Setting::GroupExists {
-                group: group.to_owned(),
-            },
-            "present",
-        )?;
-        ctx.set(
-            Setting::GroupMember {
-                group: group.to_owned(),
-                user: user.clone(),
-            },
-            "member",
-        )?;
+        ctx.add(Setting::GroupExists {
+            group: group.to_owned(),
+        })?;
+        ctx.add(Setting::GroupMember {
+            group: group.to_owned(),
+            user: user.clone(),
+        })?;
     }
     ctx.run(cmd!(sh, "sudo modprobe uinput"))?;
     ctx.write_system_file(
@@ -198,133 +203,13 @@ pub(crate) fn user_runtime_directory(ctx: &Context) -> ModuleResult<PathBuf> {
     })
 }
 
-/// Installed packages that depend on `spec`, as the package manager reports them.
-pub(crate) fn dependents(ctx: &Context, spec: PackageSpec) -> ModuleResult<Vec<String>> {
-    let sh = ctx.shell;
-    let name = spec.name;
-    Ok(match spec.tool {
-        PackageTool::Pacman | PackageTool::Paru => {
-            let info = ctx.read(cmd!(sh, "pacman -Qi {name}"))?;
-            info.lines()
-                .find_map(|line| line.strip_prefix("Required By"))
-                .and_then(|line| line.split_once(':'))
-                .map(|(_, names)| {
-                    names
-                        .split_whitespace()
-                        .filter(|name| *name != "None")
-                        .map(str::to_owned)
-                        .collect()
-                })
-                .unwrap_or_default()
-        }
-        PackageTool::Apt => {
-            let output = ctx.read(cmd!(sh, "apt-cache rdepends --installed {name}"))?;
-            output
-                .lines()
-                .skip_while(|line| !line.starts_with("Reverse Depends:"))
-                .skip(1)
-                .map(|line| line.trim().trim_start_matches('|').to_owned())
-                .filter(|line| !line.is_empty() && line != name)
-                .collect()
-        }
-        PackageTool::Winget => Vec::new(),
-    })
-}
-
-/// The package that owns the running kernel, so `remove` never uninstalls it.
-pub(crate) fn running_kernel_package(ctx: &Context) -> ModuleResult<Option<String>> {
-    let sh = ctx.shell;
-    let owner = match ctx.package_system {
-        crate::PackageSystem::Arch => {
-            let release = ctx.read(cmd!(sh, "uname -r"))?;
-            let image = format!("/usr/lib/modules/{release}/vmlinuz");
-            ctx.read_unchecked(cmd!(sh, "pacman -Qqo {image}"))?
-        }
-        crate::PackageSystem::Apt => {
-            let release = ctx.read(cmd!(sh, "uname -r"))?;
-            let image = format!("/boot/vmlinuz-{release}");
-            let (found, output) = ctx.read_unchecked(cmd!(sh, "dpkg -S {image}"))?;
-            (
-                found,
-                output.split(':').next().unwrap_or_default().to_owned(),
-            )
-        }
-        crate::PackageSystem::Winget => return Ok(None),
-    };
-    Ok(match owner {
-        (true, name) if !name.is_empty() => Some(name),
-        _ => None,
-    })
-}
-
-pub(crate) fn ensure_paru(ctx: &Context) -> ModuleResult {
-    let sh = ctx.shell;
-    for installed in ["paru", "paru-bin", "paru-git"] {
-        if ctx.succeeds(cmd!(sh, "pacman -Q {installed}"))? {
-            return Ok(());
-        }
-    }
-    // CachyOS ships paru in its own repository; plain Arch has it only in the AUR.
-    if ctx.succeeds(cmd!(sh, "pacman -Si paru"))? {
-        return ctx.install_packages(&[crate::Package::Paru]);
-    }
-    // paru-bin packages paru's official release binary, so nothing is compiled.
-    ctx.run(cmd!(
-        sh,
-        "sudo pacman -S --needed --noconfirm base-devel git"
-    ))?;
-    with_temporary_directory("paru", |root| {
-        let repo = root.join("paru-bin");
-        ctx.run(cmd!(
-            sh,
-            "git clone https://aur.archlinux.org/paru-bin.git {repo}"
-        ))?;
-        let _cwd = sh.push_dir(&repo);
-        ctx.run(cmd!(sh, "makepkg --noconfirm"))?;
-        let packages: Vec<PathBuf> = ctx
-            .read(cmd!(sh, "makepkg --packagelist"))?
-            .lines()
-            .map(PathBuf::from)
-            .map(|path| {
-                if path.is_absolute() {
-                    path
-                } else {
-                    repo.join(path)
-                }
-            })
-            .collect();
-        if packages.is_empty() {
-            return Err("makepkg did not produce a package".into());
-        }
-        ctx.local_package_installed("paru-bin")?;
-        ctx.run(cmd!(
-            sh,
-            "sudo pacman -U --needed --noconfirm {packages...}"
-        ))
-    })
-}
-
-pub(crate) fn import_winget_packages(ctx: &Context, names: &[&str]) -> ModuleResult {
-    let mut packages = Vec::new();
-    for name in names {
-        if name.is_empty()
-            || !name
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || b"._-".contains(&byte))
-        {
-            return Err(format!("invalid Winget package identifier: {name}").into());
-        }
-        packages.push(format!("{{\"PackageIdentifier\":\"{name}\"}}"));
-    }
-    let manifest = format!(
-        "{{\"$schema\":\"https://aka.ms/winget-packages.schema.2.0.json\",\"Sources\":[{{\"Packages\":[{}],\"SourceDetails\":{{\"Argument\":\"https://cdn.winget.microsoft.com/cache\",\"Identifier\":\"Microsoft.Winget.Source_8wekyb3d8bbwe\",\"Name\":\"winget\",\"Type\":\"Microsoft.PreIndexed.Package\"}}}}]}}",
-        packages.join(",")
-    );
-    with_temporary_directory("winget", |directory| {
-        let path = directory.join("packages.json");
-        fs::write(&path, manifest)?;
-        ctx.run(cmd!(ctx.shell, "winget import -i {path} --accept-source-agreements --accept-package-agreements --ignore-unavailable"))
-    })
+/// The folder that holds the user's configuration files, as KDE and GTK programs find it.
+pub(crate) fn config_home(ctx: &Context) -> PathBuf {
+    ctx.shell
+        .var_os("XDG_CONFIG_HOME")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| ctx.home.join(".config"))
 }
 
 pub(crate) fn powershell_7(ctx: &Context) -> ModuleResult<PathBuf> {
@@ -348,12 +233,67 @@ pub(crate) fn powershell(ctx: &Context, command: &str) -> ModuleResult<String> {
     ctx.read(cmd!(ctx.shell, "{pwsh} -NoProfile -Command {command}"))
 }
 
+/// `text` as a single-quoted PowerShell string, which expands nothing.
+pub(crate) fn powershell_quote(text: &str) -> String {
+    format!("'{}'", text.replace('\'', "''"))
+}
+
+/// Runs a PowerShell 7 script as administrator through the system's elevation prompt,
+/// waits for it, and fails when it exits nonzero. An elevated process does not inherit
+/// this one's environment, so the script carries its data inside, quoted with
+/// `powershell_quote`. It travels encoded, so no quoting of the command line applies.
+pub(crate) fn run_elevated(ctx: &Context, script: &str) -> ModuleResult {
+    let pwsh = powershell_7(ctx)?;
+    let elevate = "$encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes(\"`$ErrorActionPreference = 'Stop'`n\" + $env:MYCONFIG_ELEVATED_SCRIPT)); $process = Start-Process -FilePath $env:MYCONFIG_PWSH -Verb RunAs -ArgumentList '-NoLogo', '-NoProfile', '-EncodedCommand', $encoded -Wait -PassThru -ErrorAction Stop; if ($process.ExitCode -ne 0) { throw \"The elevated step exited with code $($process.ExitCode)\" }";
+    ctx.run(
+        cmd!(ctx.shell, "{pwsh} -NoProfile -Command {elevate}")
+            .env("MYCONFIG_ELEVATED_SCRIPT", script)
+            .env("MYCONFIG_PWSH", &pwsh),
+    )
+}
+
 pub(crate) fn startup_directory(ctx: &Context) -> ModuleResult<PathBuf> {
     let startup = powershell(ctx, "[Environment]::GetFolderPath('Startup')")?;
     if startup.is_empty() {
         return Err("Windows Startup directory is unavailable".into());
     }
     Ok(PathBuf::from(startup))
+}
+
+/// A shortcut in the Startup folder, which Windows opens at logon.
+pub(crate) struct StartupShortcut<'a> {
+    /// The file name in the Startup folder, ending in `.lnk`.
+    pub name: &'a str,
+    pub target: &'a Path,
+    pub arguments: &'a str,
+    pub working_directory: &'a Path,
+    pub description: &'a str,
+    /// Opens the target's window minimized.
+    pub minimized: bool,
+}
+
+/// Writes `shortcut` after recording what its path held, and checks that Windows saved
+/// its target and arguments.
+pub(crate) fn write_startup_shortcut(ctx: &Context, shortcut: &StartupShortcut) -> ModuleResult {
+    let path = startup_directory(ctx)?.join(shortcut.name);
+    ctx.record_path(&path)?;
+    let pwsh = powershell_7(ctx)?;
+    let script = "$ErrorActionPreference = 'Stop'; $shell = New-Object -ComObject WScript.Shell; $link = $shell.CreateShortcut($env:MYCONFIG_SHORTCUT); $link.TargetPath = $env:MYCONFIG_SHORTCUT_TARGET; $link.Arguments = $env:MYCONFIG_SHORTCUT_ARGUMENTS; $link.WorkingDirectory = $env:MYCONFIG_SHORTCUT_DIRECTORY; $link.Description = $env:MYCONFIG_SHORTCUT_DESCRIPTION; $link.WindowStyle = [int]$env:MYCONFIG_SHORTCUT_WINDOW; $link.Save(); $saved = $shell.CreateShortcut($env:MYCONFIG_SHORTCUT); if ($saved.TargetPath -ine $env:MYCONFIG_SHORTCUT_TARGET -or $saved.Arguments -cne $env:MYCONFIG_SHORTCUT_ARGUMENTS) { throw 'The saved shortcut does not match its target' }";
+    // WScript.Shell window styles: 1 opens normally, 7 opens minimized.
+    let window = if shortcut.minimized { "7" } else { "1" };
+    ctx.run(
+        cmd!(ctx.shell, "{pwsh} -NoProfile -Command {script}")
+            .env("MYCONFIG_SHORTCUT", &path)
+            .env("MYCONFIG_SHORTCUT_TARGET", shortcut.target)
+            .env("MYCONFIG_SHORTCUT_ARGUMENTS", shortcut.arguments)
+            .env("MYCONFIG_SHORTCUT_DIRECTORY", shortcut.working_directory)
+            .env("MYCONFIG_SHORTCUT_DESCRIPTION", shortcut.description)
+            .env("MYCONFIG_SHORTCUT_WINDOW", window),
+    )?;
+    if !path.is_file() {
+        return Err(format!("the startup shortcut {} was not created", path.display()).into());
+    }
+    Ok(())
 }
 
 /// Writes the files of an embedded directory under `destination`, recording each one.
@@ -434,11 +374,17 @@ pub(crate) fn set_default_application(
 
 /// A root-owned file's contents, or `None` when it does not exist.
 pub(crate) fn read_system_file(ctx: &Context, path: &str) -> ModuleResult<Option<String>> {
+    read_system_bytes(ctx, path)?
+        .map(|bytes| Ok(String::from_utf8(bytes)?))
+        .transpose()
+}
+
+/// Reads a root-owned file that may hold binary data, or `None` when it is missing.
+pub(crate) fn read_system_bytes(ctx: &Context, path: &str) -> ModuleResult<Option<Vec<u8>>> {
     if !ctx.succeeds(cmd!(ctx.shell, "sudo test -f {path}"))? {
         return Ok(None);
     }
-    let bytes = ctx.read_bytes(cmd!(ctx.shell, "sudo cat {path}"))?;
-    Ok(Some(String::from_utf8(bytes)?))
+    Ok(Some(ctx.read_bytes(cmd!(ctx.shell, "sudo cat {path}"))?))
 }
 
 /// Replaces a root-owned file with `sudo install`, without recording it. The callers

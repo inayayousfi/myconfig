@@ -1,4 +1,6 @@
 //! Language runtimes and build tools.
+use std::path::Path;
+
 use xshell::cmd;
 
 use crate::{
@@ -20,9 +22,11 @@ const PACKAGES: &[Package] = &[
     Package::Llvm,
     Package::Make,
     Package::Cmake,
+    // npm depends on node-gyp, and remove uninstalls the packages of one install in reverse
+    // order, so npm goes first.
     Package::Nodejs,
-    Package::Npm,
     Package::NodeGyp,
+    Package::Npm,
 ];
 
 impl Runtimes {
@@ -46,9 +50,6 @@ fn install_bun(ctx: &Context) -> ModuleResult {
     let installer = ctx
         .read(cmd!(sh, "curl -fsSL https://bun.sh/install"))
         .map_err(|error| format!("could not download the Bun installer: {error}"))?;
-    if !directory.exists() {
-        ctx.created(&directory, false)?;
-    }
     // Without a known shell the installer leaves the shell files alone; the deployed Zsh
     // configuration already puts ~/.bun/bin on PATH.
     ctx.run(
@@ -77,9 +78,22 @@ impl Module for Runtimes {
     }
 
     fn install(&self, ctx: &Context) -> ModuleResult {
+        // Bun keeps its global packages, manifest and cache in ~/.bun, beside packages that
+        // people add later, so remove asks before deleting it. Bun's installer creates it
+        // here, and a packaged Bun creates it on first use, so this module records it on
+        // every profile.
+        let bun = ctx.home.join(".bun");
+        if !bun.exists() {
+            ctx.created_user_data(&bun)?;
+        }
         ctx.install_packages(&self.packages())?;
         if self.bun_installer {
             install_bun(ctx)?;
+        }
+        // Selecting stable downloads the whole toolchain when it is missing.
+        let (_, toolchains) = ctx.read_unchecked(cmd!(ctx.shell, "rustup toolchain list"))?;
+        if !toolchains.lines().any(|line| line.starts_with("stable-")) {
+            ctx.record_undo_command(Path::new("rustup"), &["toolchain", "uninstall", "stable"])?;
         }
         ctx.set(Setting::RustupDefault, "stable")
     }

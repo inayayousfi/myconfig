@@ -5,7 +5,7 @@ use myconfig_utils::PackageSpec;
 use package_catalog::AptRepository;
 use xshell::cmd;
 
-use crate::{Context, ModuleResult, support::read_system_file};
+use crate::{Context, ModuleResult, support::read_system_bytes};
 
 /// The release code name from `/etc/os-release`.
 pub(crate) fn codename() -> ModuleResult<String> {
@@ -19,7 +19,7 @@ pub(crate) fn codename() -> ModuleResult<String> {
 
 /// Writes a root-owned file, and reports whether its contents changed.
 fn write_if_changed(ctx: &Context, path: &str, contents: &[u8]) -> ModuleResult<bool> {
-    if read_system_file(ctx, path)?.is_some_and(|current| current.as_bytes() == contents) {
+    if read_system_bytes(ctx, path)?.is_some_and(|current| current == contents) {
         return Ok(false);
     }
     ctx.write_system_file(Path::new(path), contents, "0644")?;

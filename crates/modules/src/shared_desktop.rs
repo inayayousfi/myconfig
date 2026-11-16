@@ -1,19 +1,18 @@
 //! Moves the items on the shared Public and Default desktops onto your own desktop.
 //!
 //! Writing to the shared desktops needs administrator rights, so a non-elevated run
-//! starts this program again elevated as `myconfig internal shared-desktop ...`.
+//! starts this program again elevated as `myconfig internal shared-desktop ...`. The
+//! questions are asked before that step, so they go through `ctx.confirm` either way.
 use std::{
     fs, io,
     path::{Path, PathBuf},
 };
 
-use xshell::cmd;
-
 use crate::{
-    Context, Footprint, Module, ModuleResult, Need,
+    Context, Footprint, Module, ModuleResult, Need, Unanswered,
     context::temporary_path,
     state::{Change, Previous},
-    support::{powershell, powershell_7},
+    support::{powershell, powershell_quote},
 };
 
 pub struct SharedDesktop;
@@ -26,26 +25,19 @@ fn is_administrator(ctx: &Context) -> ModuleResult<bool> {
     Ok(powershell(ctx, command)?.trim() == "True")
 }
 
-/// Runs `myconfig internal shared-desktop <step>` elevated with quoted `paths`, and waits.
+/// Runs `myconfig internal shared-desktop <step>` elevated with `paths`, and waits.
 fn run_elevated(ctx: &Context, step: &str, paths: &[&Path]) -> ModuleResult {
-    let pwsh = powershell_7(ctx)?;
-    let mut list = vec![
-        "'internal'".to_owned(),
-        "'shared-desktop'".to_owned(),
-        format!("'{step}'"),
-    ];
-    for path in paths {
-        let path = path.to_string_lossy().replace('\'', "''");
-        list.push(format!("'\"{path}\"'"));
-    }
-    let command = format!(
-        "$process = Start-Process -FilePath $env:MYCONFIG_EXE -Verb RunAs -ArgumentList {} -Wait -PassThru -ErrorAction Stop; if ($process.ExitCode -ne 0) {{ throw 'The elevated shared desktop step failed' }}",
-        list.join(", ")
+    let mut script = format!(
+        "& {} 'internal' 'shared-desktop' {}",
+        powershell_quote(&std::env::current_exe()?.to_string_lossy()),
+        powershell_quote(step)
     );
-    ctx.run(
-        cmd!(ctx.shell, "{pwsh} -NoProfile -Command {command}")
-            .env("MYCONFIG_EXE", std::env::current_exe()?),
-    )
+    for path in paths {
+        script.push(' ');
+        script.push_str(&powershell_quote(&path.to_string_lossy()));
+    }
+    script.push_str("; exit $LASTEXITCODE");
+    crate::support::run_elevated(ctx, &script)
 }
 
 /// Your Desktop folder as Windows reports it, which OneDrive can move out of the profile.
@@ -121,39 +113,68 @@ fn move_item(source: &Path, target: &Path, replace: bool) -> ModuleResult {
     Ok(())
 }
 
-/// Moves every shared item onto `desktop`, asking before replacing an item already there.
-/// Each move is passed to `moved` as soon as it happens; an item that fails is listed
-/// in the returned error after the others were tried.
-fn move_items(
-    desktop: &Path,
-    confirm: &mut dyn FnMut(&str) -> bool,
-    moved: &mut dyn FnMut(Change) -> ModuleResult,
-) -> ModuleResult {
-    let mut failures = Vec::new();
+/// Each shared desktop item, as its path and its path on `desktop`.
+fn shared_items(desktop: &Path) -> ModuleResult<Vec<(PathBuf, PathBuf)>> {
+    let mut items = Vec::new();
     for source in shared_desktops()?.iter().filter(|source| source.is_dir()) {
         for entry in fs::read_dir(source)? {
             let entry = entry?;
             let name = entry.file_name();
-            if name.to_string_lossy().eq_ignore_ascii_case("desktop.ini") {
-                continue;
+            if !name.to_string_lossy().eq_ignore_ascii_case("desktop.ini") {
+                items.push((entry.path(), desktop.join(&name)));
             }
-            let from = entry.path();
-            let to = desktop.join(&name);
-            let replaced = Previous::capture(&to)?;
-            let replace = replaced != Previous::Missing;
-            if replace
-                && !confirm(&format!(
-                    "The shared desktop item {} would replace {}. Replace it?",
-                    from.display(),
-                    to.display()
-                ))
-            {
-                continue;
+        }
+    }
+    Ok(items)
+}
+
+/// Asks whether each shared item may replace the item of the same name on `desktop`.
+/// Returns the shared items the person agreed to, and the first question nobody answered.
+fn ask_replacements(
+    ctx: &Context,
+    desktop: &Path,
+) -> ModuleResult<(Vec<PathBuf>, Option<Unanswered>)> {
+    let mut replace = Vec::new();
+    let mut unanswered = None;
+    for (from, to) in shared_items(desktop)? {
+        if fs::symlink_metadata(&to).is_err() {
+            continue;
+        }
+        let question = format!(
+            "The shared desktop item {} would replace {}. Replace it?",
+            from.display(),
+            to.display()
+        );
+        match ctx.confirm(&question) {
+            Ok(true) => replace.push(from),
+            Ok(false) => {}
+            Err(error) => {
+                unanswered.get_or_insert(error);
             }
-            match move_item(&from, &to, replace) {
-                Ok(()) => moved(Change::Moved { from, to, replaced })?,
-                Err(error) => failures.push(format!("{}: {error}", from.display())),
-            }
+        }
+    }
+    Ok((replace, unanswered))
+}
+
+/// Moves every shared item onto `desktop`. An item already there is replaced only when
+/// its shared item is in `replace`, and kept otherwise. Each move is passed to `moved` as
+/// soon as it happens; an item that fails is listed in the returned error after the
+/// others were tried.
+fn move_items(
+    desktop: &Path,
+    replace: &[PathBuf],
+    moved: &mut dyn FnMut(Change) -> ModuleResult,
+) -> ModuleResult {
+    let mut failures = Vec::new();
+    for (from, to) in shared_items(desktop)? {
+        let replaced = Previous::capture(&to)?;
+        let replacing = replaced != Previous::Missing;
+        if replacing && !replace.contains(&from) {
+            continue;
+        }
+        match move_item(&from, &to, replacing) {
+            Ok(()) => moved(Change::Moved { from, to, replaced })?,
+            Err(error) => failures.push(format!("{}: {error}", from.display())),
         }
     }
     if failures.is_empty() {
@@ -194,16 +215,11 @@ pub(crate) fn move_back(
     result
 }
 
-/// The elevated `move` step: moves the shared items onto `desktop`, rewriting `record`
-/// after each move so a failure still leaves the list of moves made.
-pub fn elevated_move(record: &Path, desktop: &Path) -> ModuleResult {
-    let mut confirm = |question: &str| {
-        use std::io::Write;
-        print!("{question} Type 'yes' to replace it: ");
-        let _ = io::stdout().flush();
-        let mut answer = String::new();
-        io::stdin().read_line(&mut answer).is_ok() && answer.trim() == "yes"
-    };
+/// The elevated `move` step: moves the shared items onto `desktop`, replacing only the
+/// items that the JSON list in `replace` names, and rewrites `record` after each move so
+/// a failure still leaves the list of moves made.
+pub fn elevated_move(record: &Path, desktop: &Path, replace: &Path) -> ModuleResult {
+    let replace: Vec<PathBuf> = serde_json::from_slice(&fs::read(replace)?)?;
     let mut changes = Vec::new();
     let mut moved = |change: Change| -> ModuleResult {
         changes.push(change);
@@ -211,7 +227,7 @@ pub fn elevated_move(record: &Path, desktop: &Path) -> ModuleResult {
         Ok(())
     };
     fs::write(record, b"[]")?;
-    move_items(desktop, &mut confirm, &mut moved)
+    move_items(desktop, &replace, &mut moved)
 }
 
 /// The elevated `move-back` step: undoes the one move described in `change`.
@@ -220,6 +236,33 @@ pub fn elevated_move_back(change: &Path) -> ModuleResult {
         Change::Moved { from, to, replaced } => move_back_here(&from, &to, &replaced),
         _ => Err("unexpected shared desktop change".into()),
     }
+}
+
+/// Moves the shared items onto `desktop`, here when this run is elevated and otherwise
+/// through the elevated step, and records each move.
+fn move_all(ctx: &Context, desktop: &Path, replace: &[PathBuf]) -> ModuleResult {
+    if is_administrator(ctx)? {
+        return move_items(desktop, replace, &mut |change| ctx.record(change));
+    }
+    let file = temporary_path("shared-desktop");
+    let replace_file = temporary_path("shared-desktop-replace");
+    fs::write(&replace_file, serde_json::to_vec(replace)?)?;
+    let result =
+        run_elevated(ctx, ELEVATED_MOVE, &[&file, desktop, &replace_file]).map_err(|error| {
+            format!("the elevated step did not finish ({error}); untick shared-desktop to skip it")
+        });
+    let _ = fs::remove_file(&replace_file);
+    // Record the moves the elevated step made, even when it stopped partway.
+    let recorded = fs::read(&file)
+        .ok()
+        .map(|contents| serde_json::from_slice::<Vec<Change>>(&contents))
+        .transpose()?
+        .unwrap_or_default();
+    let _ = fs::remove_file(&file);
+    for change in recorded {
+        ctx.record(change)?;
+    }
+    Ok(result?)
 }
 
 impl Module for SharedDesktop {
@@ -240,31 +283,13 @@ impl Module for SharedDesktop {
             return Err("the shared desktop exists only on Windows".into());
         }
         let desktop = user_desktop(ctx)?;
-        if is_administrator(ctx)? {
-            let mut confirm = |question: &str| match ctx.confirm(question) {
-                Ok(answer) => answer,
-                Err(unanswered) => {
-                    ctx.note(&format!("Kept your item: {unanswered}"));
-                    false
-                }
-            };
-            return move_items(&desktop, &mut confirm, &mut |change| ctx.record(change));
+        let (replace, unanswered) = ask_replacements(ctx, &desktop)?;
+        move_all(ctx, &desktop, &replace)?;
+        // The items nobody answered for stay, and the next install asks again.
+        match unanswered {
+            Some(unanswered) => Err(unanswered.into()),
+            None => Ok(()),
         }
-        let file = temporary_path("shared-desktop");
-        let result = run_elevated(ctx, ELEVATED_MOVE, &[&file, &desktop]).map_err(|error| {
-            format!("the elevated step did not finish ({error}); untick shared-desktop to skip it")
-        });
-        // Record the moves the elevated step made, even when it stopped partway.
-        let recorded = fs::read(&file)
-            .ok()
-            .map(|contents| serde_json::from_slice::<Vec<Change>>(&contents))
-            .transpose()?
-            .unwrap_or_default();
-        let _ = fs::remove_file(&file);
-        for change in recorded {
-            ctx.record(change)?;
-        }
-        Ok(result?)
     }
 
     fn verify(&self, ctx: &Context) -> ModuleResult {

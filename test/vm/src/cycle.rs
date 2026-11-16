@@ -1,5 +1,6 @@
 //! The test cycle of one guest system: a fresh install, a second install that must change
-//! nothing, and a removal that must bring back the state from before the install.
+//! nothing, and a removal that must bring back the state from before the install. On Windows
+//! the cycle also checks the Arch WSL distribution that the Windows installer creates.
 //!
 //! The cycle runs on a throwaway layer over the clean image. A failed cycle keeps that layer,
 //! with its state lists, comparisons, command logs and last screen, as the failed disk of its
@@ -11,9 +12,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crate::answers::Answers;
-use crate::binary::Binary;
+use crate::binary::{Binary, Launch};
 use crate::collect::{self, CollectError};
-use crate::compare::{self, Allowed, AllowedError, Difference};
+use crate::compare::{self, Allowed, AllowedError, Comparison, Difference};
 use crate::disk::{self, DiskError};
 use crate::drive::{Desktop, DriveError, Driver, Terminal};
 use crate::os::Os;
@@ -32,8 +33,11 @@ const SHOWN_DIFFERENCES: usize = 40;
 /// `NotKept` name where the failed layer is.
 #[derive(Debug, thiserror::Error)]
 pub enum CycleError {
-    #[error("the allowed-changes file of {os} is not valid: {error}")]
-    Allowed { os: Os, error: AllowedError },
+    #[error("allowed-changes/{name}.txt is not valid: {error}")]
+    Allowed {
+        name: &'static str,
+        error: AllowedError,
+    },
     #[error(transparent)]
     Start(#[from] StartError),
     #[error(transparent)]
@@ -85,8 +89,13 @@ pub enum StepError {
 /// Runs the cycle of `os` on a new throwaway layer over its clean image. With `watch`, a viewer
 /// window shows the guest display.
 pub fn cycle(os: Os, watch: bool, repository: &Path) -> Result<(), CycleError> {
-    let allowed = Allowed::parse(compare::allowed_changes(os))
-        .map_err(|error| CycleError::Allowed { os, error })?;
+    let parse =
+        |name, text| Allowed::parse(text).map_err(|error| CycleError::Allowed { name, error });
+    let allowed = parse(os.name(), compare::allowed_changes(os))?;
+    let arch_wsl_allowed = match os {
+        Os::Windows => Some(parse("arch-wsl", compare::ARCH_WSL_ALLOWED_CHANGES)?),
+        Os::Cachyos | Os::Ubuntu => None,
+    };
     let mut started = start::start(
         Options {
             os,
@@ -107,6 +116,7 @@ pub fn cycle(os: Os, watch: bool, repository: &Path) -> Result<(), CycleError> {
         guest: &started.guest,
         binaries: &started.binaries,
         allowed: &allowed,
+        arch_wsl_allowed: arch_wsl_allowed.as_ref(),
         folder: &folder,
     }
     .run(&mut started.vm);
@@ -148,6 +158,8 @@ struct Steps<'a> {
     guest: &'a Guest,
     binaries: &'a [Binary],
     allowed: &'a Allowed,
+    /// The allowed changes of the Arch WSL distribution, for a Windows guest.
+    arch_wsl_allowed: Option<&'a Allowed>,
     folder: &'a Path,
 }
 
@@ -173,45 +185,110 @@ impl Steps<'_> {
         };
         let driver = driver.as_mut();
 
+        // The installer that the guest runs itself. The Arch WSL installer runs inside the
+        // distribution that the arch-wsl module of the Windows installer creates, and that
+        // module installs it.
+        let installer = self
+            .binaries
+            .iter()
+            .find(|binary| binary.launch != Launch::Wsl)
+            .expect("every guest has an installer of its own");
+        let arch_wsl = self
+            .binaries
+            .iter()
+            .find(|binary| binary.launch == Launch::Wsl)
+            .zip(self.arch_wsl_allowed);
+        if arch_wsl.is_some() {
+            collect::prepare_arch_wsl(self.guest, &self.folder.join("scratch"))?;
+            collect::forget_arch_wsl_created(self.guest)?;
+        }
+
         let before = self.lists("before")?;
-        for binary in self.binaries {
-            self.drive(driver, vm, binary, "install", "first install")?;
-        }
-        for binary in self.binaries {
-            self.drive(driver, vm, binary, "verify", "verify")?;
-        }
+        self.drive(driver, vm, installer, "install", "first install")?;
+        self.drive(driver, vm, installer, "verify", "verify")?;
         let first = self.lists("first-install")?;
-        for binary in self.binaries {
-            self.drive(driver, vm, binary, "install", "second install")?;
-        }
+        // Only the first install creates the distribution, and the hook saved its lists
+        // before the Arch WSL installer ran in it. A later install saves them again over
+        // the installed distribution, so they are read now.
+        let arch_wsl_first = match arch_wsl {
+            Some(_) => {
+                let first = self.arch_wsl_lists("arch-wsl-first-install")?;
+                println!("vm: reading the arch-wsl-created state lists");
+                let created = collect::arch_wsl_created_lists(
+                    self.guest,
+                    &self.folder.join("lists-arch-wsl-created.txt"),
+                )?;
+                Some((first, created))
+            }
+            None => None,
+        };
+        self.drive(driver, vm, installer, "install", "second install")?;
         let second = self.lists("second-install")?;
         self.check(
             &first,
             &second,
+            self.allowed,
+            Comparison::Install,
             "the second install",
             "second-install-changes",
         )?;
 
-        // The later installer depends on what the earlier one set up, so it goes first.
-        for binary in self.binaries.iter().rev() {
-            let list = self.drive(driver, vm, binary, "list", "list")?;
-            let modules: Vec<&str> = list
-                .lines()
-                .map(str::trim)
-                .filter(|line| !line.is_empty())
-                .collect();
-            for module in modules.iter().rev() {
-                self.drive(
-                    driver,
-                    vm,
-                    binary,
-                    &format!("remove {module}"),
-                    &format!("remove {module}"),
-                )?;
-            }
+        if let (Some((arch_wsl, allowed)), Some((first, created))) = (arch_wsl, arch_wsl_first) {
+            let second = self.arch_wsl_lists("arch-wsl-second-install")?;
+            self.check(
+                &first,
+                &second,
+                allowed,
+                Comparison::Install,
+                "the second install in Arch WSL",
+                "arch-wsl-second-install-changes",
+            )?;
+            // The Windows remove unregisters the distribution, so the Arch WSL remove goes first.
+            self.remove(driver, vm, arch_wsl)?;
+            let after = self.arch_wsl_lists("arch-wsl-after")?;
+            self.check(
+                &created,
+                &after,
+                allowed,
+                Comparison::Removal,
+                "the Arch WSL removal",
+                "arch-wsl-removal-leftovers",
+            )?;
         }
+
+        self.remove(driver, vm, installer)?;
         let after = self.lists("after")?;
-        self.check(&before, &after, "removal", "removal-leftovers")
+        self.check(
+            &before,
+            &after,
+            self.allowed,
+            Comparison::Removal,
+            "removal",
+            "removal-leftovers",
+        )
+    }
+
+    /// Removes every module of `binary` with one `remove` command, which orders the removal.
+    fn remove(
+        &self,
+        driver: &mut dyn Driver,
+        vm: &mut Vm,
+        binary: &Binary,
+    ) -> Result<(), StepError> {
+        let list = self.drive(driver, vm, binary, "list", "list")?;
+        let modules: Vec<&str> = list
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .collect();
+        self.drive(
+            driver,
+            vm,
+            binary,
+            &format!("remove {}", modules.join(" ")),
+            "remove",
+        )?;
+        Ok(())
     }
 
     /// Runs one installer command and saves its log under a name made of `step` and the package.
@@ -236,6 +313,12 @@ impl Steps<'_> {
             .map_err(|error| StepError::Drive { step: label, error })
     }
 
+    fn arch_wsl_lists(&self, name: &str) -> Result<Snapshot, StepError> {
+        println!("vm: saving the {name} state lists");
+        let file = self.folder.join(format!("lists-{name}.txt"));
+        Ok(collect::collect_arch_wsl(self.guest, &file)?)
+    }
+
     fn lists(&self, name: &str) -> Result<Snapshot, StepError> {
         println!("vm: saving the {name} state lists");
         let file = self.folder.join(format!("lists-{name}.txt"));
@@ -247,16 +330,18 @@ impl Steps<'_> {
         )?)
     }
 
-    /// Compares two state lists, writes the differences that are not allowed to `report`,
-    /// shows them, and fails when there is any.
+    /// Compares two state lists, writes the differences that `allowed` does not allow to
+    /// `report`, shows them, and fails when there is any.
     fn check(
         &self,
         before: &Snapshot,
         after: &Snapshot,
+        allowed: &Allowed,
+        comparison: Comparison,
         what: &'static str,
         report: &str,
     ) -> Result<(), StepError> {
-        let differences = compare::compare(before, after, self.allowed);
+        let differences = compare::compare(before, after, allowed, comparison);
         let report = self.folder.join(format!("{report}.txt"));
         let text: String = differences
             .iter()

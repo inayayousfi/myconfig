@@ -201,3 +201,98 @@ impl Args {
         self.0.push(value);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn machine(os: Os, dir: &str) -> Machine {
+        Machine {
+            os,
+            layer: Layer::new(PathBuf::from(dir).join("work")),
+            sockets: Sockets::in_dir(Path::new("/state/run")),
+            media: Media::default(),
+            displays: 1,
+            serial: None,
+        }
+    }
+
+    /// The value after each `flag`, in order.
+    fn values(machine: &Machine, flag: &str) -> Vec<String> {
+        let args: Vec<String> = machine
+            .qemu_args()
+            .into_iter()
+            .map(|arg| arg.into_string().unwrap())
+            .collect();
+        args.windows(2)
+            .filter(|pair| pair[0] == flag)
+            .map(|pair| pair[1].clone())
+            .collect()
+    }
+
+    #[test]
+    fn ssh_reaches_the_guest_only_from_the_host_loopback() {
+        for os in [Os::Cachyos, Os::Ubuntu, Os::Windows] {
+            let netdev = values(&machine(os, "/state"), "-netdev");
+            assert_eq!(
+                netdev,
+                ["user,id=network,hostfwd=tcp:127.0.0.1:2222-:22"],
+                "{os}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_linux_guest_has_a_spice_display_with_the_agent_channel_and_its_outputs() {
+        let mut cachyos = machine(Os::Cachyos, "/state");
+        cachyos.displays = 2;
+        assert_eq!(
+            values(&cachyos, "-spice"),
+            ["unix=on,disable-ticketing=on,addr=/state/run/spice.sock"]
+        );
+        let devices = values(&cachyos, "-device");
+        assert!(devices.contains(&"qxl-vga,xres=1920,yres=1080,max_outputs=2".to_owned()));
+        assert!(
+            devices.contains(&"virtserialport,chardev=vdagent,name=com.redhat.spice.0".to_owned())
+        );
+        assert!(devices.contains(&"virtio-blk-pci,drive=disk,bootindex=0".to_owned()));
+    }
+
+    #[test]
+    fn windows_has_secure_firmware_a_tpm_and_devices_without_extra_drivers() {
+        let windows = machine(Os::Windows, "/state");
+        assert!(values(&windows, "-machine")[0].contains("smm=on"));
+        let devices = values(&windows, "-device");
+        for device in [
+            "tpm-crb,tpmdev=tpm0",
+            "ide-hd,drive=disk,bus=ide.0,bootindex=0",
+            "e1000e,netdev=network",
+        ] {
+            assert!(devices.contains(&device.to_owned()), "{device}");
+        }
+        assert_eq!(
+            values(&windows, "-tpmdev"),
+            ["emulator,id=tpm0,chardev=tpm"]
+        );
+    }
+
+    #[test]
+    fn a_boot_disc_starts_before_the_disk() {
+        let mut ubuntu = machine(Os::Ubuntu, "/state");
+        ubuntu.media.boot = Some(PathBuf::from("/cache/installer.iso"));
+        ubuntu.media.attached = vec![PathBuf::from("/build/seed.iso")];
+        let devices = values(&ubuntu, "-device");
+        assert!(devices.contains(&"virtio-blk-pci,drive=disk,bootindex=1".to_owned()));
+        assert!(devices.contains(&"ide-cd,drive=media0,bus=ide.1,bootindex=0".to_owned()));
+        assert!(devices.contains(&"ide-cd,drive=media1,bus=ide.2".to_owned()));
+    }
+
+    #[test]
+    fn a_comma_in_a_path_reaches_qemu_as_part_of_the_path() {
+        let drives = values(&machine(Os::Ubuntu, "/state/a,b"), "-drive");
+        assert!(drives.contains(
+            &"if=none,id=disk,format=qcow2,cache=writeback,discard=unmap,file=/state/a,,b/work/disk.qcow2"
+                .to_owned()
+        ));
+    }
+}

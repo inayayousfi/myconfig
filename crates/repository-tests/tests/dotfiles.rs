@@ -2,29 +2,11 @@
 #![cfg(unix)]
 use std::{
     fs,
-    os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
     process::Command,
 };
 
-use repository_tests::{Scratch, dotfiles, repository, run};
-
-/// The config packages the Linux installers deploy.
-const LINUX_PACKAGES: [&str; 13] = [
-    "zsh",
-    "yazi",
-    "ai",
-    "t3code",
-    "t3code-desktop",
-    "ghostty",
-    "kanata",
-    "kanata-kde",
-    "handy",
-    "vscodium",
-    "phone",
-    "pipewire",
-    "plasma",
-];
+use repository_tests::{Scratch, dotfiles, program, repository, run};
 
 fn text(path: impl AsRef<Path>) -> String {
     fs::read_to_string(path.as_ref())
@@ -57,6 +39,30 @@ fn files_under(root: &Path) -> Vec<PathBuf> {
     found
 }
 
+/// The config packages the Linux installers deploy, read from the `ctx.deploy_config`
+/// calls in the module sources.
+fn linux_packages() -> Vec<String> {
+    let modules = repository().join("crates/modules/src");
+    let mut packages: Vec<String> = files_under(&modules)
+        .into_iter()
+        .filter(|file| {
+            !file.starts_with(modules.join("tests"))
+                && file.extension().is_some_and(|extension| extension == "rs")
+        })
+        .flat_map(|file| {
+            text(file)
+                .split("deploy_config(\"")
+                .skip(1)
+                .map(|rest| rest.split('"').next().unwrap().to_owned())
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    packages.sort();
+    packages.dedup();
+    assert!(!packages.is_empty(), "no module calls deploy_config");
+    packages
+}
+
 fn lua() -> &'static str {
     if Command::new("lua5.4").arg("-v").output().is_ok() {
         "lua5.4"
@@ -67,7 +73,7 @@ fn lua() -> &'static str {
 
 #[test]
 fn linux_config_packages_have_no_windows_line_endings() {
-    for package in LINUX_PACKAGES {
+    for package in linux_packages() {
         for file in files_under(&dotfiles().join(package)) {
             if file.extension().is_some_and(|extension| extension == "ps1") {
                 continue;
@@ -217,9 +223,7 @@ esac
         if editor == "windows-codium" {
             let bin = scratch.0.join(".local/bin");
             fs::create_dir_all(&bin).unwrap();
-            let wrapper = bin.join("windows-codium");
-            fs::write(&wrapper, "#!/bin/sh\n[ \"$1\" = --check ]\n").unwrap();
-            fs::set_permissions(&wrapper, fs::Permissions::from_mode(0o755)).unwrap();
+            program(&bin.join("windows-codium"), "[ \"$1\" = --check ]");
         }
         run(Command::new("zsh")
             .args(["-f", "-c", script, "editor-selection"])
@@ -365,7 +369,7 @@ fn kanata_starts_on_its_off_layer_and_follows_its_tray() {
 }
 
 #[test]
-fn the_plasma_layout_script_backs_up_once_and_defers_without_plasma() {
+fn the_plasma_layout_script_records_its_version_and_defers_without_plasma() {
     let scratch = Scratch::new("plasma-layout");
     let home = scratch.0.join("home");
     let bin = scratch.0.join("bin");
@@ -385,13 +389,10 @@ fn the_plasma_layout_script_backs_up_once_and_defers_without_plasma() {
     .unwrap();
     let applets = home.join(".config/plasma-org.kde.plasma.desktop-appletsrc");
     fs::write(&applets, "default panel configuration\n").unwrap();
-    let qdbus = bin.join("qdbus6");
-    fs::write(
-        &qdbus,
-        "#!/usr/bin/env bash\nif [ \"$#\" -eq 2 ]; then exit \"${MYCONFIG_PLASMA_DBUS_STATUS:-0}\"; fi\nprintf '%s\\n' \"${MYCONFIG_PLASMA_EVALUATE_OUTPUT:-MYCONFIG_PLASMA_LAYOUT=ok:version=7:screens=2}\"\n",
-    )
-    .unwrap();
-    fs::set_permissions(&qdbus, fs::Permissions::from_mode(0o755)).unwrap();
+    program(
+        &bin.join("qdbus6"),
+        "if [ \"$#\" -eq 2 ]; then exit \"${MYCONFIG_PLASMA_DBUS_STATUS:-0}\"; fi\nprintf '%s\\n' \"${MYCONFIG_PLASMA_EVALUATE_OUTPUT:-MYCONFIG_PLASMA_LAYOUT=ok:version=7:screens=2}\"",
+    );
     let layout = |variables: &[(&str, &str)]| {
         let mut command = Command::new("bash");
         command
@@ -417,14 +418,11 @@ fn the_plasma_layout_script_backs_up_once_and_defers_without_plasma() {
         text(home.join(".local/state/myconfig/plasma-layout-version")).trim(),
         "7"
     );
-    assert_eq!(
-        backups().len(),
-        1,
-        "the first run did not back up the panels once"
+    // The installer records the panel file, and remove restores it from that record.
+    assert!(
+        backups().is_empty(),
+        "the script left a backup that remove cannot see"
     );
-    assert_eq!(text(&backups()[0]), "default panel configuration\n");
-    assert!(layout(&[]).status.success());
-    assert_eq!(backups().len(), 1, "a rerun repeated the first-run backup");
     assert!(
         !layout(&[(
             "MYCONFIG_PLASMA_EVALUATE_OUTPUT",
@@ -499,4 +497,94 @@ fn the_launcher_command_hides_installed_entries_and_leaves_files_it_did_not_writ
     fs::write(system.join("assistant.desktop"), installed).unwrap();
     hide();
     assert!(has_line(home.join("assistant.desktop"), "Exec=assistant6"));
+}
+
+#[test]
+fn t3ctl_repair_binds_the_server_locally_and_keeps_other_settings_and_the_lan_route() {
+    let scratch = Scratch::new("t3ctl");
+    let home = scratch.0.join("home");
+    let bin = scratch.0.join("bin");
+    let log = scratch.0.join("calls");
+    fs::create_dir_all(home.join(".t3/userdata")).unwrap();
+    fs::create_dir_all(&bin).unwrap();
+    // The server writes its runtime file once it is ready.
+    fs::write(home.join(".t3/userdata/server-runtime.json"), "{}").unwrap();
+    let service_env = home.join(".t3/service.env");
+    fs::write(&service_env, "OPENAI_API_KEY=kept\nT3CODE_PORT=4000\n").unwrap();
+    program(
+        &bin.join("npm"),
+        r#"printf 'npm %s\n' "$*" >> "$T3_TEST_LOG"
+mkdir -p "$HOME/.local/bin"
+printf '#!/bin/sh\nprintf "t3 %%s\\n" "$*" >> "$T3_TEST_LOG"\n' > "$HOME/.local/bin/t3"
+chmod 755 "$HOME/.local/bin/t3""#,
+    );
+    program(
+        &bin.join("systemctl"),
+        r#"printf 'systemctl %s\n' "$*" >> "$T3_TEST_LOG"
+case "$*" in *is-active*) [ -z "${T3_TEST_INACTIVE:-}" ] ;; esac"#,
+    );
+    program(
+        &bin.join("loginctl"),
+        r#"case "$1" in show-user) echo no ;; *) printf 'loginctl %s\n' "$*" >> "$T3_TEST_LOG" ;; esac"#,
+    );
+    program(&bin.join("curl"), "exit 0");
+    let repair = |inactive: bool| {
+        let mut command = Command::new("bash");
+        command
+            .arg(dotfiles().join("t3code/.local/bin/t3ctl"))
+            .arg("repair")
+            .env("HOME", &home)
+            .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
+            .env("T3_TEST_LOG", &log)
+            .env_remove("T3CODE_HOME");
+        if inactive {
+            command.env("T3_TEST_INACTIVE", "1");
+        }
+        command.output().unwrap()
+    };
+    let sorted_env = || {
+        let mut lines = lines(&service_env);
+        lines.sort();
+        lines
+    };
+
+    let output = repair(false);
+    assert!(output.status.success(), "{output:?}");
+    assert!(has_line(
+        &log,
+        &format!("npm install -g --prefix {}/.local t3", home.display())
+    ));
+    assert!(has_line(&log, "t3 service install"));
+    assert!(has_line(&log, "systemctl --user restart t3code.service"));
+    assert_eq!(
+        sorted_env(),
+        [
+            "OPENAI_API_KEY=kept",
+            "T3CODE_HOST=127.0.0.1",
+            "T3CODE_PORT=3773"
+        ],
+        "service.env does not bind 127.0.0.1:3773 while keeping other settings"
+    );
+
+    fs::write(
+        &service_env,
+        text(&service_env).replace("T3CODE_HOST=127.0.0.1", "T3CODE_HOST=0.0.0.0"),
+    )
+    .unwrap();
+    let output = repair(false);
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(
+        sorted_env(),
+        [
+            "OPENAI_API_KEY=kept",
+            "T3CODE_HOST=0.0.0.0",
+            "T3CODE_PORT=3773"
+        ],
+        "repair turned the LAN route off"
+    );
+
+    assert!(
+        !repair(true).status.success(),
+        "repair succeeded without an active service"
+    );
 }

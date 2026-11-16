@@ -2,7 +2,7 @@
 //! package recipe in this repository.
 use std::{fs, path::PathBuf};
 
-use embedded_dotfiles::DOTFILES;
+use embedded_dotfiles::BOOTVINE_ASSETS;
 use xshell::cmd;
 
 use crate::{
@@ -32,7 +32,7 @@ fn recipe_version(recipe: &str) -> ModuleResult<String> {
 /// Builds the package when the installed version differs, and returns its files.
 fn build(ctx: &Context, directory: &std::path::Path) -> ModuleResult<Vec<PathBuf>> {
     let sh = ctx.shell;
-    let recipe = DOTFILES.assets.bootvine.PKGBUILD.content;
+    let recipe = BOOTVINE_ASSETS.PKGBUILD.content;
     let version = recipe_version(&String::from_utf8_lossy(recipe))?;
     let (_, installed) = ctx.read_unchecked(cmd!(sh, "pacman -Q bootvine"))?;
     if installed == format!("bootvine {version}") {

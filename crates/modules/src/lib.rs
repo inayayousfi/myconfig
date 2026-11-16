@@ -3,6 +3,7 @@
 //! `MODULES-DESIGN.md` at the repository root describes this structure.
 mod context;
 mod deploy;
+mod package_manager;
 pub mod runner;
 mod setting;
 pub mod state;
@@ -47,7 +48,7 @@ mod pipewire;
 mod plasma_version;
 mod plex_serif_font;
 mod powershell_profile;
-mod psreadline;
+mod profile_packages;
 mod refind;
 mod registry_tweaks;
 mod runtimes;
@@ -94,7 +95,7 @@ pub use pipewire::Pipewire;
 pub use plasma_version::PlasmaVersion;
 pub use plex_serif_font::PlexSerifFont;
 pub use powershell_profile::PowerShellProfile;
-pub use psreadline::PsReadLine;
+pub use profile_packages::unnamed_packages;
 pub use refind::Refind;
 pub use registry_tweaks::RegistryTweaks;
 pub use runtimes::Runtimes;
@@ -120,7 +121,7 @@ pub type Error = Box<dyn std::error::Error + Send + Sync>;
 pub type ModuleResult<T = ()> = Result<T, Error>;
 
 /// What a module needs on the machine. `remove` asks before undoing something
-/// that another module in the profile lists here.
+/// that another installed module in the profile lists here.
 #[derive(Default)]
 pub struct Footprint {
     pub packages: Vec<Package>,
@@ -165,7 +166,7 @@ pub trait Module: Sync {
     /// Checks the result of `install` without changing anything.
     fn verify(&self, ctx: &Context) -> ModuleResult;
 
-    /// Steps that recorded changes cannot express, such as an external uninstaller.
-    /// The runner then undoes the recorded changes.
+    /// Steps that recorded changes cannot express, such as letting a package manager
+    /// take out what it installed. The runner then undoes the recorded changes.
     fn remove(&self, ctx: &Context) -> ModuleResult;
 }

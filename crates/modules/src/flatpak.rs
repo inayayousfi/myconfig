@@ -30,7 +30,7 @@ impl Module for Flatpak {
 
     fn install(&self, ctx: &Context) -> ModuleResult {
         ctx.install_packages(&[Package::Flatpak])?;
-        ctx.set(flathub(), "present")
+        ctx.add(flathub())
     }
 
     fn verify(&self, ctx: &Context) -> ModuleResult {

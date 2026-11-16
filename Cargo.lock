@@ -837,6 +837,7 @@ name = "myconfig-xtask"
 version = "0.54.0"
 dependencies = [
  "clap",
+ "myconfig-interface",
  "regex",
  "serde_json",
  "sha2",

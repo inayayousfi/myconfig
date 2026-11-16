@@ -1,6 +1,6 @@
 //! Explorer, taskbar and Start menu preferences from `RegistryPreferences.reg`.
 use crate::{Context, Footprint, Module, ModuleResult, Need, Setting};
-use embedded_dotfiles::DOTFILES;
+use embedded_dotfiles::WINDOWS_ASSETS;
 
 pub struct RegistryTweaks;
 
@@ -11,7 +11,7 @@ struct Entry {
 }
 
 fn entries() -> ModuleResult<Vec<Entry>> {
-    let contents = String::from_utf8_lossy(DOTFILES.assets.windows.RegistryPreferences_reg.content);
+    let contents = String::from_utf8_lossy(WINDOWS_ASSETS.RegistryPreferences_reg.content);
     let mut key = None;
     let mut entries = Vec::new();
     for line in contents

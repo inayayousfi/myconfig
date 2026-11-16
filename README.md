@@ -38,6 +38,8 @@ irm https://raw.githubusercontent.com/inayayousfi/myconfig/main/install.ps1 | ie
 
 The binary is kept as `%LOCALAPPDATA%\myconfig\myconfig.exe`, and that folder is added to your user `PATH`. The script also sets PowerShell's `ExecutionPolicy` to `RemoteSigned` for the current user when it is stricter, so the installed PowerShell profile can load.
 
+The script makes these changes before any module runs, so `remove` leaves them in place, together with the binary. To undo them, delete `%LOCALAPPDATA%\myconfig\myconfig.exe`, take its folder off your user `PATH` in the environment variable settings, and run `Set-ExecutionPolicy Undefined -Scope CurrentUser`.
+
 ### Commands
 
 Arguments after the platform go to the binary instead of opening the screen:
@@ -56,7 +58,7 @@ Before changing anything, each module records what was there in `~/.local/state/
 
 ### Virtual Machine Testing
 
-The [VM xtask](test/vm/README.md) builds the installers from the working tree and tests them in throwaway CachyOS, Ubuntu and Windows virtual machines, without a commit or release.
+The [VM xtask](test/vm/README.md) builds the installers from the working tree and runs them in throwaway CachyOS, Ubuntu and Windows virtual machines, without a commit or release. The CachyOS and Ubuntu cycles pass on real virtual machines. The Windows cycle has not run yet.
 
 ## Features
 

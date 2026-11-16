@@ -1,4 +1,4 @@
-//! Ghostty, set as the KDE Plasma terminal when Plasma is present.
+//! Ghostty, set as the KDE Plasma terminal.
 use crate::{
     Context, Footprint, Module, ModuleResult, Need, Package, Setting, deploy::verify_package,
     support::verify_packages,
@@ -9,8 +9,18 @@ pub struct Ghostty;
 const TERMINAL: &str = "/usr/bin/ghostty --gtk-single-instance=true";
 const SERVICE: &str = "com.mitchellh.ghostty.desktop";
 
-fn kde_present(ctx: &Context) -> bool {
-    ctx.find_program("plasmashell").is_ok() && ctx.find_program("kwriteconfig6").is_ok()
+/// The KDE keys that name the terminal, with Ghostty's values.
+fn terminal_settings() -> [(Setting, &'static str); 2] {
+    [
+        (
+            Setting::kde("kdeglobals", &["General"], "TerminalApplication"),
+            TERMINAL,
+        ),
+        (
+            Setting::kde("kdeglobals", &["General"], "TerminalService"),
+            SERVICE,
+        ),
+    ]
 }
 
 impl Module for Ghostty {
@@ -19,7 +29,7 @@ impl Module for Ghostty {
     }
 
     fn needs(&self) -> &'static [Need] {
-        &[Need::Hard("base"), Need::Soft(crate::PlasmaVersion::NAME)]
+        &[Need::Hard("base"), Need::Hard("plasma-version")]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {
@@ -31,30 +41,18 @@ impl Module for Ghostty {
 
     fn install(&self, ctx: &Context) -> ModuleResult {
         ctx.install_packages(&[Package::Ghostty])?;
-        if kde_present(ctx) {
-            ctx.set(
-                Setting::kde("kdeglobals", &["General"], "TerminalApplication"),
-                TERMINAL,
-            )?;
-            ctx.set(
-                Setting::kde("kdeglobals", &["General"], "TerminalService"),
-                SERVICE,
-            )?;
-        } else {
-            ctx.note("KDE Plasma not found; leaving its default terminal unchanged");
+        for (setting, value) in terminal_settings() {
+            ctx.set(setting, value)?;
         }
         ctx.deploy_config("ghostty")
     }
 
     fn verify(&self, ctx: &Context) -> ModuleResult {
         verify_packages(ctx, &[Package::Ghostty])?;
-        if kde_present(ctx)
-            && Setting::kde("kdeglobals", &["General"], "TerminalService")
-                .read(ctx)?
-                .as_deref()
-                != Some(SERVICE)
-        {
-            return Err("Ghostty is not the KDE Plasma terminal".into());
+        for (setting, value) in terminal_settings() {
+            if setting.read(ctx)?.as_deref() != Some(value) {
+                return Err("Ghostty is not the KDE Plasma terminal".into());
+            }
         }
         verify_package(ctx, "ghostty")
     }

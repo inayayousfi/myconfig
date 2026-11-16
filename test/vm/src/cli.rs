@@ -6,6 +6,7 @@ use clap::{Parser, Subcommand};
 
 use crate::os::Os;
 use crate::run::{self, RunOptions};
+use crate::start::Disk;
 use crate::{cycle, image, repository};
 
 #[derive(Parser)]
@@ -40,8 +41,12 @@ enum VmCommand {
     Run {
         os: Os,
         /// Boots the kept disk of the last failed cycle instead of a new copy.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "resume")]
         failed: bool,
+        /// Boots the throwaway disk of the previous run, with what that run left on it,
+        /// instead of a new copy.
+        #[arg(long)]
+        resume: bool,
         /// The number of displays; 2 is available for CachyOS only.
         #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=2))]
         displays: u8,
@@ -67,11 +72,16 @@ pub fn main() -> ExitCode {
         VmCommand::Run {
             os,
             failed,
+            resume,
             displays,
         } => run::run(
             RunOptions {
                 os,
-                failed,
+                disk: match (failed, resume) {
+                    (true, _) => Disk::Failed,
+                    (false, true) => Disk::Work,
+                    (false, false) => Disk::Throwaway,
+                },
                 displays,
                 watch: vm.watch,
             },

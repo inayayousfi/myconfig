@@ -1,7 +1,7 @@
 //! Windows Terminal settings.
 use std::path::{Path, PathBuf};
 
-use embedded_dotfiles::DOTFILES;
+use embedded_dotfiles::WINDOWS_ASSETS;
 
 use crate::{Context, Footprint, Module, ModuleResult, Need, Package};
 
@@ -17,9 +17,7 @@ fn settings_path(ctx: &Context) -> ModuleResult<PathBuf> {
 }
 
 fn contents() -> &'static [u8] {
-    DOTFILES
-        .assets
-        .windows
+    WINDOWS_ASSETS
         .dotfiles
         .WindowsTerminal
         .settings_json

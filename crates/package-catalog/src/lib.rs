@@ -1,5 +1,4 @@
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, serde::Serialize, serde::Deserialize)]
-#[repr(usize)]
 pub enum Package {
     CaCertificates,
     Sudo,
@@ -82,7 +81,6 @@ pub enum Package {
     Neovim,
     Vim,
     EmacsWayland,
-    Ufw,
     Sshfs,
     Ghostty,
     Kitty,
@@ -167,27 +165,9 @@ pub enum Package {
     NodejsLts,
 }
 
-impl Package {
-    const COUNT: usize = 163;
-}
-
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-#[repr(usize)]
-pub enum Platform {
-    Pacman,
-    Aur,
-    Apt,
-    Winget,
-}
-
-impl Platform {
-    const COUNT: usize = 4;
-}
-
 /// A vendor APT repository, for packages that Ubuntu does not carry or carries only in
-/// old versions. An APT name written `id:package` comes from the repository with that
-/// `id`. `{codename}` in `key_url` and `suite` becomes the release code name of this
-/// Ubuntu.
+/// old versions. `{codename}` in `key_url` and `suite` becomes the release code name of
+/// this Ubuntu.
 #[derive(Debug, Eq, PartialEq)]
 pub struct AptRepository {
     pub id: &'static str,
@@ -198,53 +178,53 @@ pub struct AptRepository {
     pub component: &'static str,
 }
 
-pub const APT_REPOSITORIES: &[AptRepository] = &[
-    AptRepository {
-        id: "tailscale",
-        key_url: "https://pkgs.tailscale.com/stable/ubuntu/{codename}.noarmor.gpg",
-        uri: "https://pkgs.tailscale.com/stable/ubuntu",
-        suite: "{codename}",
-        component: "main",
-    },
-    AptRepository {
-        id: "github",
-        key_url: "https://cli.github.com/packages/githubcli-archive-keyring.gpg",
-        uri: "https://cli.github.com/packages",
-        suite: "stable",
-        component: "main",
-    },
-    AptRepository {
-        id: "docker",
-        key_url: "https://download.docker.com/linux/ubuntu/gpg",
-        uri: "https://download.docker.com/linux/ubuntu",
-        suite: "{codename}",
-        component: "stable",
-    },
-    AptRepository {
-        id: "yazi",
-        key_url: "https://yazi-rs.github.io/builds/yazi-keyring.gpg",
-        uri: "https://yazi-rs.github.io/builds/",
-        suite: "stable",
-        component: "main",
-    },
-];
+const TAILSCALE: AptRepository = AptRepository {
+    id: "tailscale",
+    key_url: "https://pkgs.tailscale.com/stable/ubuntu/{codename}.noarmor.gpg",
+    uri: "https://pkgs.tailscale.com/stable/ubuntu",
+    suite: "{codename}",
+    component: "main",
+};
 
-/// Splits an APT name written `id:package` into its vendor repository and package name.
-/// A name without `id:` comes from Ubuntu itself. Returns `None` when `id` names no
-/// repository in `APT_REPOSITORIES`.
-pub fn apt_source(
-    identifier: &'static str,
-) -> Option<(Option<&'static AptRepository>, &'static str)> {
-    let Some((id, name)) = identifier.split_once(':') else {
-        return Some((None, identifier));
-    };
-    let repository = APT_REPOSITORIES
-        .iter()
-        .find(|repository| repository.id == id)?;
-    Some((Some(repository), name))
+const GITHUB: AptRepository = AptRepository {
+    id: "github",
+    key_url: "https://cli.github.com/packages/githubcli-archive-keyring.gpg",
+    uri: "https://cli.github.com/packages",
+    suite: "stable",
+    component: "main",
+};
+
+const DOCKER: AptRepository = AptRepository {
+    id: "docker",
+    key_url: "https://download.docker.com/linux/ubuntu/gpg",
+    uri: "https://download.docker.com/linux/ubuntu",
+    suite: "{codename}",
+    component: "stable",
+};
+
+const YAZI: AptRepository = AptRepository {
+    id: "yazi",
+    key_url: "https://yazi-rs.github.io/builds/yazi-keyring.gpg",
+    uri: "https://yazi-rs.github.io/builds/",
+    suite: "stable",
+    component: "main",
+};
+
+/// Where a package name comes from.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Platform {
+    Pacman,
+    Aur,
+    /// Ubuntu's own archive.
+    Apt,
+    /// A vendor APT repository.
+    AptVendor(&'static AptRepository),
+    Winget,
 }
 
-const PACKAGE_OVERRIDES: &[((Package, Platform), &str)] = &[
+/// The name of each package on each platform that has it. A package has at most one name
+/// per platform, and `Apt` and `AptVendor` count as one platform.
+pub const PACKAGE_NAMES: &[((Package, Platform), &str)] = &[
     ((Package::CaCertificates, Platform::Apt), "ca-certificates"),
     ((Package::Curl, Platform::Apt), "curl"),
     ((Package::Git, Platform::Apt), "git"),
@@ -273,7 +253,7 @@ const PACKAGE_OVERRIDES: &[((Package, Platform), &str)] = &[
         "fish-pure-prompt",
     ),
     (
-        (Package::AndroidSdkPlatformTools, Platform::Pacman),
+        (Package::AndroidSdkPlatformTools, Platform::Aur),
         "android-sdk-platform-tools",
     ),
     (
@@ -440,7 +420,6 @@ const PACKAGE_OVERRIDES: &[((Package, Platform), &str)] = &[
     ((Package::Neovim, Platform::Pacman), "neovim"),
     ((Package::EmacsWayland, Platform::Pacman), "emacs-wayland"),
     ((Package::EmacsWayland, Platform::Winget), "GNU.Emacs"),
-    ((Package::Ufw, Platform::Pacman), "ufw"),
     ((Package::Sshfs, Platform::Pacman), "sshfs"),
     ((Package::Ghostty, Platform::Pacman), "ghostty"),
     ((Package::Kitty, Platform::Pacman), "kitty"),
@@ -451,7 +430,7 @@ const PACKAGE_OVERRIDES: &[((Package, Platform), &str)] = &[
         (Package::KdeUtilitiesMeta, Platform::Pacman),
         "kde-utilities-meta",
     ),
-    ((Package::Yazi, Platform::Aur), "yazi-git"),
+    ((Package::Yazi, Platform::Pacman), "yazi"),
     ((Package::Ffmpeg, Platform::Pacman), "ffmpeg"),
     ((Package::SevenZip, Platform::Pacman), "7zip"),
     ((Package::SevenZip, Platform::Winget), "7zip.7zip"),
@@ -526,8 +505,8 @@ const PACKAGE_OVERRIDES: &[((Package, Platform), &str)] = &[
         "docker-rootless-extras",
     ),
     (
-        (Package::DockerRootlessExtras, Platform::Apt),
-        "docker:docker-ce-rootless-extras",
+        (Package::DockerRootlessExtras, Platform::AptVendor(&DOCKER)),
+        "docker-ce-rootless-extras",
     ),
     ((Package::Slirp4netns, Platform::Pacman), "slirp4netns"),
     ((Package::Slirp4netns, Platform::Apt), "slirp4netns"),
@@ -552,7 +531,7 @@ const PACKAGE_OVERRIDES: &[((Package, Platform), &str)] = &[
     ((Package::Jq, Platform::Apt), "jq"),
     ((Package::Fastfetch, Platform::Apt), "fastfetch"),
     ((Package::Tokei, Platform::Apt), "tokei"),
-    ((Package::GithubCli, Platform::Apt), "github:gh"),
+    ((Package::GithubCli, Platform::AptVendor(&GITHUB)), "gh"),
     ((Package::Btop, Platform::Apt), "btop"),
     ((Package::Go, Platform::Apt), "golang-go"),
     ((Package::Python, Platform::Apt), "python3"),
@@ -564,27 +543,30 @@ const PACKAGE_OVERRIDES: &[((Package, Platform), &str)] = &[
     ((Package::Nodejs, Platform::Apt), "nodejs"),
     ((Package::Npm, Platform::Apt), "npm"),
     ((Package::NodeGyp, Platform::Apt), "node-gyp"),
-    ((Package::Yazi, Platform::Apt), "yazi:yazi"),
+    ((Package::Yazi, Platform::AptVendor(&YAZI)), "yazi"),
     ((Package::Ffmpeg, Platform::Apt), "ffmpeg"),
     ((Package::SevenZip, Platform::Apt), "7zip"),
     ((Package::Poppler, Platform::Apt), "poppler-utils"),
     ((Package::Resvg, Platform::Apt), "resvg"),
     ((Package::Imagemagick, Platform::Apt), "imagemagick"),
-    ((Package::Tailscale, Platform::Apt), "tailscale:tailscale"),
+    (
+        (Package::Tailscale, Platform::AptVendor(&TAILSCALE)),
+        "tailscale",
+    ),
     ((Package::Lsof, Platform::Apt), "lsof"),
     ((Package::AtSpi2Core, Platform::Apt), "at-spi2-core"),
     ((Package::Libxcomposite, Platform::Apt), "libxcomposite1"),
     ((Package::Libxdamage, Platform::Apt), "libxdamage1"),
     ((Package::Libxrandr, Platform::Apt), "libxrandr2"),
     ((Package::Libxkbcommon, Platform::Apt), "libxkbcommon0"),
-    ((Package::Docker, Platform::Apt), "docker:docker-ce"),
+    ((Package::Docker, Platform::AptVendor(&DOCKER)), "docker-ce"),
     (
-        (Package::DockerBuildx, Platform::Apt),
-        "docker:docker-buildx-plugin",
+        (Package::DockerBuildx, Platform::AptVendor(&DOCKER)),
+        "docker-buildx-plugin",
     ),
     (
-        (Package::DockerCompose, Platform::Apt),
-        "docker:docker-compose-plugin",
+        (Package::DockerCompose, Platform::AptVendor(&DOCKER)),
+        "docker-compose-plugin",
     ),
     ((Package::Vscodium, Platform::Winget), "VSCodium.VSCodium"),
     (
@@ -594,277 +576,23 @@ const PACKAGE_OVERRIDES: &[((Package, Platform), &str)] = &[
     ((Package::NodejsLts, Platform::Winget), "OpenJS.NodeJS.LTS"),
 ];
 
-const fn build_packages()
--> [((Package, Platform), Option<&'static str>); Package::COUNT * Platform::COUNT] {
-    let mut packages =
-        [((Package::CaCertificates, Platform::Pacman), None); Package::COUNT * Platform::COUNT];
-    let mut package_index = 0;
-    while package_index < Package::COUNT {
-        let mut platform_index = 0;
-        while platform_index < Platform::COUNT {
-            let index = package_index * Platform::COUNT + platform_index;
-            packages[index] = (
-                (
-                    package_from_index(package_index),
-                    platform_from_index(platform_index),
-                ),
-                None,
-            );
-            platform_index += 1;
-        }
-        package_index += 1;
-    }
-
-    let mut override_index = 0;
-    while override_index < PACKAGE_OVERRIDES.len() {
-        let ((package, platform), identifier) = PACKAGE_OVERRIDES[override_index];
-        let index = package as usize * Platform::COUNT + platform as usize;
-        packages[index] = ((package, platform), Some(identifier));
-        override_index += 1;
-    }
-
-    packages
-}
-
-const fn package_from_index(index: usize) -> Package {
-    [
-        Package::CaCertificates,
-        Package::Sudo,
-        Package::Git,
-        Package::Curl,
-        Package::Lsof,
-        Package::Wget,
-        Package::Rsync,
-        Package::Stow,
-        Package::Tar,
-        Package::Unzip,
-        Package::Zip,
-        Package::Xz,
-        Package::File,
-        Package::ManDb,
-        Package::ManPages,
-        Package::BaseDevel,
-        Package::Rustup,
-        Package::Openssh,
-        Package::Polkit,
-        Package::CachyUpdate,
-        Package::CachyosHello,
-        Package::CachyosKernelManager,
-        Package::LinuxCachyos,
-        Package::CachyosZshConfig,
-        Package::Firefox,
-        Package::FirefoxI18nFr,
-        Package::MesloFont,
-        Package::NotoFontsCjk,
-        Package::CachyosEmeraldKdeTheme,
-        Package::CachyosIridescentKde,
-        Package::CachyosNordKdeTheme,
-        Package::Kate,
-        Package::Micro,
-        Package::CachyosMicroSettings,
-        Package::Nano,
-        Package::NanoSyntaxHighlighting,
-        Package::Meld,
-        Package::Glances,
-        Package::Duf,
-        Package::Tealdeer,
-        Package::Filelight,
-        Package::Pavucontrol,
-        Package::Kcalc,
-        Package::Shelly,
-        Package::CachyosPackageinstaller,
-        Package::Expac,
-        Package::CachyosWallpapers,
-        Package::Hwdetect,
-        Package::Qtscrcpy,
-        Package::Ripgrep,
-        Package::Fd,
-        Package::Fzf,
-        Package::Zoxide,
-        Package::Eza,
-        Package::Bat,
-        Package::Jq,
-        Package::Fastfetch,
-        Package::Btop,
-        Package::Tokei,
-        Package::GithubCli,
-        Package::Hunk,
-        Package::Go,
-        Package::Bun,
-        Package::Python,
-        Package::Jdk,
-        Package::Maven,
-        Package::Llvm,
-        Package::Make,
-        Package::Cmake,
-        Package::Nodejs,
-        Package::Npm,
-        Package::NodeGyp,
-        Package::Zsh,
-        Package::Fish,
-        Package::CachyosFishConfig,
-        Package::FishAutopair,
-        Package::FishPurePrompt,
-        Package::Fisher,
-        Package::Neovim,
-        Package::Vim,
-        Package::EmacsWayland,
-        Package::Ufw,
-        Package::Sshfs,
-        Package::Ghostty,
-        Package::Kitty,
-        Package::Alacritty,
-        Package::Wezterm,
-        Package::Konsole,
-        Package::KdeUtilitiesMeta,
-        Package::Yazi,
-        Package::Ffmpeg,
-        Package::SevenZip,
-        Package::Poppler,
-        Package::Resvg,
-        Package::Imagemagick,
-        Package::Lazygit,
-        Package::Tmux,
-        Package::WlClipboard,
-        Package::Ydotool,
-        Package::Kanata,
-        Package::Handy,
-        Package::AtSpi2Core,
-        Package::Libxcomposite,
-        Package::Libxdamage,
-        Package::Libxrandr,
-        Package::Libxkbcommon,
-        Package::Pyside6,
-        Package::Qt6Wayland,
-        Package::LayerShellQt,
-        Package::Libinput,
-        Package::Systemd,
-        Package::IosevkaFont,
-        Package::DesktopFileUtils,
-        Package::WslSshAgent,
-        Package::Tailscale,
-        Package::AndroidSdkPlatformTools,
-        Package::Scrcpy,
-        Package::Docker,
-        Package::DockerBuildx,
-        Package::DockerCompose,
-        Package::Powershell,
-        Package::WindowsTerminal,
-        Package::Wsl,
-        Package::OhMyPosh,
-        Package::PowerToys,
-        Package::Blender,
-        Package::Krita,
-        Package::Kdenlive,
-        Package::Audacity,
-        Package::ObsStudio,
-        Package::Musescore,
-        Package::VisualStudioBuildTools,
-        Package::PythonInstallManager,
-        Package::DockerDesktop,
-        Package::VirtualBox,
-        Package::LibreOffice,
-        Package::Paru,
-        Package::PlexFonts,
-        Package::BlexMonoFont,
-        Package::Haruna,
-        Package::Mpvqt,
-        Package::Mpv,
-        Package::Kdeconnect,
-        Package::Partitionmanager,
-        Package::Ark,
-        Package::Gwenview,
-        Package::Plymouth,
-        Package::PlymouthKcm,
-        Package::CachyosPlymouthTheme,
-        Package::CachyosPlymouthBootanimation,
-        Package::Vlc,
-        Package::Loupe,
-        Package::Flatpak,
-        Package::Fuse2,
-        Package::PythonVenv,
-        Package::Vscodium,
-        Package::Bsdtar,
-        Package::DockerRootlessExtras,
-        Package::Slirp4netns,
-        Package::Uidmap,
-        Package::Qrencode,
-        Package::T3codeDesktop,
-        Package::NodejsLts,
-    ][index]
-}
-
-const fn platform_from_index(index: usize) -> Platform {
-    [
-        Platform::Pacman,
-        Platform::Aur,
-        Platform::Apt,
-        Platform::Winget,
-    ][index]
-}
-
-pub static PACKAGES: [((Package, Platform), Option<&'static str>);
-    Package::COUNT * Platform::COUNT] = build_packages();
-
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
-
-    use serde::{
-        Deserialize,
-        de::value::{Error, U32Deserializer},
-    };
-
     use super::*;
-
-    /// Every `Package` variant in declaration order. Serde reads variants by their
-    /// position, so this list does not depend on `Package::COUNT` or `package_from_index`.
-    fn declared_packages() -> Vec<Package> {
-        (0..)
-            .map_while(|index| Package::deserialize(U32Deserializer::<Error>::new(index)).ok())
-            .collect()
-    }
-
-    #[test]
-    fn every_declared_package_has_its_index_and_a_name() {
-        let declared = declared_packages();
-        assert_eq!(
-            declared.len(),
-            Package::COUNT,
-            "Package::COUNT is not the number of packages"
-        );
-        for (index, package) in declared.iter().enumerate() {
-            assert_eq!(
-                package_from_index(index),
-                *package,
-                "package_from_index({index}) is not {package:?}"
-            );
-            assert!(
-                PACKAGES
-                    .iter()
-                    .any(|((candidate, _), name)| candidate == package && name.is_some()),
-                "{package:?} has no name in PACKAGE_OVERRIDES"
-            );
-        }
-    }
 
     #[test]
     fn each_package_has_at_most_one_name_per_platform() {
-        let mut seen = HashSet::new();
-        for (key, _) in PACKAGE_OVERRIDES {
-            assert!(seen.insert(key), "{key:?} is listed twice");
-        }
-    }
-
-    #[test]
-    fn apt_names_from_a_vendor_name_a_known_repository() {
-        for ((package, platform), name) in PACKAGE_OVERRIDES {
-            if *platform == Platform::Apt {
-                assert!(
-                    apt_source(name).is_some(),
-                    "{package:?}: {name} names no repository in APT_REPOSITORIES"
-                );
-            }
+        let mut seen = Vec::new();
+        for ((package, platform), _) in PACKAGE_NAMES {
+            let platform = match platform {
+                Platform::AptVendor(_) => Platform::Apt,
+                other => *other,
+            };
+            assert!(
+                !seen.contains(&(package, platform)),
+                "{package:?} has two names on {platform:?}"
+            );
+            seen.push((package, platform));
         }
     }
 }

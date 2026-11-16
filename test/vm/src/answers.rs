@@ -2,11 +2,8 @@
 //! or the answer from a fixed table at a yes or no question. A question that the table does
 //! not know stops the cycle, so a new question is never answered by guess.
 
+use myconfig_interface::QUESTION_END;
 use regex::Regex;
-
-/// The end of every question of the plain command line, written by `Plain::confirm` in
-/// `crates/interface`.
-const QUESTION_END: &str = " [y/N] ";
 
 /// The prompts of `sudo` and `sudo-rs`, such as `[sudo] password for tester: `.
 const SUDO_PROMPT: &str = r"(?m)^\[sudo[^\]\n]*\] [Pp]assword[^\n]*: ?\z";
@@ -29,11 +26,6 @@ const ENTRIES: &[Entry] = &[
     // arch_wsl.rs
     Entry {
         pattern: r"The setup will shut down all running WSL distributions to apply Arch WSL settings\. Continue\?",
-        yes: true,
-    },
-    // arch_wsl.rs, asked by the second install, which must reach the same state as the first.
-    Entry {
-        pattern: r"Unregister the existing WSL distribution '[^'\n]+' and delete all its contents\?",
         yes: true,
     },
     // arch_wsl.rs

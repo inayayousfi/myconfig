@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use embedded_dotfiles::DOTFILES;
+use embedded_dotfiles::REFIND_ASSETS;
 use xshell::cmd;
 
 use crate::{
@@ -35,11 +35,14 @@ pub(crate) fn generate_images(ctx: &Context, directory: &Path) -> ModuleResult {
         .find_program("magick")
         .or_else(|_| ctx.find_program("convert"))?;
     let pink = "#ff4ead";
+    // ImageMagick writes the creation time into a PNG unless told not to, which would make
+    // every install rewrite the files with new content.
+    let no_dates = "png:exclude-chunks=date,time";
     let banner = directory.join("banner.png");
     let bottom = "rectangle 0,1076 1920,1080";
     ctx.run(cmd!(
         sh,
-        "{tool} -size 1920x1080 xc:#000000 -fill {pink} -draw {bottom} {banner}"
+        "{tool} -size 1920x1080 xc:#000000 -fill {pink} -draw {bottom} -define {no_dates} {banner}"
     ))?;
     for (name, size, rect, stroke) in [
         (
@@ -58,19 +61,19 @@ pub(crate) fn generate_images(ctx: &Context, directory: &Path) -> ModuleResult {
         let output = directory.join(name);
         let transparent = "xc:none";
         let pink_fill = "rgba(255,78,173,0.16)";
-        ctx.run(cmd!(sh, "{tool} -size {size} {transparent} -fill {pink_fill} -draw {rect} -stroke {pink} -strokewidth {stroke} -fill none -draw {rect} {output}"))?;
+        ctx.run(cmd!(sh, "{tool} -size {size} {transparent} -fill {pink_fill} -draw {rect} -stroke {pink} -strokewidth {stroke} -fill none -draw {rect} -define {no_dates} {output}"))?;
     }
     Ok(())
 }
 
-/// The config with one managed block that includes the theme, replacing older blocks.
+/// The config with one managed block that includes the theme, replacing the block a rerun finds.
 fn updated_config(original: &str) -> String {
     let mut new = String::new();
     let mut managed = false;
     for line in original.lines() {
         match line {
-            "# BEGIN MYCONFIG BLACKNPINK" | "# BEGIN MYCONFIG REFIND" => managed = true,
-            "# END MYCONFIG BLACKNPINK" | "# END MYCONFIG REFIND" => managed = false,
+            "# BEGIN MYCONFIG REFIND" => managed = true,
+            "# END MYCONFIG REFIND" => managed = false,
             _ if !managed => {
                 new.push_str(line);
                 new.push('\n');
@@ -113,22 +116,12 @@ impl Module for Refind {
         let theme = directory.join("themes/black-pink");
         with_temporary_directory("refind", |temporary| {
             generate_images(ctx, temporary)?;
-            // Output of an earlier version of this setup, replaced by themes/black-pink.
-            let legacy = directory.join("themes/blacknpink");
-            ctx.run(cmd!(sh, "sudo rm -rf -- {legacy}"))?;
-            let theme_conf = DOTFILES
-                .assets
-                .refind
-                .refind
-                .themes
-                .black_pink
-                .theme_conf
-                .content;
+            let theme_conf = REFIND_ASSETS.refind.themes.black_pink.theme_conf.content;
             ctx.write_system_file(&theme.join("theme.conf"), theme_conf, "0644")?;
             for name in ["banner.png", "selection_big.png", "selection_small.png"] {
                 ctx.write_system_file(&theme.join(name), &fs::read(temporary.join(name))?, "0644")?;
             }
-            let global = DOTFILES.assets.refind.refind.global_conf.content;
+            let global = REFIND_ASSETS.refind.global_conf.content;
             ctx.write_system_file(&directory.join("managed.conf"), global, "0644")?;
             let original = ctx.read(cmd!(sh, "sudo cat {config}"))?;
             ctx.write_system_file(&config, updated_config(&original).as_bytes(), "0644")
@@ -169,9 +162,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_managed_block_replaces_older_blocks() {
-        let original =
-            "timeout 5\n# BEGIN MYCONFIG BLACKNPINK\ninclude old.conf\n# END MYCONFIG BLACKNPINK\n";
+    fn the_managed_block_is_added_once() {
+        let original = "timeout 5\n";
         assert_eq!(updated_config(original), format!("timeout 5\n{BLOCK}"));
         assert_eq!(
             updated_config(&updated_config(original)),

@@ -1,7 +1,7 @@
 //! A system group.
 use xshell::cmd;
 
-use super::Kind;
+use super::{Kind, PRESENT};
 use crate::{Context, ModuleResult};
 
 pub(super) struct GroupExists<'a> {
@@ -13,11 +13,15 @@ impl Kind for GroupExists<'_> {
         format!("group {}", self.group)
     }
 
+    fn presence(&self) -> bool {
+        true
+    }
+
     fn read(&self, ctx: &Context) -> ModuleResult<Option<String>> {
         let group = self.group;
         Ok(ctx
             .succeeds(cmd!(ctx.shell, "getent group {group}"))?
-            .then(|| "present".to_owned()))
+            .then(|| PRESENT.to_owned()))
     }
 
     fn write(&self, ctx: &Context, _value: &str) -> ModuleResult {

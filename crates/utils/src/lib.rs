@@ -1,4 +1,4 @@
-use package_catalog::{AptRepository, PACKAGES, Package, Platform, apt_source};
+use package_catalog::{AptRepository, PACKAGE_NAMES, Package, Platform};
 
 mod files;
 mod programs;
@@ -33,30 +33,28 @@ pub enum PackageSystem {
 
 /// Resolve an existing catalog mapping without executing a package manager.
 pub fn resolve_package(package: Package, system: PackageSystem) -> Option<PackageSpec> {
-    let sources: &[Platform] = match system {
-        PackageSystem::Arch => &[Platform::Pacman, Platform::Aur],
-        PackageSystem::Apt => &[Platform::Apt],
-        PackageSystem::Winget => &[Platform::Winget],
+    let tools: &[PackageTool] = match system {
+        PackageSystem::Arch => &[PackageTool::Pacman, PackageTool::Paru],
+        PackageSystem::Apt => &[PackageTool::Apt],
+        PackageSystem::Winget => &[PackageTool::Winget],
     };
-    sources.iter().find_map(|source| {
-        let (_, identifier) = PACKAGES
+    tools.iter().find_map(|tool| {
+        PACKAGE_NAMES
             .iter()
-            .find(|((candidate, platform), _)| *candidate == package && platform == source)?;
-        let identifier = (*identifier)?;
-        let (apt_repository, name) = match source {
-            Platform::Apt => apt_source(identifier)?,
-            _ => (None, identifier),
-        };
-        Some(PackageSpec {
-            tool: match source {
-                Platform::Pacman => PackageTool::Pacman,
-                Platform::Aur => PackageTool::Paru,
-                Platform::Apt => PackageTool::Apt,
-                Platform::Winget => PackageTool::Winget,
-            },
-            name,
-            apt_repository,
-        })
+            .find_map(|&((candidate, platform), name)| {
+                let (source, apt_repository) = match platform {
+                    Platform::Pacman => (PackageTool::Pacman, None),
+                    Platform::Aur => (PackageTool::Paru, None),
+                    Platform::Apt => (PackageTool::Apt, None),
+                    Platform::AptVendor(repository) => (PackageTool::Apt, Some(repository)),
+                    Platform::Winget => (PackageTool::Winget, None),
+                };
+                (candidate == package && source == *tool).then_some(PackageSpec {
+                    tool: source,
+                    name,
+                    apt_repository,
+                })
+            })
     })
 }
 
@@ -67,10 +65,10 @@ mod tests {
     #[test]
     fn arch_selects_paru_for_aur_packages() {
         assert_eq!(
-            resolve_package(Package::Yazi, PackageSystem::Arch),
+            resolve_package(Package::Kanata, PackageSystem::Arch),
             Some(PackageSpec {
                 tool: PackageTool::Paru,
-                name: "yazi-git",
+                name: "kanata-bin",
                 apt_repository: None,
             })
         );

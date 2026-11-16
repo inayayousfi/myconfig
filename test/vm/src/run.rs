@@ -10,8 +10,8 @@ use crate::vm::VmError;
 #[derive(Clone, Copy, Debug)]
 pub struct RunOptions {
     pub os: Os,
-    /// Boots the kept disk of the last failed cycle instead of a new throwaway copy.
-    pub failed: bool,
+    /// The layer the guest boots from.
+    pub disk: Disk,
     pub displays: u8,
     /// Opens a SPICE viewer window on the guest display.
     pub watch: bool,
@@ -28,19 +28,15 @@ pub enum RunError {
 }
 
 /// Boots the guest, copies the fresh installer into it, prints how to reach it, and waits
-/// until the guest shuts down. The throwaway disk stays until the next run or cycle of that OS.
+/// until the guest shuts down. The throwaway disk stays until a cycle or a run on a new
+/// throwaway disk replaces it.
 pub fn run(options: RunOptions, repository: &Path) -> Result<(), RunError> {
     let RunOptions {
         os,
-        failed,
+        disk,
         displays,
         watch,
     } = options;
-    let disk = if failed {
-        Disk::Failed
-    } else {
-        Disk::Throwaway
-    };
     let mut started = start::start(
         Options {
             os,

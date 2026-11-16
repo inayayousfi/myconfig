@@ -1,7 +1,7 @@
 //! The Black & Pink Oh My Posh theme next to the PowerShell profile.
 use std::path::PathBuf;
 
-use embedded_dotfiles::DOTFILES;
+use embedded_dotfiles::WINDOWS_ASSETS;
 
 use crate::{
     Context, Footprint, Module, ModuleResult, Need, Package, powershell_profile::profile_paths,
@@ -23,9 +23,7 @@ fn theme_paths(ctx: &Context) -> ModuleResult<Vec<PathBuf>> {
 }
 
 fn contents() -> &'static [u8] {
-    DOTFILES
-        .assets
-        .windows
+    WINDOWS_ASSETS
         .dotfiles
         .PowerShell
         .black_pink_omp_json

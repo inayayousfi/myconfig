@@ -8,6 +8,7 @@ use std::process::{Command, ExitStatus, Stdio};
 
 use serde_json::Value;
 
+use crate::collect;
 use crate::os::{GUEST_USER, Os};
 use crate::ssh::{Guest, SshError};
 
@@ -68,7 +69,7 @@ pub struct Binary {
 }
 
 /// Where the Windows guest keeps the Arch WSL installer, relative to the user's home folder.
-const ARCH_WSL_GUEST_PATH: &str = "myconfig-arch-wsl";
+pub const ARCH_WSL_GUEST_PATH: &str = "myconfig-arch-wsl";
 
 impl Binary {
     /// The command line that runs this installer with `arguments` in the guest's shell.
@@ -77,18 +78,19 @@ impl Binary {
             Launch::Linux => format!("~/{} {arguments}", self.guest_path),
             Launch::Windows => {
                 let path = self.guest_path.replace('/', "\\");
-                // The Arch WSL module installs this fresh Linux installer instead of a release.
+                // The Arch WSL module runs the hook, which runs the fresh Linux installer,
+                // instead of a release.
+                let hook = collect::arch_wsl_hook();
                 format!(
-                    "set \"MYCONFIG_ARCH_WSL_BINARY=%USERPROFILE%\\{ARCH_WSL_GUEST_PATH}\" && \"%USERPROFILE%\\{path}\" {arguments}"
+                    "set \"MYCONFIG_ARCH_WSL_BINARY={hook}\" && \"%USERPROFILE%\\{path}\" {arguments}"
                 )
             }
             Launch::Wsl => {
                 // A copy inside the distribution runs whatever the mount options of C: are.
-                // MYCONFIG_WINDOWS_SSH is what the Arch WSL module passes to this installer.
                 let copy = "/tmp/myconfig-arch-wsl";
                 format!(
                     "wsl.exe --exec bash -c \"install -m 0755 /mnt/c/Users/{GUEST_USER}/{} {copy} && \
-                     exec env MYCONFIG_WINDOWS_SSH=/mnt/c/Windows/System32/OpenSSH/ssh.exe {copy} {arguments}\"",
+                     exec {copy} {arguments}\"",
                     self.guest_path
                 )
             }
@@ -98,7 +100,8 @@ impl Binary {
 
 /// The installers each guest runs. Linux guests keep the binary where `install.sh` puts it,
 /// and Windows keeps it where `install.ps1` puts it. A Windows guest also receives the Arch
-/// WSL installer, which runs inside WSL.
+/// WSL installer. The arch-wsl module of the Windows installer installs with it, and the cycle
+/// runs it inside WSL to list and remove its modules.
 fn recipes(os: Os) -> &'static [Recipe] {
     match os {
         Os::Cachyos => &[Recipe {

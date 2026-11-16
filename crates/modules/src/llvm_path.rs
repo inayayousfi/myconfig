@@ -48,7 +48,7 @@ impl Module for LlvmPath {
             return Ok(());
         }
         let setting = entry(ctx)?;
-        ctx.set(setting.clone(), "present")?;
+        ctx.add(setting.clone())?;
         if setting.read(ctx)?.is_none() {
             return Err("LLVM was not added to the machine PATH".into());
         }

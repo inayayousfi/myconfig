@@ -1,8 +1,8 @@
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use std::{
-    collections::{HashMap, HashSet},
-    fs, io,
+    collections::HashMap,
+    fs,
     path::{Path, PathBuf},
 };
 
@@ -12,21 +12,16 @@ enum Node {
     Directory { name: String, children: Vec<Node> },
 }
 
-pub(super) fn expand(path_from_cwd: String) -> TokenStream {
-    let (definitions, _, root) = embedded_value(path_from_cwd, false);
-    quote! {{
-        #definitions
-        #root
-    }}
-}
-
 pub(super) fn expand_static(
     visibility: syn::Visibility,
     name: syn::Ident,
-    path_from_cwd: String,
+    path: syn::LitStr,
 ) -> TokenStream {
     let module = format_ident!("__typed_fs_rs_embed_{}", name.to_string().to_lowercase());
-    let (definitions, _, root) = embedded_value(path_from_cwd, true);
+    let (definitions, root) = match embedded_value(&path.value()) {
+        Ok(embedded) => embedded,
+        Err(message) => return syn::Error::new(path.span(), message).into_compile_error(),
+    };
     quote! {
         #[doc(hidden)]
         #[allow(non_snake_case)]
@@ -38,52 +33,56 @@ pub(super) fn expand_static(
     }
 }
 
-fn embedded_value(
-    path_from_cwd: String,
-    public_types: bool,
-) -> (TokenStream, syn::Ident, TokenStream) {
-    let to_embed = std::env::current_dir()
-        .expect("Couldn't get the current working directory")
-        .join(PathBuf::from(path_from_cwd));
-    let file_tree = read_tree(&to_embed).expect("couldn't parse the final tree");
+fn embedded_value(path_from_manifest: &str) -> Result<(TokenStream, TokenStream), String> {
+    let manifest = std::env::var_os("CARGO_MANIFEST_DIR")
+        .ok_or("CARGO_MANIFEST_DIR is not set; build with Cargo")?;
+    let to_embed = PathBuf::from(manifest).join(path_from_manifest);
+    if !to_embed.is_dir() {
+        return Err(format!("{} is not a directory", to_embed.display()));
+    }
+    let file_tree = read_tree(&to_embed)?;
 
     let mut next_id = 0;
-    directory_value(file_tree, &mut next_id, Path::new(""), public_types)
+    let (definitions, _, root) = directory_value(file_tree, &mut next_id, Path::new(""))?;
+    Ok((definitions, root))
 }
 
-fn file_name(path: &Path) -> String {
+fn file_name(path: &Path) -> Result<String, String> {
     path.file_name()
-        .expect("path has no file name")
+        .ok_or_else(|| format!("{} has no file name", path.display()))?
         .to_os_string()
         .into_string()
-        .unwrap_or_else(|name| panic!("file name is not valid UTF-8: {name:?}"))
+        .map_err(|name| format!("file name is not valid UTF-8: {name:?}"))
 }
 
-fn read_tree(path: &Path) -> io::Result<Node> {
+fn read_tree(path: &Path) -> Result<Node, String> {
+    let unreadable = |error: std::io::Error| format!("cannot read {}: {error}", path.display());
     if path.is_file() {
         return Ok(Node::File {
-            name: file_name(path),
+            name: file_name(path)?,
             path: path.to_path_buf(),
         });
     }
 
-    let mut paths = fs::read_dir(path)?
+    let mut paths = fs::read_dir(path)
+        .map_err(unreadable)?
         .map(|entry| entry.map(|entry| entry.path()))
-        .collect::<io::Result<Vec<_>>>()?;
+        .collect::<std::io::Result<Vec<_>>>()
+        .map_err(unreadable)?;
     paths.sort();
 
     let children = paths
         .iter()
         .map(|path| read_tree(path))
-        .collect::<io::Result<Vec<_>>>()?;
+        .collect::<Result<Vec<_>, _>>()?;
 
     Ok(Node::Directory {
-        name: file_name(path),
+        name: file_name(path)?,
         children,
     })
 }
 
-fn field_ident(name: &str) -> syn::Ident {
+fn field_ident(name: &str) -> Result<syn::Ident, String> {
     let normalized = name
         .chars()
         .map(|character| {
@@ -108,68 +107,11 @@ fn field_ident(name: &str) -> syn::Ident {
     } else {
         normalized
     };
-    syn::parse_str::<syn::Ident>(&normalized).unwrap_or_else(|_| {
+    syn::parse_str::<syn::Ident>(&normalized).or_else(|_| {
         let escaped = format!("{normalized}_");
         syn::parse_str::<syn::Ident>(&escaped)
-            .unwrap_or_else(|_| panic!("entry name {name:?} cannot be used as a Rust field"))
+            .map_err(|_| format!("entry name {name:?} cannot be used as a Rust field"))
     })
-}
-
-fn character_name(character: char) -> &'static str {
-    match character {
-        ' ' => "space",
-        '!' => "bang",
-        '"' => "quote",
-        '#' => "hash",
-        '$' => "dollar",
-        '%' => "percent",
-        '&' => "ampersand",
-        '\'' => "apostrophe",
-        '(' => "left_paren",
-        ')' => "right_paren",
-        '*' => "star",
-        '+' => "plus",
-        ',' => "comma",
-        '-' => "dash",
-        '.' => "dot",
-        '/' => "slash",
-        ':' => "colon",
-        ';' => "semicolon",
-        '<' => "less",
-        '=' => "equals",
-        '>' => "greater",
-        '?' => "question",
-        '@' => "at",
-        '[' => "left_bracket",
-        '\\' => "backslash",
-        ']' => "right_bracket",
-        '^' => "caret",
-        '`' => "backtick",
-        '{' => "left_brace",
-        '|' => "pipe",
-        '}' => "right_brace",
-        '~' => "tilde",
-        _ => "",
-    }
-}
-
-fn expanded_field_ident(name: &str) -> syn::Ident {
-    let mut expanded = String::new();
-    for character in name.chars() {
-        if character.is_ascii_alphanumeric() || character == '_' {
-            expanded.push(character);
-        } else {
-            let name = character_name(character);
-            if name.is_empty() {
-                expanded.push_str(&format!("_unicode_{:x}_", character as u32));
-            } else {
-                expanded.push('_');
-                expanded.push_str(name);
-                expanded.push('_');
-            }
-        }
-    }
-    field_ident(&expanded)
 }
 
 fn entry_name(node: &Node) -> &str {
@@ -178,14 +120,32 @@ fn entry_name(node: &Node) -> &str {
     }
 }
 
+/// Gives each entry its field, or fails when two entries would get the same one.
+fn entry_fields(children: &[Node], relative_path: &Path) -> Result<Vec<syn::Ident>, String> {
+    let mut owners = HashMap::new();
+    let mut fields = Vec::new();
+    for child in children {
+        let name = entry_name(child);
+        let field = field_ident(name)?;
+        if let Some(other) = owners.insert(field.to_string(), name) {
+            return Err(format!(
+                "{:?} and {:?} would both become the field `{field}`; rename one of them",
+                relative_path.join(other),
+                relative_path.join(name),
+            ));
+        }
+        fields.push(field);
+    }
+    Ok(fields)
+}
+
 fn directory_value(
     node: Node,
     next_id: &mut usize,
     relative_path: &Path,
-    public_types: bool,
-) -> (TokenStream, syn::Ident, TokenStream) {
+) -> Result<(TokenStream, syn::Ident, TokenStream), String> {
     let Node::Directory { children, .. } = node else {
-        panic!("The root should be a directory")
+        return Err("the embedded root must be a directory".to_owned());
     };
 
     let struct_name = format_ident!("EmbeddedDirectory{}", *next_id);
@@ -195,47 +155,16 @@ fn directory_value(
     let mut fields = Vec::new();
     let mut values = Vec::new();
     let mut file_accessors = Vec::new();
-    let mut used_fields = HashSet::new();
-    let mut base_counts = HashMap::new();
-    for child in &children {
-        *base_counts
-            .entry(field_ident(entry_name(child)).to_string())
-            .or_insert(0usize) += 1;
-    }
-    let reserved_fields: HashSet<_> = base_counts.keys().cloned().collect();
+    let entry_fields = entry_fields(&children, relative_path)?;
 
-    for child in children {
-        let name = entry_name(&child);
-        let base = field_ident(name);
-        let base_name = base.to_string();
-        let mut field = if base_counts[&base_name] > 1 && name != base_name {
-            expanded_field_ident(name)
-        } else {
-            base
-        };
-        let candidate = field.to_string();
-        if used_fields.contains(&candidate)
-            || (candidate != base_name && reserved_fields.contains(&candidate))
-        {
-            let mut suffix = 2;
-            loop {
-                let suffixed = field_ident(&format!("{candidate}_{suffix}"));
-                let name = suffixed.to_string();
-                if !used_fields.contains(&name) && !reserved_fields.contains(&name) {
-                    field = suffixed;
-                    break;
-                }
-                suffix += 1;
-            }
-        }
-        used_fields.insert(field.to_string());
+    for (child, field) in children.into_iter().zip(entry_fields) {
         match child {
             Node::File { name, path } => {
                 #[cfg(unix)]
                 let executable = {
                     use std::os::unix::fs::PermissionsExt;
                     fs::metadata(&path)
-                        .expect("couldn't read embedded file permissions")
+                        .map_err(|error| format!("cannot read {}: {error}", path.display()))?
                         .permissions()
                         .mode()
                         & 0o111
@@ -270,8 +199,7 @@ fn directory_value(
                     },
                     next_id,
                     &child_path,
-                    public_types,
-                );
+                )?;
                 definitions.extend(child_definitions);
                 fields.push(quote! { pub #field: #child_struct });
                 values.push(quote! { #field: #child_value });
@@ -282,13 +210,8 @@ fn directory_value(
         }
     }
 
-    let struct_visibility = if public_types {
-        quote! { pub }
-    } else {
-        TokenStream::new()
-    };
     definitions.extend(quote! {
-        #struct_visibility struct #struct_name {
+        pub struct #struct_name {
             #(#fields,)*
         }
         impl ::typed_fs_rs::EmbeddedDirectory for #struct_name {
@@ -301,5 +224,36 @@ fn directory_value(
     });
 
     let value = quote! { #struct_name { #(#values,)* } };
-    (definitions, struct_name, value)
+    Ok((definitions, struct_name, value))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn file(name: &str) -> Node {
+        Node::File {
+            name: name.to_owned(),
+            path: PathBuf::from(name),
+        }
+    }
+
+    #[test]
+    fn two_entries_with_the_same_field_name_are_refused_by_name() {
+        let tree = Node::Directory {
+            name: "root".to_owned(),
+            children: vec![Node::Directory {
+                name: "themes".to_owned(),
+                children: vec![file("size-bdiag"), file("size_bdiag")],
+            }],
+        };
+
+        let error = directory_value(tree, &mut 0, Path::new("")).unwrap_err();
+
+        assert_eq!(
+            error,
+            "\"themes/size-bdiag\" and \"themes/size_bdiag\" would both become the field \
+             `size_bdiag`; rename one of them"
+        );
+    }
 }

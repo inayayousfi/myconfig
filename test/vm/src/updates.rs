@@ -7,7 +7,8 @@ use crate::ssh::{Guest, SshError};
 /// Syncs a temporary copy of the pacman database, then lists the upgradable packages with
 /// `pacman -Qu` against it. Syncing the real database would leave the guest in a partial
 /// upgrade for the installer. `pacman -Qu` exits with 1 when nothing is upgradable.
-const PACMAN: &str = r#"db=$(mktemp -d) || exit 1
+/// pacman downloads as its unprivileged `alpm` user, which must be able to enter the folder.
+const PACMAN: &str = r#"db=$(mktemp -d) && chmod 755 "$db" || exit 1
 ln -s /var/lib/pacman/local "$db/local"
 printf '%s\n' "$PASSWORD" | sudo -S -p '' pacman -Sy --dbpath "$db" --logfile /dev/null >/dev/null
 status=$?

@@ -59,15 +59,28 @@ $areas = @(
 )
 foreach ($area in $areas) { Write-RegistryArea $area }
 
+# The taskbar auto-hide state, which Explorer keeps in bit 0 of byte 8 of the StuckRects3
+# Settings value. The rest of that value holds the taskbar position and size, which Explorer
+# rewrites by itself, so only the auto-hide bit is listed.
+[Console]::Out.WriteLine('## taskbar')
+$stuckRects = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StuckRects3'
+$settings = (Get-ItemProperty -LiteralPath $stuckRects -Name Settings -ErrorAction SilentlyContinue).Settings
+if ($settings -is [byte[]] -and $settings.Length -gt 8) {
+    Write-Entry 'auto-hide' ([string] [bool] ($settings[8] -band 1))
+} else {
+    Write-Entry 'auto-hide' 'unset'
+}
+
 [Console]::Out.WriteLine('## environment')
 foreach ($scope in 'User', 'Machine') {
     $variables = [Environment]::GetEnvironmentVariables($scope)
     foreach ($name in $variables.Keys) { Write-Entry "$scope\$name" $variables[$name] }
 }
 
+# The Defender exclusions and the apps that Controlled Folder Access allows.
 [Console]::Out.WriteLine('## defender-exclusions')
 $preference = Get-MpPreference
-foreach ($kind in 'ExclusionPath', 'ExclusionProcess', 'ExclusionExtension') {
+foreach ($kind in 'ExclusionPath', 'ExclusionProcess', 'ExclusionExtension', 'ControlledFolderAccessAllowedApplications') {
     foreach ($item in @($preference.$kind)) { if ($item) { Write-Entry "$kind\$item" } }
 }
 
@@ -85,12 +98,15 @@ if (Test-Path -LiteralPath $lxss) {
     }
 }
 
-# Folders that are reparse points, such as the old "Application Data" junctions, are listed
-# without being entered, so no folder is listed twice. A file that cannot be read, such as a
-# registry hive in use, is listed as unreadable.
+# The user profile and the Public and Default profiles, whose desktops the shared desktop
+# module changes. Folders that are reparse points, such as the old "Application Data"
+# junctions, are listed without being entered, so no folder is listed twice. A file that
+# cannot be read, such as a registry hive in use, is listed as unreadable.
 [Console]::Out.WriteLine('## files')
 $folders = New-Object System.Collections.Stack
-$folders.Push((Get-Item -LiteralPath $env:USERPROFILE -Force))
+foreach ($root in $env:USERPROFILE, $env:PUBLIC, (Join-Path (Split-Path -Parent $env:USERPROFILE) 'Default')) {
+    $folders.Push((Get-Item -LiteralPath $root -Force))
+}
 $sha256 = [System.Security.Cryptography.SHA256]::Create()
 while ($folders.Count -gt 0) {
     $folder = $folders.Pop()

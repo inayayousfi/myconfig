@@ -46,11 +46,25 @@ try {
 }
 
 # Keep the binary on the user PATH, so `myconfig verify` and `myconfig remove` work later.
-$userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-$entries = @($userPath -split ';' | Where-Object { $_ })
-if (-not ($entries | Where-Object { $_.TrimEnd('\') -ieq $InstallDir })) {
-    [Environment]::SetEnvironmentVariable('Path', (($entries + $InstallDir) -join ';'), 'User')
-    Write-Log "Added $InstallDir to your user PATH"
+# The stored value is read and written raw, with its type: [Environment] would expand its
+# %NAME% references and store it as a plain string, which changes every other entry.
+$environment = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment')
+try {
+    $userPath = [string]$environment.GetValue('Path', '', 'DoNotExpandEnvironmentNames')
+    $kind = if ($environment.GetValueNames() -contains 'Path') { $environment.GetValueKind('Path') } else { [Microsoft.Win32.RegistryValueKind]::ExpandString }
+    $present = @($userPath -split ';') | Where-Object { [Environment]::ExpandEnvironmentVariables($_).TrimEnd('\') -ieq $InstallDir }
+    if (-not $present) {
+        $separator = if ($userPath -and -not $userPath.EndsWith(';')) { ';' } else { '' }
+        $environment.SetValue('Path', "$userPath$separator$InstallDir", $kind)
+        # A direct registry write does not tell running programs, such as Explorer, that the
+        # environment changed.
+        Add-Type -Namespace MyConfig -Name Environment -MemberDefinition '[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr SendMessageTimeout(IntPtr window, uint message, UIntPtr wParam, string lParam, uint flags, uint timeout, out UIntPtr result);'
+        $result = [UIntPtr]::Zero
+        [void][MyConfig.Environment]::SendMessageTimeout([IntPtr]0xffff, 0x1A, [UIntPtr]::Zero, 'Environment', 2, 5000, [ref]$result)
+        Write-Log "Added $InstallDir to your user PATH"
+    }
+} finally {
+    $environment.Dispose()
 }
 if (-not (($env:Path -split ';') | Where-Object { $_.TrimEnd('\') -ieq $InstallDir })) {
     $env:Path = "$env:Path;$InstallDir"

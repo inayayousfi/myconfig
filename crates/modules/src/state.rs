@@ -7,10 +7,15 @@ use std::{
 };
 
 use base64::{Engine, engine::general_purpose::STANDARD};
+use myconfig_utils::PackageSpec;
 use package_catalog::Package;
 use serde::{Deserialize, Serialize};
+use xshell::cmd;
 
-use crate::{ModuleResult, ServiceScope, Setting};
+use crate::{
+    Context, ModuleResult, ServiceScope, Setting,
+    context::{remove_user_path, scope_argument},
+};
 
 /// Format of `state.json`. Increase it and add a migration in `migrate` when the format changes.
 pub const FORMAT: u32 = 1;
@@ -286,6 +291,271 @@ impl Change {
             Self::Undone { .. } | Self::Removed => String::new(),
         }
     }
+
+    /// Puts back what the change replaced. A question that the undo raises goes to
+    /// `questions`, and its answer can stop the undo.
+    pub(crate) fn undo(&self, ctx: &Context, questions: &dyn Questions) -> ModuleResult<Outcome> {
+        let sh = ctx.shell;
+        match self {
+            Self::PackageInstalled(package) => {
+                let manager = ctx.packages();
+                let spec = ctx.spec(*package)?;
+                if !manager.installed(ctx, spec)? {
+                    return Ok(Outcome::Done);
+                }
+                if manager.running_kernel(ctx)?.as_deref() == Some(spec.name) {
+                    ctx.note(&format!(
+                        "Kept {}: it is the running kernel. Remove tries again later.",
+                        spec.name
+                    ));
+                    return Ok(Outcome::Stays);
+                }
+                let dependents = manager.dependents(ctx, spec)?;
+                let with_dependents = !dependents.is_empty();
+                if let Some(outcome) = questions.still_needed(Needed::Package(spec), dependents) {
+                    return Ok(outcome);
+                }
+                if with_dependents {
+                    manager.uninstall_with_dependents(ctx, spec)?;
+                } else {
+                    manager.uninstall(ctx, &[spec])?;
+                }
+            }
+            Self::PackageUninstalled(package) => {
+                let manager = ctx.packages();
+                let spec = ctx.spec(*package)?;
+                if manager.installed(ctx, spec)? {
+                    return Ok(Outcome::Done);
+                }
+                let outcome = questions.confirm(
+                    &format!(
+                        "Install {} again? Install uninstalled it on purpose.",
+                        spec.name
+                    ),
+                    &format!("{} uninstalled", spec.name),
+                );
+                if !matches!(outcome, Outcome::Done) {
+                    return Ok(outcome);
+                }
+                manager.install(ctx, &[spec])?;
+                manager.restore_saved_configuration(ctx, spec)?;
+            }
+            Self::Setting { setting, previous } => {
+                if let Some(outcome) = questions.still_needed(Needed::Setting(setting), Vec::new())
+                {
+                    return Ok(outcome);
+                }
+                let current = setting.read(ctx)?;
+                match previous {
+                    Some(value) if current.as_deref() != Some(value) => {
+                        setting.write(ctx, value)?
+                    }
+                    None if current.is_some() => setting.delete(ctx)?,
+                    _ => {}
+                }
+            }
+            Self::File {
+                path,
+                system: false,
+                previous,
+            } => {
+                remove_user_path(path)?;
+                previous.restore(path)?;
+            }
+            Self::File {
+                path,
+                system: true,
+                previous,
+            } => match previous {
+                Previous::File { contents, .. } => {
+                    crate::support::install_system_file(
+                        ctx,
+                        path,
+                        &Previous::contents(contents)?,
+                        "0644",
+                    )?;
+                }
+                Previous::Missing => ctx.run(cmd!(sh, "sudo rm -f -- {path}"))?,
+                _ => {
+                    return Err(
+                        format!("unexpected recorded system path: {}", path.display()).into(),
+                    );
+                }
+            },
+            Self::Created {
+                path,
+                system,
+                ask: confirm,
+            } => {
+                if fs::symlink_metadata(path).is_err()
+                    && !(*system && ctx.succeeds(cmd!(sh, "sudo test -e {path}"))?)
+                {
+                    return Ok(Outcome::Done);
+                }
+                if *confirm {
+                    let outcome = questions.confirm(
+                        &format!(
+                            "Delete {}? It may hold changes made after install.",
+                            path.display()
+                        ),
+                        &path.display().to_string(),
+                    );
+                    if !matches!(outcome, Outcome::Done) {
+                        return Ok(outcome);
+                    }
+                }
+                if *system {
+                    ctx.run(cmd!(sh, "sudo rm -rf -- {path}"))?;
+                } else {
+                    remove_user_path(path)?;
+                }
+            }
+            Self::CreatedDirectory { path, system } => {
+                if *system {
+                    ctx.succeeds(cmd!(sh, "sudo rmdir -- {path}"))?;
+                } else if let Err(error) = fs::remove_dir(path)
+                    && error.kind() != std::io::ErrorKind::NotFound
+                {
+                    ctx.note(&format!("Kept {}: it is not empty", path.display()));
+                }
+            }
+            Self::Service {
+                unit,
+                scope,
+                was_enabled,
+            } => {
+                let user = scope_argument(*scope);
+                let (_, state) =
+                    ctx.read_unchecked(cmd!(sh, "systemctl {user...} is-enabled {unit}"))?;
+                // A unit file that is gone can still leave the links that enabled it, and
+                // disable removes them without the file.
+                if !*was_enabled && (state == "enabled" || state == "not-found") {
+                    let user = scope_argument(*scope);
+                    let (_, active) =
+                        ctx.read_unchecked(cmd!(sh, "systemctl {user...} is-active {unit}"))?;
+                    // The unit stops first: disable deletes a unit file that is a link from
+                    // outside systemd's folders, such as a stowed one, and stop then fails.
+                    match scope {
+                        ServiceScope::System => {
+                            if active == "active" {
+                                ctx.run(cmd!(sh, "sudo systemctl stop {unit}"))?;
+                            }
+                            ctx.run(cmd!(sh, "sudo systemctl disable {unit}"))?
+                        }
+                        ServiceScope::User => {
+                            if active == "active" {
+                                ctx.run(cmd!(sh, "systemctl --user stop {unit}"))?;
+                            }
+                            ctx.run(cmd!(sh, "systemctl --user disable {unit}"))?
+                        }
+                    }
+                }
+            }
+            Self::ServiceDisabled {
+                unit,
+                scope,
+                was_enabled,
+                was_active,
+            } => {
+                let user: &[&str] = &scope_argument(*scope);
+                let (_, state) =
+                    ctx.read_unchecked(cmd!(sh, "systemctl {user...} is-enabled {unit}"))?;
+                let systemctl = |action: &str| match scope {
+                    ServiceScope::System => ctx.run(cmd!(sh, "sudo systemctl {action} {unit}")),
+                    ServiceScope::User => ctx.run(cmd!(sh, "systemctl --user {action} {unit}")),
+                };
+                if *was_enabled && state != "enabled" {
+                    systemctl("enable")?;
+                }
+                if *was_active
+                    && !ctx.succeeds(cmd!(sh, "systemctl {user...} --quiet is-active {unit}"))?
+                {
+                    systemctl("start")?;
+                }
+            }
+            Self::UndoCommand { program, args } => ctx.run(cmd!(sh, "{program} {args...}"))?,
+            Self::Stowed { package } => {
+                crate::deploy::unstow(ctx, package)?;
+                crate::deploy::clear_deployed_package(ctx, package)?;
+            }
+            Self::Unstowed { package } => {
+                if !ctx.home.join("dotfiles").join(package).is_dir() {
+                    return Ok(Outcome::Done);
+                }
+                let outcome = questions.confirm(
+                    &format!("Link the retired config package {package} into your home again?"),
+                    &format!("{package} unstowed"),
+                );
+                if !matches!(outcome, Outcome::Done) {
+                    return Ok(outcome);
+                }
+                crate::deploy::restow(ctx, package)?;
+            }
+            Self::Moved { from, to, replaced } => {
+                let outcome = questions.confirm(
+                    &format!("Move {} back to {}?", to.display(), from.display()),
+                    &format!("{} on your desktop", to.display()),
+                );
+                if !matches!(outcome, Outcome::Done) {
+                    return Ok(outcome);
+                }
+                crate::shared_desktop::move_back(ctx, from, to, replaced)?;
+            }
+            Self::WslDistribution { name } => {
+                if !crate::arch_wsl::distributions(ctx)?
+                    .iter()
+                    .any(|registered| registered.eq_ignore_ascii_case(name))
+                {
+                    return Ok(Outcome::Done);
+                }
+                let outcome = questions.confirm(
+                    &format!(
+                        "Unregister the WSL distribution {name} and delete everything inside it?"
+                    ),
+                    &format!("WSL distribution {name}"),
+                );
+                if !matches!(outcome, Outcome::Done) {
+                    return Ok(outcome);
+                }
+                ctx.run(cmd!(sh, "wsl.exe --unregister {name}"))?;
+            }
+            Self::LocalPackage { name } => ctx.packages().uninstall_local(ctx, name)?,
+            Self::Declined | Self::Undone { .. } | Self::Removed => {}
+        }
+        Ok(Outcome::Done)
+    }
+}
+
+/// What became of a recorded change that `remove` reached.
+pub(crate) enum Outcome {
+    /// The change was undone, or there was nothing left to undo.
+    Done,
+    /// The person chose to keep it, so nothing owns it any more.
+    Kept,
+    /// The person kept it for this module, which still needs it and now owns it.
+    PassedTo(&'static str),
+    /// It stays recorded under its module, so a later remove tries again.
+    Stays,
+    /// Nobody could answer, so it stays recorded for a later remove.
+    Unanswered,
+}
+
+/// A recorded change that something other than its own module may still need.
+#[derive(Clone, Copy)]
+pub(crate) enum Needed<'a> {
+    Package(PackageSpec),
+    Setting(&'a Setting),
+}
+
+/// The questions that undoing a change can raise. The runner answers them, because it
+/// knows the other modules and whether `--force` was given.
+pub(crate) trait Questions {
+    /// Asks before a one-way undo. `kept` names what stays when the answer is no.
+    fn confirm(&self, question: &str, kept: &str) -> Outcome;
+
+    /// Asks before undoing something that other modules or the installed `dependents`
+    /// may still need. `None` lets the undo go on.
+    fn still_needed(&self, needed: Needed<'_>, dependents: Vec<String>) -> Option<Outcome>;
 }
 
 /// A recorded change that has not been undone yet.
@@ -364,18 +634,20 @@ impl StateStore {
             .ok_or("no run has started in the recorded state")?)
     }
 
-    /// Whether this run already recorded a change to the same setting or path.
-    pub fn recorded_in_run(&self, change: &Change) -> bool {
+    /// Whether this run already recorded a change by `module` to the same setting or path.
+    pub fn recorded_in_run(&self, module: &str, change: &Change) -> bool {
         let Some(target) = change.target() else {
             return false;
         };
-        self.file.snapshots.last().is_some_and(|snapshot| {
-            snapshot
-                .modules
-                .values()
-                .flatten()
-                .any(|recorded| recorded.target().as_ref() == Some(&target))
-        })
+        self.file
+            .snapshots
+            .last()
+            .and_then(|snapshot| snapshot.modules.get(module))
+            .is_some_and(|changes| {
+                changes
+                    .iter()
+                    .any(|recorded| recorded.target().as_ref() == Some(&target))
+            })
     }
 
     pub fn record(&mut self, module: &str, change: Change) -> ModuleResult {
@@ -521,6 +793,16 @@ mod tests {
         assert_eq!(contents["written_by"], WRITTEN_BY);
         drop(reopened);
         fs::remove_dir_all(path).unwrap();
+    }
+
+    /// `state.json` written by an earlier myconfig must read back the same, so every
+    /// change kind keeps its serialized form.
+    #[test]
+    fn every_change_kind_keeps_its_serialized_form() {
+        let stored = r#"[{"package_installed":"Zsh"},{"package_uninstalled":"Git"},{"setting":{"setting":{"GitConfig":{"key":"core.editor"}},"previous":"vim"}},{"setting":{"setting":{"GitConfig":{"key":"core.pager"}},"previous":null}},{"file":{"path":"/home/me/.zshrc","system":false,"previous":{"file":{"contents":"b2xkCg==","executable":true}}}},{"file":{"path":"/etc/x","system":true,"previous":"missing"}},{"file":{"path":"/home/me/link","system":false,"previous":{"link":{"target":"/elsewhere"}}}},{"file":{"path":"/home/me/dir","system":false,"previous":{"directory":{"entries":[["inner","missing"]]}}}},{"created":{"path":"/home/me/.oh-my-zsh","system":false,"ask":true}},{"created_directory":{"path":"/etc/myconfig","system":true}},{"service":{"unit":"sshd.service","scope":"system","was_enabled":false}},{"service_disabled":{"unit":"kanata.service","scope":"user","was_enabled":true,"was_active":false}},{"undo_command":{"program":"/usr/bin/tool","args":["undo","--all"]}},{"stowed":{"package":"zsh"}},{"unstowed":{"package":"old"}},{"moved":{"from":"C:\\a","to":"C:\\b","replaced":"missing"}},{"wsl_distribution":{"name":"archlinux"}},{"local_package":{"name":"bootvine"}},"declined",{"undone":{"snapshot":1,"index":2}},"removed"]"#;
+        let changes: Vec<Change> = serde_json::from_str(stored).unwrap();
+        assert_eq!(changes.len(), 21);
+        assert_eq!(serde_json::to_string(&changes).unwrap(), stored);
     }
 
     #[test]

@@ -53,15 +53,14 @@ impl Module for Login {
             if ctx.succeeds(command(ctx, service.status))? {
                 continue;
             }
-            match ctx.confirm(&format!("{} Log in now?", service.state)) {
-                Ok(true) => ctx.with_terminal(command(ctx, service.log_in).into())?,
-                Ok(false) | Err(_) => {
-                    ctx.note(&format!(
-                        "{} Run: {}",
-                        service.state,
-                        service.log_in.join(" ")
-                    ));
-                }
+            if ctx.confirm_optional(&format!("{} Log in now?", service.state)) {
+                ctx.with_terminal(command(ctx, service.log_in).into())?;
+            } else {
+                ctx.note(&format!(
+                    "{} Run: {}",
+                    service.state,
+                    service.log_in.join(" ")
+                ));
             }
         }
         Ok(())

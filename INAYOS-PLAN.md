@@ -24,10 +24,11 @@ InayOS names the whole project: the repository, the command (`inayos`), the crat
 - **Kernel:** Arch's stock `linux`. No `linux-lts`: the fallback is the snapshot entry described under "Boot guard".
 - **Settings taken over from `cachyos-settings`**, each owned by an InayOS module:
   - zram swap: zstd, as large as RAM, swap priority 100.
-  - A swap file on the ext4 home partition, as large as RAM, used only to hibernate.
-  - NetworkManager hands DNS to `systemd-resolved` (`dns=systemd-resolved`), with `systemd-resolvconf` installed.
+  - A swap file on the ext4 home partition, as large as RAM, used only to hibernate. It is built with hibernation in step 6, because its resume options depend on the boot chain and encryption.
+  - zswap turned off at boot by a `tmpfiles.d` rule, because zswap in front of zram works against it.
+  - NetworkManager hands DNS to `systemd-resolved` (`dns=systemd-resolved`), with `systemd-resolvconf` installed and `/etc/resolv.conf` linked to resolved's stub file by a `tmpfiles.d` rule, which works the same inside the installer and on a running system.
   - `vm.swappiness = 100` and `vm.page-cluster = 0`, the two values zram's documentation recommends.
-  - The higher open-file limit (`DefaultLimitNOFILE=2048:2097152` for system and user managers, `fs.file-max = 2097152`).
+  - The higher open-file limit (`DefaultLimitNOFILE=2048:2097152` for system and user managers). `fs.file-max` keeps the kernel default, which is already larger above about 20 GB of RAM.
   - A quiet boot console (`kernel.printk = 3 3 3 3`).
   - The `ntsync` module loaded at boot, for Wine and Proton.
 - **Left at the defaults:** service start and stop timeouts, journal size and coredump retention, the SysRq mask, and the time servers.
@@ -38,7 +39,7 @@ InayOS names the whole project: the repository, the command (`inayos`), the crat
 The default layout on a whole disk:
 
 | Partition | Filesystem | Content |
-|---|---|---|
+| --- | --- | --- |
 | EFI system partition, 2 GB | FAT32 | rEFInd, its drivers, and the signed boot images when the system is encrypted |
 | System, 150 GB by default | Btrfs | The system, snapshotted by snapper |
 | Home, the rest | ext4 | `/home` and the hibernation swap file |
@@ -52,7 +53,7 @@ The default layout on a whole disk:
 
 1. **Wipe one whole disk** with the default layout.
 2. **Install next to Windows.** The installer shrinks the Windows NTFS partition and adds InayOS beside it. It stops with instructions when BitLocker is on or when Windows Fast Startup left the NTFS partition marked dirty. Windows starts through its own firmware boot entry, never from inside rEFInd (see "Firmware entries").
-3. **Reinstall, keeping home.** The installer formats the system partition and keeps the ext4 home partition and its files.
+3. **Reinstall, keeping home.** The installer formats the system partition and keeps the ext4 home partition and its files. It deletes the InayOS state record in the kept home, because that record describes the system that was just erased.
 4. **Shrink an existing ext4 partition and keep it as home.** For a machine whose single ext4 partition holds both the system and home (the current laptop):
    1. Shrink the ext4 partition from the USB stick, unmounted, by the system size.
    2. Create the Btrfs system partition in the freed space at the end of the disk and install there.
@@ -123,6 +124,7 @@ The guard is a small binary, separate from `inayos`, shipped in the same package
   4. only then does rEFInd see the new entry.
 
   When a check fails, the previous entry stays the default and the user gets a desktop notification.
+
 - **"Previous system" entry.** The guard writes a rEFInd entry that boots the last pre-update snapshot: its kernel, modules and system.
   - Snapshots are read-only, so the entry uses systemd's own overlay: mkinitcpio's `sd-volatile` hook is in the hooks from installation on, and the entry passes `systemd.volatile=overlay rootflags=subvol=<snapshot>`. `grub-btrfs` is not used: its hook pulls in GRUB and does not run in a systemd initramfs.
   - With encryption, the guard builds and signs a previous unified kernel image with the snapshot's kernel and that command line.
@@ -190,7 +192,7 @@ Arch already ships the timer that refreshes its keyring.
   2. `pacstrap`.
   3. Create the user.
   4. Run `inayos install` as that user inside the new system, in installer mode: `arch-chroot -S -u <user> /mnt env SYSTEMD_OFFLINE=1 inayos install ...`.
-  5. Set up the boot chain.
+  5. Set up the parts of the boot chain that no module owns: Secure Boot keys, encryption enrollment and the guard. The refind module installs rEFInd onto the EFI partition and writes `/boot/refind_linux.conf` during step 4, and in installer mode refind and bootvine fail when the EFI partition or that file is missing.
   6. Run the guard's checks.
   7. Reboot.
 
@@ -198,6 +200,7 @@ Arch already ships the timer that refreshes its keyring.
   - `arch-chroot` version 32 bind-mounts the live system's `/run` into the new system by default. Commands inside could then talk to the live session's systemd and D-Bus, and the Plasma steps could change the installer's own desktop.
   - `-S` runs the chroot through `systemd-run` and binds `/run/udev` read-only. `-u` switches to the user with no PAM login session and a cleared environment, so no `XDG_RUNTIME_DIR` or `DBUS_SESSION_BUS_ADDRESS` reaches the run. Installer mode never sets them.
   - `-N` (unshare mode) is not used: it needs a subordinate id range for root, and it maps the user's id into that range, so files in the new home would get the wrong owner on disk.
+
 - **Logins** (GitHub, Tailscale and any other) are left to the user after the install. The `login` module does not run from the installer.
 
 ## Installer mode in `Context`
@@ -208,7 +211,8 @@ CachyOS's installer (Calamares, configuration in the CachyOS `calamares-config` 
 - `enable_service` enables without starting.
 - Starting, stopping, restarting, reloading the user manager, "is it active" and `active_group` report a deferred result. `service_state` reports a service as not active.
 - Modules stop calling runtime `systemctl` commands directly and go through `Context`. A repository test forbids raw runtime `systemctl` calls in modules.
-- `verify` checks that services are enabled, not running.
+- `verify` checks that services are enabled, not running. `inayos verify --installer-mode` runs it inside the new system before its first boot.
+- In installer mode the user name and home come from the passwd entry of the running user, not from the environment, which `arch-chroot -u` clears.
 - `ctx.confirm` answers come from the installer's answers file.
 - Commands that exit 0 without doing their work need explicit handling, because the exit status hides the failure:
   - `gsettings set` without a session bus saves nothing. It runs under `dbus-run-session`, with `XDG_CONFIG_HOME` pointing into the new user's home.
@@ -217,7 +221,7 @@ CachyOS's installer (Calamares, configuration in the CachyOS `calamares-config` 
 The current profile, run inside a never-booted system, gives:
 
 | Module | Result in installer mode | Fix |
-|---|---|---|
+| --- | --- | --- |
 | plasma-version, base, media, cli, runtimes, flatpak, appimage, zsh, terminal-tools, ghostty, agents-packages, android-phone, vscodium, chrome, math, refind, bootvine, printing, t3code-desktop, git-config, environment-inventory | Works | None |
 | ssh | Refuses because `/run/systemd/system` is missing | Drop that check in installer mode |
 | kanata, handy, agent-config | `modprobe uinput` targets the USB stick's running kernel, and `systemctl --user daemon-reload` fails | Skip `modprobe`, since the boot-time `modules-load.d` file covers it, and use the deferred `Context` calls |
@@ -225,7 +229,7 @@ The current profile, run inside a never-booted system, gives:
 | kde-plasma | `systemctl --user daemon-reload` fails, `gsettings` saves nothing without a session bus, and the accent color rebuilds light Breeze colors | Deferred `Context` calls, `gsettings` under `dbus-run-session`, `plasma-apply-*` with the `kdedefaults` folder in `XDG_CONFIG_DIRS`, the KWin reconfigure and layout run skipped, and the panel layout as Plasma's default layout |
 | t3code-desktop, and the T3 Code server module if the InayOS profile takes it | The server module calls `loginctl` and `is-active`; `setting/plasma_panels.rs` calls plasmashell | To check when the InayOS profile list is set |
 | docker | Start, `is-active` and `docker info` need the running daemon | Enable and set the Docker contexts at install; the daemon starts at first boot |
-| tailscale | Setting the operator needs `tailscaled` running | Enable at install; set the operator after the user logs in |
+| tailscale | Setting the operator needs `tailscaled` running | Enable at install; verify reports the operator as waiting for the user's Tailscale login, not as a failure |
 | axidev-osk | Its login-screen setup asks the running systemd whether Plasma Login exists, and its permission setup runs `modprobe uinput` | Fix in the `axidev-osk` repository: check the unit file instead, and rely on the boot-time module file |
 | login | A login | Left to the user |
 | cachyos-setup | `lsblk` as a normal user sees no filesystems and would remove `btrfs-progs` | Module deleted with the CachyOS profile |
@@ -254,9 +258,10 @@ The panel layout ships as the default layout of an InayOS look-and-feel package:
    - the guard.
 
    The `mkarchiso` profile folder sits next to `test/vm`.
+
 3. **Deleted on this branch:** the CachyOS profile and `cachyos-setup`. `main` keeps them for the current laptop until it moves.
 4. **New modules**, each owning its files:
-   - system tuning: zram, the swap file, resolved DNS, the sysctl values, the limits, `ntsync`;
+   - system tuning: zram, zswap off, resolved DNS, the sysctl values, the limits, `ntsync`;
    - Secure Boot;
    - encryption;
    - snapshots;

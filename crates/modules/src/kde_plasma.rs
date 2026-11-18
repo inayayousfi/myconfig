@@ -1,5 +1,5 @@
 //! KDE Plasma with Breeze Dark, the pink accent, IBM Plex fonts, a top bar and a dock.
-use std::{collections::BTreeSet, fs, path::Path};
+use std::{fs, path::Path};
 
 use embedded_dotfiles::KDE_PLASMA_ASSETS;
 use typed_fs_rs::EmbeddedDirectory;
@@ -27,7 +27,6 @@ const LAYOUT_SERVICE: &str = "myconfig-plasma-layout.service";
 const WINDOW_RULE: &str = "myconfig-picture-in-picture";
 
 const LAYOUT_COMMAND: &str = ".local/bin/myconfig-plasma-layout";
-const LAUNCHER_HIDE_COMMAND: &str = ".local/bin/myconfig-launcher-hide";
 const PANEL_SCRIPT: &str = ".local/share/kwin/scripts/myconfig-panels/metadata.json";
 
 /// The fonts that the `plasma` package's fontconfig file makes the defaults for programs
@@ -268,30 +267,6 @@ fn libinput_plugins() -> Vec<(std::path::PathBuf, &'static [u8])> {
         .collect()
 }
 
-/// Runs `myconfig-launcher-hide` and records the launcher copies it creates.
-fn hide_launcher_entries(ctx: &Context) -> ModuleResult {
-    let applications = ctx.home.join(".local/share/applications");
-    let listing = |directory: &Path| -> BTreeSet<std::path::PathBuf> {
-        fs::read_dir(directory)
-            .map(|entries| {
-                entries
-                    .filter_map(Result::ok)
-                    .map(|entry| entry.path())
-                    .collect()
-            })
-            .unwrap_or_default()
-    };
-    let before = listing(&applications);
-    let command = ctx.home.join(LAUNCHER_HIDE_COMMAND);
-    let result = ctx.run(cmd!(ctx.shell, "{command}"));
-    for created in listing(&applications).difference(&before) {
-        ctx.created(created, false)?;
-    }
-    result.map_err(|error| {
-        format!("could not hide the development tools' launcher entries: {error}").into()
-    })
-}
-
 impl Module for KdePlasma {
     fn name(&self) -> &'static str {
         "kde-plasma"
@@ -329,7 +304,6 @@ impl Module for KdePlasma {
         ctx.deploy_config("plasma")?;
         let home = ctx.home;
         require_executable(&home.join(LAYOUT_COMMAND))?;
-        require_executable(&home.join(LAUNCHER_HIDE_COMMAND))?;
         require_file(&home.join(PANEL_SCRIPT))?;
 
         for (path, contents) in libinput_plugins() {
@@ -344,7 +318,6 @@ impl Module for KdePlasma {
         }
         configure_window_rules(ctx)?;
         configure_cursor(ctx)?;
-        hide_launcher_entries(ctx)?;
 
         let runtime = user_runtime_directory(ctx)?;
         let bus = sh

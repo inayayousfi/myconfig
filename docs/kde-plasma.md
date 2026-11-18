@@ -27,7 +27,3 @@ The top bar stays visible, and maximized windows stop below it. On a display tha
 The KWin script `myconfig-panels` handles this behavior. It shows a hidden bar while the pointer is near its screen edge, even over a fullscreen window, and hides it again once the pointer and the bar's menus are gone. It starts `myconfig-plasma-layout.service` when displays change, and it closes Overview after a desktop switch.
 
 Plasma 6.8 crashes when a panel of an unplugged display is changed, so both scripts leave those panels alone.
-
-## Hidden launcher entries
-
-`myconfig-launcher-hide` hides the launcher entries of development tools that required packages install, and duplicate entries that packages add beside their main entry. The script lists those entries. KDE ignores `Hidden=true` overrides, so the command copies each installed entry into `~/.local/share/applications/` with `NoDisplay=true`. The KDE module and the zsh `update` command run it, so the copies follow package updates.

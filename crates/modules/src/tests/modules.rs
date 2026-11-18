@@ -1340,17 +1340,6 @@ printf '%s' "$theme" > "$MYCONFIG_TEST_ROOT/kde/kcminputrc/Mouse/cursorTheme""#,
 esac"#,
     );
     sandbox.fake("qdbus6", "exit 1");
-    sandbox.fake("kbuildsycoca6", "exit 0");
-    let applications = sandbox.root.join("share/applications");
-    fs::create_dir_all(&applications).unwrap();
-    fs::write(
-        applications.join("assistant.desktop"),
-        "[Desktop Entry]\nName=Qt Assistant\n",
-    )
-    .unwrap();
-    sandbox
-        .shell
-        .set_var("XDG_DATA_DIRS", sandbox.root.join("share"));
     let runtime = sandbox.root.join("runtime");
     fs::create_dir_all(&runtime).unwrap();
     sandbox.shell.set_var("XDG_RUNTIME_DIR", runtime);
@@ -1494,14 +1483,6 @@ esac"#,
         ServiceScope::User,
         "myconfig-plasma-layout.service"
     ));
-    let hidden = sandbox
-        .home
-        .join(".local/share/applications/assistant.desktop");
-    assert!(
-        fs::read_to_string(&hidden)
-            .unwrap()
-            .contains("NoDisplay=true")
-    );
 
     // The layout script rewrote the panels of the running Plasma shell, which writes the
     // panels it holds when it stops and reads the panel file when it starts.
@@ -1567,7 +1548,6 @@ exec systemctl-units "$@""#,
         ServiceScope::User,
         "myconfig-plasma-layout.service"
     ));
-    assert!(!hidden.exists());
     assert!(
         system_file(
             &sandbox,

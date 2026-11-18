@@ -70,8 +70,6 @@ The live global instruction file is different from this repository instruction f
 
 Plasma 6.8 crashes when a panel of an unplugged display is changed. A script that changes panels must leave the panels of unplugged displays alone.
 
-KDE ignores `Hidden=true` overrides of launcher entries. To hide a launcher entry, add it to `myconfig-launcher-hide`.
-
 ## Windows boundary
 
 Windows modules copy files with recorded writes, install packages with Winget, and change settings through the registry, PowerShell and Windows APIs. They do not provide the Linux package tree or GNU Stow ownership model.

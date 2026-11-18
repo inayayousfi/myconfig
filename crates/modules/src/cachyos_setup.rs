@@ -64,7 +64,75 @@ const UNWANTED: &[Package] = &[
     Package::Partitionmanager,
     Package::Gwenview,
     Package::PlasmaBrowserIntegration,
+    Package::CachyosKdeSettings,
+    Package::CharWhite,
+    Package::OsProber,
+    Package::Efitools,
+    Package::Mtools,
+    Package::Pkgfile,
+    Package::Hwinfo,
+    Package::Pv,
+    Package::Plocate,
+    Package::SNail,
+    Package::AwesomeTerminalFonts,
+    Package::CantarellFonts,
+    Package::TtfOpensans,
+    Package::Ffmpegthumbnailer,
+    Package::PythonDefusedxml,
+    Package::PythonPackaging,
+    Package::Libgsf,
+    Package::Fsarchiver,
+    Package::NfsUtils,
+    Package::Hdparm,
+    Package::Sg3Utils,
+    Package::Lsscsi,
+    Package::Sysfsutils,
+    Package::Iwd,
+    Package::Netctl,
+    Package::Xl2tpd,
+    Package::NetworkmanagerOpenvpn,
+    Package::Xf86VideoAmdgpu,
 ];
+
+/// Tools for a disk format or layout, removed only when no block device uses it. The
+/// CachyOS installer formats with Btrfs by default and can add LVM or RAID, so each tool
+/// is matched against `lsblk` before it goes. A filesystem type matches the FSTYPE
+/// column, and a device type the TYPE column.
+const DISK_TOOLS: &[(Package, &[&str])] = &[
+    (Package::BtrfsProgs, &["btrfs"]),
+    (Package::F2fsTools, &["f2fs"]),
+    (Package::Jfsutils, &["jfs"]),
+    (Package::NilfsUtils, &["nilfs2"]),
+    (Package::Xfsprogs, &["xfs"]),
+    (Package::Lvm2, &["LVM2_member", "lvm"]),
+    (Package::Dmraid, &["dmraid"]),
+];
+
+/// The disk tools whose format appears nowhere in `lsblk -rno FSTYPE,TYPE` output. A
+/// BIOS RAID member, such as `isw_raid_member`, counts as `dmraid`; a Linux software
+/// RAID member belongs to mdadm, which stays.
+fn unused_disk_tools(devices: &str) -> Vec<Package> {
+    let used: Vec<&str> = devices
+        .split_whitespace()
+        .map(|field| {
+            if field.ends_with("_raid_member") && field != "linux_raid_member" {
+                "dmraid"
+            } else {
+                field
+            }
+        })
+        .collect();
+    DISK_TOOLS
+        .iter()
+        .filter(|(_, formats)| !formats.iter().any(|format| used.contains(format)))
+        .map(|(package, _)| *package)
+        .collect()
+}
+
+fn disk_tools_to_remove(ctx: &Context) -> ModuleResult<Vec<Package>> {
+    let devices = ctx.read(cmd!(ctx.shell, "lsblk -rno FSTYPE,TYPE"))?;
+    Ok(unused_disk_tools(&devices))
+}
 
 /// Removed after the plymouth hook leaves mkinitcpio, so no initramfs build looks for a
 /// missing hook.
@@ -115,12 +183,14 @@ impl Module for CachyosSetup {
     fn install(&self, ctx: &Context) -> ModuleResult {
         ctx.install_packages(INSTALLED)?;
         ctx.uninstall_packages(UNWANTED)?;
+        ctx.uninstall_packages(&disk_tools_to_remove(ctx)?)?;
         remove_boot_splash(ctx)
     }
 
     fn verify(&self, ctx: &Context) -> ModuleResult {
         crate::support::verify_packages(ctx, INSTALLED)?;
         crate::support::verify_absent(ctx, UNWANTED)?;
+        crate::support::verify_absent(ctx, &disk_tools_to_remove(ctx)?)?;
         crate::support::verify_absent(ctx, SPLASH)?;
         let config = read_system_file(ctx, MKINITCPIO_CONFIG)?
             .ok_or_else(|| format!("{MKINITCPIO_CONFIG} was not found"))?;
@@ -132,5 +202,24 @@ impl Module for CachyosSetup {
 
     fn remove(&self, _ctx: &Context) -> ModuleResult {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Package, unused_disk_tools};
+
+    #[test]
+    fn disk_tools_stay_for_the_formats_and_layouts_the_machine_uses() {
+        let plain = " disk\nvfat part\next4 part\nswap disk\n";
+        assert_eq!(unused_disk_tools(plain).len(), 7);
+        let btrfs_on_lvm = " disk\nvfat part\nLVM2_member part\nbtrfs lvm\n";
+        let unused = unused_disk_tools(btrfs_on_lvm);
+        assert!(!unused.contains(&Package::BtrfsProgs));
+        assert!(!unused.contains(&Package::Lvm2));
+        assert!(unused.contains(&Package::Xfsprogs));
+        let bios_raid = "isw_raid_member disk\nlinux_raid_member disk\n";
+        assert!(!unused_disk_tools(bios_raid).contains(&Package::Dmraid));
+        assert!(unused_disk_tools("linux_raid_member disk\n").contains(&Package::Dmraid));
     }
 }

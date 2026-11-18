@@ -195,6 +195,40 @@ fn cachyos_boot(sandbox: &Sandbox, refind: bool) {
         "mkinitcpio",
         r#"printf 'mkinitcpio %s\n' "$*" >> "$MYCONFIG_TEST_LOG""#,
     );
+    // A plain ext4 disk, unless `lsblk` in the test root says otherwise.
+    sandbox.fake(
+        "lsblk",
+        r#"cat "$MYCONFIG_TEST_ROOT/lsblk" 2>/dev/null || printf ' disk\nvfat part\next4 part\n'"#,
+    );
+}
+
+#[test]
+fn cachyos_keeps_the_disk_tools_of_the_formats_the_machine_uses() {
+    let sandbox = Sandbox::new("cachyos-disks");
+    cachyos_boot(&sandbox, true);
+    fs::write(
+        sandbox.root.join("lsblk"),
+        " disk\nvfat part\nLVM2_member part\nbtrfs lvm\n",
+    )
+    .unwrap();
+    install_everything(&sandbox, &["btrfs-progs", "lvm2", "xfsprogs", "dmraid"]);
+    let io = Answers::new(None);
+    sandbox
+        .with(&io, |ctx| {
+            runner::install(ctx, &[&CachyosSetup], &[&CachyosSetup])
+        })
+        .unwrap();
+    let installed = |name: &str| sandbox.root.join("installed").join(name).exists();
+    assert!(
+        installed("btrfs-progs"),
+        "the tools of the root filesystem were removed"
+    );
+    assert!(
+        installed("lvm2"),
+        "the LVM tools were removed from an LVM machine"
+    );
+    assert!(!installed("xfsprogs"));
+    assert!(!installed("dmraid"));
 }
 
 #[test]

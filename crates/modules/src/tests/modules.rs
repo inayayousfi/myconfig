@@ -2077,11 +2077,31 @@ fn bootvine_installs_its_package_then_joins_the_initramfs_and_the_first_boot_ent
             .unwrap()
             .contains("HOOKS=(base systemd sd-bootvine autodetect")
     );
+    let colors = "vt.default_red=0,248,74,250,96,255,34,208,42,252,134,253,147,255,103,240 \
+                  vt.default_grn=0,113,222,204,165,78,211,214,45,165,239,224,197,133,232,242 \
+                  vt.default_blu=0,113,128,21,250,173,238,224,54,165,172,71,253,200,249,247";
     assert_eq!(
         system_file(&sandbox, "/boot/refind_linux.conf").unwrap(),
         REFIND_LINUX
             .replace("quiet nowatchdog splash ", "")
             .replacen("\"rw root", "\"quiet rw root", 1)
+            .replace(
+                "efi_pstore.pstore_disable=0\"",
+                &format!("efi_pstore.pstore_disable=0 {colors}\"")
+            )
+            .replace(
+                "resume_offset=244412416\" single",
+                &format!("resume_offset=244412416 {colors}\" single")
+            )
+            .replace(
+                "resume=UUID=31f4 resume_offset=244412416\"\n",
+                &format!("resume=UUID=31f4 resume_offset=244412416 {colors}\"\n")
+            ),
+        "every entry did not get the Black & Pink console colors"
+    );
+    assert_eq!(
+        system_file(&sandbox, "/etc/bootvine.toml").unwrap(),
+        String::from_utf8_lossy(embedded_dotfiles::BOOTVINE_ASSETS.bootvine_toml.content)
     );
     for service in ["bootvine.service", "bootvine-shutdown.service"] {
         assert!(

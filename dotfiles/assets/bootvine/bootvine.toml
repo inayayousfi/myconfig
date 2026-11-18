@@ -1,0 +1,67 @@
+# Black & Pink colors for bootvine. The console shows its 16 colors, which the
+# bootvine module sets to the Ghostty palette through the kernel options
+# vt.default_red, vt.default_grn and vt.default_blu: magenta is #ff4ead,
+# light-magenta #ff85c8, green #4ade80 and light-red #fca5a5.
+
+[colors.header]
+origin = "white"
+separators = "dark-gray"
+total-time = "light-magenta"
+
+[colors.stages]
+branches = "dark-gray"
+finished-label = "gray"
+finished-time = "green"
+unit-count = "gray"
+failed-count = "light-red"
+current = "light-magenta"
+
+[colors.tree]
+branches = "dark-gray"
+columns = "dark-gray"
+target = "magenta"
+current-stage = "light-magenta"
+reached-stage = "green"
+running-unit = "white"
+running-marker = "magenta"
+waiting-unit = "gray"
+finished-unit = "dark-gray"
+finished-marker = "green"
+failed-unit = "light-red"
+overflow = "gray"
+
+[colors.timeline]
+rule = "dark-gray"
+title = "gray"
+axis = "dark-gray"
+milestone = "light-magenta"
+finished = "green"
+finished-label = "gray"
+failed = "light-red"
+queued-bar = "dark-gray"
+running = "magenta"
+running-label = "white"
+
+[colors.failures]
+rule = "dark-gray"
+title = "light-red"
+unit = "light-red"
+reason = "white"
+log = "gray"
+overflow = "dark-gray"
+
+[colors.footer]
+rule = "dark-gray"
+done = "green"
+running = "magenta"
+waiting = "gray"
+failed = "light-red"
+no-failures = "gray"
+
+[colors.password]
+frame = "magenta"
+message = "white"
+hint = "dark-gray"
+checking = "light-magenta"
+rejected = "light-red"
+backdrop = "dark-gray"

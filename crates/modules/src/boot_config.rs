@@ -150,6 +150,27 @@ pub(crate) fn with_quiet_default(config: &str) -> String {
     })
 }
 
+/// Sets the console colors in every boot entry: each of `colors` is a kernel option such
+/// as `vt.default_red=0,248,...`, which replaces any earlier value of the same option.
+pub(crate) fn with_console_colors(config: &str, colors: &[String]) -> String {
+    let names: Vec<&str> = colors
+        .iter()
+        .filter_map(|option| option.split_once('=').map(|(name, _)| name))
+        .collect();
+    edit_entries(config, |_, options| {
+        options
+            .split_whitespace()
+            .filter(|option| {
+                !names
+                    .iter()
+                    .any(|name| option.split_once('=').map(|(key, _)| key) == Some(name))
+            })
+            .chain(colors.iter().map(String::as_str))
+            .collect::<Vec<_>>()
+            .join(" ")
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -207,5 +228,28 @@ mod tests {
             "\"Boot with standard options\"    \"quiet rw root=UUID=31f4 resume=UUID=31f4\"\n\"Boot to single-user mode\"    \"rw root=UUID=31f4\" single\n# \"Commented\" \"quiet\"\n\"Boot with minimal options\"   \"ro root=/dev/nvme0n1p2\"\n"
         );
         assert_eq!(with_quiet_default(&quiet), quiet);
+    }
+
+    #[test]
+    fn console_colors_join_every_entry_once_and_replace_earlier_values() {
+        let colors = vec![
+            "vt.default_red=1,2".to_owned(),
+            "vt.default_grn=3,4".to_owned(),
+        ];
+        let edited = with_console_colors(
+            &ENTRIES.replace(
+                "rw root=UUID=31f4 resume",
+                "rw vt.default_red=9,9 root=UUID=31f4 resume",
+            ),
+            &colors,
+        );
+        assert_eq!(with_console_colors(&edited, &colors), edited);
+        assert_eq!(
+            edited,
+            "\"Boot with standard options\"    \"quiet nowatchdog splash rw root=UUID=31f4 resume=UUID=31f4 vt.default_red=1,2 vt.default_grn=3,4\"\n\
+             \"Boot to single-user mode\"    \"quiet nowatchdog splash rw root=UUID=31f4 vt.default_red=1,2 vt.default_grn=3,4\" single\n\
+             # \"Commented\" \"quiet\"\n\
+             \"Boot with minimal options\"   \"ro root=/dev/nvme0n1p2 vt.default_red=1,2 vt.default_grn=3,4\"\n"
+        );
     }
 }

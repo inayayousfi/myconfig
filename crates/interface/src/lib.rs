@@ -11,7 +11,7 @@ use std::{
 
 use clap::{Parser, Subcommand};
 use inayos_modules::{
-    Context, Interaction, Module, ModuleResult, PackageSystem, RunMode, leftovers, runner,
+    Context, Interaction, Module, ModuleResult, Need, PackageSystem, RunMode, leftovers, runner,
     state::StateStore,
 };
 use xshell::Shell;
@@ -65,7 +65,12 @@ enum Command {
         force: bool,
     },
     /// Prints the module names in profile order.
-    List,
+    List {
+        /// Follows each name with `:` and the modules it hard-needs, separated by spaces,
+        /// for the InayOS installer's module screen.
+        #[arg(long, hide = true)]
+        needs: bool,
+    },
     /// Steps the installer starts by itself, such as an elevated child or a login service.
     #[command(hide = true, subcommand)]
     Internal(Internal),
@@ -101,9 +106,13 @@ pub fn main(profile: Profile<'_>) -> ExitCode {
     let arguments = Arguments::parse();
     let result = match arguments.command {
         None => screen::run(&profile),
-        Some(Command::List) => {
+        Some(Command::List { needs }) => {
             for module in profile.modules {
-                println!("{}", module.name());
+                if needs {
+                    println!("{}", needs_line(module.name(), module.needs()));
+                } else {
+                    println!("{}", module.name());
+                }
             }
             Ok(false)
         }
@@ -111,6 +120,18 @@ pub fn main(profile: Profile<'_>) -> ExitCode {
         Some(command) => run_plain(&profile, command),
     };
     report(result)
+}
+
+/// One line of `list --needs`: the module name, `:`, and its hard needs separated by spaces.
+fn needs_line(name: &str, needs: &[Need]) -> String {
+    let mut line = format!("{name}:");
+    for need in needs {
+        if let Need::Hard(needed) = need {
+            line.push(' ');
+            line.push_str(needed);
+        }
+    }
+    line
 }
 
 fn report(result: ModuleResult<bool>) -> ExitCode {
@@ -268,7 +289,7 @@ fn run_plain(profile: &Profile<'_>, command: Command) -> ModuleResult<bool> {
             (select(profile, modules)?, false)
         }
         Command::Remove { modules, .. } => select_removal(profile, modules)?,
-        Command::List | Command::Internal(_) => return Ok(false),
+        Command::List { .. } | Command::Internal(_) => return Ok(false),
     };
     let (mode, io): (RunMode, Box<dyn Interaction>) = match &command {
         Command::Install {
@@ -340,7 +361,31 @@ fn run_plain(profile: &Profile<'_>, command: Command) -> ModuleResult<bool> {
                 };
                 Ok(report.unanswered)
             }
-            Command::List | Command::Internal(_) => Ok(false),
+            Command::List { .. } | Command::Internal(_) => Ok(false),
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use inayos_modules::Need;
+
+    use super::needs_line;
+
+    #[test]
+    fn a_needs_line_names_only_the_hard_needs() {
+        assert_eq!(
+            needs_line(
+                "axidev-osk",
+                &[
+                    Need::Hard("base"),
+                    Need::Soft("plasma-version"),
+                    Need::EveryEarlier,
+                    Need::Hard("kde-plasma"),
+                ],
+            ),
+            "axidev-osk: base kde-plasma"
+        );
+        assert_eq!(needs_line("base", &[]), "base:");
+    }
 }

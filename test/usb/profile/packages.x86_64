@@ -12,6 +12,11 @@ ghostty
 mesa
 ttf-dejavu
 
+# Run-time libraries of the installer's screens: winit loads the Wayland client and cursor
+# libraries and libxkbcommon when it starts. Its font is built into the binary.
+wayland
+libxkbcommon
+
 # Axidev OSK runtime, as its Linux release requires it.
 python
 pyside6

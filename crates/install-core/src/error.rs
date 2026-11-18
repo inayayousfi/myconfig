@@ -37,6 +37,8 @@ impl Stage {
 /// One failure. Each variant names a distinct cause; the fields carry its details.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("the answers are invalid: {0}")]
+    InvalidAnswers(#[from] crate::AnswersError),
     #[error("{option} is not built yet")]
     NotBuilt { option: &'static str },
     #[error("the installer must run as root")]

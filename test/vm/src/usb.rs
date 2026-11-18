@@ -3,7 +3,9 @@
 //! mkarchiso profile from archiso's releng profile and the overlay in `test/usb/profile/`, runs
 //! mkarchiso in the guest, and copies the image to the state folder.
 //!
-//! The new image replaces the previous one only when it is complete. A failed build keeps its
+//! The installer links to the system C library, so the build checks that it needs no newer
+//! glibc than the image carries. The new image replaces the previous one only when it is
+//! complete. A failed build keeps its
 //! layer, with the build log and the last screen, as the failed Arch disk.
 
 use std::fs;
@@ -11,7 +13,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use crate::binary::Binary;
+use crate::binary::{self, Binary, BinaryError};
 use crate::disk::{self, DiskError};
 use crate::os::{GUEST_PASSWORD, GUEST_USER, Os};
 use crate::release;
@@ -58,6 +60,8 @@ pub enum StepError {
     Ready(#[from] ReadyError),
     #[error(transparent)]
     Ssh(#[from] SshError),
+    #[error(transparent)]
+    Binary(#[from] BinaryError),
     #[error("could not write {0}: {1}")]
     Io(PathBuf, io::Error),
 }
@@ -88,6 +92,9 @@ pub fn build(watch: bool, repository: &Path) -> Result<(), UsbError> {
     let result = (|| -> Result<(), StepError> {
         start::install_binaries(os, &mut started.vm, &started.guest, &started.binaries)?;
         build_in_guest(&started.guest, &started.binaries, &overlay, &folder)?;
+        // The build upgraded the guest from the same mirrors as the image's packages, so
+        // its glibc is the one the live system has.
+        binary::check_glibc(&started.guest, &started.binaries)?;
         save_iso(&started.guest, &iso)
     })();
     let vm = started.vm;

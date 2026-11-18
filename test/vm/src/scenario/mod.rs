@@ -1,15 +1,17 @@
-//! The Basics scenarios of the InayOS installer. Each one boots the USB stick image with a new
-//! blank target disk and a seed disc, drives the live system over SSH as root, runs
-//! `inayos-installer install` with an answers file, powers off, boots the installed disk
-//! without the stick, and checks the result over SSH as the new user and through QMP
-//! screenshots.
+//! The scenarios of the InayOS installer. Each one boots the USB stick image with a new blank
+//! target disk and a seed disc, drives the live system over SSH as root, installs, powers off,
+//! boots the installed disk without the stick, and checks the result over SSH as the new user
+//! and through QMP screenshots. The Basics scenarios run `inayos-installer install` with an
+//! answers file; `gui-install` goes through the installer's screens with QMP key presses.
 //!
-//! A scenario runs on its own layer. A passed scenario deletes it. A failed one keeps it, with
-//! its logs, screenshots, answers files and last screen, as the failed layer of that scenario
-//! until its next run.
+//! A scenario runs on its own layer. A passed scenario copies its screenshots to its
+//! `last-pass` folder and deletes the layer. A failed one keeps the layer, with its logs,
+//! screenshots, answers files and last screen, as the failed layer of that scenario until its
+//! next run.
 
 mod answers_file;
 mod checks;
+mod gui;
 
 use std::fs;
 use std::io;
@@ -67,7 +69,7 @@ const POLL: Duration = Duration::from_secs(5);
 /// keys can arrive before the password field has the focus.
 const LOGIN_ATTEMPTS: u32 = 2;
 
-/// A Basics scenario.
+/// A scenario of the InayOS installer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
 pub enum Name {
     /// Wipes the blank disk with the default layout and checks the finished desktop.
@@ -78,6 +80,9 @@ pub enum Name {
     /// Builds a disk like the laptop's, shrinks its ext4 partition and keeps it as home, and
     /// checks that the home files survived.
     ShrinkExt4,
+    /// Installs on the blank disk through the installer's screens, driven by key presses, and
+    /// checks the finished desktop.
+    GuiInstall,
 }
 
 impl Name {
@@ -86,6 +91,7 @@ impl Name {
             Name::BlankDisk => "blank-disk",
             Name::ReinstallKeepHome => "reinstall-keep-home",
             Name::ShrinkExt4 => "shrink-ext4",
+            Name::GuiInstall => "gui-install",
         }
     }
 }
@@ -123,6 +129,15 @@ pub enum ScenarioError {
         work: PathBuf,
         keep: io::Error,
     },
+    #[error(
+        "the {name} scenario passed, but its screenshots could not be copied to {last_pass}: {error}\nthe layer is still in {work}"
+    )]
+    PassNotKept {
+        name: &'static str,
+        last_pass: PathBuf,
+        work: PathBuf,
+        error: io::Error,
+    },
 }
 
 /// A failure of one step of a running scenario.
@@ -153,6 +168,8 @@ pub enum StepError {
         package: &'static str,
         error: SshError,
     },
+    #[error(transparent)]
+    Binary(#[from] BinaryError),
 }
 
 /// Runs the scenario `name` on a new layer. With `watch`, a viewer window shows the guest
@@ -191,8 +208,21 @@ pub fn run(name: Name, watch: bool, repository: &Path) -> Result<(), ScenarioErr
             if let Some(vm) = vm {
                 vm.shut_down(POWER_OFF_TIMEOUT);
             }
+            let last_pass = paths.scenario_last_pass(name.name());
+            keep_screenshots(work.dir(), &last_pass).map_err(|error| {
+                ScenarioError::PassNotKept {
+                    name: name.name(),
+                    last_pass: last_pass.clone(),
+                    work: work.dir().to_owned(),
+                    error,
+                }
+            })?;
             disk::discard(&work)?;
-            println!("vm: the {} scenario passed", name.name());
+            println!(
+                "vm: the {} scenario passed; its screenshots are in {}",
+                name.name(),
+                last_pass.display()
+            );
             Ok(())
         }
         Err(error) => {
@@ -282,6 +312,11 @@ impl Scenario {
                 println!(
                     "vm: ~/{MARKER} survived the reinstall, and the user kept its uid and gid"
                 );
+                self.check_desktop(&user)
+            }
+            Name::GuiInstall => {
+                self.install_through_gui()?;
+                let user = self.boot_installed()?;
                 self.check_desktop(&user)
             }
             Name::ShrinkExt4 => {
@@ -410,14 +445,7 @@ impl Scenario {
             &answers_file::answers_file(disk, &self.public_key),
         )?;
         live.copy_to(&answers, LIVE_ANSWERS)?;
-        for binary in &self.binaries {
-            let place = live_place(binary.package);
-            live.copy_to(&binary.local, place)
-                .map_err(|error| StepError::Copy {
-                    package: binary.package,
-                    error,
-                })?;
-        }
+        self.copy_binaries(live)?;
         println!("vm: running the installer with {}", answers.display());
         let result = live.run_logged(
             &installer_command(),
@@ -429,6 +457,28 @@ impl Scenario {
             eprintln!("vm: could not copy {LIVE_LOG}: {error}");
         }
         result?;
+        Ok(())
+    }
+
+    /// Checks that the installers built from the working tree run with the live system's C
+    /// library, then puts them in place of the copies on the stick.
+    ///
+    /// The Sway session of the stick runs the installer's screens from its place, and Linux
+    /// refuses a write to a running program. So each binary goes to a file next to its place
+    /// first, and a rename replaces the old one, which leaves a running copy untouched.
+    fn copy_binaries(&self, live: &Guest) -> Result<(), StepError> {
+        binary::check_glibc(live, &self.binaries)?;
+        for binary in &self.binaries {
+            let place = live_place(binary.package);
+            let staged = format!("{place}.new");
+            let copy_error = |error| StepError::Copy {
+                package: binary.package,
+                error,
+            };
+            live.copy_to(&binary.local, &staged).map_err(copy_error)?;
+            live.run(&format!("chmod 755 {staged} && mv -f {staged} {place}"))
+                .map_err(copy_error)?;
+        }
         Ok(())
     }
 
@@ -654,6 +704,23 @@ impl Scenario {
     fn log(&self, name: &str) -> PathBuf {
         self.layer.dir().join("logs").join(format!("{name}.log"))
     }
+}
+
+/// Replaces the folder `last_pass` with a copy of the PNG screenshots at the top of `layer`.
+fn keep_screenshots(layer: &Path, last_pass: &Path) -> io::Result<()> {
+    match fs::remove_dir_all(last_pass) {
+        Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
+        _ => {}
+    }
+    fs::create_dir_all(last_pass)?;
+    for entry in fs::read_dir(layer)? {
+        let path = entry?.path();
+        if path.is_file() && path.extension().is_some_and(|extension| extension == "png") {
+            let name = path.file_name().expect("a listed file has a name");
+            fs::copy(&path, last_pass.join(name))?;
+        }
+    }
+    Ok(())
 }
 
 /// Runs `remote` as a check that has not passed yet when it fails in the guest.

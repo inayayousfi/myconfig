@@ -3,19 +3,22 @@
 //! and file change goes through a `Host`.
 #![cfg(unix)]
 pub mod answers;
+pub mod catalog;
 pub mod disk_names;
 mod error;
 pub mod host;
 mod install;
+pub mod inventory;
+pub mod modules;
 pub mod parse;
 mod sink;
 pub mod sizes;
 
-pub use answers::{Answers, AnswersError, Disk};
+pub use answers::{Answers, AnswersError, Choice, Disk, check_hostname, check_username};
 pub use error::{Error, Failure, Stage};
 pub use host::{Host, RealHost};
 pub use install::{INSTALLED_LOG, Settings, install};
-pub use sink::Sink;
+pub use sink::{ChannelSink, Line, Sink};
 
 #[cfg(test)]
 mod fake;

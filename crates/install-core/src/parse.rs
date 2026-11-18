@@ -69,6 +69,103 @@ pub fn lsblk(json: &str) -> Result<BlockDevice, String> {
     }
 }
 
+/// One device of `lsblk --json --bytes --output NAME,PATH,TYPE,MODEL,SIZE,START,LOG-SEC,
+/// FSTYPE,LABEL,PARTTYPE,MOUNTPOINTS`, with the devices inside it. Missing values are empty.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ListedDevice {
+    pub path: String,
+    pub kind: String,
+    pub model: String,
+    pub size_bytes: u64,
+    /// The first sector of a partition; 0 for a whole disk.
+    pub start: u64,
+    pub sector_size: u64,
+    pub fstype: String,
+    pub label: String,
+    /// The GPT type GUID in lowercase, or the MBR type.
+    pub parttype: String,
+    pub mountpoints: Vec<String>,
+    pub children: Vec<ListedDevice>,
+}
+
+#[derive(Deserialize)]
+struct InventoryOutput {
+    blockdevices: Vec<InventoryDevice>,
+}
+
+/// lsblk prints numbers as JSON numbers, and as strings before util-linux 2.33.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum Number {
+    Number(u64),
+    Text(String),
+}
+
+impl Number {
+    fn value(value: Option<Number>) -> Result<u64, String> {
+        match value {
+            None => Ok(0),
+            Some(Number::Number(number)) => Ok(number),
+            Some(Number::Text(text)) => text
+                .trim()
+                .parse()
+                .map_err(|_| format!("lsblk printed {text:?} for a number")),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct InventoryDevice {
+    path: String,
+    #[serde(rename = "type")]
+    kind: String,
+    model: Option<String>,
+    size: Option<Number>,
+    start: Option<Number>,
+    #[serde(rename = "log-sec")]
+    sector_size: Option<Number>,
+    fstype: Option<String>,
+    label: Option<String>,
+    parttype: Option<String>,
+    #[serde(default)]
+    mountpoints: Vec<Option<String>>,
+    #[serde(default)]
+    children: Vec<InventoryDevice>,
+}
+
+impl InventoryDevice {
+    fn into_listed(self) -> Result<ListedDevice, String> {
+        Ok(ListedDevice {
+            path: self.path,
+            kind: self.kind,
+            model: self.model.unwrap_or_default().trim().to_owned(),
+            size_bytes: Number::value(self.size)?,
+            start: Number::value(self.start)?,
+            sector_size: Number::value(self.sector_size)?,
+            fstype: self.fstype.unwrap_or_default(),
+            label: self.label.unwrap_or_default(),
+            parttype: self.parttype.unwrap_or_default().to_ascii_lowercase(),
+            mountpoints: self.mountpoints.into_iter().flatten().collect(),
+            children: self
+                .children
+                .into_iter()
+                .map(InventoryDevice::into_listed)
+                .collect::<Result<_, _>>()?,
+        })
+    }
+}
+
+/// Every device tree that the inventory `lsblk` printed. The NAME column makes lsblk print
+/// partitions as children of their disk.
+pub fn lsblk_inventory(json: &str) -> Result<Vec<ListedDevice>, String> {
+    let output: InventoryOutput = serde_json::from_str(json).map_err(|error| error.to_string())?;
+    output
+        .blockdevices
+        .into_iter()
+        .map(InventoryDevice::into_listed)
+        .collect()
+}
+
 /// One row of the partition table that `sgdisk --print` shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TableRow {

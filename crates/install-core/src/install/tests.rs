@@ -275,6 +275,31 @@ fn the_questions_reach_the_new_system_as_a_json_object() {
     assert_eq!(json, serde_json::json!({"Turn it on now?": true}));
 }
 
+#[test]
+fn the_desktop_keyboard_layout_goes_where_localed_reads_it() {
+    let host = live_system();
+    let answers = answers(
+        "choice = \"wipe-disk\"\ndevice = \"/dev/vda\"\nsystem_size_gib = 40",
+        "xkb_layout = \"fr\"",
+    );
+    install(&answers, &settings(), &host, &FakeSink::default()).unwrap();
+    assert_eq!(
+        host.node("/mnt/etc/X11/xorg.conf.d/00-keyboard.conf"),
+        Some(Node::File {
+            text: "# Written by the InayOS installer. `localectl set-x11-keymap` replaces it.\n\
+                   Section \"InputClass\"\n        Identifier \"system-keyboard\"\n        \
+                   MatchIsKeyboard \"on\"\n        Option \"XkbLayout\" \"fr\"\nEndSection\n"
+                .into(),
+            mode: 0o644,
+            owner: (0, 0)
+        })
+    );
+
+    let host = live_system();
+    install(&wipe(), &settings(), &host, &FakeSink::default()).unwrap();
+    assert_eq!(host.node("/mnt/etc/X11/xorg.conf.d/00-keyboard.conf"), None);
+}
+
 /// A disk that holds an earlier InayOS: EFI, system and home partitions, with the home folder
 /// of `tester` owned by `owner`.
 fn earlier_inayos(owner: (u32, u32)) -> FakeHost {
@@ -483,10 +508,11 @@ fn a_shrink_keeps_the_home_folders_and_puts_the_system_after_them() {
         "pacman -Sy".into(),
         "e2fsck -f -y /dev/vda2".into(),
         format!("resize2fs /dev/vda2 {}K", 60 * GIB / 1024),
+        "e2label /dev/vda2 inayos-home".into(),
         format!(
             "sgdisk --delete=2 --new=2:1050624:{home_last} \
              --typecode=2:0FC63DAF-8483-4772-8E79-3D69D8477DE4 \
-             --partition-guid=2:11111111-2222-3333-4444-555555555555 --change-name=2:root /dev/vda"
+             --partition-guid=2:11111111-2222-3333-4444-555555555555 --change-name=2:inayos-home /dev/vda"
         ),
         format!(
             "sgdisk --new=3:{}:0 --typecode=3:8300 --change-name=3:inayos-system /dev/vda",
@@ -645,6 +671,25 @@ fn checks_refuse_before_the_disk_changes() {
     let failure = install(&wipe(), &settings(), &host, &FakeSink::default()).unwrap_err();
     assert!(matches!(failure.error, Error::MirrorUnreachable { .. }));
     assert_eq!(host.actions(), ["pacman -Sy"]);
+}
+
+#[test]
+fn answers_an_interface_built_with_a_bad_name_refuse_before_any_command() {
+    let mut username = wipe();
+    username.user.username = "Inaya Y".into();
+    let mut hostname = wipe();
+    hostname.hostname = "My PC".into();
+    for answers in [username, hostname] {
+        let host = live_system();
+        let failure = install(&answers, &settings(), &host, &FakeSink::default()).unwrap_err();
+        assert_eq!(failure.stage, Stage::Checks);
+        assert!(
+            matches!(failure.error, Error::InvalidAnswers(_)),
+            "{:?}",
+            failure.error
+        );
+        assert!(host.actions().is_empty());
+    }
 }
 
 #[test]

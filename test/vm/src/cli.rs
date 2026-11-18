@@ -58,7 +58,8 @@ enum VmCommand {
         command: UsbCommand,
     },
     /// Boots the USB stick image with a blank target disk, installs InayOS from it with an
-    /// answers file, boots the installed system, and checks it.
+    /// answers file or through the installer's screens, boots the installed system, and
+    /// checks it.
     Scenario { name: scenario::Name },
     /// Manages the clean images that every throwaway disk starts from.
     Image {

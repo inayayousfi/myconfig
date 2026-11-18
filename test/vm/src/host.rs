@@ -71,6 +71,9 @@ fn find_missing(os: Os) -> Vec<Missing> {
     if os.boot() == Boot::SecureUefiWithTpm {
         commands.push(("swtpm", Fix::Pacman("swtpm")));
     }
+    if binary::needs_readelf(os) {
+        commands.push(("readelf", Fix::Pacman("binutils")));
+    }
     if binary::needs_xwin(os) {
         // cargo-xwin compiles C code with clang-cl and links with lld-link and llvm-lib.
         commands.extend([

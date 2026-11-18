@@ -97,6 +97,16 @@ impl Qmp {
         Ok(())
     }
 
+    /// Saves the current screen of the guest as a binary PPM file on the host, the format
+    /// that `crate::ppm` reads.
+    pub fn screendump_ppm(&mut self, file: &Path) -> Result<(), QmpError> {
+        let file = file
+            .to_str()
+            .ok_or_else(|| QmpError::Protocol(format!("{} is not UTF-8", file.display())))?;
+        self.execute("screendump", json!({ "filename": file, "format": "ppm" }))?;
+        Ok(())
+    }
+
     /// Presses the keys together, then releases them. Keys are QEMU key codes, such as
     /// `alt`, `y`, `ret` or `shift`.
     pub fn send_keys(&mut self, keys: &[&str]) -> Result<(), QmpError> {
@@ -139,7 +149,7 @@ impl Qmp {
 }
 
 /// The QEMU key code for a character on the US layout, and whether it needs Shift.
-fn key_for(character: char) -> Option<(&'static str, bool)> {
+pub(crate) fn key_for(character: char) -> Option<(&'static str, bool)> {
     const LETTERS: [&str; 26] = [
         "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r",
         "s", "t", "u", "v", "w", "x", "y", "z",
@@ -183,4 +193,33 @@ fn key_for(character: char) -> Option<(&'static str, bool)> {
             .then_some((code, false))
             .or((character == shifted).then_some((code, true)))
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::key_for;
+
+    #[test]
+    fn letters_digits_and_space_need_no_shift_and_capitals_do() {
+        assert_eq!(key_for('t'), Some(("t", false)));
+        assert_eq!(key_for('T'), Some(("t", true)));
+        assert_eq!(key_for('0'), Some(("0", false)));
+        assert_eq!(key_for(' '), Some(("spc", false)));
+        assert_eq!(key_for('\n'), Some(("ret", false)));
+    }
+
+    #[test]
+    fn symbols_use_the_key_of_the_us_layout_with_shift_for_the_upper_one() {
+        assert_eq!(key_for('!'), Some(("1", true)));
+        assert_eq!(key_for(')'), Some(("0", true)));
+        assert_eq!(key_for('-'), Some(("minus", false)));
+        assert_eq!(key_for('_'), Some(("minus", true)));
+        assert_eq!(key_for('"'), Some(("apostrophe", true)));
+        assert_eq!(key_for('?'), Some(("slash", true)));
+    }
+
+    #[test]
+    fn characters_without_a_us_key_are_refused() {
+        assert_eq!(key_for('é'), None);
+    }
 }

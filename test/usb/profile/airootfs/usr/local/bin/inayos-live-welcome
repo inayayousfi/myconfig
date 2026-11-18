@@ -3,20 +3,16 @@
 set -u
 
 case "${1-}" in
-installer)
-  printf '%s\n' \
-    'InayOS installer. It has no screens yet: give it an answers file.' \
-    '  sudo inayos-installer install --answers FILE' \
-    '  inayos-installer install --help' \
-    'Network: nmtui for Wi-Fi.' ''
-  ;;
 repair)
   printf '%s\n' \
     'Repair workspace.' \
     '  Disks: testdisk, photorec, ddrescue, smartctl' \
     '  Boot: efibootmgr, sbctl, refind-install, arch-chroot then mkinitcpio' \
     '  Snapshots: snapper' \
-    '  Arch wiki: Super+B, or epiphany https://wiki.archlinux.org' ''
+    '  Arch wiki: Super+B, or epiphany https://wiki.archlinux.org' \
+    '  Network: nmtui for Wi-Fi' \
+    '  Installer screens closed: Super+I starts them again on workspace 1' \
+    '  Install without the screens: sudo inayos-installer install --answers FILE' ''
   ;;
 esac
 

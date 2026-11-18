@@ -182,7 +182,7 @@ Arch already ships the timer that refreshes its keyring.
   2. Wi-Fi, skipped when a cable works.
   3. Disk: each disk with its model and size, then the four disk choices.
   4. Secure Boot and encryption, as two separate options. Encryption is shown only with a TPM 2.0.
-  5. User: name, username suggested from the name, password, computer name. The time zone is guessed from the network.
+  5. User: name, username suggested from the name, password, computer name. The time zone comes from a searchable list that starts at the keyboard's country. Nothing asks an outside service for it.
   6. Modules: a checkbox per module of the InayOS profile, with the base modules locked on. The current Ratatui screen already lists modules with checkboxes.
   7. Summary: the exact disk actions in plain words, the disk that gets erased, and a typed confirmation.
   8. Progress with a live log, then the recovery key handoff when encryption is on, then reboot.

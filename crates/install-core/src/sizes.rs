@@ -11,8 +11,9 @@ pub const MIN_SYSTEM_GIB: u64 = 20;
 /// The largest system partition the answers file accepts, which keeps every product of
 /// sizes far from overflowing.
 pub const MAX_SYSTEM_GIB: u64 = 1 << 20;
-/// The smallest home partition a wiped disk must leave.
-pub const MIN_HOME_GIB: u64 = 1;
+/// The smallest home partition a wiped disk must leave. The install itself fills a few GiB
+/// of it, because AUR packages build in the user's cache folder.
+pub const MIN_HOME_GIB: u64 = 20;
 
 /// A run of sectors, both ends included.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -197,7 +198,9 @@ mod tests {
     fn a_disk_without_room_for_home_is_too_small() {
         let disk = (2 + 40) * GIB / 512 + 2048;
         assert!(wipe_layout(disk, 512, 40).is_err());
-        let disk = (2 + 40 + 2) * GIB / 512;
+        let disk = (2 + 40 + 19) * GIB / 512;
+        assert!(wipe_layout(disk, 512, 40).is_err());
+        let disk = (2 + 40 + 21) * GIB / 512;
         assert!(wipe_layout(disk, 512, 40).is_ok());
     }
 

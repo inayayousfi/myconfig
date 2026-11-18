@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Starts the installer's screens as root in the live user's Wayland session. Sway runs this
+# file instead of the sudo line, because a comma in a Sway command starts the next command.
+exec sudo --preserve-env=WAYLAND_DISPLAY,XDG_RUNTIME_DIR,SWAYSOCK /usr/local/bin/inayos-installer "$@"

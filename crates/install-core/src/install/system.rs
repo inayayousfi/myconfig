@@ -1,4 +1,4 @@
-//! Installs the base system into `/mnt` and sets its locale, keymap, time zone, host name and
+//! Installs the base system into `/mnt` and sets its locale, keymaps, time zone, host name and
 //! network.
 use std::path::Path;
 
@@ -17,6 +17,20 @@ const BASE_PACKAGES: [&str; 8] = [
 ];
 
 const CONNECTIONS: &str = "/etc/NetworkManager/system-connections";
+
+/// The system keyboard layout as `localectl set-x11-keymap` writes it, which systemd-localed
+/// reads at boot. The Plasma session does not follow it: the kde-plasma module sets each
+/// user's layout to US in `kxkbrc`.
+pub(crate) fn keyboard_conf(layout: &str) -> String {
+    format!(
+        "# Written by the InayOS installer. `localectl set-x11-keymap` replaces it.\n\
+         Section \"InputClass\"\n\
+         \x20       Identifier \"system-keyboard\"\n\
+         \x20       MatchIsKeyboard \"on\"\n\
+         \x20       Option \"XkbLayout\" \"{layout}\"\n\
+         EndSection\n"
+    )
+}
 
 pub(crate) fn install(m: &Machine, answers: &Answers) -> Result<(), Error> {
     m.sink.step("Installing the base system");
@@ -52,6 +66,15 @@ pub(crate) fn install(m: &Machine, answers: &Answers) -> Result<(), Error> {
         })?;
     m.write(&locale_gen, &enabled, 0o644)?;
     m.run(Command::action("arch-chroot").args([TARGET, "locale-gen"]))?;
+    if let Some(layout) = &answers.xkb_layout {
+        let folder = Path::new(TARGET).join("etc/X11/xorg.conf.d");
+        m.create_dir(&folder, 0o755)?;
+        m.write(
+            &folder.join("00-keyboard.conf"),
+            &keyboard_conf(layout),
+            0o644,
+        )?;
+    }
 
     m.sink.step("Turning on NetworkManager");
     m.run(Command::action("systemctl").args([

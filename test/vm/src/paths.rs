@@ -95,6 +95,11 @@ impl Paths {
         Layer::new(self.state.join("scenario").join(name).join("work"))
     }
 
+    /// The screenshots of the last passed run of the scenario `name`, kept until its next pass.
+    pub fn scenario_last_pass(&self, name: &str) -> PathBuf {
+        self.state.join("scenario").join(name).join("last-pass")
+    }
+
     /// The layer of the last failed run of the scenario `name`, kept until its next run.
     pub fn scenario_failed(&self, name: &str) -> Layer {
         Layer::new(self.state.join("scenario").join(name).join("failed"))

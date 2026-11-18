@@ -94,13 +94,16 @@ pub(crate) fn prepare(m: &Machine, work: &DiskWork, username: &str) -> Result<()
                 Command::action("resize2fs")
                     .args([home.clone(), format!("{}K", plan.filesystem_bytes / 1024)]),
             )?;
+            // The labels the wiped layout uses, so a later run offers to reinstall and keep
+            // this home.
+            m.run(Command::action("e2label").args([home.as_str(), "inayos-home"]))?;
             let n = home_number;
             m.run(Command::action("sgdisk").args([
                 format!("--delete={n}"),
                 format!("--new={n}:{}:{}", plan.home.first, plan.home.last),
                 format!("--typecode={n}:{}", entry.type_guid),
                 format!("--partition-guid={n}:{}", entry.unique_guid),
-                format!("--change-name={n}:{}", entry.name),
+                format!("--change-name={n}:inayos-home"),
                 device.clone(),
             ]))?;
             let s = system_number;

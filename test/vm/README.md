@@ -2,7 +2,7 @@
 
 This document describes the VM xtask in `test/vm/`, the `inayos-xtask` crate. It builds the installers from the working tree and tests them in throwaway QEMU virtual machines of Ubuntu 26.04 LTS and Windows 11. It also builds the InayOS USB stick image in an Arch Linux virtual machine, and runs the InayOS installer from that image in scenarios. A commit or a release is not needed. It runs on a Linux host and only by hand.
 
-The Ubuntu cycle has passed on a real guest, image build included. Nothing has run on Windows, the Arch WSL checks included. The Arch image build, the USB stick build and the three scenarios have passed on a real guest.
+The Ubuntu cycle has passed on a real guest, image build included. Nothing has run on Windows, the Arch WSL checks included. The Arch image build with its glibc check, the USB stick build, the three Basics scenarios and the `gui-install` scenario have passed on a real guest, with the `last-pass` copy of screenshots.
 
 ## Commands
 
@@ -24,7 +24,7 @@ Only one command that starts a VM runs at a time. A lock file in the state folde
 
 ## Host
 
-Each command first checks that the host has what the chosen system needs. Every system needs the Arch packages `qemu-desktop`, `edk2-ovmf`, `virt-viewer`, `openssh`, `curl` and `libisoburn`, the Rust target `x86_64-unknown-linux-musl`, and read and write access to `/dev/kvm`. Windows also needs `swtpm`, the `cargo-xwin` command with the `clang`, `lld` and `llvm` packages, the Rust target `x86_64-pc-windows-msvc`, and nested virtualization in the `kvm_amd` or `kvm_intel` module. When something is missing, the command lists it with the commands that install it, and stops. It never installs anything.
+Each command first checks that the host has what the chosen system needs. Every system needs the Arch packages `qemu-desktop`, `edk2-ovmf`, `virt-viewer`, `openssh`, `curl` and `libisoburn`, the Rust target `x86_64-unknown-linux-musl`, and read and write access to `/dev/kvm`. Arch also needs the Rust target `x86_64-unknown-linux-gnu` and `readelf` from `binutils`. Windows also needs `swtpm`, the `cargo-xwin` command with the `clang`, `lld` and `llvm` packages, the Rust target `x86_64-pc-windows-msvc`, and nested virtualization in the `kvm_amd` or `kvm_intel` module. When something is missing, the command lists it with the commands that install it, and stops. It never installs anything.
 
 `cargo xwin` downloads the Microsoft C runtime and Windows SDK into its own cache folder under `~/.cache` the first time it builds, which is about 1 GB.
 
@@ -40,7 +40,7 @@ The state folder is `${XDG_DATA_HOME:-~/.local/share}/inayos/vm`, or `INAYOS_VM_
 
 - `failed` is the layer of the last failed cycle or USB stick build, kept until the next one of that system.
 
-The state folder also holds the USB stick image at `usb/inayos.iso`, and a folder per scenario under `scenario/` with the same `work` and `failed` layers.
+The state folder also holds the USB stick image at `usb/inayos.iso`, and a folder per scenario under `scenario/` with the same `work` and `failed` layers and a `last-pass` folder with the screenshots of the last passed run.
 
 A layer holds a qcow2 disk that reads unchanged blocks from the clean image disk, a copy of the UEFI variables, and for Windows a copy of the TPM state.
 
@@ -92,7 +92,7 @@ A passed cycle deletes its layer. A failed cycle saves the guest screen, shuts t
 
 ## USB stick
 
-`usb build` boots a throwaway layer over the clean Arch image and builds `inayos-installer` and `inayos-arch-desktop` from the working tree for `x86_64-unknown-linux-musl`. It copies them into the guest with the profile overlay in `test/usb/profile/` and the script `usb/build-iso.sh`, which runs as root:
+`usb build` boots a throwaway layer over the clean Arch image and builds `inayos-installer` for `x86_64-unknown-linux-gnu` and `inayos-arch-desktop` for `x86_64-unknown-linux-musl` from the working tree. The installer links to the system C library, because winit, under its Iced screens, loads the Wayland libraries at run time, which a static binary cannot do. It copies them into the guest with the profile overlay in `test/usb/profile/` and the script `usb/build-iso.sh`, which runs as root:
 
 1. It upgrades the guest and installs `archiso`.
 
@@ -104,13 +104,15 @@ A passed cycle deletes its layer. A failed cycle saves the guest screen, shuts t
 
 5. It runs `mkarchiso`.
 
+After the script, the xtask checks that the installer runs with the guest's C library: the newest `GLIBC_` symbol version that `readelf --version-info` lists for it must not be newer than the version that `ldd --version` prints in the guest. The script upgraded the guest from the same mirrors as the image's packages, so the guest has the image's glibc. A host with a newer glibc than Arch builds an installer that the check refuses.
+
 The xtask copies the image to `usb/inayos.iso.part` in the state folder and renames it to `usb/inayos.iso`, so that file is always a complete image. A passed build deletes its layer. A failed build keeps it as the failed Arch layer, with the build log and the last screen.
 
 ## Scenarios
 
 `scenario <name>` installs InayOS from the USB stick image. Its guest has 8 GiB of memory, UEFI without Secure Boot, a new blank 80 GB qcow2 target disk and fresh UEFI variables in the scenario's layer. The image is a CD drive that the firmware starts first. A NoCloud seed disc labeled `CIDATA` gives root on the live system the xtask's SSH key.
 
-The xtask builds `inayos-installer` and `inayos-arch-desktop` from the working tree and copies them over the copies on the image, so a scenario tests the working tree without a new image. It drives the live system over SSH as root. It writes the answers file in `src/scenario/answers_file.rs`, copies it in, and runs `inayos-installer install --answers` with it. The answers file creates the `tester` account with the password from `src/os.rs` and the xtask's key in `authorized_keys`. It answers yes to the SSH server question and no to the GitHub and Tailscale login questions, as the answer table of the cycle does. The installer's output and its own log go to the `logs` folder of the layer.
+The xtask builds `inayos-installer` and `inayos-arch-desktop` from the working tree, checks the installer against the live system's glibc as `usb build` does, and puts them in place of the copies on the image, so a scenario tests the working tree without a new image. Each binary goes to a file next to its place and a rename replaces the old one, because the Sway session of the stick runs the installer's screens from that place and Linux refuses a write to a running program. It drives the live system over SSH as root. The Basics scenarios write the answers file in `src/scenario/answers_file.rs`, copies it in, and runs `inayos-installer install --answers` with it. The answers file creates the `tester` account with the password from `src/os.rs` and the xtask's key in `authorized_keys`. It answers yes to the SSH server question and no to the GitHub and Tailscale login questions, as the answer table of the cycle does. The installer's output and its own log go to the `logs` folder of the layer.
 
 After the install, the xtask powers the guest off and boots the target disk without the image. It checks the installed system over SSH as `tester`, which works through the SSH server that the ssh module turns on. It takes QMP screenshots.
 
@@ -138,7 +140,25 @@ The scenarios are:
 
   Then it runs the desktop checks.
 
-The layer keeps the answers files, logs, serial logs of each boot and screenshots. A passed scenario deletes its layer. A failed scenario saves the last screen and keeps the layer as that scenario's `failed` layer until its next run.
+- `gui-install` installs on the blank disk through the installer's screens, with QMP key presses only, as `src/scenario/gui.rs` plans them. It is described below.
+
+The layer keeps the answers files, logs, serial logs of each boot and screenshots. A passed scenario copies the PNG screenshots of its layer to its `last-pass` folder, replacing the previous ones, and deletes its layer. A failed scenario saves the last screen and keeps the layer as that scenario's `failed` layer until its next run.
+
+### The `gui-install` scenario
+
+The installer writes the name of its current screen to `/run/inayos-installer/screen`. The scenario reads that file over SSH as root after each input, until it names the expected screen or two minutes pass. On each screen it saves a screenshot named `gui-<number>-<screen>.png`, and fails when a PPM screendump of the same screen has a single color, because nothing drew on it.
+
+1. It waits up to five minutes until the installer of the stick, which the Sway session starts, shows its keyboard screen. The Sway session is part of the image, so this step needs an image built with the current `test/usb/profile`; when it fails, the error says whether any installer runs, and when none runs it points to `cargo xtask vm usb build`.
+
+2. It stops that installer, puts the binaries built from the working tree in place of the stick's copies, and starts the fresh installer through `swaymsg` with the command of the Sway session. It waits for the keyboard screen again.
+
+3. It goes through the screens with the defaults of each, on the us layout. It presses Enter on the keyboard, disk, security and modules screens. The wired network of the guest is connected, so the Wi-Fi screen does not show. On the user screen it types the full name `Tester`, whose suggested username is `tester`, then Tab twice and the password, then Tab and the password again, then Enter. On the summary screen it types `erase` and presses Enter. The plan relies on each screen giving its first field the focus when it opens.
+
+4. On the progress screen, a `tail -F` over SSH copies the installer's log to `logs/installer-gui.log` in the layer as it grows. The scenario waits up to 90 minutes for the done or the failed screen, then copies the whole log to `logs/installer-gui-file.log`. The failed screen fails the scenario.
+
+5. The screens take no SSH key, so the scenario mounts the partition labeled `inayos-home` and adds the xtask's key to `~/.ssh/authorized_keys` of `tester`, with the owner of the home folder and mode 600. This is the one change to the new system that does not go through the screens.
+
+6. It powers the live system off, boots the installed disk and runs the desktop checks. The module questions got the installer's built-in answers, which turn the SSH server on.
 
 ## State lists
 

@@ -13,7 +13,7 @@ use crate::{
 };
 
 /// Where archiso mounts the medium it booted from.
-const LIVE_MEDIUM: &str = "/run/archiso/bootmnt";
+pub(crate) const LIVE_MEDIUM: &str = "/run/archiso/bootmnt";
 
 /// The disk changes, with every number they need.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -51,6 +51,7 @@ pub(crate) struct Checked {
 }
 
 pub(crate) fn check(m: &Machine, answers: &Answers, settings: &Settings) -> Result<Checked, Error> {
+    answers.check()?;
     if answers.security.secure_boot {
         return Err(Error::NotBuilt {
             option: "Secure Boot",

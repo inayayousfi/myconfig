@@ -23,10 +23,11 @@ The overlay holds only regular files and folders, so any copy keeps it intact. A
 
 - getty logs the user `live` in on the first console. `~/.zprofile` then starts Sway, with its output in the journal under the `sway` identifier.
 - `live` belongs to `wheel` and `uinput` through `/etc/sysusers.d/inayos-live.conf`, and runs `sudo` without a password.
-- Workspace 1, "Installer", runs a Ghostty terminal titled "InayOS installer". It prints how to run `inayos-installer` with an answers file, then gives a shell.
-- Workspace 2, "Repair", runs a Ghostty terminal titled "InayOS repair" that lists the repair tools.
+- Workspace 1, "Installer", runs the installer's screens. Sway starts `inayos-installer` through `sudo`, which keeps `WAYLAND_DISPLAY`, `XDG_RUNTIME_DIR` and `SWAYSOCK`, so the installer runs as root and draws in the session of `live`. The session switches to workspace 1 before it starts the installer, because Sway places a window on the workspace that was focused when its command started.
+- Workspace 2, "Repair", runs a Ghostty terminal titled "InayOS repair" that lists the repair tools and the command that installs from an answers file without the screens.
 - Axidev OSK starts with the session. It is a layer-shell overlay, so it shows on both workspaces.
 - Super+1 and Super+2 switch workspaces, and the bar's workspace buttons do the same with a click. Super+Return opens a terminal, and Super+B opens the Arch wiki in Epiphany.
+- Super+I starts the installer's screens again on workspace 1 when none run, for example after they closed or failed to start. The repair terminal's help text and the motd say so.
 - Without a GPU driver, as in a VM, Sway, Ghostty and Epiphany draw through Mesa's software renderer.
 
 ### Axidev OSK
@@ -49,14 +50,17 @@ Its runtime comes from the Arch packages its Linux release names: `python`, `pys
 
 - NetworkManager and polkit;
 - Sway, Ghostty, Mesa and a font for the session;
+- the libraries that the installer's screens load when they start: `wayland` for the Wayland client and cursor libraries, and `libxkbcommon`;
 - the Axidev OSK runtime;
 - the repair tools: `testdisk` (with `photorec`), `ddrescue`, `smartmontools`, `efibootmgr`, `sbctl`, `refind`, `snapper`, `mkinitcpio`, `arch-install-scripts`, `btrfs-progs`, `e2fsprogs`, `dosfstools` and `gptfdisk`;
 - Epiphany, the browser for the Arch wiki.
 
 Releng already lists some of the repair tools. The overlay lists them again so that the repair workspace does not depend on releng's choice, and pacman skips the duplicates.
 
+The installer's screens draw with the CPU renderer and carry their font, so they need no GPU driver and no font package.
+
 The installer downloads every package of the new system from the Arch mirrors, so the image carries none of them.
 
 ## Status
 
-The profile was written against archiso 92's `releng`, and every added package exists in the Arch repositories. No image built from it has booted.
+The profile was written against archiso 92's `releng`, and every added package exists in the Arch repositories. Images built from it boot and install in the Basics scenarios of `test/vm/README.md`. The Sway session that starts the installer's screens, and the screens' run-time libraries, have not run on a real guest.

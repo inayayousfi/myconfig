@@ -18,6 +18,7 @@ mod lock;
 mod machine;
 mod os;
 mod paths;
+mod ppm;
 mod qmp;
 mod release;
 mod run;

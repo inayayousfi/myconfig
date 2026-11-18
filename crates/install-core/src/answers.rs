@@ -1,16 +1,29 @@
 //! The answers file: every choice the installer needs, read from TOML and checked before
 //! anything on the machine changes.
-use std::{collections::BTreeMap, fmt, path::Path};
+use std::{
+    collections::BTreeMap,
+    fmt,
+    fs::{self, OpenOptions},
+    io::Write as _,
+    os::unix::fs::{OpenOptionsExt, PermissionsExt},
+    path::Path,
+};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{disk_names, sizes};
 
-/// The checked answers. Every field holds a value the install can use as it is.
+/// The answers. `Answers::read` and `Answers::parse` check every field. An interface that
+/// builds `Answers` itself checks them with `Answers::check`, and `install` checks them again
+/// before the disk changes.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Answers {
     /// The console keymap, written as `KEYMAP` in `/etc/vconsole.conf`.
     pub keyboard: String,
+    /// The XKB keyboard layout of the system, such as `fr`, written to
+    /// `/etc/X11/xorg.conf.d/00-keyboard.conf` for systemd-localed. The Plasma session keeps
+    /// the US layout that the kde-plasma module sets. None writes no file.
+    pub xkb_layout: Option<String>,
     /// The locale, such as `en_US.UTF-8`.
     pub language: String,
     /// A time zone name under `/usr/share/zoneinfo`.
@@ -62,6 +75,16 @@ pub enum Disk {
 }
 
 impl Disk {
+    /// The disk choice.
+    pub fn choice(&self) -> Choice {
+        match self {
+            Disk::WipeDisk { .. } => Choice::WipeDisk,
+            Disk::ReinstallKeepHome { .. } => Choice::ReinstallKeepHome,
+            Disk::ShrinkExt4KeepHome { .. } => Choice::ShrinkExt4KeepHome,
+            Disk::BesideWindows { .. } => Choice::BesideWindows,
+        }
+    }
+
     /// The whole disk the install works on.
     pub fn device(&self) -> &str {
         match self {
@@ -115,6 +138,12 @@ pub enum AnswersError {
         #[source]
         error: std::io::Error,
     },
+    #[error("could not write the answers file {path}: {error}")]
+    Write {
+        path: String,
+        #[source]
+        error: std::io::Error,
+    },
     #[error("the answers file is not valid: {0}")]
     Syntax(#[from] toml::de::Error),
     #[error("{field} is invalid: {reason}")]
@@ -146,25 +175,58 @@ impl Answers {
         let raw: RawAnswers = toml::from_str(text)?;
         raw.check()
     }
+
+    /// Checks the answers with the same rules as `Answers::parse`, for answers an interface
+    /// built itself.
+    pub fn check(&self) -> Result<(), AnswersError> {
+        RawAnswers::from(self).check().map(|_| ())
+    }
+
+    /// The TOML text of an answers file that `Answers::parse` reads back as these answers.
+    /// It holds the passwords in clear text.
+    pub fn to_toml(&self) -> String {
+        toml::to_string(&RawAnswers::from(self)).expect("the answers always serialize to TOML")
+    }
+
+    /// Writes `to_toml` to `path`, readable and writable by its owner only because it holds
+    /// the passwords. Replaces a file already there.
+    pub fn write(&self, path: &Path) -> Result<(), AnswersError> {
+        let failed = |error| AnswersError::Write {
+            path: path.display().to_string(),
+            error,
+        };
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(path)
+            .map_err(failed)?;
+        // The mode of `open` only applies to a new file.
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600)).map_err(failed)?;
+        file.write_all(self.to_toml().as_bytes()).map_err(failed)
+    }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawAnswers {
     keyboard: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    xkb_layout: Option<String>,
     language: String,
     #[serde(default = "utc")]
     timezone: String,
     hostname: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "RawNetwork::is_empty")]
     network: RawNetwork,
     disk: RawDisk,
     #[serde(default)]
     security: RawSecurity,
     user: RawUser,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "RawModules::is_empty")]
     modules: RawModules,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     questions: BTreeMap<String, bool>,
 }
 
@@ -172,16 +234,25 @@ fn utc() -> String {
     "UTC".to_owned()
 }
 
-#[derive(Default, Deserialize)]
+#[derive(Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawNetwork {
+    #[serde(skip_serializing_if = "Option::is_none")]
     wifi_ssid: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     wifi_password: Option<String>,
 }
 
-#[derive(Clone, Copy, Deserialize)]
+impl RawNetwork {
+    fn is_empty(&self) -> bool {
+        self.wifi_ssid.is_none() && self.wifi_password.is_none()
+    }
+}
+
+/// What happens to the disk, as `[disk]` `choice` names it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
-enum Choice {
+pub enum Choice {
     WipeDisk,
     ReinstallKeepHome,
     ShrinkExt4KeepHome,
@@ -189,7 +260,16 @@ enum Choice {
 }
 
 impl Choice {
-    fn name(self) -> &'static str {
+    /// Every choice, in the order an interface offers them.
+    pub const ALL: [Choice; 4] = [
+        Choice::WipeDisk,
+        Choice::ReinstallKeepHome,
+        Choice::ShrinkExt4KeepHome,
+        Choice::BesideWindows,
+    ];
+
+    /// The name the answers file uses.
+    pub fn name(self) -> &'static str {
         match self {
             Choice::WipeDisk => "wipe-disk",
             Choice::ReinstallKeepHome => "reinstall-keep-home",
@@ -199,18 +279,22 @@ impl Choice {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawDisk {
     choice: Choice,
     device: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     system_size_gib: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     efi_partition: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     system_partition: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     home_partition: Option<String>,
 }
 
-#[derive(Default, Deserialize)]
+#[derive(Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawSecurity {
     #[serde(default)]
@@ -219,21 +303,96 @@ struct RawSecurity {
     encryption: bool,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawUser {
     full_name: String,
     username: String,
     password: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     authorized_keys: Vec<String>,
 }
 
-#[derive(Default, Deserialize)]
+#[derive(Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RawModules {
     #[serde(default)]
     skip: Vec<String>,
+}
+
+impl RawModules {
+    fn is_empty(&self) -> bool {
+        self.skip.is_empty()
+    }
+}
+
+impl From<&Answers> for RawAnswers {
+    fn from(answers: &Answers) -> Self {
+        let mut disk = RawDisk {
+            choice: answers.disk.choice(),
+            device: answers.disk.device().to_owned(),
+            system_size_gib: None,
+            efi_partition: None,
+            system_partition: None,
+            home_partition: None,
+        };
+        match &answers.disk {
+            Disk::WipeDisk {
+                system_size_gib, ..
+            } => disk.system_size_gib = Some(*system_size_gib),
+            Disk::ReinstallKeepHome {
+                efi_partition,
+                system_partition,
+                home_partition,
+                ..
+            } => {
+                disk.efi_partition = Some(efi_partition.clone());
+                disk.system_partition = Some(system_partition.clone());
+                disk.home_partition = Some(home_partition.clone());
+            }
+            Disk::ShrinkExt4KeepHome {
+                system_size_gib,
+                efi_partition,
+                home_partition,
+                ..
+            } => {
+                disk.system_size_gib = Some(*system_size_gib);
+                disk.efi_partition = Some(efi_partition.clone());
+                disk.home_partition = Some(home_partition.clone());
+            }
+            Disk::BesideWindows { .. } => {}
+        }
+        RawAnswers {
+            keyboard: answers.keyboard.clone(),
+            xkb_layout: answers.xkb_layout.clone(),
+            language: answers.language.clone(),
+            timezone: answers.timezone.clone(),
+            hostname: answers.hostname.clone(),
+            network: RawNetwork {
+                wifi_ssid: answers.wifi.as_ref().map(|wifi| wifi.ssid.clone()),
+                wifi_password: answers
+                    .wifi
+                    .as_ref()
+                    .and_then(|wifi| wifi.password.as_ref())
+                    .map(|password| password.0.clone()),
+            },
+            disk,
+            security: RawSecurity {
+                secure_boot: answers.security.secure_boot,
+                encryption: answers.security.encryption,
+            },
+            user: RawUser {
+                full_name: answers.user.full_name.clone(),
+                username: answers.user.username.clone(),
+                password: answers.user.password.0.clone(),
+                authorized_keys: answers.user.authorized_keys.clone(),
+            },
+            modules: RawModules {
+                skip: answers.skip.clone(),
+            },
+            questions: answers.questions.clone(),
+        }
+    }
 }
 
 fn invalid(field: &'static str, reason: impl Into<String>) -> AnswersError {
@@ -261,7 +420,9 @@ fn check_word(field: &'static str, value: &str) -> Result<(), AnswersError> {
     Ok(())
 }
 
-fn check_username(name: &str) -> Result<(), AnswersError> {
+/// Checks a username: up to 32 lowercase letters, digits, `_` and `-`, starting with a
+/// letter or `_`, and not `root`. The error's reason says what is wrong in plain words.
+pub fn check_username(name: &str) -> Result<(), AnswersError> {
     let field = "user.username";
     let mut chars = name.chars();
     let Some(first) = chars.next() else {
@@ -288,7 +449,9 @@ fn check_username(name: &str) -> Result<(), AnswersError> {
     Ok(())
 }
 
-fn check_hostname(name: &str) -> Result<(), AnswersError> {
+/// Checks a host name: 1 to 63 letters, digits and `-`, not starting or ending with `-`.
+/// The error's reason says what is wrong in plain words.
+pub fn check_hostname(name: &str) -> Result<(), AnswersError> {
     let field = "hostname";
     if name.is_empty() || name.len() > 63 {
         return Err(invalid(field, "it must have 1 to 63 characters"));
@@ -430,6 +593,9 @@ impl RawDisk {
 impl RawAnswers {
     fn check(self) -> Result<Answers, AnswersError> {
         check_word("keyboard", &self.keyboard)?;
+        if let Some(layout) = &self.xkb_layout {
+            check_word("xkb_layout", layout)?;
+        }
         check_word("language", &self.language)?;
         check_word("timezone", &self.timezone)?;
         if self.timezone.starts_with('/') || self.timezone.split('/').any(|part| part == "..") {
@@ -488,6 +654,7 @@ impl RawAnswers {
 
         Ok(Answers {
             keyboard: self.keyboard,
+            xkb_layout: self.xkb_layout,
             language: self.language,
             timezone: self.timezone,
             hostname: self.hostname,
@@ -515,6 +682,7 @@ mod tests {
 
     const FULL: &str = r#"
 keyboard = "us"
+xkb_layout = "us"
 language = "en_US.UTF-8"
 timezone = "Europe/Paris"
 hostname = "inayos"
@@ -587,6 +755,7 @@ skip = ["login"]
         ))
         .unwrap();
         assert_eq!(answers.timezone, "UTC");
+        assert_eq!(answers.xkb_layout, None);
         assert_eq!(answers.wifi, None);
         assert_eq!(answers.security, Security::default());
         assert!(answers.skip.is_empty() && answers.questions.is_empty());
@@ -736,6 +905,39 @@ skip = ["login"]
              efi_partition = \"/dev/vda1\"\nhome_partition = \"/dev/vda2\"",
         );
         assert!(Answers::parse(&shrink).unwrap().disk.keeps_home());
+    }
+
+    #[test]
+    fn the_toml_text_reads_back_as_the_same_answers() {
+        let shrink = with_disk(
+            "choice = \"shrink-ext4-keep-home\"\ndevice = \"/dev/nvme0n1\"\nsystem_size_gib = 40\n\
+             efi_partition = \"/dev/nvme0n1p1\"\nhome_partition = \"/dev/nvme0n1p2\"",
+        );
+        let reinstall = with_disk(
+            "choice = \"reinstall-keep-home\"\ndevice = \"/dev/vda\"\n\
+             efi_partition = \"/dev/vda1\"\nsystem_partition = \"/dev/vda2\"\nhome_partition = \"/dev/vda3\"",
+        );
+        let open_wifi = FULL.replace("wifi_password = \"secret\"\n", "");
+        for text in [FULL, &shrink, &reinstall, &open_wifi] {
+            let answers = Answers::parse(text).unwrap();
+            assert_eq!(Answers::parse(&answers.to_toml()).unwrap(), answers);
+        }
+    }
+
+    #[test]
+    fn a_written_file_reads_back_and_only_its_owner_can_read_it() {
+        let folder = std::env::temp_dir().join(format!("inayos-answers-{}", std::process::id()));
+        fs::create_dir_all(&folder).unwrap();
+        let path = folder.join("answers.toml");
+        fs::write(&path, "old").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+        let answers = Answers::parse(FULL).unwrap();
+        answers.write(&path).unwrap();
+        let read = Answers::read(&path);
+        let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        fs::remove_dir_all(&folder).unwrap();
+        assert_eq!(read.unwrap(), answers);
+        assert_eq!(mode, 0o600);
     }
 
     #[test]

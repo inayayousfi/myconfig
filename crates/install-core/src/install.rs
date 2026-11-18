@@ -1,8 +1,8 @@
 //! The install from start to finish: checks, disk, base system, user, InayOS modules, cleanup.
-mod checks;
+pub(crate) mod checks;
 mod configuration;
 mod disk;
-mod machine;
+pub(crate) mod machine;
 mod system;
 mod user;
 

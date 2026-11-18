@@ -2,6 +2,10 @@
 
 This document describes the CachyOS KDE Plasma setup: the `kde-plasma` module in `crates/modules/src/kde_plasma.rs` and the `plasma` dotfile package.
 
+## Packages
+
+The module installs the Plasma desktop package by package instead of through `plasma-meta`: every package that `plasma-meta` holds except `plasma-browser-integration`, plus `plasma-disks`, `drkonqi` and `flatpak-kcm`. `verify` fails when one is missing. The CachyOS setup removes `plasma-browser-integration`, and the `printing` module adds CUPS with KDE's printer settings.
+
 ## Theme and settings
 
 The module applies KDE's stock Breeze Dark global theme with personal settings: the pink accent color, IBM Plex fonts, input settings and window rules.

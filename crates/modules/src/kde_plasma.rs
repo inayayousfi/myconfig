@@ -25,6 +25,57 @@ const PACKAGES: &[Package] = &[
     Package::Ark,
     Package::SevenZip,
 ];
+/// The Plasma desktop, package by package: what `plasma-meta` holds, without the
+/// browser integration, and with the disk health monitor, the crash reporter and the
+/// Flatpak permissions page.
+const PLASMA: &[Package] = &[
+    Package::Aurorae,
+    Package::Bluedevil,
+    Package::Breeze,
+    Package::BreezeGtk,
+    Package::Kactivitymanagerd,
+    Package::KdeCliTools,
+    Package::Kdecoration,
+    Package::KdeGtkConfig,
+    Package::KdeplasmaAddons,
+    Package::Kglobalacceld,
+    Package::Kinfocenter,
+    Package::Kmenuedit,
+    Package::Knighttime,
+    Package::Kpipewire,
+    Package::Kscreen,
+    Package::Kscreenlocker,
+    Package::Ksystemstats,
+    Package::KwalletPam,
+    Package::Kwayland,
+    Package::Kwin,
+    Package::LayerShellQt,
+    Package::Libkscreen,
+    Package::Libksysguard,
+    Package::Libplasma,
+    Package::Milou,
+    Package::OceanSoundTheme,
+    Package::PlasmaActivities,
+    Package::PlasmaActivitiesStats,
+    Package::PlasmaDesktop,
+    Package::PlasmaFirewall,
+    Package::PlasmaIntegration,
+    Package::PlasmaLoginManager,
+    Package::PlasmaNm,
+    Package::PlasmaPa,
+    Package::PlasmaSystemmonitor,
+    Package::PlasmaThunderbolt,
+    Package::PlasmaWorkspace,
+    Package::PolkitKdeAgent,
+    Package::Powerdevil,
+    Package::Spectacle,
+    Package::Systemsettings,
+    Package::Union,
+    Package::XdgDesktopPortalKde,
+    Package::PlasmaDisks,
+    Package::Drkonqi,
+    Package::FlatpakKcm,
+];
 const LOOK_AND_FEEL: &str = "org.kde.breezedark.desktop";
 /// The pink that Black & Pink uses in the terminal and Zsh.
 const ACCENT_COLOR: &str = "255,78,173";
@@ -284,7 +335,7 @@ impl Module for KdePlasma {
 
     fn footprint(&self, _ctx: &Context) -> Footprint {
         Footprint {
-            packages: PACKAGES.to_vec(),
+            packages: [PLASMA, PACKAGES].concat(),
             settings: Vec::new(),
         }
     }
@@ -292,6 +343,7 @@ impl Module for KdePlasma {
     fn install(&self, ctx: &Context) -> ModuleResult {
         let sh = ctx.shell;
         require_supported_plasma(ctx)?;
+        ctx.install_packages(PLASMA)?;
         ctx.install_packages(PACKAGES)?;
         require_programs(
             ctx,
@@ -367,6 +419,7 @@ impl Module for KdePlasma {
 
     fn verify(&self, ctx: &Context) -> ModuleResult {
         require_supported_plasma(ctx)?;
+        verify_packages(ctx, PLASMA)?;
         verify_packages(ctx, PACKAGES)?;
         verify_package(ctx, "plasma")?;
         // The plugins are system files, so root checks them, as it wrote them.

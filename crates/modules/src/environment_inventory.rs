@@ -29,6 +29,7 @@ const CACHYOS_INVENTORY: &[&str] = &[
     "- **Keyboard remapping**: Kanata keyboard remapping with a KDE tray profile selector.\n",
     "- **Dictation**: Handy offline push-to-talk dictation on Ctrl+Space.\n",
     "- **KDE Plasma**: Breeze Dark with a pink accent color, a top bar holding a session menu and the global menu, and an application dock on every display, for KDE Plasma 6.7 through 6.x.\n",
+    "- **Printing**: the CUPS print server, started by `cups.socket`, with KDE's printer settings.\n",
     "- **Desktop automation**: ydotool with a persistent user service for virtual keyboard and pointer input.\n",
     CONTAINERS,
     "- **Remote access**: OpenSSH server and Tailscale service.\n",
@@ -47,7 +48,7 @@ const CONTAINERS: &str = "- **Containers**: rootless Docker with Buildx and Comp
 
 /// A phrase of the template for each module that it describes. The template of a profile
 /// holds the phrase exactly when the profile holds the module.
-const CLAIMS: [(&str, &str); 14] = [
+const CLAIMS: [(&str, &str); 15] = [
     ("system-monitor", "btop"),
     ("tailscale", "Tailscale service"),
     ("ssh-server", "OpenSSH server"),
@@ -55,6 +56,7 @@ const CLAIMS: [(&str, &str); 14] = [
     ("vscodium", "VSCodium with"),
     ("chrome", "Google Chrome from the AUR"),
     ("math", "LyX with TeX Live"),
+    ("printing", "CUPS print server"),
     ("axidev-osk", "Axidev OSK"),
     ("kanata", "Kanata keyboard remapping"),
     ("kanata-kde", "KDE tray profile selector"),

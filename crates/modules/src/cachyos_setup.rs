@@ -63,6 +63,7 @@ const UNWANTED: &[Package] = &[
     Package::Kdeconnect,
     Package::Partitionmanager,
     Package::Gwenview,
+    Package::PlasmaBrowserIntegration,
 ];
 
 /// Removed after the plymouth hook leaves mkinitcpio, so no initramfs build looks for a

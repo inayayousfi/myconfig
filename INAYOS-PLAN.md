@@ -144,7 +144,7 @@ Arch already ships the timer that refreshes its keyring.
 - Packages:
   - `inayos`: the main binary, the guard, and their pacman hooks.
   - `inayos-keyring`: installs the repository's public key.
-- The private signing key lives in a GitHub Actions secret for release signing, with a copy in the user's 1Password vault. The key is generated, stored with the 1Password command-line tool (`op`) and set with `gh secret set`, without being shown on screen.
+- The private signing key lives in a GitHub Actions secret for release signing, with a copy in the user's 1Password vault. The key is generated, stored with the 1Password command-line tool (`op`) and set with `gh secret set`, without passing through an agent's conversation.
 - The Windows, Arch WSL and Ubuntu Devbox profiles keep their current `install.sh` and `install.ps1` downloads.
 
 ## The USB stick

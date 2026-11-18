@@ -1,0 +1,20 @@
+#cloud-config
+# cloud-init reads this file from the NoCloud seed disc at the first boot of the Arch cloud
+# image. The test account needs its password for sudo, as on a real machine. cloud-init is
+# turned off at the end, so the throwaway copies of the image never run it again.
+hostname: inayos-arch
+users:
+  - name: @USER@
+    groups: [wheel]
+    shell: /bin/bash
+    sudo: "ALL=(ALL) ALL"
+    lock_passwd: false
+    plain_text_passwd: @PASSWORD@
+    ssh_authorized_keys:
+      - @KEY@
+ssh_pwauth: false
+runcmd:
+  - [touch, /etc/cloud/cloud-init.disabled]
+power_state:
+  mode: poweroff
+  condition: true

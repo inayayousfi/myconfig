@@ -1,0 +1,37 @@
+# Sway session of the InayOS live system.
+# Workspace 1 runs the installer. Workspace 2 is the repair workspace.
+# Axidev OSK is a layer-shell overlay, so it shows on every workspace.
+
+set $mod Mod4
+set $installer 1:Installer
+set $repair 2:Repair
+set $term ghostty --gtk-single-instance=false
+
+output * bg #1d2021 solid_color
+default_border pixel 2
+xwayland disable
+
+input type:touchpad {
+    tap enabled
+}
+
+assign [app_id="^org\.inayos\.installer$"] workspace $installer
+assign [app_id="^org\.inayos\.repair$"] workspace $repair
+
+bindsym $mod+1 workspace $installer
+bindsym $mod+2 workspace $repair
+bindsym $mod+Return exec $term
+bindsym $mod+b exec epiphany https://wiki.archlinux.org
+bindsym $mod+Shift+q kill
+bindsym $mod+f fullscreen toggle
+
+bar {
+    position top
+    strip_workspace_numbers yes
+    status_command while date +'%a %d %b %H:%M'; do sleep 30; done
+}
+
+exec $term --class=org.inayos.installer --title="InayOS installer" -e inayos-live-welcome installer
+exec $term --class=org.inayos.repair --title="InayOS repair" -e inayos-live-welcome repair
+exec /opt/axidev-osk/bin/axidev-osk
+exec swaymsg workspace $installer

@@ -23,7 +23,16 @@ impl Kind for CursorTheme {
             cmd!(ctx.shell, "plasma-apply-cursortheme --size {size} {value}")
                 .env("QT_QPA_PLATFORM", "offscreen")
                 .env("XDG_CONFIG_DIRS", super::kde_config_dirs(ctx)),
-        )
+        )?;
+        // The tool writes nothing when the theme is already Plasma's default, which it is
+        // in a home that no Plasma session has used yet. The key then states the theme.
+        if self.read(ctx)?.as_deref() != Some(value) {
+            ctx.run(cmd!(
+                ctx.shell,
+                "kwriteconfig6 --file kcminputrc --group Mouse --key cursorTheme {value}"
+            ))?;
+        }
+        Ok(())
     }
 
     fn delete(&self, ctx: &Context) -> ModuleResult {

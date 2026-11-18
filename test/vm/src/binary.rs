@@ -110,6 +110,22 @@ fn recipes(os: Os) -> &'static [Recipe] {
             guest_path: ".local/bin/inayos",
             launch: Launch::Linux,
         }],
+        // The Arch guest builds the USB stick, which carries the installer and the InayOS
+        // desktop installer that it places in the new system.
+        Os::Arch => &[
+            Recipe {
+                package: "inayos-installer",
+                windows: false,
+                guest_path: "inayos-installer",
+                launch: Launch::Linux,
+            },
+            Recipe {
+                package: "inayos-arch-desktop",
+                windows: false,
+                guest_path: "inayos-arch-desktop",
+                launch: Launch::Linux,
+            },
+        ],
         Os::Windows => &[
             Recipe {
                 package: "inayos-windows",
@@ -163,7 +179,7 @@ pub fn install(os: Os, guest: &Guest, binaries: &[Binary]) -> Result<(), BinaryE
                     let folder = folder.replace('/', "\\");
                     format!("if not exist \"{folder}\" mkdir \"{folder}\"")
                 }
-                Os::Ubuntu => format!("mkdir -p '{folder}'"),
+                Os::Ubuntu | Os::Arch => format!("mkdir -p '{folder}'"),
             };
             guest.run(&command).map_err(copy_error)?;
         }

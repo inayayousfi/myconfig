@@ -242,6 +242,7 @@ The panel layout ships as the default layout of an InayOS look-and-feel package:
 - The package holds `metadata.json`, the layout script, and a copy of Breeze Dark's `contents/defaults`, because a package without them falls back to light Breeze. The kde-plasma module applies it, so `LookAndFeelPackage` names it before the first login.
 - The installer never creates `plasma-org.kde.plasma.desktop-appletsrc`: a file with containments skips the default layout.
 - `print()` only reaches Plasma's debug log there. When a widget is missing or the script fails, the default-layout version falls back to `loadTemplate("org.kde.plasma.desktop.defaultPanel")`, so the user never gets a desktop with no panels.
+- The `blank-disk` scenario showed it working: at the first login after an install, the default layout built the bars and the dock.
 - The layout command and its user service stay for displays plugged in later: Plasma adds desktops, not panels, for a new display.
 
 ## Repository changes
@@ -306,7 +307,6 @@ Scenarios:
 
 These are unknowns that sources and local tests could not settle. Each needs a VM, and its result can change the design.
 
-- That the default layout really builds the bars and the dock at a first login.
 - That a mouse click on a rEFInd firmware entry starts it through `BootNext`, and that the pointer works in rEFInd on the test firmware.
 - That rootless Docker can be enabled in installer mode and starts at first boot.
 - That the "Previous system" entry boots cleanly from a read-only snapshot with `systemd.volatile=overlay`, including the remount of `/` and the mounts of `/var/log` and `/home`.

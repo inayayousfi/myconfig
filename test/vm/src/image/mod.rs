@@ -5,6 +5,7 @@
 //! An image is built in its own folder and replaces the clean image only when it is complete,
 //! so a failed build leaves the previous image as it was.
 
+mod arch;
 mod ubuntu;
 mod windows;
 
@@ -145,6 +146,7 @@ pub fn latest_release(os: Os) -> Result<String, SourceError> {
     match os {
         Os::Windows => windows::latest_release(),
         Os::Ubuntu => ubuntu::latest_release(),
+        Os::Arch => arch::latest_release(),
     }
 }
 
@@ -152,6 +154,7 @@ fn source(os: Os) -> Result<Source, SourceError> {
     match os {
         Os::Windows => windows::source(),
         Os::Ubuntu => ubuntu::source(),
+        Os::Arch => arch::source(),
     }
 }
 
@@ -264,6 +267,11 @@ impl Build {
                 ubuntu::seed_files(public_key),
                 ubuntu::INSTALL_TIMEOUT,
             ),
+            Os::Arch => (
+                arch::SEED_LABEL,
+                arch::seed_files(public_key),
+                arch::INSTALL_TIMEOUT,
+            ),
         };
         let seed_iso = self.folder.join("seed.iso");
         seed::build(label, &files, &self.folder.join("seed"), &seed_iso)?;
@@ -280,7 +288,7 @@ impl Build {
         let mut vm = Vm::start(&self.machine(media, &serial), &self.runtime, self.watch)?;
         match self.os {
             Os::Windows => windows::start_install(&mut vm)?,
-            Os::Ubuntu => {}
+            Os::Ubuntu | Os::Arch => {}
         }
 
         let deadline = Instant::now() + timeout;
@@ -324,12 +332,12 @@ impl Build {
         guest.wait_until_ready(&mut vm, Duration::from_secs(self.os.ssh_timeout_secs()))?;
         let build = match self.os {
             Os::Windows => Some(windows::build_number(&guest)?),
-            Os::Ubuntu => None,
+            Os::Ubuntu | Os::Arch => None,
         };
 
         let shutdown = match self.os {
             Os::Windows => "shutdown /s /t 0".to_owned(),
-            Os::Ubuntu => {
+            Os::Ubuntu | Os::Arch => {
                 format!("printf '%s\\n' '{GUEST_PASSWORD}' | sudo -S -p '' systemctl poweroff")
             }
         };

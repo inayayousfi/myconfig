@@ -11,6 +11,9 @@ static MODULES: &[&dyn Module] = &[
         needs: &[Need::Hard("plasma-version")],
     },
     &SystemTuning,
+    // Before the modules that set KDE defaults, because it installs Plasma and its
+    // kreadconfig6 and kwriteconfig6.
+    &KdePlasma,
     &Media,
     &Ssh { keys_only: false },
     &Cli,
@@ -37,7 +40,6 @@ static MODULES: &[&dyn Module] = &[
     &Kanata {
         start_at_login: false,
     },
-    &KdePlasma,
     &AxidevOsk,
     &Printing,
     &KanataKde,

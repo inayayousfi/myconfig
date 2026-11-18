@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Prints the help line of a live-session terminal, then leaves the user in a shell.
+set -u
+
+case "${1-}" in
+installer)
+  printf '%s\n' \
+    'InayOS installer. It has no screens yet: give it an answers file.' \
+    '  sudo inayos-installer install --answers FILE' \
+    '  inayos-installer install --help' \
+    'Network: nmtui for Wi-Fi.' ''
+  ;;
+repair)
+  printf '%s\n' \
+    'Repair workspace.' \
+    '  Disks: testdisk, photorec, ddrescue, smartctl' \
+    '  Boot: efibootmgr, sbctl, refind-install, arch-chroot then mkinitcpio' \
+    '  Snapshots: snapper' \
+    '  Arch wiki: Super+B, or epiphany https://wiki.archlinux.org' ''
+  ;;
+esac
+
+exec zsh

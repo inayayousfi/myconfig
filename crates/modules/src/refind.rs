@@ -57,7 +57,9 @@ fn efi_partition(ctx: &Context) -> ModuleResult<&'static str> {
             ctx.shell,
             "findmnt --noheadings --output FSTYPE --mountpoint {mount}"
         ))?;
-        if mounted && filesystem == "vfat" {
+        // refind-install mounts the partition a second time at the same place inside
+        // `arch-chroot`, so findmnt can list one line per mount.
+        if mounted && filesystem.lines().any(|line| line.trim() == "vfat") {
             return Ok(mount);
         }
     }

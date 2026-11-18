@@ -1,0 +1,4 @@
+InayOS live system.
+
+Install, as root: inayos-installer install --answers FILE
+Network: nmcli, or nmtui for Wi-Fi.

@@ -9,11 +9,13 @@ use regex::Regex;
 use crate::os::Os;
 use crate::snapshot::Snapshot;
 
-/// The allowed-changes file of `os`, from `test/vm/allowed-changes/`.
-pub fn allowed_changes(os: Os) -> &'static str {
+/// The allowed-changes file of `os`, from `test/vm/allowed-changes/`, for a system that the
+/// cycle tests.
+pub fn allowed_changes(os: Os) -> Option<&'static str> {
     match os {
-        Os::Ubuntu => include_str!("../allowed-changes/ubuntu.txt"),
-        Os::Windows => include_str!("../allowed-changes/windows.txt"),
+        Os::Ubuntu => Some(include_str!("../allowed-changes/ubuntu.txt")),
+        Os::Windows => Some(include_str!("../allowed-changes/windows.txt")),
+        Os::Arch => None,
     }
 }
 
@@ -289,7 +291,8 @@ mod tests {
     #[test]
     fn every_allowed_changes_file_parses() {
         for os in [Os::Ubuntu, Os::Windows] {
-            assert!(Allowed::parse(allowed_changes(os)).is_ok(), "{os}");
+            let text = allowed_changes(os).expect("the cycle tests this system");
+            assert!(Allowed::parse(text).is_ok(), "{os}");
         }
         assert!(Allowed::parse(ARCH_WSL_ALLOWED_CHANGES).is_ok(), "arch-wsl");
     }

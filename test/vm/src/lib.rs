@@ -21,11 +21,13 @@ mod paths;
 mod qmp;
 mod release;
 mod run;
+mod scenario;
 mod seed;
 mod snapshot;
 mod ssh;
 mod start;
 mod updates;
+mod usb;
 mod vm;
 
 use std::path::PathBuf;

@@ -3,7 +3,7 @@
 
 use std::ffi::{OsStr, OsString};
 use std::fs::{self, DirBuilder};
-use std::io;
+use std::io::{self, Read, Write};
 use std::os::unix::fs::DirBuilderExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Output, Stdio};
@@ -27,6 +27,12 @@ pub enum SshError {
         command: String,
         status: ExitStatus,
         stderr: String,
+    },
+    #[error("`{command}` failed in the guest with {status}; its output is in {log}")]
+    FailedLogged {
+        command: String,
+        status: ExitStatus,
+        log: PathBuf,
     },
     #[error("the guest did not accept SSH within {0:?}")]
     Timeout(Duration),
@@ -151,6 +157,65 @@ impl Guest {
         }
     }
 
+    /// Runs `remote` in the guest and copies its output and error output, as they come, to the
+    /// terminal and to `log`. A non-zero exit status is an error that names the log.
+    pub fn run_logged(&self, remote: &str, log: &Path) -> Result<(), SshError> {
+        if let Some(parent) = log.parent() {
+            fs::create_dir_all(parent).map_err(|error| SshError::Io(parent.to_owned(), error))?;
+        }
+        let mut file =
+            fs::File::create(log).map_err(|error| SshError::Io(log.to_owned(), error))?;
+        // The guest shell joins the error output to the output, so the log keeps their order.
+        let mut child = self
+            .command(&format!("( {remote} ) 2>&1"), false)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .map_err(|error| SshError::Spawn("ssh", error))?;
+        let mut stdout = child.stdout.take().expect("stdout was piped above");
+        let mut buffer = [0; 8192];
+        let mut terminal = io::stdout();
+        loop {
+            let count = match stdout.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(count) => count,
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                Err(error) => return Err(SshError::Io(log.to_owned(), error)),
+            };
+            file.write_all(&buffer[..count])
+                .map_err(|error| SshError::Io(log.to_owned(), error))?;
+            let _ = terminal.write_all(&buffer[..count]);
+            let _ = terminal.flush();
+        }
+        let status = child
+            .wait()
+            .map_err(|error| SshError::Io(log.to_owned(), error))?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err(SshError::FailedLogged {
+                command: remote.to_owned(),
+                status,
+                log: log.to_owned(),
+            })
+        }
+    }
+
+    /// Copies a host folder and everything in it to `remote`, which must not exist yet.
+    pub fn copy_dir_to(&self, local: &Path, remote: &str) -> Result<(), SshError> {
+        let mut destination = OsString::from(format!("{}@127.0.0.1:", self.user));
+        destination.push(remote);
+        self.scp_with(&["-r"], local.as_os_str(), &destination, remote)
+    }
+
+    /// Copies the guest file `remote` to the host file `local`.
+    pub fn copy_from(&self, remote: &str, local: &Path) -> Result<(), SshError> {
+        let mut source = OsString::from(format!("{}@127.0.0.1:", self.user));
+        source.push(remote);
+        self.scp(&source, local.as_os_str(), remote)
+    }
+
     /// Copies a host file to `remote`. A relative `remote` path starts in the guest user's
     /// home folder, on Linux and on Windows alike.
     pub fn copy_to(&self, local: &Path, remote: &str) -> Result<(), SshError> {
@@ -182,9 +247,20 @@ impl Guest {
     }
 
     fn scp(&self, source: &OsStr, destination: &OsStr, remote: &str) -> Result<(), SshError> {
+        self.scp_with(&[], source, destination, remote)
+    }
+
+    fn scp_with(
+        &self,
+        flags: &[&str],
+        source: &OsStr,
+        destination: &OsStr,
+        remote: &str,
+    ) -> Result<(), SshError> {
         let mut command = Command::new("scp");
         self.add_options(&mut command);
         let output = command
+            .args(flags)
             .arg("-P")
             .arg(self.port.to_string())
             .arg(source)

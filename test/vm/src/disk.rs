@@ -1,10 +1,12 @@
-//! Creates throwaway layers over a clean image, so a guest never writes to the image itself.
+//! Creates throwaway layers over a clean image, so a guest never writes to the image itself,
+//! and blank layers for guests that install onto an empty disk.
 
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::firmware::Firmware;
 use crate::os::Boot;
 use crate::paths::Layer;
 
@@ -54,6 +56,43 @@ pub fn layer_over(image: &Layer, target: &Layer, boot: Boot) -> Result<(), DiskE
             cleanup,
         },
     })
+}
+
+/// Replaces `target` with a new layer that holds an empty qcow2 disk of `size`, in the
+/// `qemu-img` size notation, and fresh UEFI variables. On failure the target folder is removed.
+pub fn blank(target: &Layer, size: &str, boot: Boot) -> Result<(), DiskError> {
+    discard(target)?;
+    build_blank(target, size, boot).map_err(|error| match fs::remove_dir_all(target.dir()) {
+        Ok(()) => error,
+        Err(cleanup) => DiskError::LeftBehind {
+            error: Box::new(error),
+            leftover: target.dir().to_owned(),
+            cleanup,
+        },
+    })
+}
+
+fn build_blank(target: &Layer, size: &str, boot: Boot) -> Result<(), DiskError> {
+    fs::create_dir_all(target.dir())
+        .map_err(|error| DiskError::Io(target.dir().to_owned(), error))?;
+    let output = Command::new("qemu-img")
+        .args(["create", "-q", "-f", "qcow2"])
+        .arg(target.disk())
+        .arg(size)
+        .output()
+        .map_err(DiskError::Spawn)?;
+    if !output.status.success() {
+        return Err(DiskError::QemuImg(
+            target.disk(),
+            String::from_utf8_lossy(&output.stderr).trim().to_owned(),
+        ));
+    }
+    let vars = Firmware::for_boot(boot).vars_template;
+    fs::copy(&vars, target.vars()).map_err(|error| DiskError::Io(target.vars(), error))?;
+    if boot == Boot::SecureUefiWithTpm {
+        fs::create_dir_all(target.tpm()).map_err(|error| DiskError::Io(target.tpm(), error))?;
+    }
+    Ok(())
 }
 
 /// Removes a layer and everything in it. A missing layer is already discarded.

@@ -7,6 +7,9 @@ use std::fmt;
 pub enum Os {
     Windows,
     Ubuntu,
+    /// Arch Linux. Its clean image hosts the build of the InayOS USB stick, and no installer
+    /// cycle runs on it: the scenarios test the InayOS installer from the stick.
+    Arch,
 }
 
 /// The account that every base image creates. The image builders use these values,
@@ -32,12 +35,14 @@ impl Os {
         match self {
             Os::Windows => "windows",
             Os::Ubuntu => "ubuntu",
+            Os::Arch => "arch",
         }
     }
 
     pub fn memory_mib(self) -> u32 {
         match self {
-            Os::Windows => 8192,
+            // mkarchiso and the InayOS install both need more than 4 GiB.
+            Os::Windows | Os::Arch => 8192,
             Os::Ubuntu => 4096,
         }
     }
@@ -45,7 +50,7 @@ impl Os {
     pub fn boot(self) -> Boot {
         match self {
             Os::Windows => Boot::SecureUefiWithTpm,
-            Os::Ubuntu => Boot::Uefi,
+            Os::Ubuntu | Os::Arch => Boot::Uefi,
         }
     }
 
@@ -60,8 +65,13 @@ impl Os {
     pub fn ssh_timeout_secs(self) -> u64 {
         match self {
             Os::Windows => 20 * 60,
-            Os::Ubuntu => 10 * 60,
+            Os::Ubuntu | Os::Arch => 10 * 60,
         }
+    }
+
+    /// Whether `cycle` and `run` test an installer on this system's clean image.
+    pub fn tests_installer(self) -> bool {
+        self != Os::Arch
     }
 }
 

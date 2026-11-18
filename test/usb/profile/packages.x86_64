@@ -1,0 +1,40 @@
+# These lines are appended to releng's packages.x86_64.
+
+# Networking, for the installer's mirror access and the live Wi-Fi.
+# polkit lets the user of the active local session change connections.
+networkmanager
+polkit
+
+# Live session: Sway, Ghostty, and the software renderer used when no GPU driver loads.
+sway
+swaybg
+ghostty
+mesa
+ttf-dejavu
+
+# Axidev OSK runtime, as its Linux release requires it.
+python
+pyside6
+qt6-wayland
+layer-shell-qt
+libinput
+systemd
+libxkbcommon
+
+# Repair workspace. Releng also lists some of these; pacman skips the duplicates.
+testdisk
+ddrescue
+smartmontools
+efibootmgr
+sbctl
+refind
+snapper
+mkinitcpio
+arch-install-scripts
+btrfs-progs
+e2fsprogs
+dosfstools
+gptfdisk
+
+# Browser for the Arch wiki.
+epiphany

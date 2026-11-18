@@ -78,9 +78,26 @@ impl Paths {
         Layer::new(self.state.join(os.name()).join("work"))
     }
 
-    /// The throwaway disk of the last failed cycle, kept until the next cycle of that OS.
+    /// The throwaway disk of the last failed cycle or USB stick build, kept until the next
+    /// one of that OS.
     pub fn failed(&self, os: Os) -> Layer {
         Layer::new(self.state.join(os.name()).join("failed"))
+    }
+
+    /// The InayOS USB stick image that `usb build` makes and the scenarios boot.
+    pub fn usb_iso(&self) -> PathBuf {
+        self.state.join("usb/inayos.iso")
+    }
+
+    /// The layer of the running scenario `name`: its target disk, UEFI variables, logs,
+    /// screenshots and answers files.
+    pub fn scenario_work(&self, name: &str) -> Layer {
+        Layer::new(self.state.join("scenario").join(name).join("work"))
+    }
+
+    /// The layer of the last failed run of the scenario `name`, kept until its next run.
+    pub fn scenario_failed(&self, name: &str) -> Layer {
+        Layer::new(self.state.join("scenario").join(name).join("failed"))
     }
 }
 

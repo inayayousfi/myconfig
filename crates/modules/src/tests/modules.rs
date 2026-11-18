@@ -728,7 +728,7 @@ fn docker_refuses_a_docker_group_member_without_changing_anything() {
         .with(&Answers::new(None), |ctx| DOCKER.install(ctx))
         .unwrap_err();
     assert!(error.to_string().contains("docker group"));
-    assert_eq!(sandbox.calls("pacman -S"), 0);
+    assert_eq!(sandbox.calls("bootvine"), 0, "bootvine was installed");
     assert_eq!(sandbox.calls("systemctl"), 0);
     assert!(!enabled(&sandbox, ServiceScope::User, "docker.service"));
 }
@@ -2030,8 +2030,7 @@ done"#,
     );
 }
 
-/// A boot that bootvine can join, with pacman reporting bootvine at the version it
-/// last installed.
+/// A boot that bootvine can join.
 fn bootvine_boot(sandbox: &Sandbox) {
     cachyos_boot(sandbox, true);
     let config = sandbox.root.join("system/etc/mkinitcpio.conf");
@@ -2041,30 +2040,10 @@ fn bootvine_boot(sandbox: &Sandbox) {
         REFIND_LINUX.replace("quiet nowatchdog splash ", ""),
     )
     .unwrap();
-    fs::rename(
-        sandbox.root.join("bin/pacman"),
-        sandbox.root.join("bin/pacman-base"),
-    )
-    .unwrap();
-    sandbox.fake(
-        "pacman",
-        r#"version="$MYCONFIG_TEST_ROOT/bootvine-version"
-case "$1 $2" in
-    "-Q bootvine") [ -e "$version" ] && printf 'bootvine %s\n' "$(cat "$version")" ;;
-    -U*) printf '%s\n' "$BOOTVINE_BUILT" > "$version"; exec pacman-base "$@" ;;
-    *) exec pacman-base "$@" ;;
-esac"#,
-    );
-    sandbox.fake(
-        "makepkg",
-        r#"printf 'makepkg %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
-[ "$1" = --packagelist ] && printf 'bootvine-0.1.3-1-x86_64.pkg.tar.zst\n'; exit 0"#,
-    );
-    sandbox.shell.set_var("BOOTVINE_BUILT", "0.1.3-1");
 }
 
 #[test]
-fn bootvine_builds_once_and_joins_the_initramfs_and_the_first_boot_entry() {
+fn bootvine_installs_its_package_then_joins_the_initramfs_and_the_first_boot_entry() {
     let sandbox = Sandbox::new("bootvine");
     bootvine_boot(&sandbox);
     let io = Answers::new(None);
@@ -2075,17 +2054,23 @@ fn bootvine_builds_once_and_joins_the_initramfs_and_the_first_boot_entry() {
             })
             .unwrap();
     }
-    assert_eq!(sandbox.calls("makepkg --noconfirm"), 1);
-    assert_eq!(sandbox.calls("local "), 1, "pacman -U ran more than once");
     assert_eq!(
         sandbox.calls("sudo mkinitcpio -P"),
-        0,
-        "pacman rebuilds the initramfs when the package installs"
+        1,
+        "the initramfs was not rebuilt exactly once, when HOOKS gained the hook"
     );
     let calls = fs::read_to_string(sandbox.root.join("calls")).unwrap();
+    let hooks_written = calls
+        .lines()
+        .position(|line| line.starts_with("sudo install -m") && line.ends_with("mkinitcpio.conf"))
+        .unwrap();
+    let package_installed = calls
+        .lines()
+        .position(|line| line == "pacman -S --needed --noconfirm bootvine")
+        .unwrap();
     assert!(
-        calls.find("mkinitcpio.conf").unwrap() < calls.find("local ").unwrap(),
-        "the package installed before HOOKS named its hook"
+        package_installed < hooks_written,
+        "HOOKS named the hook before its package was installed"
     );
     assert!(
         system_file(&sandbox, "/etc/mkinitcpio.conf")
@@ -2104,21 +2089,6 @@ fn bootvine_builds_once_and_joins_the_initramfs_and_the_first_boot_entry() {
             "{service} is not enabled"
         );
     }
-}
-
-#[test]
-fn bootvine_rebuilds_the_initramfs_when_only_the_hook_was_missing() {
-    let sandbox = Sandbox::new("bootvine-hook");
-    bootvine_boot(&sandbox);
-    fs::write(sandbox.root.join("bootvine-version"), "0.1.3-1\n").unwrap();
-    let io = Answers::new(None);
-    sandbox
-        .with(&io, |ctx| {
-            runner::install(ctx, &[&crate::Bootvine], &[&crate::Bootvine])
-        })
-        .unwrap();
-    assert_eq!(sandbox.calls("makepkg"), 0);
-    assert_eq!(sandbox.calls("sudo mkinitcpio -P"), 1);
 }
 
 #[test]
@@ -2180,7 +2150,7 @@ fn bootvine_needs_the_systemd_hook() {
         error.to_string().contains("needs the systemd hook"),
         "{error}"
     );
-    assert_eq!(sandbox.calls("makepkg"), 0);
+    assert_eq!(sandbox.calls("bootvine"), 0, "bootvine was installed");
 }
 
 #[test]

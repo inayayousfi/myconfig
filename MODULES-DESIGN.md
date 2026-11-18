@@ -10,7 +10,7 @@ Every module implements one shared `Module` trait, and there are no per-module t
 
 - `crates/interface` contains the command line (Clap) and the interactive screen (Ratatui). It depends on `crates/modules`.
 
-- `apps/<platform>` contains only the profile list, its platform check, and one call to `myconfig_interface::main`.
+- `apps/<platform>` contains only the profile list, its platform check, and one call to `inayos_interface::main`.
 
 ## The `Module` trait
 
@@ -142,12 +142,12 @@ A kind whose program changes more KDE keys than its value, such as a KDE theme t
 
 Before changing anything, a module records what was there. The state lives in one JSON file, written with serde:
 
-- Linux: `$XDG_STATE_HOME/myconfig/state.json`, which defaults to `~/.local/state/myconfig/state.json`.
-- Windows: `%LOCALAPPDATA%\myconfig\state\state.json`.
+- Linux: `$XDG_STATE_HOME/inayos/state.json`, which defaults to `~/.local/state/inayos/state.json`.
+- Windows: `%LOCALAPPDATA%\inayos\state\state.json`.
 
 ```json
 {
-  "format": 1,
+  "format": 3,
   "written_by": "0.1.0",
   "snapshots": [
     {
@@ -169,7 +169,11 @@ Before changing anything, a module records what was there. The state lives in on
 }
 ```
 
-- **Versions.** `format` is the state format number and `written_by` is the myconfig version that wrote the file. A newer myconfig migrates an older format. An older myconfig refuses a newer format instead of guessing.
+- **Versions.** `format` is the state format number and `written_by` is the InayOS version that wrote the file. A newer InayOS migrates an older format. An older InayOS refuses a newer format instead of guessing.
+
+- **Earlier name.** myconfig, the earlier name of InayOS, kept the state in a `myconfig` folder in the same place, in format 1. When only that folder holds a `state.json`, InayOS moves its entries into the `inayos` folder before reading them, and the migration to format 2 points the paths recorded inside it to the new folder.
+
+- **Leftovers of the earlier name.** myconfig installed units, scripts, system files, KDE keys and shortcuts under names that contain `myconfig`, and InayOS installs the same things under its own names. The migration to format 3 moves every pending record that installed something under such a name into the `myconfig-leftovers` group, which no module owns. It adds one snapshot of action `migrate`, which marks each moved record undone under its module and lists the moved records under the group. `crates/modules/src/leftovers.rs` holds the rule: a recorded path, unit or setting identity counts when one of its parts joins `myconfig` to other text with `-` or `.`, and a repository address does not count. `leftovers::companions` adds the records for earlier names that no record names itself: the links that Stow made under the earlier names in each stowed config package, the block that myconfig marked in `refind.conf`, and the entry of each earlier KWin rule in KWin's rule list.
 
 - **One snapshot per run.** Each install or remove run adds a snapshot listing what it changed. A module's change to a setting or file is recorded only the first time that module touches it in a run, so each module's record holds the value from before its own change.
 
@@ -257,7 +261,7 @@ There is no central Dotfiles module. Each module deploys and removes its own con
 
 ## Profiles are lists
 
-Each app's `main.rs` holds the profile: a static list of modules in run order, each built with its options. After its platform check, it passes that list to `myconfig_interface::main` with the profile title and the package system.
+Each app's `main.rs` holds the profile: a static list of modules in run order, each built with its options. After its platform check, it passes that list to `inayos_interface::main` with the profile title and the package system.
 
 On Windows, each Winget package group is its own module, so you choose groups on the screen. A module that relies on one of those groups names it as a need.
 
@@ -273,6 +277,8 @@ The runner is shared code in `crates/modules`. It is the only code that loops ov
 
 - `remove(ctx, profile, modules, force)` removes the given modules, as described below.
 
+- `remove_with_leftovers(ctx, profile, modules, force)` removes the given modules, then undoes the `myconfig-leftovers` group in the same way. The group has no module, so it has no steps of its own.
+
 ## Command line
 
 Clap parses the arguments. Every app has the same commands:
@@ -282,6 +288,8 @@ Clap parses the arguments. Every app has the same commands:
 <app> install [module...]  installs all modules, or only the named ones, then verifies each
 <app> verify [module...]   verifies all modules, or only the named ones
 <app> remove <module...>   removes the named modules
+<app> remove myconfig-leftovers
+                           undoes what myconfig installed under its own names
 <app> remove --force <module...>
                            also removes packages and settings that are still needed elsewhere
 <app> list                 prints the module names in profile order
@@ -300,7 +308,7 @@ Steps that the installer starts by itself are hidden from `--help` under `<app> 
 Ratatui draws one screen. All four apps use it, and running an app with no arguments opens it.
 
 ```
-┌ myconfig: CachyOS ───────────────┐
+┌ InayOS: CachyOS ──────────────────┐
 │ [x] base            installed    │
 │ [x] zsh             installed    │
 │ [ ] ghostty         missing      │
@@ -349,6 +357,8 @@ Undoing each kind of change:
 - **A disabled service** is enabled and started again when it was enabled or active before.
 - **A decline** has nothing to undo.
 - **A recorded undo command** runs, without a check of the current state. It undoes a change that a program made by itself and that only another command can undo.
+- **The earlier-name links of a config package** that point into `~/dotfiles/<package>` at a missing file are deleted. Files, live links and links that point elsewhere stay.
+- **A marked block** in a root-owned file loses the lines from its first marker to its last, and the empty line before them. The rest of the file stays byte for byte, and a file without the block is not written.
 - **A deployed config package** is unstowed on Linux. Its deployed folder is deleted, or moved into a backup folder when it differs from the embedded package.
 - **A package that install added** is uninstalled after the check below.
 - **A package that install uninstalled** is reinstalled after a confirmation.

@@ -1,7 +1,7 @@
 [Unit]
-Description=MyConfig Kanata keyboard remapper
+Description=InayOS Kanata keyboard remapper
 Documentation=https://github.com/jtroo/kanata
-After=myconfig-handy.service
+After=inayos-handy.service
 
 [Service]
 Type=simple

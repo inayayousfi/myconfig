@@ -110,8 +110,8 @@ impl Module for AgentsPackages {
         let _path = sh.push_env("PATH", agent_tool_path(ctx)?);
         require_executable(&Self::playwright_cli(ctx))?;
         let module = bun.join("install/global/node_modules/playwright");
-        let script = "const { chromium } = require(process.env.MYCONFIG_PLAYWRIGHT_MODULE); const browser = await chromium.launch({ headless: true }); await browser.close();";
-        ctx.run(cmd!(sh, "bun -e {script}").env("MYCONFIG_PLAYWRIGHT_MODULE", module))
+        let script = "const { chromium } = require(process.env.INAYOS_PLAYWRIGHT_MODULE); const browser = await chromium.launch({ headless: true }); await browser.close();";
+        ctx.run(cmd!(sh, "bun -e {script}").env("INAYOS_PLAYWRIGHT_MODULE", module))
     }
 
     fn remove(&self, ctx: &Context) -> ModuleResult {

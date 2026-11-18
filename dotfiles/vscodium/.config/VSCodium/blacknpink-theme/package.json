@@ -2,7 +2,7 @@
   "name": "blacknpink-theme",
   "displayName": "Black and Pink",
   "description": "Black and Pink color theme.",
-  "publisher": "myconfig",
+  "publisher": "inayos",
   "version": "1.0.0",
   "engines": {
     "vscode": "^1.80.0"

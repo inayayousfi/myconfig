@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 
 # Creates the top bar and dock on every display through Plasma's scripting
-# interface. Set MYCONFIG_PLASMA_ENSURE_OVERVIEW=1 to pin the Overview icon again.
+# interface. Set INAYOS_PLASMA_ENSURE_OVERVIEW=1 to pin the Overview icon again.
 # Exits 75 when KDE Plasma is not running.
 
 set -euo pipefail
 
-layout="$HOME/.local/share/myconfig-plasma/layout.js"
-state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/myconfig"
+layout="$HOME/.local/share/inayos-plasma/layout.js"
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/inayos"
 state_file="$state_dir/plasma-layout-version"
 
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
@@ -27,24 +27,24 @@ first_run=true
 [ ! -s "$state_file" ] || first_run=false
 
 ensure_overview=false
-[ "${MYCONFIG_PLASMA_ENSURE_OVERVIEW:-}" != 1 ] || ensure_overview=true
+[ "${INAYOS_PLASMA_ENSURE_OVERVIEW:-}" != 1 ] || ensure_overview=true
 
-script="const myconfigFirstRun = $first_run;
-const myconfigEnsureOverview = $ensure_overview;
+script="const inayosFirstRun = $first_run;
+const inayosEnsureOverview = $ensure_overview;
 $(<"$layout")"
 output="$(qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript "$script")"
 
 case "$output" in
-    *MYCONFIG_PLASMA_LAYOUT=ok:version=*)
-        layout_version="${output##*MYCONFIG_PLASMA_LAYOUT=ok:version=}"
+    *INAYOS_PLASMA_LAYOUT=ok:version=*)
+        layout_version="${output##*INAYOS_PLASMA_LAYOUT=ok:version=}"
         layout_version="${layout_version%%:*}"
         ;;
-    *MYCONFIG_PLASMA_LAYOUT=missing:*)
-        printf 'KDE Plasma layout requires installed widgets: %s\n' "${output##*MYCONFIG_PLASMA_LAYOUT=missing:}" >&2
+    *INAYOS_PLASMA_LAYOUT=missing:*)
+        printf 'KDE Plasma layout requires installed widgets: %s\n' "${output##*INAYOS_PLASMA_LAYOUT=missing:}" >&2
         exit 1
         ;;
-    *MYCONFIG_PLASMA_LAYOUT=error:*)
-        printf 'KDE Plasma layout failed: %s\n' "${output##*MYCONFIG_PLASMA_LAYOUT=error:}" >&2
+    *INAYOS_PLASMA_LAYOUT=error:*)
+        printf 'KDE Plasma layout failed: %s\n' "${output##*INAYOS_PLASMA_LAYOUT=error:}" >&2
         exit 1
         ;;
     *)

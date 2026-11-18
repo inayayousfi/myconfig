@@ -66,7 +66,7 @@ impl SshKey {
             }
         }
         let output = Command::new("ssh-keygen")
-            .args(["-q", "-t", "ed25519", "-N", "", "-C", "myconfig-vm", "-f"])
+            .args(["-q", "-t", "ed25519", "-N", "", "-C", "inayos-vm", "-f"])
             .arg(private)
             .output()
             .map_err(|error| SshError::Spawn("ssh-keygen", error))?;

@@ -1,7 +1,7 @@
 //! Adds the vendor APT repositories that the package catalog names for a package.
 use std::{collections::BTreeMap, path::Path};
 
-use myconfig_utils::PackageSpec;
+use inayos_utils::PackageSpec;
 use package_catalog::AptRepository;
 use xshell::cmd;
 
@@ -36,7 +36,7 @@ fn add(ctx: &Context, repository: &AptRepository, codename: &str) -> ModuleResul
     // apt reads an ASCII-armored key only from a file named .asc.
     let armored = String::from_utf8_lossy(&key).contains("-----BEGIN PGP PUBLIC KEY BLOCK-----");
     let key_path = format!(
-        "/etc/apt/keyrings/myconfig-{id}.{}",
+        "/etc/apt/keyrings/inayos-{id}.{}",
         if armored { "asc" } else { "gpg" }
     );
     let architecture = ctx.read(cmd!(sh, "dpkg --print-architecture"))?;
@@ -47,7 +47,7 @@ fn add(ctx: &Context, repository: &AptRepository, codename: &str) -> ModuleResul
         repository.component,
     );
     let key_changed = write_if_changed(ctx, &key_path, &key)?;
-    let source_path = format!("/etc/apt/sources.list.d/myconfig-{id}.sources");
+    let source_path = format!("/etc/apt/sources.list.d/inayos-{id}.sources");
     let source_changed = write_if_changed(ctx, &source_path, source.as_bytes())?;
     Ok(key_changed || source_changed)
 }

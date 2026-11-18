@@ -21,7 +21,7 @@ use crate::vm::Vm;
 const POLL: Duration = Duration::from_secs(3);
 /// The elevation prompt takes a moment to close after Yes. It is not pressed again sooner.
 const CONSENT_REPEAT: Duration = Duration::from_secs(10);
-const TASK: &str = "myconfig-vm";
+const TASK: &str = "inayos-vm";
 
 pub struct Desktop<'a> {
     guest: &'a Guest,

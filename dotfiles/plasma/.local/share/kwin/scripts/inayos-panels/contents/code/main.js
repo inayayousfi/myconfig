@@ -47,31 +47,31 @@ function desiredMode(state) {
 
 function panelModeScript(state, mode) {
     return `
-const myconfigRole = ${JSON.stringify(state.role)};
-const myconfigMode = ${JSON.stringify(mode)};
-const myconfigX = ${state.point.x};
-const myconfigY = ${state.point.y};
+const inayosRole = ${JSON.stringify(state.role)};
+const inayosMode = ${JSON.stringify(mode)};
+const inayosX = ${state.point.x};
+const inayosY = ${state.point.y};
 // Plasma keeps the panels of a disconnected display on that display's number
 // without a window. screenGeometry gives the primary display's geometry for
 // such a number, and Plasma 6.8 crashes when a panel without a window on a
 // missing display is changed, so those panels are left alone.
-const myconfigPanels = panels().filter(panel => {
+const inayosPanels = panels().filter(panel => {
     panel.currentConfigGroup = [];
-    if (String(panel.readConfig("myconfigRole", "")) !== myconfigRole
+    if (String(panel.readConfig("inayosRole", "")) !== inayosRole
         || panel.screen < 0
         || panel.screen >= screenCount) {
         return false;
     }
     const geometry = screenGeometry(panel.screen);
-    return myconfigX >= geometry.x
-        && myconfigX < geometry.x + geometry.width
-        && myconfigY >= geometry.y
-        && myconfigY < geometry.y + geometry.height;
+    return inayosX >= geometry.x
+        && inayosX < geometry.x + geometry.width
+        && inayosY >= geometry.y
+        && inayosY < geometry.y + geometry.height;
 });
-myconfigPanels.forEach(panel => {
-    panel.hiding = myconfigMode;
+inayosPanels.forEach(panel => {
+    panel.hiding = inayosMode;
 });
-print("MYCONFIG_PANEL_MODE=" + myconfigMode + ":" + myconfigPanels.length);
+print("INAYOS_PANEL_MODE=" + inayosMode + ":" + inayosPanels.length);
 `;
 }
 
@@ -95,7 +95,7 @@ function requestMode(state, mode) {
 
             state.requestTimer.stop();
             state.pendingMode = null;
-            if (String(response).includes(`MYCONFIG_PANEL_MODE=${mode}:1`)) {
+            if (String(response).includes(`INAYOS_PANEL_MODE=${mode}:1`)) {
                 state.currentMode = mode;
             }
 
@@ -289,7 +289,7 @@ function startLayoutUnit() {
         "/org/freedesktop/systemd1",
         "org.freedesktop.systemd1.Manager",
         "StartUnit",
-        "myconfig-plasma-layout.service",
+        "inayos-plasma-layout.service",
         "replace",
     );
 }

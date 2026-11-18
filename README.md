@@ -1,4 +1,4 @@
-# Setup Configuration
+# InayOS
 
 > A modular configuration bank for building reproducible development environments across platforms.
 
@@ -6,7 +6,7 @@ This repository provides installers and dotfiles for CachyOS, Arch WSL, Ubuntu D
 
 ## Quick Start
 
-Each install script downloads the binary for your platform from the latest release, checks its SHA-256, keeps it as `myconfig`, and opens its screen. On the screen, `space` ticks a module, `i` installs, `v` verifies, `r` removes and `q` quits.
+Each install script downloads the binary for your platform from the latest release, checks its SHA-256, keeps it as `inayos`, and opens its screen. On the screen, `space` ticks a module, `i` installs, `v` verifies, `r` removes and `q` quits.
 
 ### CachyOS, Arch WSL, and Ubuntu Devbox
 
@@ -22,7 +22,7 @@ The script detects the platform and asks you to confirm it. To name it yourself,
 curl -fsSL https://raw.githubusercontent.com/inayayousfi/myconfig/main/install.sh | bash -s -- cachyos
 ```
 
-The binary is kept as `~/.local/bin/myconfig`.
+The binary is kept as `~/.local/bin/inayos`.
 
 The CachyOS profile requires KDE Plasma 6.7 through 6.x and applies Breeze Dark with a pink accent color and a macOS-style layout: a top bar holding a KDE session menu, the global menu, tray and clock, and an application dock with a one-click Overview icon, on every display. It installs VSCodium as the text editor and the T3 Code desktop app, whose client settings come from the `t3code-desktop` package. It installs Google Chrome, and LyX with TeX Live, the Qalculate calculator and Okular as the PDF viewer. The session uses a US keyboard layout with the right Alt key as the Compose key. The profile replaces the CachyOS boot splash with [bootvine](https://codeberg.org/wvhulle/bootvine), which draws the systemd jobs still starting as a live tree on the console. It removes the `nowatchdog` and `splash` kernel options from `/boot/refind_linux.conf` and passes `quiet` only on the first boot entry. It also installs the Black & Pink rEFInd theme, installs Axidev OSK, Kanata with an independent KDE tray, and Handy offline dictation with either-side `Ctrl+Shift` push-to-talk. Log out and back in so new input-device group memberships apply, then restart the selected login manager or reboot to activate login-screen startup.
 
@@ -36,25 +36,39 @@ When the GitHub CLI or Tailscale is logged out, the Linux installers offer to lo
 irm https://raw.githubusercontent.com/inayayousfi/myconfig/main/install.ps1 | iex
 ```
 
-The binary is kept as `%LOCALAPPDATA%\myconfig\myconfig.exe`, and that folder is added to your user `PATH`. The script also sets PowerShell's `ExecutionPolicy` to `RemoteSigned` for the current user when it is stricter, so the installed PowerShell profile can load.
+The binary is kept as `%LOCALAPPDATA%\inayos\inayos.exe`, and that folder is added to your user `PATH`. The script also sets PowerShell's `ExecutionPolicy` to `RemoteSigned` for the current user when it is stricter, so the installed PowerShell profile can load.
 
-The script makes these changes before any module runs, so `remove` leaves them in place, together with the binary. To undo them, delete `%LOCALAPPDATA%\myconfig\myconfig.exe`, take its folder off your user `PATH` in the environment variable settings, and run `Set-ExecutionPolicy Undefined -Scope CurrentUser`.
+The script makes these changes before any module runs, so `remove` leaves them in place, together with the binary. To undo them, delete `%LOCALAPPDATA%\inayos\inayos.exe`, take its folder off your user `PATH` in the environment variable settings, and run `Set-ExecutionPolicy Undefined -Scope CurrentUser`.
 
 ### Commands
 
 Arguments after the platform go to the binary instead of opening the screen:
 
 ```bash
-myconfig install              # installs every module, then verifies each
-myconfig install zsh ghostty  # installs only the named modules
-myconfig verify               # checks every module without changing anything
-myconfig remove zsh           # undoes what the zsh module changed
-myconfig list                 # prints the module names
+inayos install              # installs every module, then verifies each
+inayos install zsh ghostty  # installs only the named modules
+inayos verify               # checks every module without changing anything
+inayos remove zsh           # undoes what the zsh module changed
+inayos list                 # prints the module names
 ```
 
 The same commands work through the install script, such as `curl -fsSL .../install.sh | bash -s -- cachyos install`. A run without a terminal needs a command, because it cannot show the screen.
 
-Before changing anything, each module records what was there in `~/.local/state/myconfig/state.json` (`%LOCALAPPDATA%\myconfig\state\state.json` on Windows). `remove` uses that record to put files, settings and packages back.
+Before changing anything, each module records what was there in `~/.local/state/inayos/state.json` (`%LOCALAPPDATA%\inayos\state\state.json` on Windows). `remove` uses that record to put files, settings and packages back.
+
+### Machines that myconfig set up
+
+myconfig is the earlier name of InayOS. On a machine that myconfig set up, its units, scripts, system files, KDE keys, APT sources and Windows startup shortcuts carry the name `myconfig`. An InayOS install adds its own copies next to them and leaves them in place. Kanata, Handy, the tray icons and AutoHotkey then run twice, the two libinput plugins double the pointer speed, and on Ubuntu Devbox `apt-get update` fails on the two sources of one repository.
+
+The first InayOS run moves the record of everything installed under the earlier name into a group named `myconfig-leftovers`. Run this once on each system that myconfig set up, inside Arch WSL as well as on Windows, before the first InayOS install:
+
+```bash
+inayos remove myconfig-leftovers
+```
+
+It disables and stops the earlier units, deletes or puts back the earlier files, and deletes the earlier KDE keys, VSCodium theme and startup shortcuts. It takes the `# BEGIN MYCONFIG REFIND` block out of `refind.conf`, and the `myconfig-picture-in-picture` rule out of the KWin rule list, and leaves the rest of both as it is.
+
+It also deletes the links under earlier names that point into `~/dotfiles` at a file that is gone. The links under earlier names whose file is still in `~/dotfiles` go when the next install replaces that package. Packages, the other settings and the dock pins stay. Running it after an install, or a second time, is safe.
 
 ### Virtual Machine Testing
 

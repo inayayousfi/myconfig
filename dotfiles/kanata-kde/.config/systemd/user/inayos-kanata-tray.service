@@ -1,13 +1,13 @@
 [Unit]
-Description=MyConfig Kanata KDE tray
-After=graphical-session.target myconfig-kanata.service
-Wants=myconfig-kanata.service
+Description=InayOS Kanata KDE tray
+After=graphical-session.target inayos-kanata.service
+Wants=inayos-kanata.service
 PartOf=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=%h/.local/bin/myconfig-kanata-tray
-ExecStopPost=-/usr/bin/systemctl --user stop myconfig-kanata.service
+ExecStart=%h/.local/bin/inayos-kanata-tray
+ExecStopPost=-/usr/bin/systemctl --user stop inayos-kanata.service
 Restart=always
 RestartSec=3
 

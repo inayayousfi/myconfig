@@ -4,6 +4,7 @@
 mod chrome;
 mod context;
 mod deploy;
+pub mod leftovers;
 mod package_manager;
 pub mod runner;
 mod setting;
@@ -14,7 +15,7 @@ mod tests;
 
 pub use chrome::Chrome;
 pub use context::{Context, Event, Interaction, ServiceScope, ServiceState, Step, Unanswered};
-pub use myconfig_utils::PackageSystem;
+pub use inayos_utils::PackageSystem;
 pub use package_catalog::Package;
 pub use setting::Setting;
 
@@ -107,7 +108,7 @@ pub use registry_tweaks::RegistryTweaks;
 pub use runtimes::Runtimes;
 pub use shared_desktop::SharedDesktop;
 
-/// Steps that `myconfig internal` runs on behalf of a module, such as an elevated child.
+/// Steps that `inayos internal` runs on behalf of a module, such as an elevated child.
 pub mod internal {
     pub use crate::shared_desktop::{elevated_move, elevated_move_back};
 }

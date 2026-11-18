@@ -1,7 +1,7 @@
 use std::process::ExitCode;
 
-use myconfig_interface::Profile;
-use myconfig_modules::*;
+use inayos_interface::Profile;
+use inayos_modules::*;
 
 /// A personal Ubuntu machine for coding and long-running agents. Editors reach it over the
 /// SSH access the machine already has, so the profile leaves SSH alone.
@@ -40,7 +40,7 @@ fn main() -> ExitCode {
         eprintln!("error: the Ubuntu Devbox installer requires an apt-based Linux system");
         return ExitCode::FAILURE;
     }
-    myconfig_interface::main(Profile {
+    inayos_interface::main(Profile {
         title: "Ubuntu Devbox",
         package_system: PACKAGE_SYSTEM,
         modules: MODULES,
@@ -49,9 +49,7 @@ fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
-    use myconfig_modules::{
-        EnvironmentInventory, Package, runner::need_problems, unnamed_packages,
-    };
+    use inayos_modules::{EnvironmentInventory, Package, runner::need_problems, unnamed_packages};
 
     use super::{MODULES, PACKAGE_SYSTEM};
 

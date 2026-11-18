@@ -15,7 +15,7 @@ use crossterm::{
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use myconfig_modules::{Event, Interaction, Module, ModuleResult, Step, Unanswered, runner};
+use inayos_modules::{Event, Interaction, Module, ModuleResult, Step, Unanswered, runner};
 use ratatui::{
     DefaultTerminal, Frame,
     layout::{Constraint, Flex, Layout, Rect},
@@ -474,7 +474,7 @@ fn draw(frame: &mut Frame, app: &mut App<'_>) {
     let list = List::new(items)
         .block(
             Block::bordered()
-                .title(format!(" myconfig: {} ", app.profile.title))
+                .title(format!(" InayOS: {} ", app.profile.title))
                 .border_style(Style::new().fg(PINK)),
         )
         .highlight_style(Style::new().add_modifier(Modifier::REVERSED));

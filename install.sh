@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Installs the myconfig binary for this Linux platform and opens it.
+# Installs the InayOS binary for this Linux platform and opens it.
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/inayayousfi/myconfig/main/install.sh | bash
@@ -11,11 +11,11 @@
 
 set -euo pipefail
 
-RELEASE_URL="${MYCONFIG_RELEASE_URL:-https://github.com/inayayousfi/myconfig/releases/latest/download}"
-BINARY="${HOME}/.local/bin/myconfig"
+RELEASE_URL="${INAYOS_RELEASE_URL:-https://github.com/inayayousfi/myconfig/releases/latest/download}"
+BINARY="${HOME}/.local/bin/inayos"
 
 log() {
-    printf '[myconfig] %s\n' "$*" >&2
+    printf '[inayos] %s\n' "$*" >&2
 }
 
 fail() {
@@ -106,7 +106,7 @@ main() {
         fail "no terminal for the screen; pass a command such as: install"
     fi
 
-    local asset="myconfig-${platform}-x86_64-unknown-linux-musl"
+    local asset="inayos-${platform}-x86_64-unknown-linux-musl"
     local download
     download="$(mktemp -d)"
     trap 'rm -rf "$download"' EXIT
@@ -121,7 +121,7 @@ main() {
     mkdir -p "$(dirname "$BINARY")"
     install -m 0755 "${download}/${asset}" "${BINARY}.new"
     mv -f "${BINARY}.new" "$BINARY"
-    log "Installed ${BINARY}; run it again later as: myconfig verify, myconfig remove <module>"
+    log "Installed ${BINARY}; run it again later as: inayos verify, inayos remove <module>"
     # exec replaces this shell, so the download directory goes before it.
     rm -rf "$download"
     trap - EXIT

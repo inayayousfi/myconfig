@@ -3,7 +3,7 @@
     "Name": "Session",
     "Description": "About this system, settings, system monitor, force quit, sleep, restart, shut down, lock, log out, or switch user",
     "Icon": "preferences-system-linux",
-    "Id": "myconfig.session",
+    "Id": "inayos.session",
     "Version": "1.0",
     "License": "GPL",
     "EnabledByDefault": true

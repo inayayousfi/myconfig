@@ -75,7 +75,7 @@ mod tests {
 
     #[test]
     fn installs_to_the_explicit_destination_not_the_embedded_path() {
-        let root = std::env::temp_dir().join(format!("myconfig-file-test-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("inayos-file-test-{}", std::process::id()));
         let destination = root.join("chosen/target.txt");
         let file = EmbeddedFile {
             content: b"installed\n",
@@ -103,7 +103,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn refuses_to_follow_an_existing_symlink() {
-        let root = std::env::temp_dir().join(format!("myconfig-link-test-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("inayos-link-test-{}", std::process::id()));
         fs::create_dir_all(&root).unwrap();
         fs::write(root.join("target"), b"keep\n").unwrap();
         std::os::unix::fs::symlink("target", root.join("link")).unwrap();

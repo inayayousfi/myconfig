@@ -1,10 +1,10 @@
 [package]
-name = "myconfig-modules"
+name = "inayos-modules"
 version.workspace = true
 edition = "2024"
 
 [dependencies]
-myconfig-utils = { path = "../utils" }
+inayos-utils = { path = "../utils" }
 package-catalog = { path = "../package-catalog" }
 xshell = "0.2.7"
 embedded-dotfiles = { path = "../embedded-dotfiles" }

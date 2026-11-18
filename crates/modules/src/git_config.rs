@@ -6,7 +6,7 @@ use crate::{
 };
 
 pub struct GitConfig {
-    /// Uses the Windows OpenSSH client named by `MYCONFIG_WINDOWS_SSH`, so Git in WSL
+    /// Uses the Windows OpenSSH client named by `INAYOS_WINDOWS_SSH`, so Git in WSL
     /// reaches the keys held by the Windows SSH agent.
     pub windows_ssh: bool,
 }
@@ -14,7 +14,7 @@ pub struct GitConfig {
 impl GitConfig {
     fn windows_ssh(&self, ctx: &Context) -> Option<PathBuf> {
         self.windows_ssh
-            .then(|| ctx.shell.var_os("MYCONFIG_WINDOWS_SSH"))
+            .then(|| ctx.shell.var_os("INAYOS_WINDOWS_SSH"))
             .flatten()
             .filter(|value| !value.is_empty())
             .map(PathBuf::from)

@@ -17,7 +17,7 @@ fn release(scratch: &Scratch) -> std::path::PathBuf {
     let release = scratch.0.join("release");
     fs::create_dir_all(&release).unwrap();
     for platform in ["cachyos", "arch-wsl", "ubuntu-devbox"] {
-        let asset = format!("myconfig-{platform}-x86_64-unknown-linux-musl");
+        let asset = format!("inayos-{platform}-x86_64-unknown-linux-musl");
         fs::write(
             release.join(&asset),
             format!("#!/bin/sh\nprintf '{platform} %s\\n' \"$*\"\n"),
@@ -41,7 +41,7 @@ fn install(scratch: &Scratch, release: &Path, arguments: &[&str]) -> Output {
         .args(arguments)
         .env("HOME", &home)
         .env(
-            "MYCONFIG_RELEASE_URL",
+            "INAYOS_RELEASE_URL",
             format!("file://{}", release.display()),
         )
         .stdin(Stdio::null())
@@ -50,7 +50,7 @@ fn install(scratch: &Scratch, release: &Path, arguments: &[&str]) -> Output {
 }
 
 fn kept(scratch: &Scratch, arguments: &[&str]) -> String {
-    let output = run(Command::new(scratch.0.join("home/.local/bin/myconfig")).args(arguments));
+    let output = run(Command::new(scratch.0.join("home/.local/bin/inayos")).args(arguments));
     String::from_utf8_lossy(&output.stdout).trim().to_owned()
 }
 
@@ -68,7 +68,7 @@ fn a_named_platform_installs_its_binary_and_passes_the_arguments() {
         String::from_utf8_lossy(&output.stdout).trim(),
         "ubuntu-devbox install zsh"
     );
-    let binary = scratch.0.join("home/.local/bin/myconfig");
+    let binary = scratch.0.join("home/.local/bin/inayos");
     assert!(fs::metadata(&binary).unwrap().permissions().mode() & 0o111 != 0);
     assert_eq!(kept(&scratch, &["verify"]), "ubuntu-devbox verify");
 }
@@ -80,7 +80,7 @@ fn an_unattended_run_without_a_command_stops_before_downloading() {
     let output = install(&scratch, &release, &["cachyos"]);
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("pass a command such as: install"));
-    assert!(!scratch.0.join("home/.local/bin/myconfig").exists());
+    assert!(!scratch.0.join("home/.local/bin/inayos").exists());
 }
 
 #[test]
@@ -92,7 +92,7 @@ fn a_binary_that_does_not_match_its_checksum_is_refused() {
             .status
             .success()
     );
-    let asset = release.join("myconfig-arch-wsl-x86_64-unknown-linux-musl");
+    let asset = release.join("inayos-arch-wsl-x86_64-unknown-linux-musl");
     let mut tampered = fs::read(&asset).unwrap();
     tampered.extend_from_slice(b"tampered\n");
     fs::write(&asset, tampered).unwrap();

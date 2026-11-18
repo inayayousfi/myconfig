@@ -9,14 +9,14 @@ home=/home/$user
 
 arch-chroot "$target" pacman -S --needed --noconfirm openssh
 install -d -m 700 "$target$home/.ssh"
-install -m 600 /root/myconfig-authorized_keys "$target$home/.ssh/authorized_keys"
+install -m 600 /root/inayos-authorized_keys "$target$home/.ssh/authorized_keys"
 arch-chroot "$target" chown -R "$user:$user" "$home/.ssh"
 arch-chroot "$target" systemctl enable sshd.service
 
 # ufw needs its running kernel rules to change, so a one-time service opens the SSH port at
 # the first boot and then disables itself.
 if [ -x "$target/usr/bin/ufw" ]; then
-    unit=myconfig-vm-ssh-firewall.service
+    unit=inayos-vm-ssh-firewall.service
     cat >"$target/etc/systemd/system/$unit" <<UNIT
 [Unit]
 Description=Allow SSH through the VM firewall
@@ -34,4 +34,4 @@ UNIT
     arch-chroot "$target" systemctl enable "$unit"
 fi
 
-echo 'myconfig-image: SSH access prepared'
+echo 'inayos-image: SSH access prepared'

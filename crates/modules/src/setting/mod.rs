@@ -24,6 +24,7 @@ mod group_member;
 mod gsettings;
 mod initramfs_hook;
 mod kde_key;
+mod kwin_rule;
 mod login_shell;
 mod look_and_feel;
 mod machine_path_entry;
@@ -113,6 +114,10 @@ pub enum Setting {
     ControlledFolderAccessApp {
         path: String,
     },
+    /// A window rule named in KWin's rule list, which only exists or not.
+    KwinRule {
+        name: String,
+    },
 }
 
 /// The editor of a recorded extension that names none.
@@ -197,6 +202,7 @@ impl Setting {
             Self::ControlledFolderAccessApp { path } => {
                 Box::new(controlled_folder_access_app::ControlledFolderAccessApp { path })
             }
+            Self::KwinRule { name } => Box::new(kwin_rule::KwinRule { name }),
         }
     }
 

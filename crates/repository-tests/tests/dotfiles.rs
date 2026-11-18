@@ -191,8 +191,8 @@ fn zsh_picks_the_installed_editor_without_retired_aliases() {
 command() {
     if [[ "$1" = -v ]]; then
         case "$2" in
-            codium) [[ "$MYCONFIG_EDITOR_CASE" = codium ]] ;;
-            vim) [[ "$MYCONFIG_EDITOR_CASE" = vim ]] ;;
+            codium) [[ "$INAYOS_EDITOR_CASE" = codium ]] ;;
+            vim) [[ "$INAYOS_EDITOR_CASE" = vim ]] ;;
             emacs|nvim) return 0 ;;
             *) return 1 ;;
         esac
@@ -203,16 +203,16 @@ command() {
 uname() { print Linux; }
 go() { print "$HOME/go"; }
 bun() { print "$HOME/.bun/bin"; }
-if [[ "$MYCONFIG_EDITOR_CASE" = codium ]]; then
+if [[ "$INAYOS_EDITOR_CASE" = codium ]]; then
     unset WSL_DISTRO_NAME
 else
     export WSL_DISTRO_NAME=Arch
 fi
 source "$1" || exit 1
-case "$MYCONFIG_EDITOR_CASE" in
+case "$INAYOS_EDITOR_CASE" in
     codium) expected="codium --wait" ;;
     windows-codium) expected="$HOME/.local/bin/windows-codium" ;;
-    *) expected="$MYCONFIG_EDITOR_CASE" ;;
+    *) expected="$INAYOS_EDITOR_CASE" ;;
 esac
 [[ "$EDITOR" = "$expected" && "$VISUAL" = "$expected" ]] || exit 1
 (( ! $+aliases[vim] && ! $+aliases[vi] && ! $+aliases[v] )) || exit 1
@@ -229,12 +229,12 @@ esac
             .args(["-f", "-c", script, "editor-selection"])
             .arg(&plugin)
             .env("HOME", &scratch.0)
-            .env("MYCONFIG_EDITOR_CASE", editor));
+            .env("INAYOS_EDITOR_CASE", editor));
     }
 }
 #[test]
 fn the_pointer_plugin_multiplies_motion_by_four() {
-    let plugin = dotfiles().join("assets/kde-plasma/libinput/90-myconfig-pointer-sensitivity.lua");
+    let plugin = dotfiles().join("assets/kde-plasma/libinput/90-inayos-pointer-sensitivity.lua");
     assert!(text(&plugin).contains("local multiplier = 4"));
     run(Command::new(lua())
         .arg("-e")
@@ -245,7 +245,7 @@ libinput = {
     connect = function(self, name, callback) self.callback = callback end,
 }
 evdev = { REL_X = 1, REL_Y = 2 }
-dofile(os.getenv("MYCONFIG_POINTER_PLUGIN"))
+dofile(os.getenv("INAYOS_POINTER_PLUGIN"))
 local handler
 local device = {
     usages = function() return { [evdev.REL_X] = true, [evdev.REL_Y] = true } end,
@@ -257,7 +257,7 @@ assert(handler(device, frame) == frame)
 assert(frame[1].value == 4 and frame[2].value == -4)
 "#,
         )
-        .env("MYCONFIG_POINTER_PLUGIN", plugin));
+        .env("INAYOS_POINTER_PLUGIN", plugin));
 }
 
 #[test]
@@ -312,12 +312,12 @@ fn the_user_services_are_valid() {
     };
     run(Command::new("systemd-analyze")
         .arg("verify")
-        .arg(copy(unit("plasma", "myconfig-plasma-layout.service"))));
+        .arg(copy(unit("plasma", "inayos-plasma-layout.service"))));
     run(Command::new("systemd-analyze")
         .arg("verify")
-        .arg(copy(unit("kanata", "myconfig-kanata.service")))
-        .arg(copy(unit("kanata-kde", "myconfig-kanata-tray.service")))
-        .arg(copy(unit("handy", "myconfig-handy.service"))));
+        .arg(copy(unit("kanata", "inayos-kanata.service")))
+        .arg(copy(unit("kanata-kde", "inayos-kanata-tray.service")))
+        .arg(copy(unit("handy", "inayos-handy.service"))));
 }
 
 #[test]
@@ -336,24 +336,24 @@ fn kanata_starts_on_its_off_layer_and_follows_its_tray() {
         config.contains("overview    M-w"),
         "F19 does not emit the KDE Overview shortcut"
     );
-    let engine = dotfiles().join("kanata/.config/systemd/user/myconfig-kanata.service");
-    let tray = dotfiles().join("kanata-kde/.config/systemd/user/myconfig-kanata-tray.service");
+    let engine = dotfiles().join("kanata/.config/systemd/user/inayos-kanata.service");
+    let tray = dotfiles().join("kanata-kde/.config/systemd/user/inayos-kanata-tray.service");
     assert!(
-        has_line(&tray, "Wants=myconfig-kanata.service"),
+        has_line(&tray, "Wants=inayos-kanata.service"),
         "the tray does not start the engine"
     );
     assert!(
-        has_line(&engine, "After=myconfig-handy.service"),
+        has_line(&engine, "After=inayos-handy.service"),
         "the engine does not wait for Handy"
     );
     assert!(has_line(&engine, "RestartMode=direct"));
     assert!(has_line(
         &tray,
-        "ExecStopPost=-/usr/bin/systemctl --user stop myconfig-kanata.service"
+        "ExecStopPost=-/usr/bin/systemctl --user stop inayos-kanata.service"
     ));
-    let handy = text(dotfiles().join("handy/.config/systemd/user/myconfig-handy.service"));
+    let handy = text(dotfiles().join("handy/.config/systemd/user/inayos-handy.service"));
     assert!(
-        !handy.contains("myconfig-kanata"),
+        !handy.contains("inayos-kanata"),
         "Handy kept the reversed Kanata ordering"
     );
 
@@ -364,7 +364,7 @@ fn kanata_starts_on_its_off_layer_and_follows_its_tray() {
             .env("PYTHONPYCACHEPREFIX", &scratch.0));
     };
     python(&[repository().join("test/test-kanata-tray.py").as_os_str()]);
-    let script = dotfiles().join("kanata-kde/.local/bin/myconfig-kanata-tray");
+    let script = dotfiles().join("kanata-kde/.local/bin/inayos-kanata-tray");
     python(&["-m".as_ref(), "py_compile".as_ref(), script.as_os_str()]);
 }
 
@@ -374,24 +374,24 @@ fn the_plasma_layout_script_records_its_version_and_defers_without_plasma() {
     let home = scratch.0.join("home");
     let bin = scratch.0.join("bin");
     fs::create_dir_all(home.join(".config")).unwrap();
-    fs::create_dir_all(home.join(".local/share/myconfig-plasma")).unwrap();
+    fs::create_dir_all(home.join(".local/share/inayos-plasma")).unwrap();
     fs::create_dir_all(&bin).unwrap();
-    let script = home.join("myconfig-plasma-layout");
+    let script = home.join("inayos-plasma-layout");
     fs::copy(
-        dotfiles().join("plasma/.local/bin/myconfig-plasma-layout"),
+        dotfiles().join("plasma/.local/bin/inayos-plasma-layout"),
         &script,
     )
     .unwrap();
     fs::copy(
-        dotfiles().join("plasma/.local/share/myconfig-plasma/layout.js"),
-        home.join(".local/share/myconfig-plasma/layout.js"),
+        dotfiles().join("plasma/.local/share/inayos-plasma/layout.js"),
+        home.join(".local/share/inayos-plasma/layout.js"),
     )
     .unwrap();
     let applets = home.join(".config/plasma-org.kde.plasma.desktop-appletsrc");
     fs::write(&applets, "default panel configuration\n").unwrap();
     program(
         &bin.join("qdbus6"),
-        "if [ \"$#\" -eq 2 ]; then exit \"${MYCONFIG_PLASMA_DBUS_STATUS:-0}\"; fi\nprintf '%s\\n' \"${MYCONFIG_PLASMA_EVALUATE_OUTPUT:-MYCONFIG_PLASMA_LAYOUT=ok:version=7:screens=2}\"",
+        "if [ \"$#\" -eq 2 ]; then exit \"${INAYOS_PLASMA_DBUS_STATUS:-0}\"; fi\nprintf '%s\\n' \"${INAYOS_PLASMA_EVALUATE_OUTPUT:-INAYOS_PLASMA_LAYOUT=ok:version=7:screens=2}\"",
     );
     let layout = |variables: &[(&str, &str)]| {
         let mut command = Command::new("bash");
@@ -415,7 +415,7 @@ fn the_plasma_layout_script_records_its_version_and_defers_without_plasma() {
 
     assert!(layout(&[]).status.success());
     assert_eq!(
-        text(home.join(".local/state/myconfig/plasma-layout-version")).trim(),
+        text(home.join(".local/state/inayos/plasma-layout-version")).trim(),
         "7"
     );
     // The installer records the panel file, and remove restores it from that record.
@@ -425,17 +425,15 @@ fn the_plasma_layout_script_records_its_version_and_defers_without_plasma() {
     );
     assert!(
         !layout(&[(
-            "MYCONFIG_PLASMA_EVALUATE_OUTPUT",
-            "MYCONFIG_PLASMA_LAYOUT=missing:org.kde.plasma.icontasks"
+            "INAYOS_PLASMA_EVALUATE_OUTPUT",
+            "INAYOS_PLASMA_LAYOUT=missing:org.kde.plasma.icontasks"
         )])
         .status
         .success(),
         "a missing required widget was accepted"
     );
     assert_eq!(
-        layout(&[("MYCONFIG_PLASMA_DBUS_STATUS", "1")])
-            .status
-            .code(),
+        layout(&[("INAYOS_PLASMA_DBUS_STATUS", "1")]).status.code(),
         Some(75)
     );
 }

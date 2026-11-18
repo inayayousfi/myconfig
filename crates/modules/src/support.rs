@@ -149,12 +149,12 @@ pub(crate) fn configure_input_access(ctx: &Context, owner: &str) -> ModuleResult
     }
     ctx.run(cmd!(sh, "sudo modprobe uinput"))?;
     ctx.write_system_file(
-        &PathBuf::from(format!("/etc/modules-load.d/myconfig-{owner}.conf")),
+        &PathBuf::from(format!("/etc/modules-load.d/inayos-{owner}.conf")),
         b"uinput\n",
         "0644",
     )?;
     ctx.write_system_file(
-        &PathBuf::from(format!("/etc/udev/rules.d/99-myconfig-{owner}.rules")),
+        &PathBuf::from(format!("/etc/udev/rules.d/99-inayos-{owner}.rules")),
         b"KERNEL==\"uinput\", MODE=\"0660\", GROUP=\"uinput\", OPTIONS+=\"static_node=uinput\"\nSUBSYSTEM==\"input\", KERNEL==\"event*\", MODE=\"0660\", GROUP=\"input\"\n",
         "0644",
     )?;
@@ -174,8 +174,8 @@ pub(crate) fn verify_input_access(ctx: &Context, owner: &str) -> ModuleResult {
         }
     }
     for path in [
-        format!("/etc/modules-load.d/myconfig-{owner}.conf"),
-        format!("/etc/udev/rules.d/99-myconfig-{owner}.rules"),
+        format!("/etc/modules-load.d/inayos-{owner}.conf"),
+        format!("/etc/udev/rules.d/99-inayos-{owner}.rules"),
     ] {
         if !ctx.succeeds(cmd!(ctx.shell, "sudo test -f {path}"))? {
             return Err(format!("{path} is missing").into());
@@ -244,11 +244,11 @@ pub(crate) fn powershell_quote(text: &str) -> String {
 /// `powershell_quote`. It travels encoded, so no quoting of the command line applies.
 pub(crate) fn run_elevated(ctx: &Context, script: &str) -> ModuleResult {
     let pwsh = powershell_7(ctx)?;
-    let elevate = "$encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes(\"`$ErrorActionPreference = 'Stop'`n\" + $env:MYCONFIG_ELEVATED_SCRIPT)); $process = Start-Process -FilePath $env:MYCONFIG_PWSH -Verb RunAs -ArgumentList '-NoLogo', '-NoProfile', '-EncodedCommand', $encoded -Wait -PassThru -ErrorAction Stop; if ($process.ExitCode -ne 0) { throw \"The elevated step exited with code $($process.ExitCode)\" }";
+    let elevate = "$encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes(\"`$ErrorActionPreference = 'Stop'`n\" + $env:INAYOS_ELEVATED_SCRIPT)); $process = Start-Process -FilePath $env:INAYOS_PWSH -Verb RunAs -ArgumentList '-NoLogo', '-NoProfile', '-EncodedCommand', $encoded -Wait -PassThru -ErrorAction Stop; if ($process.ExitCode -ne 0) { throw \"The elevated step exited with code $($process.ExitCode)\" }";
     ctx.run(
         cmd!(ctx.shell, "{pwsh} -NoProfile -Command {elevate}")
-            .env("MYCONFIG_ELEVATED_SCRIPT", script)
-            .env("MYCONFIG_PWSH", &pwsh),
+            .env("INAYOS_ELEVATED_SCRIPT", script)
+            .env("INAYOS_PWSH", &pwsh),
     )
 }
 
@@ -278,17 +278,17 @@ pub(crate) fn write_startup_shortcut(ctx: &Context, shortcut: &StartupShortcut) 
     let path = startup_directory(ctx)?.join(shortcut.name);
     ctx.record_path(&path)?;
     let pwsh = powershell_7(ctx)?;
-    let script = "$ErrorActionPreference = 'Stop'; $shell = New-Object -ComObject WScript.Shell; $link = $shell.CreateShortcut($env:MYCONFIG_SHORTCUT); $link.TargetPath = $env:MYCONFIG_SHORTCUT_TARGET; $link.Arguments = $env:MYCONFIG_SHORTCUT_ARGUMENTS; $link.WorkingDirectory = $env:MYCONFIG_SHORTCUT_DIRECTORY; $link.Description = $env:MYCONFIG_SHORTCUT_DESCRIPTION; $link.WindowStyle = [int]$env:MYCONFIG_SHORTCUT_WINDOW; $link.Save(); $saved = $shell.CreateShortcut($env:MYCONFIG_SHORTCUT); if ($saved.TargetPath -ine $env:MYCONFIG_SHORTCUT_TARGET -or $saved.Arguments -cne $env:MYCONFIG_SHORTCUT_ARGUMENTS) { throw 'The saved shortcut does not match its target' }";
+    let script = "$ErrorActionPreference = 'Stop'; $shell = New-Object -ComObject WScript.Shell; $link = $shell.CreateShortcut($env:INAYOS_SHORTCUT); $link.TargetPath = $env:INAYOS_SHORTCUT_TARGET; $link.Arguments = $env:INAYOS_SHORTCUT_ARGUMENTS; $link.WorkingDirectory = $env:INAYOS_SHORTCUT_DIRECTORY; $link.Description = $env:INAYOS_SHORTCUT_DESCRIPTION; $link.WindowStyle = [int]$env:INAYOS_SHORTCUT_WINDOW; $link.Save(); $saved = $shell.CreateShortcut($env:INAYOS_SHORTCUT); if ($saved.TargetPath -ine $env:INAYOS_SHORTCUT_TARGET -or $saved.Arguments -cne $env:INAYOS_SHORTCUT_ARGUMENTS) { throw 'The saved shortcut does not match its target' }";
     // WScript.Shell window styles: 1 opens normally, 7 opens minimized.
     let window = if shortcut.minimized { "7" } else { "1" };
     ctx.run(
         cmd!(ctx.shell, "{pwsh} -NoProfile -Command {script}")
-            .env("MYCONFIG_SHORTCUT", &path)
-            .env("MYCONFIG_SHORTCUT_TARGET", shortcut.target)
-            .env("MYCONFIG_SHORTCUT_ARGUMENTS", shortcut.arguments)
-            .env("MYCONFIG_SHORTCUT_DIRECTORY", shortcut.working_directory)
-            .env("MYCONFIG_SHORTCUT_DESCRIPTION", shortcut.description)
-            .env("MYCONFIG_SHORTCUT_WINDOW", window),
+            .env("INAYOS_SHORTCUT", &path)
+            .env("INAYOS_SHORTCUT_TARGET", shortcut.target)
+            .env("INAYOS_SHORTCUT_ARGUMENTS", shortcut.arguments)
+            .env("INAYOS_SHORTCUT_DIRECTORY", shortcut.working_directory)
+            .env("INAYOS_SHORTCUT_DESCRIPTION", shortcut.description)
+            .env("INAYOS_SHORTCUT_WINDOW", window),
     )?;
     if !path.is_file() {
         return Err(format!("the startup shortcut {} was not created", path.display()).into());

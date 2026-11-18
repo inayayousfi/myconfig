@@ -1,7 +1,7 @@
 //! The only code that loops over modules. The command line and the screen call it.
 use std::collections::{HashMap, HashSet};
 
-use myconfig_utils::resolve_package;
+use inayos_utils::resolve_package;
 
 use crate::{
     Context, Event, Module, ModuleResult, Need, Package, Step, Unanswered,
@@ -28,11 +28,10 @@ fn unanswered(error: &crate::Error) -> Option<String> {
 
 fn step(
     ctx: &Context,
-    module: &dyn Module,
+    name: &'static str,
     step: Step,
     action: impl FnOnce() -> ModuleResult,
 ) -> ModuleResult {
-    let name = module.name();
     ctx.set_module(name);
     ctx.interaction().event(Event::Started {
         module: name.to_owned(),
@@ -246,7 +245,7 @@ pub fn install(
             skip(&mut reached, SkipReason::PackageDatabase(error.clone()));
             continue;
         }
-        let result = match step(ctx, *module, Step::Install, || module.install(ctx)) {
+        let result = match step(ctx, name, Step::Install, || module.install(ctx)) {
             Err(error) => match unanswered(&error) {
                 Some(question) => {
                     skip(&mut reached, SkipReason::Unanswered(question));
@@ -254,7 +253,7 @@ pub fn install(
                 }
                 None => Err(error),
             },
-            Ok(()) => step(ctx, *module, Step::Verify, || module.verify(ctx)),
+            Ok(()) => step(ctx, name, Step::Verify, || module.verify(ctx)),
         };
         match result {
             Ok(()) => reached.insert(name, Reached::Installed),
@@ -359,7 +358,7 @@ pub fn verify(ctx: &Context, modules: &[&dyn Module]) -> Vec<(&'static str, Modu
         .map(|module| {
             (
                 module.name(),
-                step(ctx, *module, Step::Verify, || module.verify(ctx)),
+                step(ctx, module.name(), Step::Verify, || module.verify(ctx)),
             )
         })
         .collect()
@@ -382,6 +381,28 @@ pub fn remove(
     modules: &[&dyn Module],
     force: bool,
 ) -> ModuleResult<RemoveReport> {
+    remove_run(ctx, profile, modules, false, force)
+}
+
+/// Removes each module in turn as `remove` does, then undoes the leftovers group of
+/// myconfig, the earlier name of InayOS. No module owns that group, so it has no steps of
+/// its own and no module needs it.
+pub fn remove_with_leftovers(
+    ctx: &Context,
+    profile: &[&dyn Module],
+    modules: &[&dyn Module],
+    force: bool,
+) -> ModuleResult<RemoveReport> {
+    remove_run(ctx, profile, modules, true, force)
+}
+
+fn remove_run(
+    ctx: &Context,
+    profile: &[&dyn Module],
+    modules: &[&dyn Module],
+    leftovers: bool,
+    force: bool,
+) -> ModuleResult<RemoveReport> {
     ctx.state().borrow_mut().begin(Action::Remove)?;
     let removing: HashSet<_> = modules.iter().map(|module| module.name()).collect();
     // Only a module that is still installed can need something.
@@ -402,21 +423,28 @@ pub fn remove(
     let mut ordered = modules.to_vec();
     ordered.sort_by_key(|module| std::cmp::Reverse(position(module)));
     for module in &ordered {
-        step(ctx, *module, Step::Remove, || {
-            remove_one(ctx, &questions, *module, &mut report)
+        step(ctx, module.name(), Step::Remove, || {
+            module.remove(ctx)?;
+            undo_recorded(ctx, &questions, module.name(), &mut report)
+        })?;
+    }
+    // The leftovers come from the earliest installs, so they go after every module.
+    if leftovers {
+        step(ctx, crate::leftovers::GROUP, Step::Remove, || {
+            undo_recorded(ctx, &questions, crate::leftovers::GROUP, &mut report)
         })?;
     }
     Ok(report)
 }
 
-fn remove_one(
+/// Undoes every change recorded for `group` since its last removal, newest first.
+fn undo_recorded(
     ctx: &Context,
     questions: &RemoveQuestions,
-    module: &dyn Module,
+    group: &str,
     report: &mut RemoveReport,
 ) -> ModuleResult {
-    module.remove(ctx)?;
-    let pending = ctx.state().borrow().pending(module.name());
+    let pending = ctx.state().borrow().pending(group);
     let mut complete = true;
     for entry in pending.into_iter().rev() {
         let outcome = entry.change.undo(ctx, questions).map_err(|error| {
@@ -483,7 +511,7 @@ impl Questions for RemoveQuestions<'_, '_> {
     fn still_needed(&self, needed: Needed<'_>, dependents: Vec<String>) -> Option<Outcome> {
         let ctx = self.ctx;
         // Two catalog packages can share a name on one system, so packages compare by name.
-        let same_package = |spec: myconfig_utils::PackageSpec, package: &Package| {
+        let same_package = |spec: inayos_utils::PackageSpec, package: &Package| {
             resolve_package(*package, ctx.package_system)
                 .is_some_and(|candidate| candidate.name == spec.name)
         };
@@ -493,7 +521,7 @@ impl Questions for RemoveQuestions<'_, '_> {
                 INSTALLER_NEEDS
                     .iter()
                     .any(|package| same_package(spec, package))
-                    .then(|| "myconfig itself, to remove the other modules".to_owned())
+                    .then(|| "InayOS itself, to remove the other modules".to_owned())
                     .into_iter()
                     .collect::<Vec<_>>(),
             ),

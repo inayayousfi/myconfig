@@ -13,11 +13,11 @@ pub enum Os {
 /// The account that every base image creates. The image builders use these values,
 /// and the runner uses them to log in and to answer `sudo`.
 pub const GUEST_USER: &str = "tester";
-pub const GUEST_PASSWORD: &str = "myconfig";
+pub const GUEST_PASSWORD: &str = "inayos";
 
 /// The Windows guest folder for the xtask's own scripts and logs. It sits outside the user
 /// profile, so the state lists never see it.
-pub const WINDOWS_TOOL_DIR: &str = r"C:\myconfig-vm";
+pub const WINDOWS_TOOL_DIR: &str = r"C:\inayos-vm";
 
 /// How a guest starts its firmware.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

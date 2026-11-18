@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Windows Setup reads this answer file from the root of the seed disc. It installs Windows 11
-  Pro on the first disk with a local account, then runs myconfig-setup.ps1 from the seed disc
+  Pro on the first disk with a local account, then runs inayos-setup.ps1 from the seed disc
   at the first logon. The product key is Microsoft's generic Pro installation key, which
   selects the edition and leaves Windows unactivated.
 -->
@@ -80,7 +80,7 @@
   </settings>
   <settings pass="specialize">
     <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
-      <ComputerName>myconfig-windows</ComputerName>
+      <ComputerName>inayos-windows</ComputerName>
       <TimeZone>UTC</TimeZone>
     </component>
   </settings>
@@ -123,8 +123,8 @@
       <FirstLogonCommands>
         <SynchronousCommand wcm:action="add">
           <Order>1</Order>
-          <Description>Run the myconfig image setup from the seed disc</Description>
-          <CommandLine>powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Get-PSDrive -PSProvider FileSystem | ForEach-Object { Join-Path $_.Root 'myconfig-setup.ps1' } | Where-Object { Test-Path $_ } | Select-Object -First 1 | ForEach-Object { . $_ }"</CommandLine>
+          <Description>Run the InayOS image setup from the seed disc</Description>
+          <CommandLine>powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Get-PSDrive -PSProvider FileSystem | ForEach-Object { Join-Path $_.Root 'inayos-setup.ps1' } | Where-Object { Test-Path $_ } | Select-Object -First 1 | ForEach-Object { . $_ }"</CommandLine>
         </SynchronousCommand>
       </FirstLogonCommands>
     </component>

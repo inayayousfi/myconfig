@@ -82,11 +82,11 @@ const ACCENT_COLOR: &str = "255,78,173";
 const CURSOR_THEME: &str = "breeze_cursors";
 const CURSOR_SIZE: &str = "24";
 const LIBINPUT_PLUGINS: &str = "/etc/libinput/plugins";
-const LAYOUT_SERVICE: &str = "myconfig-plasma-layout.service";
-const WINDOW_RULE: &str = "myconfig-picture-in-picture";
+const LAYOUT_SERVICE: &str = "inayos-plasma-layout.service";
+const WINDOW_RULE: &str = "inayos-picture-in-picture";
 
-const LAYOUT_COMMAND: &str = ".local/bin/myconfig-plasma-layout";
-const PANEL_SCRIPT: &str = ".local/share/kwin/scripts/myconfig-panels/metadata.json";
+const LAYOUT_COMMAND: &str = ".local/bin/inayos-plasma-layout";
+const PANEL_SCRIPT: &str = ".local/share/kwin/scripts/inayos-panels/metadata.json";
 
 /// The fonts that the `plasma` package's fontconfig file makes the defaults for programs
 /// that ask for a kind of font instead of naming one.
@@ -124,7 +124,7 @@ pub(crate) fn kde_settings() -> Vec<(Setting, &'static str)> {
         ("EdgeBarrier", "CornerBarrier", "false"),
         ("EdgeBarrier", "EdgeBarrier", "0"),
         ("Effect-overview", "BorderActivate", "9"),
-        ("Plugins", "myconfig-panelsEnabled", "true"),
+        ("Plugins", "inayos-panelsEnabled", "true"),
     ] {
         add("kwinrc", &[group], key, value);
     }
@@ -401,7 +401,7 @@ impl Module for KdePlasma {
         // panels.
         ctx.enable_service(LAYOUT_SERVICE, ServiceScope::User)?;
         let layout = home.join(LAYOUT_COMMAND);
-        match ctx.run_status(cmd!(sh, "{layout}").env("MYCONFIG_PLASMA_ENSURE_OVERVIEW", "1"))? {
+        match ctx.run_status(cmd!(sh, "{layout}").env("INAYOS_PLASMA_ENSURE_OVERVIEW", "1"))? {
             Some(0) => {
                 ctx.note("Applied the KDE Plasma top bar and dock");
                 Ok(())

@@ -69,7 +69,7 @@ pub struct Binary {
 }
 
 /// Where the Windows guest keeps the Arch WSL installer, relative to the user's home folder.
-pub const ARCH_WSL_GUEST_PATH: &str = "myconfig-arch-wsl";
+pub const ARCH_WSL_GUEST_PATH: &str = "inayos-arch-wsl";
 
 impl Binary {
     /// The command line that runs this installer with `arguments` in the guest's shell.
@@ -82,12 +82,12 @@ impl Binary {
                 // instead of a release.
                 let hook = collect::arch_wsl_hook();
                 format!(
-                    "set \"MYCONFIG_ARCH_WSL_BINARY={hook}\" && \"%USERPROFILE%\\{path}\" {arguments}"
+                    "set \"INAYOS_ARCH_WSL_BINARY={hook}\" && \"%USERPROFILE%\\{path}\" {arguments}"
                 )
             }
             Launch::Wsl => {
                 // A copy inside the distribution runs whatever the mount options of C: are.
-                let copy = "/tmp/myconfig-arch-wsl";
+                let copy = "/tmp/inayos-arch-wsl";
                 format!(
                     "wsl.exe --exec bash -c \"install -m 0755 /mnt/c/Users/{GUEST_USER}/{} {copy} && \
                      exec {copy} {arguments}\"",
@@ -105,26 +105,26 @@ impl Binary {
 fn recipes(os: Os) -> &'static [Recipe] {
     match os {
         Os::Cachyos => &[Recipe {
-            package: "myconfig-cachyos",
+            package: "inayos-cachyos",
             windows: false,
-            guest_path: ".local/bin/myconfig",
+            guest_path: ".local/bin/inayos",
             launch: Launch::Linux,
         }],
         Os::Ubuntu => &[Recipe {
-            package: "myconfig-ubuntu-devbox",
+            package: "inayos-ubuntu-devbox",
             windows: false,
-            guest_path: ".local/bin/myconfig",
+            guest_path: ".local/bin/inayos",
             launch: Launch::Linux,
         }],
         Os::Windows => &[
             Recipe {
-                package: "myconfig-windows",
+                package: "inayos-windows",
                 windows: true,
-                guest_path: "AppData/Local/myconfig/myconfig.exe",
+                guest_path: "AppData/Local/inayos/inayos.exe",
                 launch: Launch::Windows,
             },
             Recipe {
-                package: "myconfig-arch-wsl",
+                package: "inayos-arch-wsl",
                 windows: false,
                 guest_path: ARCH_WSL_GUEST_PATH,
                 launch: Launch::Wsl,

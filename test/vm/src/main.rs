@@ -2,7 +2,7 @@
 
 #[cfg(target_os = "linux")]
 fn main() -> std::process::ExitCode {
-    myconfig_xtask::main()
+    inayos_xtask::main()
 }
 
 #[cfg(not(target_os = "linux"))]

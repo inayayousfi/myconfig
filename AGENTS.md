@@ -4,7 +4,7 @@
 
 This repository builds configuration environments for CachyOS, Arch WSL, Ubuntu Devbox, and Windows Workstation. The repository is the source of truth. Inspect the source here before changing a deployed configuration.
 
-`README.md` gives the supported entry points and install commands. The root `install.sh` and `install.ps1` download the released binary for the platform, keep it as `myconfig`, and run it. The release workflow publishes those binaries under fixed names.
+`README.md` gives the supported entry points and install commands. The root `install.sh` and `install.ps1` download the released binary for the platform, keep it as `inayos`, and run it. The release workflow publishes those binaries under fixed names.
 
 The project is moving away from shell scripts. Write new installer logic, tooling and tests in Rust. `install.sh` and `install.ps1` stay scripts because `curl | bash` and `irm | iex` run them before any binary exists.
 
@@ -18,7 +18,7 @@ The deployed package tree is `~/dotfiles`, not `~/.files`. If a task mentions a 
 
 Some home paths point into `~/dotfiles`. A change or deletion inside the deployed tree can therefore change the live configuration even when the visible path is under `~/.config` or `~`. Check both the visible target and its resolved path with `readlink -f`.
 
-The installers record what they change in `~/.local/state/myconfig/state.json` (`%LOCALAPPDATA%\myconfig\state\state.json` on Windows). `myconfig remove` undoes from that record. Do not edit it by hand.
+The installers record what they change in `~/.local/state/inayos/state.json` (`%LOCALAPPDATA%\inayos\state\state.json` on Windows). `inayos remove` undoes from that record. Do not edit it by hand.
 
 ## Repository layout
 
@@ -100,11 +100,11 @@ The design has these rules:
 
 - Modules never read stdin, open `/dev/tty`, or call xshell's `.run()`, `.read()` or `.output()` directly. They use `ctx.run`, `ctx.read` and `ctx.succeeds` for commands, `ctx.confirm` for yes or no questions, and `ctx.with_terminal` for programs that need the whole terminal, such as the GitHub CLI login. A question asked after the install itself, whose missing answer the module takes as a no, goes through `ctx.confirm_optional`.
 
-- `state.json` carries a `format` number and the `written_by` myconfig version. When you change the state format, increase `format` and add a migration from the previous one.
+- `state.json` carries a `format` number and the `written_by` InayOS version. When you change the state format, increase `format` and add a migration from the previous one.
 
-- `crates/interface` holds the command line (Clap) and the interactive screen (Ratatui). `crates/modules` must not depend on either. Steps that the installer starts by itself, such as an elevated child process, are hidden subcommands under `myconfig internal`.
+- `crates/interface` holds the command line (Clap) and the interactive screen (Ratatui). `crates/modules` must not depend on either. Steps that the installer starts by itself, such as an elevated child process, are hidden subcommands under `inayos internal`.
 
-- Each app's `main.rs` contains only the profile list, its platform check, and one call to `myconfig_interface::main`.
+- Each app's `main.rs` contains only the profile list, its platform check, and one call to `inayos_interface::main`.
 
 - The workspace version in the root `Cargo.toml` is the version of every crate.
 

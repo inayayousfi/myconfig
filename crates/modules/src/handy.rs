@@ -12,7 +12,7 @@ use crate::{
 
 pub struct Handy;
 
-const SERVICE: &str = "myconfig-handy.service";
+const SERVICE: &str = "inayos-handy.service";
 
 impl Module for Handy {
     fn name(&self) -> &'static str {
@@ -35,7 +35,7 @@ impl Module for Handy {
         ctx.install_packages(&[Package::Handy])?;
         require_programs(ctx, &["handy", "jq", "systemctl"])?;
         ctx.deploy_config("handy")?;
-        let configure = ctx.home.join(".local/bin/myconfig-handy-configure");
+        let configure = ctx.home.join(".local/bin/inayos-handy-configure");
         require_executable(&configure)?;
         configure_input_access(ctx, "handy")?;
         ctx.run(cmd!(sh, "systemctl --user daemon-reload"))?;
@@ -64,7 +64,7 @@ impl Module for Handy {
     fn verify(&self, ctx: &Context) -> ModuleResult {
         verify_packages(ctx, &[Package::Handy])?;
         verify_package(ctx, "handy")?;
-        require_executable(&ctx.home.join(".local/bin/myconfig-handy-configure"))?;
+        require_executable(&ctx.home.join(".local/bin/inayos-handy-configure"))?;
         verify_input_access(ctx, "handy")?;
         ctx.run(cmd!(
             ctx.shell,

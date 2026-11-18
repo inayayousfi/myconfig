@@ -1,7 +1,7 @@
 //! Arch: pacman for official packages, and paru for AUR packages.
 use std::path::PathBuf;
 
-use myconfig_utils::{PackageSpec, PackageTool};
+use inayos_utils::{PackageSpec, PackageTool};
 use xshell::cmd;
 
 use super::{PackageManager, foreign};

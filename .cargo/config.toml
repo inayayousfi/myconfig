@@ -1,2 +1,2 @@
 [alias]
-xtask = "run --quiet --package myconfig-xtask --"
+xtask = "run --quiet --package inayos-xtask --"

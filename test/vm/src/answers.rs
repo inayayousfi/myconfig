@@ -2,7 +2,7 @@
 //! or the answer from a fixed table at a yes or no question. A question that the table does
 //! not know stops the cycle, so a new question is never answered by guess.
 
-use myconfig_interface::QUESTION_END;
+use inayos_interface::QUESTION_END;
 use regex::Regex;
 
 /// The prompts of `sudo` and `sudo-rs`, such as `[sudo] password for tester: `.

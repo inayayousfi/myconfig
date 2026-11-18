@@ -35,7 +35,7 @@ const DISK_SIZE: &str = "100G";
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 const POLL: Duration = Duration::from_secs(5);
 /// An installer script writes this line to the first serial port when it fails.
-const FAILED_MARKER: &str = "myconfig-image: failed";
+const FAILED_MARKER: &str = "inayos-image: failed";
 
 /// The current release at a system's source, and the file to install it from.
 #[derive(Clone, Debug)]

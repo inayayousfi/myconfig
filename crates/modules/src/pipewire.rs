@@ -10,7 +10,7 @@ use crate::{
 pub struct Pipewire;
 
 const PACKAGES: &[Package] = &[Package::Python, Package::Pyside6];
-const SERVICE: &str = "myconfig-pipewire-tray.service";
+const SERVICE: &str = "inayos-pipewire-tray.service";
 
 impl Module for Pipewire {
     fn name(&self) -> &'static str {
@@ -33,7 +33,7 @@ impl Module for Pipewire {
         ctx.install_packages(PACKAGES)?;
         require_programs(ctx, &["python", "systemctl", "pactl"])?;
         ctx.deploy_config("pipewire")?;
-        let tray = ctx.home.join(".local/bin/myconfig-pipewire-tray");
+        let tray = ctx.home.join(".local/bin/inayos-pipewire-tray");
         require_executable(&tray)?;
         ctx.run(cmd!(sh, "python -m py_compile {tray}"))?;
         ctx.enable_service(SERVICE, ServiceScope::User)?;
@@ -50,7 +50,7 @@ impl Module for Pipewire {
         let sh = ctx.shell;
         verify_packages(ctx, PACKAGES)?;
         verify_package(ctx, "pipewire")?;
-        let tray = ctx.home.join(".local/bin/myconfig-pipewire-tray");
+        let tray = ctx.home.join(".local/bin/inayos-pipewire-tray");
         require_executable(&tray)?;
         ctx.run(cmd!(sh, "python -m py_compile {tray}"))?;
         ctx.run(cmd!(sh, "systemctl --user --quiet is-enabled {SERVICE}"))

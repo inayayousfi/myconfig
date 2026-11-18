@@ -9,8 +9,8 @@ import sys
 
 CONFIG = Path.home() / ".config/wireplumber/wireplumber.conf.d/60-mono-playback.conf"
 DISABLED = CONFIG.with_name(CONFIG.name + ".disabled")
-ICON = Path(__file__).with_name("myconfig-mono.svg")
-SWAP_PREFIX = "myconfig_swap_"
+ICON = Path(__file__).with_name("inayos-mono.svg")
+SWAP_PREFIX = "inayos_swap_"
 
 
 class AudioRouting:
@@ -138,7 +138,7 @@ def run_tray():
     from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
     app = QApplication(sys.argv)
-    app.setApplicationName("MyConfig PipeWire")
+    app.setApplicationName("InayOS PipeWire")
     app.setQuitOnLastWindowClosed(False)
 
     tray = QSystemTrayIcon(QIcon(str(ICON)), app)
@@ -265,7 +265,7 @@ def run_tray():
                 "--user",
                 "--no-block",
                 "stop",
-                "myconfig-pipewire-tray.service",
+                "inayos-pipewire-tray.service",
             ],
             check=False,
         )

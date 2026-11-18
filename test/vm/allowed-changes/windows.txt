@@ -62,5 +62,5 @@ files C:\Users\tester\AppData\Local\wsl\*
 registry HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\TaskbarStateLastRun
 
 # The installer's own record of what it changed.
-files C:\Users\tester\AppData\Local\myconfig\state
-files C:\Users\tester\AppData\Local\myconfig\state\*
+files C:\Users\tester\AppData\Local\inayos\state
+files C:\Users\tester\AppData\Local\inayos\state\*

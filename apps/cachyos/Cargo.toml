@@ -1,8 +1,8 @@
 [package]
-name = "myconfig-cachyos"
+name = "inayos-cachyos"
 version.workspace = true
 edition = "2024"
 
 [dependencies]
-myconfig-interface = { path = "../../crates/interface" }
-myconfig-modules = { path = "../../crates/modules" }
+inayos-interface = { path = "../../crates/interface" }
+inayos-modules = { path = "../../crates/modules" }

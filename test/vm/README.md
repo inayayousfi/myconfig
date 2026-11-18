@@ -1,6 +1,6 @@
 # VM xtask
 
-This document describes the VM xtask in `test/vm/`, the `myconfig-xtask` crate. It builds the installers from the working tree and tests them in throwaway QEMU virtual machines of CachyOS, Ubuntu 26.04 LTS and Windows 11. A commit or a release is not needed. It runs on a Linux host and only by hand.
+This document describes the VM xtask in `test/vm/`, the `inayos-xtask` crate. It builds the installers from the working tree and tests them in throwaway QEMU virtual machines of CachyOS, Ubuntu 26.04 LTS and Windows 11. A commit or a release is not needed. It runs on a Linux host and only by hand.
 
 The CachyOS and Ubuntu cycles have passed on real guests, image builds included. Nothing has run on Windows, the Arch WSL checks included.
 
@@ -31,7 +31,7 @@ The xtask starts QEMU directly, without libvirt. QEMU listens for control comman
 
 ## Folders
 
-The state folder is `${XDG_DATA_HOME:-~/.local/share}/myconfig/vm`, or `MYCONFIG_VM_STATE_DIR`. It holds the SSH key, the lock file, the sockets and logs of the running VM, and one folder per system with these layers:
+The state folder is `${XDG_DATA_HOME:-~/.local/share}/inayos/vm`, or `INAYOS_VM_STATE_DIR`. It holds the SSH key, the lock file, the sockets and logs of the running VM, and one folder per system with these layers:
 
 - `image` is the clean image that every throwaway disk starts from.
 
@@ -41,7 +41,7 @@ The state folder is `${XDG_DATA_HOME:-~/.local/share}/myconfig/vm`, or `MYCONFIG
 
 A layer holds a qcow2 disk that reads unchanged blocks from the clean image disk, a copy of the UEFI variables, and for Windows a copy of the TPM state.
 
-The download folder is `${XDG_CACHE_HOME:-~/.cache}/myconfig/vm`, or `MYCONFIG_VM_CACHE_DIR`. It holds the verified ISO or cloud image of each system.
+The download folder is `${XDG_CACHE_HOME:-~/.cache}/inayos/vm`, or `INAYOS_VM_CACHE_DIR`. It holds the verified ISO or cloud image of each system.
 
 ## Guests
 
@@ -49,7 +49,7 @@ Every guest boots with UEFI firmware from `edk2-ovmf` and has 4 virtual CPUs. Li
 
 QEMU forwards host port 2222 to the guest SSH server. Every image accepts the key at `ssh/id_ed25519` in the state folder, which the xtask creates once. Files go into the guest with `scp`; the guest has no access to the repository.
 
-The test account is `tester` with the password `myconfig`, set in `src/os.rs`.
+The test account is `tester` with the password `inayos`, set in `src/os.rs`.
 
 ## Images
 
@@ -69,7 +69,7 @@ The release file holds the CachyOS ISO number, the Ubuntu cloud image build seri
 
 1. It warns when the image's source lists a newer release than the image, or says that it could not check, then continues.
 
-2. It builds the installers from the working tree: `myconfig-cachyos` or `myconfig-ubuntu-devbox` for `x86_64-unknown-linux-musl`, and for Windows `myconfig-windows` with `cargo xwin` plus `myconfig-arch-wsl`.
+2. It builds the installers from the working tree: `inayos-cachyos` or `inayos-ubuntu-devbox` for `x86_64-unknown-linux-musl`, and for Windows `inayos-windows` with `cargo xwin` plus `inayos-arch-wsl`.
 
 3. It boots the guest, copies the installers in, and prints the number of pending package updates. On Linux it syncs a temporary copy of the package database and counts with `pacman -Qu` or `apt list --upgradable` against it, so the guest's own package lists stay unchanged.
 
@@ -83,7 +83,7 @@ The release file holds the CachyOS ISO number, the Ubuntu cloud image build seri
 
 8. It saves the `after` lists. Any difference from `before` fails the cycle.
 
-On Windows, the cycle runs only the Windows installer through these steps. Its arch-wsl module creates the Arch WSL distribution on the first install, configures the same distribution again on later installs, and runs the Arch WSL installer in it on every install. The Windows installer runs with `MYCONFIG_ARCH_WSL_BINARY` set to a hook script, `lists/arch-wsl-hook.sh`. The hook saves the state lists of the distribution, then runs the fresh Arch WSL installer. The cycle also saves the state lists inside the distribution after each install and compares them. Before the Windows removal, it runs one Arch WSL `remove` with every Arch WSL module inside the distribution, and compares the lists after it with the lists the hook saved during the first install, before the Arch WSL installer first ran.
+On Windows, the cycle runs only the Windows installer through these steps. Its arch-wsl module creates the Arch WSL distribution on the first install, configures the same distribution again on later installs, and runs the Arch WSL installer in it on every install. The Windows installer runs with `INAYOS_ARCH_WSL_BINARY` set to a hook script, `lists/arch-wsl-hook.sh`. The hook saves the state lists of the distribution, then runs the fresh Arch WSL installer. The cycle also saves the state lists inside the distribution after each install and compares them. Before the Windows removal, it runs one Arch WSL `remove` with every Arch WSL module inside the distribution, and compares the lists after it with the lists the hook saved during the first install, before the Arch WSL installer first ran.
 
 A passed cycle deletes its layer. A failed cycle saves the guest screen, shuts the guest down and keeps the layer as `failed`, with the state lists, the comparisons and the log of every installer command in it.
 

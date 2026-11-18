@@ -18,7 +18,7 @@ pub struct Ssh {
 /// that is off. It comes late in a profile, so its question waits until the rest is done.
 pub struct SshServer;
 
-const CONFIG: &str = "/etc/ssh/sshd_config.d/10-myconfig.conf";
+const CONFIG: &str = "/etc/ssh/sshd_config.d/10-inayos.conf";
 const SERVICE: &str = "sshd.service";
 const START_COMMAND: &str = "sudo systemctl enable --now sshd.service";
 
@@ -73,7 +73,7 @@ impl Module for Ssh {
             }
         }
         with_temporary_directory("sshd", |directory| {
-            let proposed = directory.join("10-myconfig.conf");
+            let proposed = directory.join("10-inayos.conf");
             std::fs::write(&proposed, &contents)?;
             ctx.run(cmd!(sh, "sudo sshd -t -f {proposed}"))
         })?;

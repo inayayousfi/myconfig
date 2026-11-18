@@ -28,7 +28,7 @@ const ORGANIZATION: &str = "y6jn8c31";
 /// The ISO language. The SKU list and the hash table both call it this.
 const LANGUAGE: &str = "English";
 
-pub const SEED_LABEL: &str = "MYCONFIG";
+pub const SEED_LABEL: &str = "INAYOS";
 pub const INSTALL_TIMEOUT: Duration = Duration::from_secs(3 * 60 * 60);
 
 /// UEFI starts the Windows disc only after a key press at "Press any key to boot from CD or
@@ -36,7 +36,7 @@ pub const INSTALL_TIMEOUT: Duration = Duration::from_secs(3 * 60 * 60);
 const KEY_PRESSES: u32 = 30;
 
 const ANSWER_FILE: &str = include_str!("../../image/windows/autounattend.xml");
-const SETUP_SCRIPT: &str = include_str!("../../image/windows/myconfig-setup.ps1");
+const SETUP_SCRIPT: &str = include_str!("../../image/windows/inayos-setup.ps1");
 
 /// The Windows version the download page offers now, such as `25H2`.
 pub fn latest_release() -> Result<String, SourceError> {
@@ -169,7 +169,7 @@ pub fn seed_files(public_key: &str) -> Vec<SeedFile> {
             executable: false,
         },
         SeedFile {
-            name: "myconfig-setup.ps1",
+            name: "inayos-setup.ps1",
             content: fill(SETUP_SCRIPT),
             executable: false,
         },

@@ -31,11 +31,11 @@ jobs:
       - name: Build Linux installers
         run: |
           cargo build --release --locked --target x86_64-unknown-linux-musl \
-            -p myconfig-cachyos -p myconfig-arch-wsl -p myconfig-ubuntu-devbox
+            -p inayos-cachyos -p inayos-arch-wsl -p inayos-ubuntu-devbox
           mkdir -p release-assets
           for platform in cachyos arch-wsl ubuntu-devbox; do
-            asset="myconfig-${platform}-x86_64-unknown-linux-musl"
-            cp "target/x86_64-unknown-linux-musl/release/myconfig-${platform}" "release-assets/$asset"
+            asset="inayos-${platform}-x86_64-unknown-linux-musl"
+            cp "target/x86_64-unknown-linux-musl/release/inayos-${platform}" "release-assets/$asset"
             (cd release-assets && sha256sum "$asset" > "$asset.sha256")
           done
 
@@ -93,13 +93,13 @@ jobs:
       - name: Build Windows installer
         shell: pwsh
         env:
-          MYCONFIG_RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
-          MYCONFIG_RELEASE_BASE: ${{ github.server_url }}/${{ github.repository }}/releases/download
+          INAYOS_RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
+          INAYOS_RELEASE_BASE: ${{ github.server_url }}/${{ github.repository }}/releases/download
         run: |
-          cargo build --release --locked -p myconfig-windows
+          cargo build --release --locked -p inayos-windows
           New-Item -ItemType Directory -Path release-assets | Out-Null
-          $asset = "myconfig-windows-x86_64-pc-windows-msvc.exe"
-          Copy-Item "target/release/myconfig-windows.exe" "release-assets/$asset"
+          $asset = "inayos-windows-x86_64-pc-windows-msvc.exe"
+          Copy-Item "target/release/inayos-windows.exe" "release-assets/$asset"
           $hash = (Get-FileHash "release-assets/$asset" -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  $asset" | Set-Content -Encoding ascii "release-assets/$asset.sha256"
 

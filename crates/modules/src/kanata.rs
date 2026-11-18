@@ -15,7 +15,7 @@ pub struct Kanata {
     pub start_at_login: bool,
 }
 
-const SERVICE: &str = "myconfig-kanata.service";
+const SERVICE: &str = "inayos-kanata.service";
 
 impl Module for Kanata {
     fn name(&self) -> &'static str {

@@ -6,7 +6,7 @@ use std::{
 };
 
 use embedded_dotfiles::CONFIG_PACKAGES;
-use myconfig_utils::install_embedded_file;
+use inayos_utils::install_embedded_file;
 use typed_fs_rs::EmbeddedFile;
 use xshell::cmd;
 
@@ -338,6 +338,67 @@ pub(crate) fn restow(ctx: &Context, package: &str) -> ModuleResult {
             ctx.shell,
             "stow --dir {dotfiles} --target {home} --restow {package}"
         ))?;
+    }
+    Ok(())
+}
+
+/// `path` with its `.` and `..` parts resolved without reading the file system.
+fn lexical(path: &Path) -> PathBuf {
+    let mut resolved = PathBuf::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                resolved.pop();
+            }
+            other => resolved.push(other),
+        }
+    }
+    resolved
+}
+
+/// Deletes the links whose name `named` accepts and that point into the deployed
+/// `~/dotfiles/<package>` at a path that no longer exists. It looks in each home folder
+/// that mirrors a folder of the deployed package, as Stow does when it unstows. Files,
+/// folders, live links and links that point anywhere else stay.
+pub(crate) fn remove_dead_links(
+    ctx: &Context,
+    package: &str,
+    named: fn(&str) -> bool,
+) -> ModuleResult {
+    let deployed = ctx.home.join("dotfiles").join(package);
+    if !fs::symlink_metadata(&deployed).is_ok_and(|metadata| metadata.is_dir()) {
+        return Ok(());
+    }
+    let mut folders = vec![PathBuf::new()];
+    let mut pending = vec![deployed.clone()];
+    while let Some(directory) = pending.pop() {
+        for entry in fs::read_dir(&directory)? {
+            let path = entry?.path();
+            if fs::symlink_metadata(&path)?.is_dir() {
+                folders.push(path.strip_prefix(&deployed)?.to_path_buf());
+                pending.push(path);
+            }
+        }
+    }
+    for relative in folders {
+        let folder = ctx.home.join(relative);
+        if !fs::symlink_metadata(&folder).is_ok_and(|metadata| metadata.is_dir()) {
+            continue;
+        }
+        for entry in fs::read_dir(&folder)? {
+            let entry = entry?;
+            let path = entry.path();
+            if !entry.file_name().to_str().is_some_and(named)
+                || !fs::symlink_metadata(&path)?.file_type().is_symlink()
+                || path.exists()
+            {
+                continue;
+            }
+            if lexical(&folder.join(fs::read_link(&path)?)).starts_with(&deployed) {
+                fs::remove_file(&path)?;
+            }
+        }
     }
     Ok(())
 }

@@ -16,7 +16,7 @@ const INVENTORY_AGENTS: &str = ".\n\
 - **Claude configuration**: `claude-config-helper` trusts projects, marks Claude's first-run setup as finished, lists or clears saved approvals, applies the MCP servers listed in `~/.config/claude-config-helper/mcp-servers.json`, and checks files for tokens, email addresses and home paths.\n\
 - **T3 Code**: ";
 const INVENTORY_END: &str =
-    "\n`myconfig verify` checks that the installed modules are still in place.\n";
+    "\n`inayos verify` checks that the installed modules are still in place.\n";
 
 const T3_CODE_SERVER: &str = "the `t3` server from npm in `~/.local/bin/t3`, run at boot by the user service `t3code.service` on `127.0.0.1:3773`. `t3ctl status`, `remote`, `update` and `repair` manage it; `remote` turns T3 Connect or the Tailscale route (HTTPS port 10000) on or off. Both routes start off.";
 const T3_CODE_DESKTOP: &str = "the desktop app (AUR package `t3code-bin`), which runs its own server on `127.0.0.1:3773` while it is open. Its CLI is `~/.t3/bin/t3`. `~/.t3/userdata/client-settings.json` links into the deployed `t3code-desktop` package.";

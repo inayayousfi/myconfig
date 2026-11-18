@@ -6,9 +6,9 @@ use std::path::{Path, PathBuf};
 use crate::os::Os;
 
 /// Overrides the state folder, which holds images, throwaway disks, the SSH key and the lock.
-pub const STATE_VARIABLE: &str = "MYCONFIG_VM_STATE_DIR";
+pub const STATE_VARIABLE: &str = "INAYOS_VM_STATE_DIR";
 /// Overrides the download folder, which holds ISOs and cloud images.
-pub const CACHE_VARIABLE: &str = "MYCONFIG_VM_CACHE_DIR";
+pub const CACHE_VARIABLE: &str = "INAYOS_VM_CACHE_DIR";
 
 #[derive(Debug, thiserror::Error)]
 pub enum PathsError {
@@ -33,13 +33,13 @@ impl Paths {
         let pick = |variable: &'static str, xdg: &str, default: &str| {
             read(variable)
                 .map(PathBuf::from)
-                .or_else(|| read(xdg).map(|base| PathBuf::from(base).join("myconfig/vm")))
+                .or_else(|| read(xdg).map(|base| PathBuf::from(base).join("inayos/vm")))
                 .or_else(|| home.as_ref().map(|home| home.join(default)))
                 .ok_or(PathsError::NoHome(variable))
         };
         Ok(Paths {
-            state: pick(STATE_VARIABLE, "XDG_DATA_HOME", ".local/share/myconfig/vm")?,
-            cache: pick(CACHE_VARIABLE, "XDG_CACHE_HOME", ".cache/myconfig/vm")?,
+            state: pick(STATE_VARIABLE, "XDG_DATA_HOME", ".local/share/inayos/vm")?,
+            cache: pick(CACHE_VARIABLE, "XDG_CACHE_HOME", ".cache/inayos/vm")?,
         })
     }
 

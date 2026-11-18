@@ -2,10 +2,11 @@
 const layoutVersion = "1";
 // The layout command says whether it has applied this layout before, and
 // whether the installer asks to pin the Overview icon again.
-const firstRun = typeof myconfigFirstRun === "undefined" ? true : myconfigFirstRun;
-const ensureOverview = typeof myconfigEnsureOverview === "undefined" ? false : myconfigEnsureOverview;
+const firstRun = typeof inayosFirstRun === "undefined" ? true : inayosFirstRun;
+const ensureOverview = typeof inayosEnsureOverview === "undefined" ? false : inayosEnsureOverview;
 
-const overviewLauncher = "applications:myconfig-overview.desktop";
+const overviewLauncher = "applications:inayos-overview.desktop";
+const earlierOverviewLauncher = "applications:myconfig-overview.desktop";
 // A new dock starts with these pins. The task widget shows a blank icon for a
 // pin whose application is not installed, so each one needs a module that
 // installs it.
@@ -20,7 +21,7 @@ const defaultLaunchers = [
 ];
 const wallpaper = "/usr/share/wallpapers/Next/";
 const topWidgetTypes = [
-    "myconfig.session",
+    "inayos.session",
     "org.kde.plasma.appmenu",
     "org.kde.plasma.panelspacer",
     "org.kde.plasma.systemtray",
@@ -32,18 +33,28 @@ const dockWidgetTypes = [
 
 const missingWidgetTypes = topWidgetTypes.concat(dockWidgetTypes).filter(type => !knownWidgetTypes.includes(type));
 if (missingWidgetTypes.length > 0) {
-    print(`MYCONFIG_PLASMA_LAYOUT=missing:${missingWidgetTypes.join(",")}`);
+    print(`INAYOS_PLASMA_LAYOUT=missing:${missingWidgetTypes.join(",")}`);
 } else {
     function readPanel(panel, key, fallback) {
         panel.currentConfigGroup = [];
         return String(panel.readConfig(key, fallback));
     }
 
+    // myconfig, the earlier name of InayOS, marked its panels with myconfigRole,
+    // myconfigScreen and myconfigLayoutVersion. Such a panel counts as managed, so its
+    // dock keeps its pins, and markPanel writes the new keys on it. The scripting
+    // interface cannot delete a key, and the new keys take precedence, so the earlier
+    // keys stay unread.
+    function readMarker(panel, name, fallback) {
+        const current = readPanel(panel, `inayos${name}`, "");
+        return current !== "" ? current : readPanel(panel, `myconfig${name}`, fallback);
+    }
+
     function markPanel(panel, role, screen) {
         panel.currentConfigGroup = [];
-        panel.writeConfig("myconfigRole", role);
-        panel.writeConfig("myconfigScreen", screen);
-        panel.writeConfig("myconfigLayoutVersion", layoutVersion);
+        panel.writeConfig("inayosRole", role);
+        panel.writeConfig("inayosScreen", screen);
+        panel.writeConfig("inayosLayoutVersion", layoutVersion);
     }
 
     function hasWidgets(panel, types) {
@@ -60,7 +71,9 @@ if (missingWidgetTypes.length > 0) {
             return [];
         }
         tasks.currentConfigGroup = ["General"];
-        return tasks.readConfig("launchers", []);
+        // The Overview pin of a dock that myconfig made names its earlier desktop file.
+        return tasks.readConfig("launchers", [])
+            .map(launcher => launcher === earlierOverviewLauncher ? overviewLauncher : launcher);
     }
 
     function launchersOf(panel) {
@@ -119,7 +132,7 @@ if (missingWidgetTypes.length > 0) {
     }
 
     const initialPanels = panels();
-    const managed = initialPanels.filter(panel => readPanel(panel, "myconfigRole", "") !== "");
+    const managed = initialPanels.filter(panel => readMarker(panel, "Role", "") !== "");
     // The first run replaces every panel, such as the ones an earlier theme made.
     const rebuildAll = firstRun && managed.length === 0;
     const retained = new Map();
@@ -128,8 +141,8 @@ if (missingWidgetTypes.length > 0) {
     // The pins of the distribution's own panels are dropped with them.
     if (!rebuildAll) {
         managed.forEach(panel => {
-            const role = readPanel(panel, "myconfigRole", "");
-            const screen = Number(readPanel(panel, "myconfigScreen", panel.screen));
+            const role = readMarker(panel, "Role", "");
+            const screen = Number(readMarker(panel, "Screen", panel.screen));
             // Plasma keeps the panels of an unplugged display, and Plasma 6.8
             // crashes when such a panel is changed, so they are left alone.
             if (screen < 0 || screen >= screenCount) {
@@ -137,7 +150,7 @@ if (missingWidgetTypes.length > 0) {
             }
             const key = `${role}:${screen}`;
             if ((role === "top" || role === "dock")
-                && readPanel(panel, "myconfigLayoutVersion", "") === layoutVersion
+                && readMarker(panel, "LayoutVersion", "") === layoutVersion
                 && !retained.has(key)) {
                 retained.set(key, panel);
             } else {
@@ -188,9 +201,9 @@ if (missingWidgetTypes.length > 0) {
             });
         }
 
-        print(`MYCONFIG_PLASMA_LAYOUT=ok:version=${layoutVersion}:screens=${screenCount}`);
+        print(`INAYOS_PLASMA_LAYOUT=ok:version=${layoutVersion}:screens=${screenCount}`);
     } catch (error) {
         created.forEach(panel => panel.remove());
-        print(`MYCONFIG_PLASMA_LAYOUT=error:${error}`);
+        print(`INAYOS_PLASMA_LAYOUT=error:${error}`);
     }
 }

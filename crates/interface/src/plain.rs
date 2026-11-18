@@ -4,7 +4,7 @@ use std::{
     process::{Command, ExitStatus},
 };
 
-use myconfig_modules::{Event, Interaction, Step, Unanswered};
+use inayos_modules::{Event, Interaction, Step, Unanswered};
 
 pub struct Plain;
 

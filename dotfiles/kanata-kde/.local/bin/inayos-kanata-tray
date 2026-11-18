@@ -16,7 +16,7 @@ MODES = (
     ("valo", "Valo"),
     ("off", "Off"),
 )
-ICON = Path(__file__).with_name("myconfig-kanata.svg")
+ICON = Path(__file__).with_name("inayos-kanata.svg")
 
 
 class KanataClient:
@@ -115,7 +115,7 @@ def run_tray():
     from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
     app = QApplication(sys.argv)
-    app.setApplicationName("MyConfig Kanata")
+    app.setApplicationName("InayOS Kanata")
     app.setQuitOnLastWindowClosed(False)
 
     tray = QSystemTrayIcon(QIcon(str(ICON)), app)
@@ -187,7 +187,7 @@ def run_tray():
                 "--user",
                 "--no-block",
                 "stop",
-                "myconfig-kanata-tray.service",
+                "inayos-kanata-tray.service",
             ],
             capture_output=True,
             text=True,

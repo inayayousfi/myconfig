@@ -10,9 +10,8 @@ use std::{
 };
 
 use clap::{Parser, Subcommand};
-use myconfig_modules::{
-    Context, Interaction, Module, ModuleResult, PackageSystem, runner,
-    state::{StateStore, state_directory},
+use inayos_modules::{
+    Context, Interaction, Module, ModuleResult, PackageSystem, leftovers, runner, state::StateStore,
 };
 use xshell::Shell;
 
@@ -37,7 +36,8 @@ enum Command {
     Install { modules: Vec<String> },
     /// Verifies all modules, or only the named ones.
     Verify { modules: Vec<String> },
-    /// Removes the named modules.
+    /// Removes the named modules. `myconfig-leftovers` names what myconfig, the earlier
+    /// name of InayOS, installed under its own names.
     Remove {
         #[arg(required = true)]
         modules: Vec<String>,
@@ -171,13 +171,13 @@ fn with_context<T>(
     let shell = Shell::new()?;
     set_session_bus(&shell);
     let home = home()?;
-    let state = RefCell::new(StateStore::open(&state_directory(&home))?);
+    let state = RefCell::new(StateStore::open_user(&home)?);
     let ctx = Context::new(package_system, &shell, Path::new(&home), io, &state);
     action(&ctx)
 }
 
 fn run_internal(step: Internal) -> ModuleResult {
-    use myconfig_modules::internal;
+    use inayos_modules::internal;
     match step {
         Internal::SharedDesktop(SharedDesktopStep::Move {
             record,
@@ -190,13 +190,32 @@ fn run_internal(step: Internal) -> ModuleResult {
     }
 }
 
+/// The modules that `remove` names, in profile order, and whether it names the leftovers
+/// group of the earlier name.
+fn select_removal<'a>(
+    profile: &Profile<'a>,
+    names: &[String],
+) -> ModuleResult<(Vec<&'a dyn Module>, bool)> {
+    let leftovers = names.iter().any(|name| name == leftovers::GROUP);
+    let modules: Vec<String> = names
+        .iter()
+        .filter(|name| *name != leftovers::GROUP)
+        .cloned()
+        .collect();
+    if leftovers && modules.is_empty() {
+        return Ok((Vec::new(), true));
+    }
+    Ok((select(profile, &modules)?, leftovers))
+}
+
 /// Runs one command line action and returns whether a question went unanswered.
 fn run_plain(profile: &Profile<'_>, command: Command) -> ModuleResult<bool> {
     // Unknown module names are reported before sudo asks for a password.
-    let modules = match &command {
-        Command::Install { modules }
-        | Command::Verify { modules }
-        | Command::Remove { modules, .. } => select(profile, modules)?,
+    let (modules, leftovers) = match &command {
+        Command::Install { modules } | Command::Verify { modules } => {
+            (select(profile, modules)?, false)
+        }
+        Command::Remove { modules, .. } => select_removal(profile, modules)?,
         Command::List | Command::Internal(_) => return Ok(false),
     };
     let io = plain::Plain;
@@ -227,7 +246,11 @@ fn run_plain(profile: &Profile<'_>, command: Command) -> ModuleResult<bool> {
             }
         }
         Command::Remove { force, .. } => {
-            let report = runner::remove(ctx, profile.modules, &modules, force)?;
+            let report = if leftovers {
+                runner::remove_with_leftovers(ctx, profile.modules, &modules, force)?
+            } else {
+                runner::remove(ctx, profile.modules, &modules, force)?
+            };
             Ok(report.unanswered)
         }
         Command::List | Command::Internal(_) => Ok(false),

@@ -1,5 +1,5 @@
 [package]
-name = "myconfig-utils"
+name = "inayos-utils"
 version.workspace = true
 edition = "2024"
 

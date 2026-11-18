@@ -3,10 +3,10 @@
 # sends, and starts an OpenSSH server that accepts the xtask key. It shuts Windows down
 # when everything succeeded, which tells the xtask that the installation is complete.
 # On an error it writes the failure line that the image builder watches for to COM1, and
-# leaves the window open with the error and the log in C:\myconfig-setup.log.
+# leaves the window open with the error and the log in C:\inayos-setup.log.
 
 $ErrorActionPreference = 'Stop'
-Start-Transcript -Path 'C:\myconfig-setup.log'
+Start-Transcript -Path 'C:\inayos-setup.log'
 try {
     # The answer file logs on automatically only once. These values keep it on for every boot.
     $winlogon = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
@@ -46,13 +46,13 @@ try {
     shutdown.exe /s /t 0
 } catch {
     $failure = $_
-    Write-Host "myconfig image setup failed: $failure"
+    Write-Host "InayOS image setup failed: $failure"
     # The image builder reads the first serial port, which Windows calls COM1, and stops the
     # build when this line appears.
     try {
         $port = New-Object System.IO.Ports.SerialPort 'COM1', 115200
         $port.Open()
-        $port.WriteLine("myconfig-image: failed: $failure")
+        $port.WriteLine("inayos-image: failed: $failure")
         $port.Close()
     } catch {
         Write-Host "could not report the failure on COM1: $_"

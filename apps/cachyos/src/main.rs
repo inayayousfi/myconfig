@@ -1,7 +1,7 @@
 use std::process::ExitCode;
 
-use myconfig_interface::Profile;
-use myconfig_modules::*;
+use inayos_interface::Profile;
+use inayos_modules::*;
 
 static MODULES: &[&dyn Module] = &[
     &PlasmaVersion,
@@ -69,7 +69,7 @@ fn main() -> ExitCode {
         );
         return ExitCode::FAILURE;
     }
-    myconfig_interface::main(Profile {
+    inayos_interface::main(Profile {
         title: "CachyOS",
         package_system: PACKAGE_SYSTEM,
         modules: MODULES,
@@ -78,7 +78,7 @@ fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
-    use myconfig_modules::{EnvironmentInventory, Need, runner::need_problems, unnamed_packages};
+    use inayos_modules::{EnvironmentInventory, Need, runner::need_problems, unnamed_packages};
 
     use super::{MODULES, PACKAGE_SYSTEM};
 

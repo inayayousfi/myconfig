@@ -62,7 +62,7 @@ impl Machine {
 
         // -nodefaults leaves out QEMU's own display, network card and empty CD drive, so the
         // guest has exactly the devices below.
-        args.push(["-nodefaults", "-name", &format!("myconfig-{}", self.os)]);
+        args.push(["-nodefaults", "-name", &format!("inayos-{}", self.os)]);
         if secure {
             args.push(["-machine", "q35,accel=kvm,smm=on"]);
             args.push(["-global", "driver=cfi.pflash01,property=secure,value=on"]);

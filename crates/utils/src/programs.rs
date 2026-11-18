@@ -60,7 +60,7 @@ mod tests {
 
     #[test]
     fn finds_an_executable() {
-        let root = env::temp_dir().join(format!("myconfig-emacs-path-{}", std::process::id()));
+        let root = env::temp_dir().join(format!("inayos-emacs-path-{}", std::process::id()));
         fs::create_dir_all(&root).unwrap();
         let emacs = root.join("emacs");
         fs::write(&emacs, "#!/bin/sh\nprintf '/emacs/home\\n'\n").unwrap();

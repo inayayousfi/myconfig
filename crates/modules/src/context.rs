@@ -8,7 +8,7 @@ use std::{
     sync::mpsc,
 };
 
-use myconfig_utils::{PackageSpec, PackageSystem, find_program, resolve_package};
+use inayos_utils::{PackageSpec, PackageSystem, find_program, resolve_package};
 use package_catalog::Package;
 use serde::{Deserialize, Serialize};
 use xshell::{Cmd, Shell, cmd};
@@ -832,7 +832,7 @@ pub(crate) fn temporary_path(purpose: &str) -> PathBuf {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |elapsed| elapsed.as_nanos());
-    std::env::temp_dir().join(format!("myconfig-{purpose}-{}-{nanos}", std::process::id()))
+    std::env::temp_dir().join(format!("inayos-{purpose}-{}-{nanos}", std::process::id()))
 }
 
 /// Reads a pipe to the end, sending each line on when the output is streamed.

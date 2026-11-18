@@ -309,5 +309,5 @@ files /home/tester/.claude/plugins/store/*.json
 # The installer's own record of what it changed, and the folder that holds it, which the
 # installer creates and keeps.
 files /home/tester/.local/state
-files /home/tester/.local/state/myconfig
-files /home/tester/.local/state/myconfig/*
+files /home/tester/.local/state/inayos
+files /home/tester/.local/state/inayos/*

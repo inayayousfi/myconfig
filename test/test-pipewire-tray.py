@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 
 
 sys.dont_write_bytecode = True
-TRAY = Path(__file__).resolve().parents[1] / "dotfiles/pipewire/.local/bin/myconfig-pipewire-tray"
+TRAY = Path(__file__).resolve().parents[1] / "dotfiles/pipewire/.local/bin/inayos-pipewire-tray"
 loader = importlib.machinery.SourceFileLoader("pipewire_tray", str(TRAY))
 spec = importlib.util.spec_from_loader(loader.name, loader)
 tray = importlib.util.module_from_spec(spec)

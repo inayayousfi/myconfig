@@ -7,7 +7,7 @@ use std::{
     time::Duration,
 };
 
-use myconfig_modules::{ModuleResult, PackageSystem};
+use inayos_modules::{ModuleResult, PackageSystem};
 
 /// Refreshes the sudo timestamp every 60 seconds until dropped.
 pub struct Session {

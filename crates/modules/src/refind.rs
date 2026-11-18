@@ -18,7 +18,7 @@ const CANDIDATES: [&str; 3] = [
     "/boot/efi/EFI/refind/refind.conf",
     "/efi/EFI/refind/refind.conf",
 ];
-const BLOCK: &str = "\n# BEGIN MYCONFIG REFIND\ninclude managed.conf\ninclude themes/black-pink/theme.conf\n# END MYCONFIG REFIND\n";
+const BLOCK: &str = "\n# BEGIN INAYOS REFIND\ninclude managed.conf\ninclude themes/black-pink/theme.conf\n# END INAYOS REFIND\n";
 
 fn refind_config(ctx: &Context) -> ModuleResult<Option<PathBuf>> {
     for candidate in CANDIDATES {
@@ -72,8 +72,8 @@ fn updated_config(original: &str) -> String {
     let mut managed = false;
     for line in original.lines() {
         match line {
-            "# BEGIN MYCONFIG REFIND" => managed = true,
-            "# END MYCONFIG REFIND" => managed = false,
+            "# BEGIN INAYOS REFIND" => managed = true,
+            "# END INAYOS REFIND" => managed = false,
             _ if !managed => {
                 new.push_str(line);
                 new.push('\n');

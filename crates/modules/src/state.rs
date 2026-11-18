@@ -7,7 +7,7 @@ use std::{
 };
 
 use base64::{Engine, engine::general_purpose::STANDARD};
-use myconfig_utils::PackageSpec;
+use inayos_utils::PackageSpec;
 use package_catalog::Package;
 use serde::{Deserialize, Serialize};
 use xshell::cmd;
@@ -18,7 +18,13 @@ use crate::{
 };
 
 /// Format of `state.json`. Increase it and add a migration in `migrate` when the format changes.
-pub const FORMAT: u32 = 1;
+///
+/// - Format 1: the state of myconfig, the earlier name of InayOS, in its `myconfig` folder.
+/// - Format 2: the state of InayOS in its `inayos` folder. Recorded paths inside the
+///   `myconfig` state folder name the `inayos` one, where `open_moving` moved them.
+/// - Format 3: what myconfig installed under its own names sits in the leftovers group,
+///   which `crate::leftovers` describes, instead of under the modules that recorded it.
+pub const FORMAT: u32 = 3;
 const WRITTEN_BY: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Serialize, Deserialize)]
@@ -28,11 +34,39 @@ struct StateFile {
     snapshots: Vec<Snapshot>,
 }
 
+impl StateFile {
+    /// Changes the group recorded since its last complete removal, oldest first.
+    fn pending(&self, module: &str) -> Vec<Pending> {
+        let mut pending: Vec<Pending> = Vec::new();
+        for snapshot in &self.snapshots {
+            let Some(changes) = snapshot.modules.get(module) else {
+                continue;
+            };
+            for (index, change) in changes.iter().enumerate() {
+                match change {
+                    Change::Removed => pending.clear(),
+                    Change::Undone { snapshot, index } => {
+                        pending.retain(|entry| (entry.snapshot, entry.index) != (*snapshot, *index))
+                    }
+                    change => pending.push(Pending {
+                        snapshot: snapshot.id,
+                        index,
+                        change: change.clone(),
+                    }),
+                }
+            }
+        }
+        pending
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Action {
     Install,
     Remove,
+    /// A migration between state formats that moved records from one group to another.
+    Migrate,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -230,6 +264,20 @@ pub enum Change {
     Unstowed {
         package: String,
     },
+    /// The links that Stow made into the deployed config package for files under the
+    /// names of myconfig, the earlier name of InayOS. Undo deletes those whose target is
+    /// gone.
+    EarlierNameLinks {
+        package: String,
+    },
+    /// A block of lines in a root-owned file, from the line `begin` to the line `end`,
+    /// that an install added. Undo takes out exactly those lines, with the empty line
+    /// right before `begin` that came with them.
+    MarkedBlock {
+        path: PathBuf,
+        begin: String,
+        end: String,
+    },
     Moved {
         from: PathBuf,
         to: PathBuf,
@@ -284,6 +332,12 @@ impl Change {
             }
             Self::Stowed { package } => format!("stowed config package {package}"),
             Self::Unstowed { package } => format!("unstowed retired package {package}"),
+            Self::EarlierNameLinks { package } => {
+                format!("dead links of config package {package} under myconfig names")
+            }
+            Self::MarkedBlock { path, begin, .. } => {
+                format!("block {begin} in {}", path.display())
+            }
             Self::Moved { from, to, .. } => format!("moved {} to {}", from.display(), to.display()),
             Self::WslDistribution { name } => format!("WSL distribution {name}"),
             Self::LocalPackage { name } => format!("local package {name}"),
@@ -491,6 +545,23 @@ impl Change {
                 }
                 crate::deploy::restow(ctx, package)?;
             }
+            Self::EarlierNameLinks { package } => {
+                crate::deploy::remove_dead_links(ctx, package, crate::leftovers::earlier_name)?
+            }
+            Self::MarkedBlock { path, begin, end } => {
+                let shown = path.display();
+                let Some(bytes) = crate::support::read_system_bytes(ctx, &path.to_string_lossy())?
+                else {
+                    return Ok(Outcome::Done);
+                };
+                let text = String::from_utf8(bytes)
+                    .map_err(|_| format!("{shown} is not text, so its block {begin} stays"))?;
+                if let Some(edited) = without_marked_block(&text, begin, end)
+                    .map_err(|error| format!("{shown}: {error}"))?
+                {
+                    crate::support::install_system_file(ctx, path, edited.as_bytes(), "0644")?;
+                }
+            }
             Self::Moved { from, to, replaced } => {
                 let outcome = questions.confirm(
                     &format!("Move {} back to {}?", to.display(), from.display()),
@@ -524,6 +595,44 @@ impl Change {
         }
         Ok(Outcome::Done)
     }
+}
+
+/// `text` without each block of lines from the line `begin` to the line `end`, and
+/// without the empty line right before each `begin`. Every other byte stays. `None` when
+/// `text` holds no `begin` line. A `begin` line without its `end` line is an error, so a
+/// damaged block is left for the person to look at.
+fn without_marked_block(text: &str, begin: &str, end: &str) -> Result<Option<String>, String> {
+    let line = |piece: &str| {
+        piece
+            .strip_suffix('\n')
+            .unwrap_or(piece)
+            .trim_end_matches('\r')
+            .to_owned()
+    };
+    let pieces: Vec<&str> = text.split_inclusive('\n').collect();
+    let mut kept: Vec<&str> = Vec::new();
+    let mut found = false;
+    let mut index = 0;
+    while index < pieces.len() {
+        if line(pieces[index]) != begin {
+            kept.push(pieces[index]);
+            index += 1;
+            continue;
+        }
+        let Some(last) = (index..pieces.len()).find(|&candidate| line(pieces[candidate]) == end)
+        else {
+            return Err(format!("the line {begin} has no {end} after it"));
+        };
+        if kept
+            .last()
+            .is_some_and(|previous| line(previous).is_empty())
+        {
+            kept.pop();
+        }
+        found = true;
+        index = last + 1;
+    }
+    Ok(found.then(|| kept.concat()))
 }
 
 /// What became of a recorded change that `remove` reached.
@@ -573,30 +682,33 @@ pub struct StateStore {
 }
 
 impl StateStore {
+    /// Opens the state of this user, after moving it from the folder of myconfig, the
+    /// earlier name of InayOS.
+    pub fn open_user(home: &Path) -> ModuleResult<Self> {
+        Self::open_moving(&state_directory(home), &earlier_state_directory(home))
+    }
+
+    /// Opens the state in `directory`. When only `earlier` holds a `state.json`, its
+    /// entries move into `directory` first, and the migration from format 1 points the
+    /// recorded paths inside `earlier` to `directory`.
+    pub fn open_moving(directory: &Path, earlier: &Path) -> ModuleResult<Self> {
+        move_earlier_state(earlier, directory)?;
+        Self::open_with(directory, Some(earlier))
+    }
+
     pub fn open(directory: &Path) -> ModuleResult<Self> {
+        Self::open_with(directory, None)
+    }
+
+    fn open_with(directory: &Path, earlier: Option<&Path>) -> ModuleResult<Self> {
         fs::create_dir_all(directory)?;
-        let lock = fs::OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .write(true)
-            .open(directory.join("state.lock"))?;
-        // A program started at the same moment can hold the lock for an instant, so retry briefly.
-        let mut attempts = 0;
-        while lock.try_lock().is_err() {
-            attempts += 1;
-            if attempts < 20 {
-                std::thread::sleep(std::time::Duration::from_millis(100));
-                continue;
-            }
-            return Err(format!(
-                "another myconfig run is using {}; wait for it to finish",
-                directory.display()
-            )
-            .into());
-        }
+        let lock = lock(directory)?;
         let path = directory.join("state.json");
         let file = match fs::read(&path) {
-            Ok(contents) => migrate(serde_json::from_slice(&contents)?)?,
+            Ok(contents) => migrate(
+                serde_json::from_slice(&contents)?,
+                earlier.map(|earlier| (earlier, directory)),
+            )?,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => StateFile {
                 format: FORMAT,
                 written_by: WRITTEN_BY.to_owned(),
@@ -661,26 +773,7 @@ impl StateStore {
 
     /// Changes the module made since its last complete removal, oldest first.
     pub fn pending(&self, module: &str) -> Vec<Pending> {
-        let mut pending: Vec<Pending> = Vec::new();
-        for snapshot in &self.file.snapshots {
-            let Some(changes) = snapshot.modules.get(module) else {
-                continue;
-            };
-            for (index, change) in changes.iter().enumerate() {
-                match change {
-                    Change::Removed => pending.clear(),
-                    Change::Undone { snapshot, index } => {
-                        pending.retain(|entry| (entry.snapshot, entry.index) != (*snapshot, *index))
-                    }
-                    change => pending.push(Pending {
-                        snapshot: snapshot.id,
-                        index,
-                        change: change.clone(),
-                    }),
-                }
-            }
-        }
-        pending
+        self.file.pending(module)
     }
 
     fn save(&mut self) -> ModuleResult {
@@ -707,31 +800,199 @@ impl StateStore {
     }
 }
 
-fn migrate(file: StateFile) -> ModuleResult<StateFile> {
+/// Locks `directory/state.lock` against other runs until the returned file is dropped.
+fn lock(directory: &Path) -> ModuleResult<fs::File> {
+    let lock = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(directory.join("state.lock"))?;
+    // A program started at the same moment can hold the lock for an instant, so retry briefly.
+    let mut attempts = 0;
+    while lock.try_lock().is_err() {
+        attempts += 1;
+        if attempts < 20 {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            continue;
+        }
+        return Err(format!(
+            "another InayOS run is using {}; wait for it to finish",
+            directory.display()
+        )
+        .into());
+    }
+    Ok(lock)
+}
+
+/// Moves the entries of the state folder of myconfig into the InayOS one, such as
+/// `state.json` and the `plasma-layout-version` that the layout command writes beside it.
+/// It does nothing once `directory` holds a `state.json`, and an entry that `directory`
+/// already holds stays where it is. `state.json` moves last, so a move cut short runs
+/// again at the next start.
+fn move_earlier_state(earlier: &Path, directory: &Path) -> ModuleResult {
+    let state = |folder: &Path| fs::symlink_metadata(folder.join("state.json")).is_ok();
+    if !state(earlier) || state(directory) {
+        return Ok(());
+    }
+    // An earlier myconfig binary that is still running keeps its lock.
+    let earlier_lock = lock(earlier)?;
+    if !state(earlier) || state(directory) {
+        return Ok(());
+    }
+    fs::create_dir_all(directory)?;
+    let mut names = Vec::new();
+    for entry in fs::read_dir(earlier)? {
+        let name = entry?.file_name();
+        if name != "state.lock" && name != "state.json" {
+            names.push(name);
+        }
+    }
+    names.push("state.json".into());
+    for name in names {
+        let destination = directory.join(&name);
+        if fs::symlink_metadata(&destination).is_err() {
+            fs::rename(earlier.join(&name), destination)?;
+        }
+    }
+    drop(earlier_lock);
+    let _ = fs::remove_file(earlier.join("state.lock"));
+    // The folder stays when something else is left in it.
+    let _ = fs::remove_dir(earlier);
+    Ok(())
+}
+
+/// Brings `file` to the current format. `moved` names the state folder of myconfig and
+/// the InayOS one, when the state may have come from the first.
+fn migrate(mut file: StateFile, moved: Option<(&Path, &Path)>) -> ModuleResult<StateFile> {
     if file.format > FORMAT {
         return Err(format!(
-            "state.json was written by myconfig {} in format {}; this myconfig {WRITTEN_BY} reads format {FORMAT} or older",
+            "state.json was written by InayOS {} in format {}; this InayOS {WRITTEN_BY} reads format {FORMAT} or older",
             file.written_by, file.format
         )
         .into());
     }
-    // Format 1 is the first format, so there is nothing to migrate yet.
+    if file.format == 1 {
+        if let Some((earlier, directory)) = moved {
+            migrate_from_1(&mut file, earlier, directory);
+        }
+        file.format = 2;
+    }
+    if file.format == 2 {
+        migrate_from_2(&mut file)?;
+        file.format = 3;
+    }
     Ok(file)
+}
+
+/// Format 3: every pending record that names something myconfig installed under its own
+/// name moves into the leftovers group, after the records that `leftovers::companions`
+/// derives from the pending records. Each moved record is marked undone under its
+/// module, which no longer owns it. The move is one new snapshot, so the earlier
+/// snapshots stay as they were.
+fn migrate_from_2(file: &mut StateFile) -> ModuleResult {
+    let mut marks: BTreeMap<String, Vec<Change>> = BTreeMap::new();
+    let mut moved: Vec<(u64, String, usize, Change)> = Vec::new();
+    let mut companions: Vec<Change> = Vec::new();
+    let groups: Vec<String> = file
+        .snapshots
+        .iter()
+        .flat_map(|snapshot| snapshot.modules.keys().cloned())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .filter(|group| group != crate::leftovers::GROUP)
+        .collect();
+    for group in groups {
+        for entry in file.pending(&group) {
+            if let Some(companion) = crate::leftovers::companions(&entry.change) {
+                let known = serde_json::to_string(&companion)?;
+                if !companions
+                    .iter()
+                    .any(|other| serde_json::to_string(other).is_ok_and(|other| other == known))
+                {
+                    companions.push(companion);
+                }
+            }
+            if !crate::leftovers::names_earlier_thing(&entry.change) {
+                continue;
+            }
+            marks
+                .entry(group.clone())
+                .or_default()
+                .push(Change::Undone {
+                    snapshot: entry.snapshot,
+                    index: entry.index,
+                });
+            moved.push((entry.snapshot, group.clone(), entry.index, entry.change));
+        }
+    }
+    if moved.is_empty() && companions.is_empty() {
+        return Ok(());
+    }
+    // Oldest first, as each run recorded them, so remove undoes the newest first. The
+    // companions go first, so their undo comes last, after the services whose unit files
+    // the links are.
+    moved.sort_by(|left, right| (left.0, &left.1, left.2).cmp(&(right.0, &right.1, right.2)));
+    let leftovers: Vec<Change> = companions
+        .into_iter()
+        .chain(moved.into_iter().map(|(_, _, _, change)| change))
+        .collect();
+    marks.insert(crate::leftovers::GROUP.to_owned(), leftovers);
+    let id = file.snapshots.last().map_or(1, |last| last.id + 1);
+    let started = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_secs();
+    file.snapshots.push(Snapshot {
+        id,
+        action: Action::Migrate,
+        started,
+        modules: marks,
+    });
+    Ok(())
+}
+
+/// Format 2: the state folder was renamed, so the recorded paths inside the earlier one,
+/// such as `plasma-layout-version`, name the same entry in the new one.
+fn migrate_from_1(file: &mut StateFile, earlier: &Path, directory: &Path) {
+    let moved = |path: &mut PathBuf| {
+        if let Ok(relative) = path.strip_prefix(earlier) {
+            *path = directory.join(relative);
+        }
+    };
+    for snapshot in &mut file.snapshots {
+        for change in snapshot.modules.values_mut().flatten() {
+            match change {
+                Change::File { path, .. }
+                | Change::Created { path, .. }
+                | Change::CreatedDirectory { path, .. } => moved(path),
+                _ => {}
+            }
+        }
+    }
 }
 
 /// Where the recorded state lives for this user.
 pub fn state_directory(home: &Path) -> PathBuf {
+    named_state_directory(home, "inayos")
+}
+
+/// Where myconfig, the earlier name of InayOS, kept the recorded state.
+fn earlier_state_directory(home: &Path) -> PathBuf {
+    named_state_directory(home, "myconfig")
+}
+
+fn named_state_directory(home: &Path, name: &str) -> PathBuf {
     if cfg!(windows) {
         std::env::var_os("LOCALAPPDATA")
             .map(PathBuf::from)
             .unwrap_or_else(|| home.join("AppData/Local"))
-            .join("myconfig/state")
+            .join(name)
+            .join("state")
     } else {
         std::env::var_os("XDG_STATE_HOME")
             .filter(|value| !value.is_empty())
             .map(PathBuf::from)
             .unwrap_or_else(|| home.join(".local/state"))
-            .join("myconfig")
+            .join(name)
     }
 }
 
@@ -740,8 +1001,7 @@ mod tests {
     use super::*;
 
     fn directory(name: &str) -> PathBuf {
-        let path =
-            std::env::temp_dir().join(format!("myconfig-state-{name}-{}", std::process::id()));
+        let path = std::env::temp_dir().join(format!("inayos-state-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&path);
         path
     }
@@ -795,13 +1055,13 @@ mod tests {
         fs::remove_dir_all(path).unwrap();
     }
 
-    /// `state.json` written by an earlier myconfig must read back the same, so every
+    /// `state.json` written by an earlier InayOS must read back the same, so every
     /// change kind keeps its serialized form.
     #[test]
     fn every_change_kind_keeps_its_serialized_form() {
-        let stored = r#"[{"package_installed":"Zsh"},{"package_uninstalled":"Git"},{"setting":{"setting":{"GitConfig":{"key":"core.editor"}},"previous":"vim"}},{"setting":{"setting":{"GitConfig":{"key":"core.pager"}},"previous":null}},{"file":{"path":"/home/me/.zshrc","system":false,"previous":{"file":{"contents":"b2xkCg==","executable":true}}}},{"file":{"path":"/etc/x","system":true,"previous":"missing"}},{"file":{"path":"/home/me/link","system":false,"previous":{"link":{"target":"/elsewhere"}}}},{"file":{"path":"/home/me/dir","system":false,"previous":{"directory":{"entries":[["inner","missing"]]}}}},{"created":{"path":"/home/me/.oh-my-zsh","system":false,"ask":true}},{"created_directory":{"path":"/etc/myconfig","system":true}},{"service":{"unit":"sshd.service","scope":"system","was_enabled":false}},{"service_disabled":{"unit":"kanata.service","scope":"user","was_enabled":true,"was_active":false}},{"undo_command":{"program":"/usr/bin/tool","args":["undo","--all"]}},{"stowed":{"package":"zsh"}},{"unstowed":{"package":"old"}},{"moved":{"from":"C:\\a","to":"C:\\b","replaced":"missing"}},{"wsl_distribution":{"name":"archlinux"}},{"local_package":{"name":"bootvine"}},"declined",{"undone":{"snapshot":1,"index":2}},"removed"]"#;
+        let stored = r#"[{"package_installed":"Zsh"},{"package_uninstalled":"Git"},{"setting":{"setting":{"GitConfig":{"key":"core.editor"}},"previous":"vim"}},{"setting":{"setting":{"GitConfig":{"key":"core.pager"}},"previous":null}},{"file":{"path":"/home/me/.zshrc","system":false,"previous":{"file":{"contents":"b2xkCg==","executable":true}}}},{"file":{"path":"/etc/x","system":true,"previous":"missing"}},{"file":{"path":"/home/me/link","system":false,"previous":{"link":{"target":"/elsewhere"}}}},{"file":{"path":"/home/me/dir","system":false,"previous":{"directory":{"entries":[["inner","missing"]]}}}},{"created":{"path":"/home/me/.oh-my-zsh","system":false,"ask":true}},{"created_directory":{"path":"/etc/inayos","system":true}},{"service":{"unit":"sshd.service","scope":"system","was_enabled":false}},{"service_disabled":{"unit":"kanata.service","scope":"user","was_enabled":true,"was_active":false}},{"undo_command":{"program":"/usr/bin/tool","args":["undo","--all"]}},{"stowed":{"package":"zsh"}},{"unstowed":{"package":"old"}},{"earlier_name_links":{"package":"plasma"}},{"marked_block":{"path":"/boot/EFI/refind/refind.conf","begin":"BEGIN X","end":"END X"}},{"moved":{"from":"C:\\a","to":"C:\\b","replaced":"missing"}},{"wsl_distribution":{"name":"archlinux"}},{"local_package":{"name":"bootvine"}},"declined",{"undone":{"snapshot":1,"index":2}},"removed"]"#;
         let changes: Vec<Change> = serde_json::from_str(stored).unwrap();
-        assert_eq!(changes.len(), 21);
+        assert_eq!(changes.len(), 23);
         assert_eq!(serde_json::to_string(&changes).unwrap(), stored);
     }
 
@@ -825,8 +1085,252 @@ mod tests {
         )
         .unwrap();
         let error = StateStore::open(&path).err().unwrap().to_string();
-        assert!(error.contains("myconfig 9.0.0 in format 99"));
+        assert!(error.contains("InayOS 9.0.0 in format 99"));
         fs::remove_dir_all(path).unwrap();
+    }
+
+    /// A format 1 `state.json` as myconfig left it, with the layout version file that the
+    /// layout command wrote beside it.
+    fn earlier_state(earlier: &Path) {
+        fs::create_dir_all(earlier).unwrap();
+        let version = earlier.join("plasma-layout-version");
+        fs::write(&version, "1\n").unwrap();
+        fs::write(earlier.join("state.lock"), "").unwrap();
+        let state = serde_json::json!({
+            "format": 1,
+            "written_by": "0.9.0",
+            "snapshots": [{
+                "id": 1,
+                "action": "install",
+                "started": 1,
+                "modules": {
+                    "kde-plasma": [
+                        {"file": {"path": version, "system": false, "previous": "missing"}},
+                        {"file": {"path": "/home/me/.config/kwinrc", "system": false, "previous": "missing"}},
+                        {"service": {"unit": "myconfig-plasma-layout.service", "scope": "user", "was_enabled": false}}
+                    ]
+                }
+            }]
+        });
+        fs::write(
+            earlier.join("state.json"),
+            serde_json::to_vec(&state).unwrap(),
+        )
+        .unwrap();
+    }
+
+    fn recorded_paths(store: &StateStore) -> Vec<PathBuf> {
+        store
+            .pending("kde-plasma")
+            .into_iter()
+            .filter_map(|entry| match entry.change {
+                Change::File { path, .. } => Some(path),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_state_of_myconfig_moves_to_the_inayos_folder_and_migrates() {
+        let root = directory("move");
+        let earlier = root.join("myconfig");
+        let current = root.join("inayos");
+        earlier_state(&earlier);
+
+        let mut store = StateStore::open_moving(&current, &earlier).unwrap();
+        assert!(!earlier.exists(), "the folder of myconfig was left behind");
+        assert_eq!(
+            fs::read_to_string(current.join("plasma-layout-version")).unwrap(),
+            "1\n"
+        );
+        assert_eq!(
+            recorded_paths(&store),
+            [
+                current.join("plasma-layout-version"),
+                PathBuf::from("/home/me/.config/kwinrc")
+            ]
+        );
+        // The unit that myconfig enabled is a leftover of the earlier name.
+        assert!(
+            store
+                .pending(crate::leftovers::GROUP)
+                .iter()
+                .any(|entry| matches!(
+                    &entry.change,
+                    Change::Service { unit, .. } if unit == "myconfig-plasma-layout.service"
+                ))
+        );
+        store.begin(Action::Install).unwrap();
+        drop(store);
+
+        let contents: serde_json::Value =
+            serde_json::from_slice(&fs::read(current.join("state.json")).unwrap()).unwrap();
+        assert_eq!(contents["format"], FORMAT);
+        let reopened = StateStore::open_moving(&current, &earlier).unwrap();
+        assert_eq!(
+            recorded_paths(&reopened)[0],
+            current.join("plasma-layout-version")
+        );
+        assert!(
+            !earlier.exists(),
+            "opening again created the folder of myconfig"
+        );
+        drop(reopened);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn an_existing_inayos_state_leaves_the_myconfig_folder_alone() {
+        let root = directory("keep");
+        let earlier = root.join("myconfig");
+        let current = root.join("inayos");
+        earlier_state(&earlier);
+        let mut first = StateStore::open(&current).unwrap();
+        first.begin(Action::Install).unwrap();
+        drop(first);
+
+        let store = StateStore::open_moving(&current, &earlier).unwrap();
+        assert!(store.pending("kde-plasma").is_empty());
+        assert!(earlier.join("state.json").is_file());
+        assert!(!current.join("plasma-layout-version").exists());
+        drop(store);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_running_myconfig_keeps_its_state_where_it_is() {
+        let root = directory("busy");
+        let earlier = root.join("myconfig");
+        let current = root.join("inayos");
+        earlier_state(&earlier);
+        let held = lock(&earlier).unwrap();
+        assert!(StateStore::open_moving(&current, &earlier).is_err());
+        assert!(earlier.join("state.json").is_file());
+        assert!(!current.join("state.json").exists());
+        drop(held);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_new_machine_gets_no_myconfig_folder() {
+        let root = directory("fresh");
+        let earlier = root.join("myconfig");
+        let current = root.join("inayos");
+        drop(StateStore::open_moving(&current, &earlier).unwrap());
+        assert!(!earlier.exists());
+        assert!(current.join("state.lock").exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    fn changes(store: &StateStore, group: &str) -> Vec<String> {
+        store
+            .pending(group)
+            .into_iter()
+            .map(|entry| serde_json::to_string(&entry.change).unwrap())
+            .collect()
+    }
+
+    /// Format 3 moves what myconfig installed under its own names into the leftovers
+    /// group, and leaves the rest where it was.
+    #[test]
+    fn records_of_earlier_names_move_into_the_leftovers_group() {
+        let path = directory("leftovers");
+        fs::create_dir_all(&path).unwrap();
+        let unit = |name: &str| serde_json::json!({"service": {"unit": name, "scope": "user", "was_enabled": false}});
+        let system = |name: &str| serde_json::json!({"file": {"path": name, "system": true, "previous": "missing"}});
+        let state = serde_json::json!({
+            "format": 2,
+            "written_by": "0.9.0",
+            "snapshots": [
+                {"id": 1, "action": "install", "started": 1, "modules": {
+                    "kanata": [
+                        {"stowed": {"package": "kanata"}},
+                        system("/etc/modules-load.d/myconfig-kanata.conf"),
+                        unit("myconfig-kanata.service"),
+                        system("/etc/udev/rules.d/99-myconfig-retired.rules")
+                    ],
+                    "git-config": [
+                        {"setting": {"setting": {"GitConfig": {"key": "url.git@github.com:someone/myconfig.git.insteadOf"}}, "previous": null}}
+                    ],
+                    "ssh": [system("/etc/ssh/sshd_config.d/10-myconfig.conf")],
+                    "handy": [unit("myconfig-handy.service")]
+                }},
+                {"id": 2, "action": "remove", "started": 2, "modules": {
+                    "kanata": [{"undone": {"snapshot": 1, "index": 3}}],
+                    "handy": ["removed"]
+                }}
+            ]
+        });
+        fs::write(path.join("state.json"), serde_json::to_vec(&state).unwrap()).unwrap();
+
+        let mut store = StateStore::open(&path).unwrap();
+        assert_eq!(
+            changes(&store, crate::leftovers::GROUP),
+            [
+                r#"{"earlier_name_links":{"package":"kanata"}}"#,
+                r#"{"file":{"path":"/etc/modules-load.d/myconfig-kanata.conf","system":true,"previous":"missing"}}"#,
+                r#"{"service":{"unit":"myconfig-kanata.service","scope":"user","was_enabled":false}}"#,
+                r#"{"file":{"path":"/etc/ssh/sshd_config.d/10-myconfig.conf","system":true,"previous":"missing"}}"#,
+            ]
+        );
+        assert_eq!(
+            changes(&store, "kanata"),
+            [r#"{"stowed":{"package":"kanata"}}"#]
+        );
+        assert_eq!(changes(&store, "git-config").len(), 1);
+        assert!(changes(&store, "ssh").is_empty());
+        assert!(changes(&store, "handy").is_empty());
+
+        store.begin(Action::Install).unwrap();
+        drop(store);
+        let reopened = StateStore::open(&path).unwrap();
+        assert_eq!(changes(&reopened, crate::leftovers::GROUP).len(), 4);
+        assert_eq!(changes(&reopened, "kanata").len(), 1);
+        drop(reopened);
+        fs::remove_dir_all(path).unwrap();
+    }
+
+    #[test]
+    fn a_state_with_nothing_of_the_earlier_name_gains_no_leftovers() {
+        let path = directory("no-leftovers");
+        fs::create_dir_all(&path).unwrap();
+        fs::write(
+            path.join("state.json"),
+            br#"{"format":2,"written_by":"0.9.0","snapshots":[{"id":1,"action":"install","started":1,"modules":{"zsh":[{"package_installed":"Zsh"}]}}]}"#,
+        )
+        .unwrap();
+        let store = StateStore::open(&path).unwrap();
+        assert!(store.pending(crate::leftovers::GROUP).is_empty());
+        assert_eq!(store.file.snapshots.len(), 1);
+        drop(store);
+        fs::remove_dir_all(path).unwrap();
+    }
+
+    #[test]
+    fn a_marked_block_goes_with_its_empty_line_and_nothing_else() {
+        let text = "timeout 5\n\n# BEGIN OLD\ninclude a.conf\n# END OLD\n\n# BEGIN NEW\ninclude a.conf\n# END NEW\n";
+        assert_eq!(
+            without_marked_block(text, "# BEGIN OLD", "# END OLD")
+                .unwrap()
+                .as_deref(),
+            Some("timeout 5\n\n# BEGIN NEW\ninclude a.conf\n# END NEW\n")
+        );
+        // A block in the middle, with no empty line before it and no newline at the end.
+        assert_eq!(
+            without_marked_block(
+                "a\n# BEGIN OLD\nx\n# END OLD\nb",
+                "# BEGIN OLD",
+                "# END OLD"
+            )
+            .unwrap()
+            .as_deref(),
+            Some("a\nb")
+        );
+        assert_eq!(
+            without_marked_block("timeout 5\n", "# BEGIN OLD", "# END OLD").unwrap(),
+            None
+        );
+        assert!(without_marked_block("# BEGIN OLD\nx\n", "# BEGIN OLD", "# END OLD").is_err());
     }
 
     #[test]

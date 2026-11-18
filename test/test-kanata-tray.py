@@ -19,10 +19,10 @@ TRAY_PATH = (
     / "kanata-kde"
     / ".local"
     / "bin"
-    / "myconfig-kanata-tray"
+    / "inayos-kanata-tray"
 )
 
-loader = importlib.machinery.SourceFileLoader("myconfig_kanata_tray", str(TRAY_PATH))
+loader = importlib.machinery.SourceFileLoader("inayos_kanata_tray", str(TRAY_PATH))
 spec = importlib.util.spec_from_loader(loader.name, loader)
 tray_module = importlib.util.module_from_spec(spec)
 loader.exec_module(tray_module)

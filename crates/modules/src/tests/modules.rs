@@ -24,10 +24,10 @@ fn system(sandbox: &Sandbox) {
     }
     sandbox.fake(
         "sudo",
-        r#"printf 'sudo %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+        r#"printf 'sudo %s\n' "$*" >> "$INAYOS_TEST_LOG"
 for argument in "$@"; do
     case "$argument" in
-        /etc/* | /usr/* | /boot/* | /efi/*) set -- "$@" "$MYCONFIG_TEST_ROOT/system$argument" ;;
+        /etc/* | /usr/* | /boot/* | /efi/*) set -- "$@" "$INAYOS_TEST_ROOT/system$argument" ;;
         *) set -- "$@" "$argument" ;;
     esac
     shift
@@ -40,35 +40,35 @@ exec "$@""#,
     -un) printf 'tester\n' ;;
     -u) printf '1000\n' ;;
     -Gn) printf 'users\n' ;;
-    "-nG tester") printf 'users'; for group in "$MYCONFIG_TEST_ROOT"/groups/*; do
+    "-nG tester") printf 'users'; for group in "$INAYOS_TEST_ROOT"/groups/*; do
             [ -e "$group/tester" ] && printf ' %s' "$(basename "$group")"; done; printf '\n' ;;
     *) exit 1 ;;
 esac"#,
     );
     sandbox.fake(
         "getent",
-        r#"[ "$1" = group ] && [ -d "$MYCONFIG_TEST_ROOT/groups/$2" ]"#,
+        r#"[ "$1" = group ] && [ -d "$INAYOS_TEST_ROOT/groups/$2" ]"#,
     );
     sandbox.fake(
         "groupadd",
-        r#"for group; do :; done; mkdir -p "$MYCONFIG_TEST_ROOT/groups/$group""#,
+        r#"for group; do :; done; mkdir -p "$INAYOS_TEST_ROOT/groups/$group""#,
     );
     sandbox.fake(
         "usermod",
-        r#"printf 'usermod %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
-mkdir -p "$MYCONFIG_TEST_ROOT/groups/$2" && : > "$MYCONFIG_TEST_ROOT/groups/$2/$3""#,
+        r#"printf 'usermod %s\n' "$*" >> "$INAYOS_TEST_LOG"
+mkdir -p "$INAYOS_TEST_ROOT/groups/$2" && : > "$INAYOS_TEST_ROOT/groups/$2/$3""#,
     );
-    sandbox.fake("gpasswd", r#"rm -f "$MYCONFIG_TEST_ROOT/groups/$3/$2""#);
-    sandbox.fake("groupdel", r#"rm -rf "$MYCONFIG_TEST_ROOT/groups/$1""#);
+    sandbox.fake("gpasswd", r#"rm -f "$INAYOS_TEST_ROOT/groups/$3/$2""#);
+    sandbox.fake("groupdel", r#"rm -rf "$INAYOS_TEST_ROOT/groups/$1""#);
     for program in ["modprobe", "udevadm"] {
         sandbox.fake(
             program,
-            &format!("printf '{program} %s\\n' \"$*\" >> \"$MYCONFIG_TEST_LOG\""),
+            &format!("printf '{program} %s\\n' \"$*\" >> \"$INAYOS_TEST_LOG\""),
         );
     }
     sandbox.fake(
         "systemctl",
-        r#"printf 'systemctl %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+        r#"printf 'systemctl %s\n' "$*" >> "$INAYOS_TEST_LOG"
 scope=system command= names= now=
 for argument in "$@"; do
     case "$argument" in
@@ -78,7 +78,7 @@ for argument in "$@"; do
         *) if [ -z "$command" ]; then command="$argument"; else names="$names $argument"; fi ;;
     esac
 done
-units="$MYCONFIG_TEST_ROOT/units/$scope"
+units="$INAYOS_TEST_ROOT/units/$scope"
 start() { if [ -e "$units/$unit.broken" ]; then exit 1; fi; : > "$units/$unit.active"; }
 for unit in $names; do
     case "$command" in
@@ -88,16 +88,16 @@ for unit in $names; do
         stop) rm -f "$units/$unit.active" ;;
         is-enabled) if [ -e "$units/$unit" ]; then echo enabled; else echo disabled; exit 1; fi ;;
         is-active) if [ -e "$units/$unit.active" ]; then echo active; else echo inactive; exit 3; fi ;;
-        show) cat "$MYCONFIG_TEST_ROOT/manager-pid" 2>/dev/null ;;
+        show) cat "$INAYOS_TEST_ROOT/manager-pid" 2>/dev/null ;;
     esac
 done
 exit 0"#,
     );
-    sandbox.fake("ps", r#"cat "$MYCONFIG_TEST_ROOT/manager-groups""#);
+    sandbox.fake("ps", r#"cat "$INAYOS_TEST_ROOT/manager-groups""#);
     sandbox.fake(
         "kwriteconfig6",
-        r#"printf 'kwriteconfig6 %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
-path="$MYCONFIG_TEST_ROOT/kde"
+        r#"printf 'kwriteconfig6 %s\n' "$*" >> "$INAYOS_TEST_LOG"
+path="$INAYOS_TEST_ROOT/kde"
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --file | --group) path="$path/$2"; shift 2 ;;
@@ -110,7 +110,7 @@ mkdir -p "$(dirname "$path/$key")" && printf '%s' "$value" > "$path/$key""#,
     );
     sandbox.fake(
         "kreadconfig6",
-        r#"path="$MYCONFIG_TEST_ROOT/kde"
+        r#"path="$INAYOS_TEST_ROOT/kde"
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --file) path="$path/${2##*/}"; shift 2 ;;
@@ -193,12 +193,12 @@ fn cachyos_boot(sandbox: &Sandbox, refind: bool) {
     }
     sandbox.fake(
         "mkinitcpio",
-        r#"printf 'mkinitcpio %s\n' "$*" >> "$MYCONFIG_TEST_LOG""#,
+        r#"printf 'mkinitcpio %s\n' "$*" >> "$INAYOS_TEST_LOG""#,
     );
     // A plain ext4 disk, unless `lsblk` in the test root says otherwise.
     sandbox.fake(
         "lsblk",
-        r#"cat "$MYCONFIG_TEST_ROOT/lsblk" 2>/dev/null || printf ' disk\nvfat part\next4 part\n'"#,
+        r#"cat "$INAYOS_TEST_ROOT/lsblk" 2>/dev/null || printf ' disk\nvfat part\next4 part\n'"#,
     );
 }
 
@@ -582,7 +582,7 @@ fn kanata_gets_input_access_and_waits_for_the_new_groups() {
     system(&sandbox);
     sandbox.fake(
         "kanata",
-        r#"printf 'kanata %s\n' "$*" >> "$MYCONFIG_TEST_LOG""#,
+        r#"printf 'kanata %s\n' "$*" >> "$INAYOS_TEST_LOG""#,
     );
     let kanata = Kanata {
         start_at_login: true,
@@ -600,10 +600,10 @@ fn kanata_gets_input_access_and_waits_for_the_new_groups() {
     assert!(member(&sandbox, "input") && member(&sandbox, "uinput"));
     assert_eq!(sandbox.calls("sudo modprobe uinput"), 1);
     assert_eq!(
-        system_file(&sandbox, "/etc/modules-load.d/myconfig-kanata.conf").as_deref(),
+        system_file(&sandbox, "/etc/modules-load.d/inayos-kanata.conf").as_deref(),
         Some("uinput\n")
     );
-    let rules = system_file(&sandbox, "/etc/udev/rules.d/99-myconfig-kanata.rules").unwrap();
+    let rules = system_file(&sandbox, "/etc/udev/rules.d/99-inayos-kanata.rules").unwrap();
     assert!(rules.contains(
         r#"KERNEL=="uinput", MODE="0660", GROUP="uinput", OPTIONS+="static_node=uinput""#
     ));
@@ -611,10 +611,10 @@ fn kanata_gets_input_access_and_waits_for_the_new_groups() {
     assert!(enabled(
         &sandbox,
         ServiceScope::User,
-        "myconfig-kanata.service"
+        "inayos-kanata.service"
     ));
     assert_eq!(
-        sandbox.calls("restart myconfig-kanata.service"),
+        sandbox.calls("restart inayos-kanata.service"),
         0,
         "the user's systemd manager started before the new groups"
     );
@@ -624,7 +624,7 @@ fn kanata_gets_input_access_and_waits_for_the_new_groups() {
     sandbox
         .with(&io, |ctx| runner::install(ctx, &[&kanata], &[&kanata]))
         .unwrap();
-    assert_eq!(sandbox.calls("restart myconfig-kanata.service"), 1);
+    assert_eq!(sandbox.calls("restart inayos-kanata.service"), 1);
 
     sandbox
         .with(&io, |ctx| {
@@ -632,11 +632,11 @@ fn kanata_gets_input_access_and_waits_for_the_new_groups() {
         })
         .unwrap();
     assert!(!member(&sandbox, "uinput"));
-    assert!(system_file(&sandbox, "/etc/udev/rules.d/99-myconfig-kanata.rules").is_none());
+    assert!(system_file(&sandbox, "/etc/udev/rules.d/99-inayos-kanata.rules").is_none());
     assert!(!enabled(
         &sandbox,
         ServiceScope::User,
-        "myconfig-kanata.service"
+        "inayos-kanata.service"
     ));
 }
 
@@ -660,19 +660,19 @@ fn kanata_started_by_the_kde_tray_is_not_enabled_on_its_own() {
     assert!(!enabled(
         &sandbox,
         ServiceScope::User,
-        "myconfig-kanata.service"
+        "inayos-kanata.service"
     ));
     assert!(enabled(
         &sandbox,
         ServiceScope::User,
-        "myconfig-kanata-tray.service"
+        "inayos-kanata-tray.service"
     ));
     assert_eq!(
         kde(&sandbox, "kglobalshortcutsrc/kwin/Overview").as_deref(),
         Some("Meta+W,Meta+W,Toggle Overview")
     );
     assert_eq!(
-        sandbox.calls("stop myconfig-kanata.service"),
+        sandbox.calls("stop inayos-kanata.service"),
         1,
         "the engine must not run without its tray"
     );
@@ -714,13 +714,13 @@ fn handy_configures_push_to_talk_and_keeps_your_settings() {
         fs::metadata(&settings).unwrap().permissions().mode() & 0o777,
         0o600
     );
-    assert!(system_file(&sandbox, "/etc/udev/rules.d/99-myconfig-handy.rules").is_some());
+    assert!(system_file(&sandbox, "/etc/udev/rules.d/99-inayos-handy.rules").is_some());
     assert!(enabled(
         &sandbox,
         ServiceScope::User,
-        "myconfig-handy.service"
+        "inayos-handy.service"
     ));
-    assert_eq!(sandbox.calls("stop myconfig-handy.service"), 1);
+    assert_eq!(sandbox.calls("stop inayos-handy.service"), 1);
 
     sandbox
         .with(&io, |ctx| runner::remove(ctx, &[&Handy], &[&Handy], false))
@@ -737,8 +737,8 @@ const DOCKER: Docker = Docker { setup_tool: false };
 fn docker(sandbox: &Sandbox) {
     sandbox.fake(
         "docker",
-        r#"printf 'docker %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
-contexts="$MYCONFIG_TEST_ROOT/docker"
+        r#"printf 'docker %s\n' "$*" >> "$INAYOS_TEST_LOG"
+contexts="$INAYOS_TEST_ROOT/docker"
 mkdir -p "$contexts"
 case "$1 $2" in
     "context inspect") [ -e "$contexts/$3" ] && cat "$contexts/$3" ;;
@@ -776,7 +776,7 @@ fn docker_package_enables_the_rootful_daemon(sandbox: &Sandbox) {
     .unwrap();
     sandbox.fake(
         "pacman",
-        r#"if [ "$1" = -S ]; then for name in "$@"; do [ "$name" = docker ] && mkdir -p "$MYCONFIG_TEST_ROOT/groups/docker" && for unit in docker.service docker.socket; do : > "$MYCONFIG_TEST_ROOT/units/system/$unit"; : > "$MYCONFIG_TEST_ROOT/units/system/$unit.active"; done; done; fi
+        r#"if [ "$1" = -S ]; then for name in "$@"; do [ "$name" = docker ] && mkdir -p "$INAYOS_TEST_ROOT/groups/docker" && for unit in docker.service docker.socket; do : > "$INAYOS_TEST_ROOT/units/system/$unit"; : > "$INAYOS_TEST_ROOT/units/system/$unit.active"; done; done; fi
 exec pacman-base "$@""#,
     );
 }
@@ -901,12 +901,12 @@ fn docker_creates_the_user_service_with_the_setup_tool_and_remove_undoes_what_th
     // Like Docker's tool, it also enables the service and creates and selects the context.
     sandbox.fake(
         "dockerd-rootless-setuptool.sh",
-        r#"printf 'setuptool %s PATH=%s\n' "$*" "$PATH" >> "$MYCONFIG_TEST_LOG"
+        r#"printf 'setuptool %s PATH=%s\n' "$*" "$PATH" >> "$INAYOS_TEST_LOG"
 mkdir -p "$HOME/.config/systemd/user" && : > "$HOME/.config/systemd/user/docker.service"
-: > "$MYCONFIG_TEST_ROOT/units/user/docker.service"
-mkdir -p "$MYCONFIG_TEST_ROOT/docker"
-printf 'unix:///run/user/1000/docker.sock' > "$MYCONFIG_TEST_ROOT/docker/rootless"
-printf rootless > "$MYCONFIG_TEST_ROOT/docker/.current""#,
+: > "$INAYOS_TEST_ROOT/units/user/docker.service"
+mkdir -p "$INAYOS_TEST_ROOT/docker"
+printf 'unix:///run/user/1000/docker.sock' > "$INAYOS_TEST_ROOT/docker/rootless"
+printf rootless > "$INAYOS_TEST_ROOT/docker/.current""#,
     );
     let docker = Docker { setup_tool: true };
     let io = Answers::new(None);
@@ -982,25 +982,25 @@ fn axidev_installs_once_upgrades_to_a_newer_release_and_remove_uninstalls_what_i
     sandbox.fake(
         "curl",
         &format!(
-            r#"printf 'curl %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+            r#"printf 'curl %s\n' "$*" >> "$INAYOS_TEST_LOG"
 case " $* " in *" --write-out "*)
-    printf 'https://github.com/axide-dev/axidev-osk/releases/tag/v%s' "$(cat "$MYCONFIG_TEST_ROOT/latest")"
+    printf 'https://github.com/axide-dev/axidev-osk/releases/tag/v%s' "$(cat "$INAYOS_TEST_ROOT/latest")"
     exit 0 ;;
 esac
 while [ "$#" -gt 1 ]; do [ "$1" = --output ] && output="$2"; shift; done
 cat > "$output" <<'SCRIPT'
 #!/bin/sh
-printf 'installer %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+printf 'installer %s\n' "$*" >> "$INAYOS_TEST_LOG"
 cat > {app} <<'APP'
 #!/bin/sh
-printf 'app %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+printf 'app %s\n' "$*" >> "$INAYOS_TEST_LOG"
 case "$*" in "linux setup-permissions"*)
-    mkdir -p "$MYCONFIG_TEST_ROOT/groups/uinput" "$MYCONFIG_TEST_ROOT/system/etc/udev/rules.d"
-    : > "$MYCONFIG_TEST_ROOT/groups/uinput/tester"
-    ln -sf /dev/null "$MYCONFIG_TEST_ROOT/system/etc/udev/rules.d/70-axidev-io-uinput.rules" ;;
+    mkdir -p "$INAYOS_TEST_ROOT/groups/uinput" "$INAYOS_TEST_ROOT/system/etc/udev/rules.d"
+    : > "$INAYOS_TEST_ROOT/groups/uinput/tester"
+    ln -sf /dev/null "$INAYOS_TEST_ROOT/system/etc/udev/rules.d/70-axidev-io-uinput.rules" ;;
 esac
 APP
-printf '#!/bin/sh\nprintf "lifecycle %%s\\n" "$*" >> "$MYCONFIG_TEST_LOG"\n' > {lifecycle}
+printf '#!/bin/sh\nprintf "lifecycle %%s\\n" "$*" >> "$INAYOS_TEST_LOG"\n' > {lifecycle}
 chmod +x {app} {lifecycle}
 mkdir -p {payload}/lib/python/axidev_osk-0.18.1.dist-info
 SCRIPT"#,
@@ -1152,11 +1152,11 @@ fn paru_comes_from_a_repository_or_else_from_the_prebuilt_aur_package() {
     fs::remove_file(sandbox.root.join("installed/paru")).unwrap();
     sandbox.fake(
         "git",
-        r#"printf 'git %s\n' "$*" >> "$MYCONFIG_TEST_LOG"; mkdir -p "$3""#,
+        r#"printf 'git %s\n' "$*" >> "$INAYOS_TEST_LOG"; mkdir -p "$3""#,
     );
     sandbox.fake(
         "makepkg",
-        r#"printf 'makepkg %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+        r#"printf 'makepkg %s\n' "$*" >> "$INAYOS_TEST_LOG"
 [ "$1" = --packagelist ] && printf '%s/paru-bin.pkg.tar.zst\n' "$PWD"; exit 0"#,
     );
     sandbox.with(&Answers::new(None), |ctx| {
@@ -1297,7 +1297,7 @@ fn kde_keys_in_this_module_are_the_approved_values() {
         ),
         ("kdeglobals/KDE/AnimationDurationFactor", "0.25"),
         ("kdeglobals/KDE/SingleClick", "true"),
-        ("kwinrc/Plugins/myconfig-panelsEnabled", "true"),
+        ("kwinrc/Plugins/inayos-panelsEnabled", "true"),
         ("plasmanotifyrc/DoNotDisturb/WhenFullscreen", "false"),
         (
             "kglobalshortcutsrc/services/org.kde.krunner.desktop/_launch",
@@ -1348,20 +1348,20 @@ fn plasma(sandbox: &Sandbox) {
     sandbox.fake("plasmashell", "exit 0");
     sandbox.fake(
         "plasma-apply-colorscheme",
-        r#"printf 'plasma-apply-colorscheme %s\n' "$*" >> "$MYCONFIG_TEST_LOG""#,
+        r#"printf 'plasma-apply-colorscheme %s\n' "$*" >> "$INAYOS_TEST_LOG""#,
     );
     sandbox.fake(
         "plasma-apply-lookandfeel",
-        r#"printf 'plasma-apply-lookandfeel %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
-mkdir -p "$MYCONFIG_TEST_ROOT/kde/kdeglobals/KDE"
-printf '%s' "$2" > "$MYCONFIG_TEST_ROOT/kde/kdeglobals/KDE/LookAndFeelPackage""#,
+        r#"printf 'plasma-apply-lookandfeel %s\n' "$*" >> "$INAYOS_TEST_LOG"
+mkdir -p "$INAYOS_TEST_ROOT/kde/kdeglobals/KDE"
+printf '%s' "$2" > "$INAYOS_TEST_ROOT/kde/kdeglobals/KDE/LookAndFeelPackage""#,
     );
     sandbox.fake(
         "plasma-apply-cursortheme",
-        r#"printf 'plasma-apply-cursortheme %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+        r#"printf 'plasma-apply-cursortheme %s\n' "$*" >> "$INAYOS_TEST_LOG"
 for theme; do :; done
-mkdir -p "$MYCONFIG_TEST_ROOT/kde/kcminputrc/Mouse"
-printf '%s' "$theme" > "$MYCONFIG_TEST_ROOT/kde/kcminputrc/Mouse/cursorTheme""#,
+mkdir -p "$INAYOS_TEST_ROOT/kde/kcminputrc/Mouse"
+printf '%s' "$theme" > "$INAYOS_TEST_ROOT/kde/kcminputrc/Mouse/cursorTheme""#,
     );
     sandbox.fake(
         "fc-match",
@@ -1421,25 +1421,25 @@ exec kwriteconfig6-store "$@""#,
     fs::write(&applets, "default panels\n").unwrap();
     sandbox.fake(
         "plasma-apply-colorscheme",
-        r#"printf 'plasma-apply-colorscheme %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+        r#"printf 'plasma-apply-colorscheme %s\n' "$*" >> "$INAYOS_TEST_LOG"
 printf '[Colors:View]\nBackgroundNormal=255,78,173\n' >> "$XDG_CONFIG_HOME/kdeglobals""#,
     );
     sandbox.fake(
         "plasma-apply-lookandfeel",
-        r#"printf 'plasma-apply-lookandfeel %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
-mkdir -p "$MYCONFIG_TEST_ROOT/kde/kdeglobals/KDE"
-printf '%s' "$2" > "$MYCONFIG_TEST_ROOT/kde/kdeglobals/KDE/LookAndFeelPackage"
+        r#"printf 'plasma-apply-lookandfeel %s\n' "$*" >> "$INAYOS_TEST_LOG"
+mkdir -p "$INAYOS_TEST_ROOT/kde/kdeglobals/KDE"
+printf '%s' "$2" > "$INAYOS_TEST_ROOT/kde/kdeglobals/KDE/LookAndFeelPackage"
 printf '[org.kde.kdecoration2]\ntheme=Breeze\n' >> "$XDG_CONFIG_HOME/kwinrc"
 printf '[Theme]\nname=default\n' > "$XDG_CONFIG_HOME/plasmarc"
-mkdir -p "$MYCONFIG_TEST_ROOT/kde/plasmarc/Theme"
-printf 'default' > "$MYCONFIG_TEST_ROOT/kde/plasmarc/Theme/name""#,
+mkdir -p "$INAYOS_TEST_ROOT/kde/plasmarc/Theme"
+printf 'default' > "$INAYOS_TEST_ROOT/kde/plasmarc/Theme/name""#,
     );
     // GSettings keeps only the values the user set in dconf, and `get` would show the
     // schema default for the others.
     sandbox.fake(
         "gsettings",
-        r#"printf 'gsettings %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
-store="$MYCONFIG_TEST_ROOT/dconf"
+        r#"printf 'gsettings %s\n' "$*" >> "$INAYOS_TEST_LOG"
+store="$INAYOS_TEST_ROOT/dconf"
 case "$1" in
     list-keys) printf 'cursor-size\n' ;;
     list-schemas) printf 'org.gnome.desktop.interface /org/gnome/desktop/interface/\n' ;;
@@ -1449,7 +1449,7 @@ esac"#,
     );
     sandbox.fake(
         "dconf",
-        r#"[ "$1" = read ] && cat "$MYCONFIG_TEST_ROOT/dconf/${2##*/}" 2>/dev/null; exit 0"#,
+        r#"[ "$1" = read ] && cat "$INAYOS_TEST_ROOT/dconf/${2##*/}" 2>/dev/null; exit 0"#,
     );
     let io = Answers::new(None);
     for _ in 0..2 {
@@ -1476,8 +1476,8 @@ esac"#,
         assert!(sandbox.installed(package), "{package} was not installed");
     }
     for plugin in [
-        "90-myconfig-pointer-sensitivity.lua",
-        "90-myconfig-super-ctrl-right-click.lua",
+        "90-inayos-pointer-sensitivity.lua",
+        "90-inayos-super-ctrl-right-click.lua",
     ] {
         assert!(
             system_file(&sandbox, &format!("/etc/libinput/plugins/{plugin}")).is_some(),
@@ -1496,7 +1496,7 @@ esac"#,
     // The picture-in-picture rule joins the rules already there, once.
     assert_eq!(
         kde(&sandbox, "kwinrulesrc/General/rules").as_deref(),
-        Some("user-rule,myconfig-picture-in-picture")
+        Some("user-rule,inayos-picture-in-picture")
     );
     assert_eq!(
         kde(&sandbox, "kwinrulesrc/General/count").as_deref(),
@@ -1505,7 +1505,7 @@ esac"#,
     assert_eq!(
         kde(
             &sandbox,
-            "kwinrulesrc/myconfig-picture-in-picture/excludefromcapture"
+            "kwinrulesrc/inayos-picture-in-picture/excludefromcapture"
         )
         .as_deref(),
         Some("true")
@@ -1513,12 +1513,12 @@ esac"#,
     assert!(enabled(
         &sandbox,
         ServiceScope::User,
-        "myconfig-plasma-layout.service"
+        "inayos-plasma-layout.service"
     ));
 
     // The layout script rewrote the panels of the running Plasma shell, which writes the
     // panels it holds when it stops and reads the panel file when it starts.
-    fs::write(&applets, "myconfig panels\n").unwrap();
+    fs::write(&applets, "inayos panels\n").unwrap();
     fs::write(
         sandbox
             .root
@@ -1535,8 +1535,8 @@ esac"#,
         "systemctl",
         r#"applets="$HOME/.config/plasma-org.kde.plasma.desktop-appletsrc"
 case "$*" in
-    "--user stop plasma-plasmashell.service") printf 'myconfig panels\n' > "$applets" ;;
-    "--user start plasma-plasmashell.service") cp "$applets" "$MYCONFIG_TEST_ROOT/shown-panels" ;;
+    "--user stop plasma-plasmashell.service") printf 'inayos panels\n' > "$applets" ;;
+    "--user start plasma-plasmashell.service") cp "$applets" "$INAYOS_TEST_ROOT/shown-panels" ;;
 esac
 exec systemctl-units "$@""#,
     );
@@ -1578,12 +1578,12 @@ exec systemctl-units "$@""#,
     assert!(!enabled(
         &sandbox,
         ServiceScope::User,
-        "myconfig-plasma-layout.service"
+        "inayos-plasma-layout.service"
     ));
     assert!(
         system_file(
             &sandbox,
-            "/etc/libinput/plugins/90-myconfig-pointer-sensitivity.lua"
+            "/etc/libinput/plugins/90-inayos-pointer-sensitivity.lua"
         )
         .is_none()
     );
@@ -1611,7 +1611,7 @@ impl Module for PlasmaPanelsRewrite {
         fs::write(
             ctx.home
                 .join(".config/plasma-org.kde.plasma.desktop-appletsrc"),
-            "myconfig panels\n",
+            "inayos panels\n",
         )?;
         Ok(())
     }
@@ -1635,7 +1635,7 @@ fn a_failed_panel_restore_starts_the_stopped_plasma_shell_again() {
     // so the restore cannot write it.
     sandbox.fake(
         "systemctl",
-        r#"printf 'systemctl %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+        r#"printf 'systemctl %s\n' "$*" >> "$INAYOS_TEST_LOG"
 applets="$HOME/.config/plasma-org.kde.plasma.desktop-appletsrc"
 case "$*" in
     "--user stop plasma-plasmashell.service") rm -f "$applets" && mkdir "$applets" ;;
@@ -1822,8 +1822,8 @@ fn flatpak_adds_flathub_once_and_remove_deletes_it() {
     system(&sandbox);
     sandbox.fake(
         "flatpak",
-        r#"printf 'flatpak %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
-remotes="$MYCONFIG_TEST_ROOT/flatpak"
+        r#"printf 'flatpak %s\n' "$*" >> "$INAYOS_TEST_LOG"
+remotes="$INAYOS_TEST_ROOT/flatpak"
 mkdir -p "$remotes"
 case "$1" in
     remotes) ls "$remotes" ;;
@@ -1865,15 +1865,15 @@ fn runtimes_install_bun_with_its_installer_once_when_asked() {
     );
     fs::write(
         sandbox.root.join("bun-installer"),
-        r#"printf 'installer SHELL=%s\n' "$SHELL" >> "$MYCONFIG_TEST_LOG"
+        r#"printf 'installer SHELL=%s\n' "$SHELL" >> "$INAYOS_TEST_LOG"
 mkdir -p "$BUN_INSTALL/bin" && : > "$BUN_INSTALL/bin/bun" && chmod +x "$BUN_INSTALL/bin/bun"
 "#,
     )
     .unwrap();
     sandbox.fake(
         "curl",
-        r#"printf 'curl %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
-cat "$MYCONFIG_TEST_ROOT/bun-installer""#,
+        r#"printf 'curl %s\n' "$*" >> "$INAYOS_TEST_LOG"
+cat "$INAYOS_TEST_ROOT/bun-installer""#,
     );
     let runtimes = Runtimes {
         bun_installer: true,
@@ -1913,14 +1913,14 @@ fn vscodium_installs_its_theme_and_extensions_and_remove_uninstalls_only_those()
     // Keeps the installed extensions in a file, and names the packaged theme as VSCodium does.
     sandbox.fake(
         "codium",
-        r#"printf 'codium %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
-installed="$MYCONFIG_TEST_ROOT/extensions"
+        r#"printf 'codium %s\n' "$*" >> "$INAYOS_TEST_LOG"
+installed="$INAYOS_TEST_ROOT/extensions"
 touch "$installed"
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --list-extensions) cat "$installed" ;;
         --install-extension)
-            case "$2" in *.vsix) id=myconfig.blacknpink-theme ;; *) id="$2" ;; esac
+            case "$2" in *.vsix) id=inayos.blacknpink-theme ;; *) id="$2" ;; esac
             grep -Fxq "$id" "$installed" || printf '%s\n' "$id" >> "$installed"; shift ;;
         --uninstall-extension) grep -Fxq "$2" "$installed" || { echo "Extension '$2' is not installed." >&2; exit 1; }
             grep -Fxv "$2" "$installed" > "$installed.new"; mv "$installed.new" "$installed"; shift ;;
@@ -1932,7 +1932,7 @@ done"#,
     fs::write(sandbox.root.join("extensions"), "rust-lang.rust-analyzer\n").unwrap();
     sandbox.fake(
         "bsdtar",
-        r#"printf 'bsdtar %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+        r#"printf 'bsdtar %s\n' "$*" >> "$INAYOS_TEST_LOG"
 [ "$3" = -cf ] && : > "$4""#,
     );
     let io = Answers::new(None);
@@ -1967,7 +1967,7 @@ done"#,
         .home
         .join("dotfiles/vscodium/.config/VSCodium/blacknpink-theme");
     let extensions = sandbox.home.join(".vscode-oss/extensions");
-    let installed = extensions.join("myconfig.blacknpink-theme-1.0.0");
+    let installed = extensions.join("inayos.blacknpink-theme-1.0.0");
     fs::create_dir_all(installed.join("themes")).unwrap();
     fs::copy(
         theme.join("themes/blacknpink-color-theme.json"),
@@ -1981,7 +1981,7 @@ done"#,
     fs::write(installed.join("package.json"), package.to_string()).unwrap();
     fs::write(
         extensions.join("extensions.json"),
-        r#"[{"identifier":{"id":"myconfig.blacknpink-theme"},"version":"1.0.0","relativeLocation":"myconfig.blacknpink-theme-1.0.0","metadata":{"installedTimestamp":1792860770299}}]"#,
+        r#"[{"identifier":{"id":"inayos.blacknpink-theme"},"version":"1.0.0","relativeLocation":"inayos.blacknpink-theme-1.0.0","metadata":{"installedTimestamp":1792860770299}}]"#,
     )
     .unwrap();
     let install = || {
@@ -2191,8 +2191,8 @@ fn tailscale_makes_the_user_its_operator_once_and_remove_clears_it() {
     system(&sandbox);
     sandbox.fake(
         "tailscale",
-        r#"printf 'tailscale %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
-operator="$MYCONFIG_TEST_ROOT/tailscale-operator"
+        r#"printf 'tailscale %s\n' "$*" >> "$INAYOS_TEST_LOG"
+operator="$INAYOS_TEST_ROOT/tailscale-operator"
 case "$1" in
     debug) printf '{"OperatorUser":"%s","WantRunning":true}\n' "$(cat "$operator" 2>/dev/null)" ;;
     set) printf '%s' "${2#--operator=}" > "$operator" ;;
@@ -2227,19 +2227,19 @@ fn agents_install_claude_code_once_and_the_bun_tools_and_remove_takes_them_out()
     let sandbox = Sandbox::new("agents");
     fs::write(
         sandbox.root.join("claude-installer"),
-        r#"printf 'claude installer\n' >> "$MYCONFIG_TEST_LOG"
+        r#"printf 'claude installer\n' >> "$INAYOS_TEST_LOG"
 mkdir -p "$HOME/.local/bin" && : > "$HOME/.local/bin/claude" && chmod +x "$HOME/.local/bin/claude"
 "#,
     )
     .unwrap();
     sandbox.fake(
         "curl",
-        r#"printf 'curl %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
-cat "$MYCONFIG_TEST_ROOT/claude-installer""#,
+        r#"printf 'curl %s\n' "$*" >> "$INAYOS_TEST_LOG"
+cat "$INAYOS_TEST_ROOT/claude-installer""#,
     );
     sandbox.fake(
         "bun",
-        r#"printf 'bun %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+        r#"printf 'bun %s\n' "$*" >> "$INAYOS_TEST_LOG"
 modules="$BUN_INSTALL/install/global/node_modules"
 action="$1"; shift 2
 for package; do
@@ -2292,8 +2292,8 @@ fn t3code_repairs_the_server_through_the_deployed_t3ctl_and_remove_undoes_what_i
     // The deployed t3ctl runs as itself, so its own commands are faked through PATH.
     sandbox.fake(
         "loginctl",
-        r#"printf 'loginctl %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
-linger="$MYCONFIG_TEST_ROOT/linger"
+        r#"printf 'loginctl %s\n' "$*" >> "$INAYOS_TEST_LOG"
+linger="$INAYOS_TEST_ROOT/linger"
 case "$1" in
     show-user) if [ -e "$linger" ]; then echo yes; else echo no; fi ;;
     enable-linger) : > "$linger" ;;
@@ -2308,7 +2308,7 @@ esac"#,
     super::program(
         &t3,
         &format!(
-            r#"printf 't3 %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+            r#"printf 't3 %s\n' "$*" >> "$INAYOS_TEST_LOG"
 if [ "$*" = "service install" ]; then
     mkdir -p '{userdata}' && echo '{{}}' > '{userdata}/server-runtime.json'
 fi"#,
@@ -2378,7 +2378,7 @@ fn vendor_apt_repositories_are_added_once_with_their_keys() {
     system(&sandbox);
     sandbox.fake(
         "curl",
-        r#"printf 'curl %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+        r#"printf 'curl %s\n' "$*" >> "$INAYOS_TEST_LOG"
 case "$*" in
     *docker*) printf -- '-----BEGIN PGP PUBLIC KEY BLOCK-----\nkey\n' ;;
     *) printf '\231\001binary key %s' "$2" ;;
@@ -2387,7 +2387,7 @@ esac"#,
     sandbox.fake("dpkg", "echo amd64");
     sandbox.fake(
         "apt-get",
-        r#"printf 'apt-get %s\n' "$*" >> "$MYCONFIG_TEST_LOG""#,
+        r#"printf 'apt-get %s\n' "$*" >> "$INAYOS_TEST_LOG""#,
     );
     let packages: Vec<_> = [
         Package::Tailscale,
@@ -2396,7 +2396,7 @@ esac"#,
         Package::Ripgrep,
     ]
     .into_iter()
-    .map(|package| myconfig_utils::resolve_package(package, PackageSystem::Apt).unwrap())
+    .map(|package| inayos_utils::resolve_package(package, PackageSystem::Apt).unwrap())
     .collect();
     let io = Answers::new(None);
     for _ in 0..2 {
@@ -2411,22 +2411,22 @@ esac"#,
     }
     assert_eq!(sandbox.calls("sudo apt-get update"), 1);
     assert_eq!(
-        system_file(&sandbox, "/etc/apt/sources.list.d/myconfig-docker.sources").unwrap(),
-        "Types: deb\nURIs: https://download.docker.com/linux/ubuntu\nSuites: noble\nComponents: stable\nArchitectures: amd64\nSigned-By: /etc/apt/keyrings/myconfig-docker.asc\n"
+        system_file(&sandbox, "/etc/apt/sources.list.d/inayos-docker.sources").unwrap(),
+        "Types: deb\nURIs: https://download.docker.com/linux/ubuntu\nSuites: noble\nComponents: stable\nArchitectures: amd64\nSigned-By: /etc/apt/keyrings/inayos-docker.asc\n"
     );
-    assert!(system_file(&sandbox, "/etc/apt/keyrings/myconfig-docker.asc").is_some());
+    assert!(system_file(&sandbox, "/etc/apt/keyrings/inayos-docker.asc").is_some());
     // A binary key is not text, and the second run must still compare it unchanged.
     assert_eq!(
         fs::read(
             sandbox
                 .root
-                .join("system/etc/apt/keyrings/myconfig-tailscale.gpg")
+                .join("system/etc/apt/keyrings/inayos-tailscale.gpg")
         )
         .unwrap(),
         b"\x99\x01binary key https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg"
     );
-    assert!(system_file(&sandbox, "/etc/apt/sources.list.d/myconfig-github.sources").is_none());
-    assert!(system_file(&sandbox, "/etc/apt/sources.list.d/myconfig-yazi.sources").is_none());
+    assert!(system_file(&sandbox, "/etc/apt/sources.list.d/inayos-github.sources").is_none());
+    assert!(system_file(&sandbox, "/etc/apt/sources.list.d/inayos-yazi.sources").is_none());
 }
 
 /// A module that notes its name when it installs, then succeeds or fails in both install
@@ -2487,7 +2487,7 @@ fn a_failed_package_refresh_skips_only_the_modules_that_change_packages() {
     let sandbox = Sandbox::new("failed-refresh");
     sandbox.fake(
         "pacman",
-        r#"printf 'pacman %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+        r#"printf 'pacman %s\n' "$*" >> "$INAYOS_TEST_LOG"
 [ "$1" = -Syu ] && exit 1
 exit 0"#,
     );
@@ -2597,13 +2597,13 @@ fn defender(sandbox: &Sandbox, refused: bool) {
     sandbox.fake(
         "pwsh.exe",
         &format!(
-            r#"allowed="$MYCONFIG_TEST_ROOT/allowed"
+            r#"allowed="$INAYOS_TEST_ROOT/allowed"
 case "$3" in
     '$PROFILE') printf '%s\n' "$HOME/Documents/PowerShell/Microsoft.PowerShell_profile.ps1" ;;
     *Get-MpPreference*) if [ -e "$allowed" ]; then echo allowed; else echo blocked; fi ;;
     *-Verb\ RunAs*)
-        printf 'defender %s\n' "$MYCONFIG_ELEVATED_SCRIPT" >> "$MYCONFIG_TEST_LOG"; {elevate}
-        case "$MYCONFIG_ELEVATED_SCRIPT" in
+        printf 'defender %s\n' "$INAYOS_ELEVATED_SCRIPT" >> "$INAYOS_TEST_LOG"; {elevate}
+        case "$INAYOS_ELEVATED_SCRIPT" in
             *Add-MpPreference*) : > "$allowed" ;;
             *Remove-MpPreference*) rm -f "$allowed" ;;
         esac ;;
@@ -2685,18 +2685,18 @@ fn the_powershell_profile_allows_the_installer_through_controlled_folder_access_
 fn logins(sandbox: &Sandbox) {
     sandbox.fake(
         "gh",
-        r#"printf 'gh %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+        r#"printf 'gh %s\n' "$*" >> "$INAYOS_TEST_LOG"
 case "$*" in
-    "auth status") [ -e "$MYCONFIG_TEST_ROOT/gh-login" ] ;;
-    "auth login") : > "$MYCONFIG_TEST_ROOT/gh-login" ;;
+    "auth status") [ -e "$INAYOS_TEST_ROOT/gh-login" ] ;;
+    "auth login") : > "$INAYOS_TEST_ROOT/gh-login" ;;
 esac"#,
     );
     sandbox.fake(
         "tailscale",
-        r#"printf 'tailscale %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+        r#"printf 'tailscale %s\n' "$*" >> "$INAYOS_TEST_LOG"
 case "$*" in
-    status) [ -e "$MYCONFIG_TEST_ROOT/tailscale-login" ] ;;
-    up) : > "$MYCONFIG_TEST_ROOT/tailscale-login" ;;
+    status) [ -e "$INAYOS_TEST_ROOT/tailscale-login" ] ;;
+    up) : > "$INAYOS_TEST_ROOT/tailscale-login" ;;
 esac"#,
     );
 }
@@ -2960,10 +2960,10 @@ fn remove_unregisters_the_arch_distribution_once_whatever_its_records_say() {
     let sandbox = Sandbox::new("arch-wsl-remove");
     sandbox.fake(
         "wsl.exe",
-        r#"registered="$MYCONFIG_TEST_ROOT/distributions"
+        r#"registered="$INAYOS_TEST_ROOT/distributions"
 case "$1" in
     --list) cat "$registered" ;;
-    --unregister) printf 'wsl %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+    --unregister) printf 'wsl %s\n' "$*" >> "$INAYOS_TEST_LOG"
         grep -Fxq "$2" "$registered" || exit 1
         grep -Fxv "$2" "$registered" > "$registered.new"; mv "$registered.new" "$registered" ;;
 esac"#,
@@ -3002,4 +3002,367 @@ esac"#,
         sandbox.with(&io, |ctx| !runner::installed(ctx, &crate::ArchWsl)),
         "the record of the distribution that was already gone still blocks remove"
     );
+}
+
+/// The rEFInd block that myconfig added, and the one that InayOS adds.
+const MYCONFIG_REFIND_BLOCK: &str = "\n# BEGIN MYCONFIG REFIND\ninclude managed.conf\ninclude themes/black-pink/theme.conf\n# END MYCONFIG REFIND\n";
+const INAYOS_REFIND_BLOCK: &str = "\n# BEGIN INAYOS REFIND\ninclude managed.conf\ninclude themes/black-pink/theme.conf\n# END INAYOS REFIND\n";
+const REFIND_CONF: &str = "/boot/EFI/refind/refind.conf";
+
+fn write_kde(sandbox: &Sandbox, path: &str, value: &str) {
+    let path = sandbox.root.join("kde").join(path);
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(path, value).unwrap();
+}
+
+/// A machine as myconfig, the earlier name of InayOS, left it, recorded in its format 1
+/// state: the Kanata package deployed under its earlier unit name and linked with Stow,
+/// that unit enabled and running, Kanata's system files, a libinput plugin, an APT source
+/// with its key, the rEFInd block, and the KDE keys of the earlier window rule, listed
+/// after another rule, and of the earlier panel script.
+fn myconfig_machine(sandbox: &Sandbox) {
+    system(sandbox);
+    sandbox.fake(
+        "kanata",
+        r#"printf 'kanata %s\n' "$*" >> "$INAYOS_TEST_LOG""#,
+    );
+    let home = &sandbox.home;
+    let (_, files) = embedded_dotfiles::CONFIG_PACKAGES
+        .iter()
+        .find(|(name, _)| *name == "kanata")
+        .unwrap();
+    for file in files.files() {
+        let path = home
+            .join("dotfiles/kanata")
+            .join(file.path_from_root.replace("inayos-", "myconfig-"));
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, file.content).unwrap();
+    }
+    fs::create_dir_all(home.join(".config/systemd/user")).unwrap();
+    let dotfiles = home.join("dotfiles");
+    sandbox
+        .shell
+        .cmd("stow")
+        .args(["--dir".as_ref(), dotfiles.as_os_str()])
+        .args(["--target".as_ref(), home.as_os_str()])
+        .arg("kanata")
+        .run()
+        .unwrap();
+    assert!(
+        home.join(".config/systemd/user/myconfig-kanata.service")
+            .is_file()
+    );
+    for unit in ["myconfig-kanata.service", "myconfig-kanata.service.active"] {
+        fs::write(unit_file(sandbox, ServiceScope::User, unit), "").unwrap();
+    }
+    for (path, contents) in [
+        ("etc/modules-load.d/myconfig-kanata.conf", "uinput\n"),
+        (
+            "etc/udev/rules.d/99-myconfig-kanata.rules",
+            "KERNEL==\"uinput\"\n",
+        ),
+        (
+            "etc/libinput/plugins/90-myconfig-pointer-sensitivity.lua",
+            "-- x4\n",
+        ),
+        (
+            "etc/apt/sources.list.d/myconfig-docker.sources",
+            "Types: deb\n",
+        ),
+        ("etc/apt/keyrings/myconfig-docker.asc", "key\n"),
+        (
+            &REFIND_CONF[1..],
+            &format!("timeout 5\n{MYCONFIG_REFIND_BLOCK}"),
+        ),
+    ] {
+        let path = sandbox.root.join("system").join(path);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, contents).unwrap();
+    }
+    for (path, value) in [
+        ("kwinrulesrc/myconfig-picture-in-picture/title", "picture"),
+        ("kwinrc/Plugins/myconfig-panelsEnabled", "true"),
+        (
+            "kwinrulesrc/General/rules",
+            "other-rule,myconfig-picture-in-picture",
+        ),
+        ("kwinrulesrc/General/count", "2"),
+    ] {
+        write_kde(sandbox, path, value);
+    }
+    let system = |path: &str| serde_json::json!({"file": {"path": path, "system": true, "previous": "missing"}});
+    let kde = |file: &str, group: &str, key: &str| serde_json::json!({"setting": {"setting": {"KdeKey": {"file": file, "groups": [group], "key": key}}, "previous": null}});
+    let state = serde_json::json!({
+        "format": 1,
+        "written_by": "0.9.0",
+        "snapshots": [{"id": 1, "action": "install", "started": 1, "modules": {
+            "kanata": [
+                {"stowed": {"package": "kanata"}},
+                system("/etc/modules-load.d/myconfig-kanata.conf"),
+                system("/etc/udev/rules.d/99-myconfig-kanata.rules"),
+                {"service": {"unit": "myconfig-kanata.service", "scope": "user", "was_enabled": false}}
+            ],
+            "kde-plasma": [
+                system("/etc/libinput/plugins/90-myconfig-pointer-sensitivity.lua"),
+                kde("kwinrulesrc", "myconfig-picture-in-picture", "title"),
+                kde("kwinrulesrc", "General", "rules"),
+                kde("kwinrulesrc", "General", "count"),
+                kde("kwinrc", "Plugins", "myconfig-panelsEnabled")
+            ],
+            "refind": [
+                {"file": {"path": REFIND_CONF, "system": true, "previous": {"file": {"contents": "dGltZW91dCA1Cg==", "executable": false}}}}
+            ],
+            "docker": [
+                system("/etc/apt/keyrings/myconfig-docker.asc"),
+                system("/etc/apt/sources.list.d/myconfig-docker.sources")
+            ]
+        }}]
+    });
+    fs::create_dir_all(sandbox.root.join("state")).unwrap();
+    fs::write(
+        sandbox.root.join("state/state.json"),
+        serde_json::to_vec(&state).unwrap(),
+    )
+    .unwrap();
+}
+
+/// Whether the earlier unit, its system files, its plugin, its APT source and key, and its
+/// KDE keys are gone.
+fn earlier_names_are_gone(sandbox: &Sandbox) {
+    assert!(!enabled(
+        sandbox,
+        ServiceScope::User,
+        "myconfig-kanata.service"
+    ));
+    assert!(!active(
+        sandbox,
+        ServiceScope::User,
+        "myconfig-kanata.service"
+    ));
+    for path in [
+        "/etc/modules-load.d/myconfig-kanata.conf",
+        "/etc/udev/rules.d/99-myconfig-kanata.rules",
+        "/etc/libinput/plugins/90-myconfig-pointer-sensitivity.lua",
+        "/etc/apt/sources.list.d/myconfig-docker.sources",
+        "/etc/apt/keyrings/myconfig-docker.asc",
+    ] {
+        assert!(
+            system_file(sandbox, path).is_none(),
+            "{path} is still there"
+        );
+    }
+    assert!(kde(sandbox, "kwinrulesrc/myconfig-picture-in-picture/title").is_none());
+    assert!(kde(sandbox, "kwinrc/Plugins/myconfig-panelsEnabled").is_none());
+}
+
+/// The rEFInd configuration and the KWin rule list with its count.
+fn refind_and_rules(sandbox: &Sandbox) -> (String, String, String) {
+    (
+        system_file(sandbox, REFIND_CONF).unwrap(),
+        kde(sandbox, "kwinrulesrc/General/rules").unwrap(),
+        kde(sandbox, "kwinrulesrc/General/count").unwrap(),
+    )
+}
+
+#[test]
+fn removing_the_myconfig_leftovers_after_the_renamed_install_keeps_the_new_install() {
+    let sandbox = Sandbox::new("leftovers-after");
+    myconfig_machine(&sandbox);
+    let kanata = Kanata {
+        start_at_login: true,
+    };
+    let profile: [&dyn Module; 1] = [&kanata];
+    let io = Answers::new(None);
+    sandbox
+        .with(&io, |ctx| runner::install(ctx, &profile, &profile))
+        .unwrap();
+    // Install leaves what the earlier name installed in place.
+    assert!(enabled(
+        &sandbox,
+        ServiceScope::User,
+        "myconfig-kanata.service"
+    ));
+    assert!(active(
+        &sandbox,
+        ServiceScope::User,
+        "myconfig-kanata.service"
+    ));
+    assert!(
+        system_file(
+            &sandbox,
+            "/etc/libinput/plugins/90-myconfig-pointer-sensitivity.lua"
+        )
+        .is_some()
+    );
+    assert!(enabled(
+        &sandbox,
+        ServiceScope::User,
+        "inayos-kanata.service"
+    ));
+
+    // The renamed rEFInd and KDE Plasma modules add their own block and rule.
+    fs::write(
+        sandbox.root.join("system").join(&REFIND_CONF[1..]),
+        format!("timeout 5\n{MYCONFIG_REFIND_BLOCK}{INAYOS_REFIND_BLOCK}"),
+    )
+    .unwrap();
+    write_kde(
+        &sandbox,
+        "kwinrulesrc/General/rules",
+        "other-rule,myconfig-picture-in-picture,inayos-picture-in-picture",
+    );
+    write_kde(&sandbox, "kwinrulesrc/General/count", "3");
+    // Links that Stow did not reach, a file and links that only share the earlier name.
+    let units = sandbox.home.join(".config/systemd/user");
+    std::os::unix::fs::symlink(
+        "../../../dotfiles/kanata/.config/systemd/user/myconfig-kanata-tray.service",
+        units.join("myconfig-kanata-tray.service"),
+    )
+    .unwrap();
+    fs::write(units.join("myconfig-own.service"), "[Unit]\n").unwrap();
+    std::os::unix::fs::symlink(
+        "/nowhere/myconfig-x",
+        units.join("myconfig-elsewhere.service"),
+    )
+    .unwrap();
+    std::os::unix::fs::symlink(
+        "../../../dotfiles/kanata/.config/kanata/config.kbd",
+        units.join("myconfig-live.service"),
+    )
+    .unwrap();
+
+    sandbox
+        .with(&io, |ctx| {
+            runner::remove_with_leftovers(ctx, &profile, &[], false)
+        })
+        .unwrap();
+    earlier_names_are_gone(&sandbox);
+    let cleaned = (
+        format!("timeout 5\n{INAYOS_REFIND_BLOCK}"),
+        "other-rule,inayos-picture-in-picture".to_owned(),
+        "2".to_owned(),
+    );
+    assert_eq!(refind_and_rules(&sandbox), cleaned);
+    assert!(fs::symlink_metadata(units.join("myconfig-kanata-tray.service")).is_err());
+    assert!(units.join("myconfig-own.service").is_file());
+    assert!(fs::symlink_metadata(units.join("myconfig-elsewhere.service")).is_ok());
+    assert!(units.join("myconfig-live.service").is_file());
+    // The renamed install is whole: its unit, its system files and its links.
+    assert!(enabled(
+        &sandbox,
+        ServiceScope::User,
+        "inayos-kanata.service"
+    ));
+    assert!(system_file(&sandbox, "/etc/modules-load.d/inayos-kanata.conf").is_some());
+    assert!(member(&sandbox, "uinput"));
+    for (_, result) in sandbox.with(&io, |ctx| runner::verify(ctx, &profile)) {
+        result.unwrap();
+    }
+
+    let calls = fs::read_to_string(sandbox.root.join("calls")).unwrap();
+    sandbox
+        .with(&io, |ctx| {
+            runner::remove_with_leftovers(ctx, &profile, &[], false)
+        })
+        .unwrap();
+    assert_eq!(
+        fs::read_to_string(sandbox.root.join("calls")).unwrap(),
+        calls,
+        "a second remove of the leftovers ran a command"
+    );
+    assert_eq!(refind_and_rules(&sandbox), cleaned);
+    assert!(sandbox.with(&io, |ctx| runner::installed(ctx, &kanata)));
+}
+
+#[test]
+fn removing_the_myconfig_leftovers_before_the_renamed_install_leaves_no_earlier_name() {
+    let sandbox = Sandbox::new("leftovers-before");
+    myconfig_machine(&sandbox);
+    let kanata = Kanata {
+        start_at_login: true,
+    };
+    let profile: [&dyn Module; 1] = [&kanata];
+    let io = Answers::new(None);
+    sandbox
+        .with(&io, |ctx| {
+            runner::remove_with_leftovers(ctx, &profile, &[], false)
+        })
+        .unwrap();
+    earlier_names_are_gone(&sandbox);
+    assert_eq!(
+        refind_and_rules(&sandbox),
+        (
+            "timeout 5\n".to_owned(),
+            "other-rule".to_owned(),
+            "1".to_owned()
+        )
+    );
+    let unit = sandbox
+        .home
+        .join(".config/systemd/user/myconfig-kanata.service");
+    assert!(
+        unit.is_file(),
+        "a live link of the deployed package went away"
+    );
+
+    sandbox
+        .with(&io, |ctx| runner::install(ctx, &profile, &profile))
+        .unwrap();
+    assert!(
+        fs::symlink_metadata(&unit).is_err(),
+        "the renamed install left the link of the earlier unit"
+    );
+    assert!(enabled(
+        &sandbox,
+        ServiceScope::User,
+        "inayos-kanata.service"
+    ));
+    assert!(!enabled(
+        &sandbox,
+        ServiceScope::User,
+        "myconfig-kanata.service"
+    ));
+}
+
+#[test]
+fn an_earlier_refind_block_and_rule_already_gone_stay_untouched() {
+    let sandbox = Sandbox::new("leftovers-gone");
+    myconfig_machine(&sandbox);
+    let refind = format!("timeout 5\n{INAYOS_REFIND_BLOCK}");
+    fs::write(sandbox.root.join("system").join(&REFIND_CONF[1..]), &refind).unwrap();
+    write_kde(
+        &sandbox,
+        "kwinrulesrc/General/rules",
+        "other-rule,inayos-picture-in-picture",
+    );
+    let io = Answers::new(None);
+    sandbox
+        .with(&io, |ctx| {
+            runner::remove_with_leftovers(ctx, &[], &[], false)
+        })
+        .unwrap();
+    assert_eq!(
+        refind_and_rules(&sandbox),
+        (
+            refind,
+            "other-rule,inayos-picture-in-picture".to_owned(),
+            "2".to_owned()
+        )
+    );
+    assert_eq!(sandbox.calls("sudo install"), 0);
+    assert_eq!(sandbox.calls("--group General"), 0);
+}
+
+#[test]
+fn removing_the_myconfig_leftovers_of_a_new_machine_changes_nothing() {
+    let sandbox = Sandbox::new("leftovers-none");
+    system(&sandbox);
+    let io = Answers::new(None);
+    sandbox
+        .with(&io, |ctx| {
+            runner::remove_with_leftovers(ctx, &[], &[], false)
+        })
+        .unwrap();
+    assert!(!sandbox.root.join("calls").exists());
+    assert!(io.questions.borrow().is_empty());
 }

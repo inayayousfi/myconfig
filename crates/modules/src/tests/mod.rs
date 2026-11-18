@@ -74,7 +74,7 @@ impl Sandbox {
 
     pub(crate) fn for_system(name: &str, package_system: PackageSystem) -> Self {
         let root =
-            std::env::temp_dir().join(format!("myconfig-behavior-{name}-{}", std::process::id()));
+            std::env::temp_dir().join(format!("inayos-behavior-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         let home = root.join("home");
         for directory in [&home, &root.join("bin"), &root.join("installed")] {
@@ -88,8 +88,8 @@ impl Sandbox {
         shell.set_var("HOME", &home);
         shell.set_var("XDG_CONFIG_HOME", home.join(".config"));
         shell.set_var("USER", "tester");
-        shell.set_var("MYCONFIG_TEST_ROOT", &root);
-        shell.set_var("MYCONFIG_TEST_LOG", root.join("calls"));
+        shell.set_var("INAYOS_TEST_ROOT", &root);
+        shell.set_var("INAYOS_TEST_LOG", root.join("calls"));
         let sandbox = Self {
             root,
             home,
@@ -102,24 +102,24 @@ impl Sandbox {
         fs::write(sandbox.root.join("installed/paru"), "").unwrap();
         sandbox.fake(
             "paru",
-            r#"printf 'paru %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
-for name in "$@"; do case "$name" in -*) ;; *) : > "$MYCONFIG_TEST_ROOT/installed/$name" ;; esac; done"#,
+            r#"printf 'paru %s\n' "$*" >> "$INAYOS_TEST_LOG"
+for name in "$@"; do case "$name" in -*) ;; *) : > "$INAYOS_TEST_ROOT/installed/$name" ;; esac; done"#,
         );
         sandbox.fake(
             "pacman",
-            r#"printf 'pacman %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
-installed="$MYCONFIG_TEST_ROOT/installed"
+            r#"printf 'pacman %s\n' "$*" >> "$INAYOS_TEST_LOG"
+installed="$INAYOS_TEST_ROOT/installed"
 case "$1" in
     -Q) [ "$2" = plasma-workspace ] && { printf 'plasma-workspace 6.7.4-1\n'; exit 0; }
         [ -e "$installed/$2" ] ;;
-    -Si) [ -e "$MYCONFIG_TEST_ROOT/repository/$2" ] ;;
-    -U) shift; for file in "$@"; do case "$file" in -*) ;; *) printf 'local %s\n' "$file" >> "$MYCONFIG_TEST_LOG" ;; esac; done ;;
-    -Qi) printf 'Name            : %s\nRequired By     : %s\n' "$2" "$(cat "$MYCONFIG_TEST_ROOT/required-by/$2" 2>/dev/null || echo None)" ;;
+    -Si) [ -e "$INAYOS_TEST_ROOT/repository/$2" ] ;;
+    -U) shift; for file in "$@"; do case "$file" in -*) ;; *) printf 'local %s\n' "$file" >> "$INAYOS_TEST_LOG" ;; esac; done ;;
+    -Qi) printf 'Name            : %s\nRequired By     : %s\n' "$2" "$(cat "$INAYOS_TEST_ROOT/required-by/$2" 2>/dev/null || echo None)" ;;
     -Qqo) exit 1 ;;
     -Syu) ;;
     -S) shift; for name in "$@"; do case "$name" in -*) ;; *) : > "$installed/$name" ;; esac; done ;;
     -R|-Rs) shift; for name in "$@"; do case "$name" in -*) ;; *) rm -f "$installed/$name" ;; esac; done ;;
-    -Rsc) shift; for name in "$@"; do case "$name" in -*) ;; *) for dependent in $(cat "$MYCONFIG_TEST_ROOT/required-by/$name" 2>/dev/null); do rm -f "$installed/$dependent"; done; rm -f "$installed/$name" ;; esac; done ;;
+    -Rsc) shift; for name in "$@"; do case "$name" in -*) ;; *) for dependent in $(cat "$INAYOS_TEST_ROOT/required-by/$name" 2>/dev/null); do rm -f "$installed/$dependent"; done; rm -f "$installed/$name" ;; esac; done ;;
 esac"#,
         );
         if package_system == PackageSystem::Apt {
@@ -127,8 +127,8 @@ esac"#,
             // `auto/` marks as installed automatically.
             sandbox.fake(
                 "apt-get",
-                r#"printf 'apt-get %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
-root="$MYCONFIG_TEST_ROOT"
+                r#"printf 'apt-get %s\n' "$*" >> "$INAYOS_TEST_LOG"
+root="$INAYOS_TEST_ROOT"
 case " $* " in *" --simulate autoremove "*) simulate=1 ;; esac
 action="$1"; shift
 if [ -n "$simulate" ]; then
@@ -158,7 +158,7 @@ done"#,
             sandbox.fake(
                 "dpkg-query",
                 r#"for name; do :; done
-if [ -e "$MYCONFIG_TEST_ROOT/installed/$name" ]; then printf 'install ok installed'; else
+if [ -e "$INAYOS_TEST_ROOT/installed/$name" ]; then printf 'install ok installed'; else
     printf 'dpkg-query: no packages found matching %s\n' "$name" >&2; exit 1; fi"#,
             );
             // No installed package depends on another, and none owns the running kernel.
@@ -326,7 +326,7 @@ fn remove_finds_claude_in_its_install_folder_when_path_lacks_it() {
     fs::create_dir_all(&bin).unwrap();
     program(
         &bin.join("claude"),
-        r#"printf 'claude %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+        r#"printf 'claude %s\n' "$*" >> "$INAYOS_TEST_LOG"
 case "$2" in
     add-json) printf '{"mcpServers":{"%s":%s}}' "$5" "$6" > "$HOME/.claude.json" ;;
     remove) printf '{}' > "$HOME/.claude.json" ;;
@@ -892,24 +892,24 @@ fn zsh_installs_once_and_sets_the_login_shell_once() {
     let sandbox = Sandbox::new("zsh");
     sandbox.fake(
         "curl",
-        r#"printf 'curl %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+        r#"printf 'curl %s\n' "$*" >> "$INAYOS_TEST_LOG"
 printf 'mkdir -p "$HOME/.oh-my-zsh"\n'
 # Like the Oh My Zsh installer, write a template ~/.zshrc when there is none.
 printf '[ -e "$HOME/.zshrc" ] || echo "source \\$ZSH/oh-my-zsh.sh" > "$HOME/.zshrc"\n'"#,
     );
     sandbox.fake(
         "git",
-        r#"printf 'git %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
+        r#"printf 'git %s\n' "$*" >> "$INAYOS_TEST_LOG"
 mkdir -p "$3""#,
     );
     sandbox.fake(
         "chsh",
-        r#"printf 'chsh %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
-printf '%s' "$2" > "$MYCONFIG_TEST_ROOT/shell""#,
+        r#"printf 'chsh %s\n' "$*" >> "$INAYOS_TEST_LOG"
+printf '%s' "$2" > "$INAYOS_TEST_ROOT/shell""#,
     );
     sandbox.fake(
         "getent",
-        r#"shell=/bin/bash; [ -e "$MYCONFIG_TEST_ROOT/shell" ] && shell="$(cat "$MYCONFIG_TEST_ROOT/shell")"
+        r#"shell=/bin/bash; [ -e "$INAYOS_TEST_ROOT/shell" ] && shell="$(cat "$INAYOS_TEST_ROOT/shell")"
 printf 'tester:x:1000:1000::/home/tester:%s\n' "$shell""#,
     );
     sandbox.fake("id", r#"printf 'tester\n'"#);

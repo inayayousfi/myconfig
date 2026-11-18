@@ -34,9 +34,9 @@ impl Kind for ControlledFolderAccessApp<'_> {
 
     fn read(&self, ctx: &Context) -> ModuleResult<Option<String>> {
         let pwsh = powershell_7(ctx)?;
-        let check = "$p = Get-MpPreference -ErrorAction SilentlyContinue; if ($p -and $p.ControlledFolderAccessAllowedApplications -contains $env:MYCONFIG_APP) { 'allowed' } else { 'absent' }";
+        let check = "$p = Get-MpPreference -ErrorAction SilentlyContinue; if ($p -and $p.ControlledFolderAccessAllowedApplications -contains $env:INAYOS_APP) { 'allowed' } else { 'absent' }";
         let state = ctx.read(
-            cmd!(ctx.shell, "{pwsh} -NoProfile -Command {check}").env("MYCONFIG_APP", self.path),
+            cmd!(ctx.shell, "{pwsh} -NoProfile -Command {check}").env("INAYOS_APP", self.path),
         )?;
         Ok((state == "allowed").then(|| PRESENT.to_owned()))
     }

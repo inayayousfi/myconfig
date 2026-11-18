@@ -16,7 +16,7 @@ use crate::seed::SeedFile;
 use crate::vm::Vm;
 
 const DOWNLOAD_PAGE: &str = "https://cachyos.org/download/";
-pub const SEED_LABEL: &str = "MYCONFIG";
+pub const SEED_LABEL: &str = "INAYOS";
 pub const INSTALL_TIMEOUT: Duration = Duration::from_secs(2 * 60 * 60);
 
 /// The live session needs time to reach its desktop before a terminal can open.
@@ -26,11 +26,11 @@ const ATTEMPTS: u32 = 10;
 
 /// Typed into a terminal of the live session. It mounts the seed disc by its label and runs
 /// its start script as root.
-const START_COMMAND: &str = "sudo bash -c 'mkdir -p /run/myconfig-seed; \
-    mount -o ro /dev/disk/by-label/MYCONFIG /run/myconfig-seed; \
-    exec bash /run/myconfig-seed/start.sh'\n";
+const START_COMMAND: &str = "sudo bash -c 'mkdir -p /run/inayos-seed; \
+    mount -o ro /dev/disk/by-label/INAYOS /run/inayos-seed; \
+    exec bash /run/inayos-seed/start.sh'\n";
 
-const STARTED: &str = "myconfig-image: started";
+const STARTED: &str = "inayos-image: started";
 
 const START_SCRIPT: &str = include_str!("../../image/cachyos/start.sh");
 const POST_INSTALL_SCRIPT: &str = include_str!("../../image/cachyos/post-install.sh");
@@ -110,7 +110,7 @@ pub fn seed_files(public_key: &str) -> Vec<SeedFile> {
             { "name": "/dev/vda1", "mountpoint": "/boot", "size": "2G", "fs_name": "vfat", "type": "boot" },
             { "name": "/dev/vda2", "mountpoint": "/", "size": "100%", "type": "root" },
         ],
-        "hostname": "myconfig-cachyos",
+        "hostname": "inayos-cachyos",
         "locale": "en_US",
         "xkbmap": "us",
         "timezone": "UTC",

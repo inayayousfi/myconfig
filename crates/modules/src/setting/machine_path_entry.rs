@@ -22,9 +22,9 @@ const OPEN: &str = "$key = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey('
 /// Stores `$new` with the type the value had, and tells running programs that the
 /// environment changed, which a direct registry write does not do by itself.
 const STORE: &str = "$key.SetValue('Path', $new, $kind); \
-    Add-Type -Namespace MyConfig -Name Environment -MemberDefinition '[DllImport(\"user32.dll\", CharSet = CharSet.Unicode)] public static extern IntPtr SendMessageTimeout(IntPtr window, uint message, UIntPtr wParam, string lParam, uint flags, uint timeout, out UIntPtr result);'; \
+    Add-Type -Namespace InayOS -Name Environment -MemberDefinition '[DllImport(\"user32.dll\", CharSet = CharSet.Unicode)] public static extern IntPtr SendMessageTimeout(IntPtr window, uint message, UIntPtr wParam, string lParam, uint flags, uint timeout, out UIntPtr result);'; \
     $result = [UIntPtr]::Zero; \
-    [void][MyConfig.Environment]::SendMessageTimeout([IntPtr]0xffff, 0x1A, [UIntPtr]::Zero, 'Environment', 2, 5000, [ref]$result)";
+    [void][InayOS.Environment]::SendMessageTimeout([IntPtr]0xffff, 0x1A, [UIntPtr]::Zero, 'Environment', 2, 5000, [ref]$result)";
 
 impl Kind for MachinePathEntry<'_> {
     fn describe(&self) -> String {

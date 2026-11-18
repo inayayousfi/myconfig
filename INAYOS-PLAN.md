@@ -71,11 +71,14 @@ The default layout on a whole disk:
 
 - Separate from encryption. When on:
   - `sbctl` creates the machine's own keys and enrolls them with Microsoft's keys and the firmware's built-in keys. The Microsoft keys keep Windows and option ROMs booting.
-  - `sbctl` signs rEFInd, its Btrfs driver, every kernel and every boot image. A pacman hook signs again after each update, and the guard checks it.
+  - `sbctl` signs rEFInd, its Btrfs driver, every kernel (the kernels inside snapshots included) and every unified kernel image. rEFInd and its driver are registered with `sbctl sign -s -o <path on the EFI partition> <source in /usr/share/refind>`, so a rEFInd package update signs the copies on the EFI partition again.
+  - sbctl's own pacman hook (`zz-sbctl.hook`, from the `extra` repository) runs `sbctl sign-all` after every transaction that touches a kernel or an EFI file, and the guard checks the result.
+  - Any other EFI tool rEFInd shows, such as fwupd's `fwupx64.efi`, is signed too or hidden with `dont_scan_tools`.
+  - Without encryption, the initramfs is a plain unsigned file next to the kernel, so Secure Boot alone does not protect it. Only the encrypted layout, whose unified kernel image holds the initramfs, covers it.
 - Easy Anti-Cheat Linux v2 (announced by Epic in October 2026) requires Secure Boot, a TPM 2.0 measured boot, a kernel signed by a key Epic trusts, lockdown in integrity mode, signed modules only, IOMMU on, kexec off and the BPF security module. Epic says these requirements may change.
   - Keys enrolled by the user are not accepted: CachyOS's guide says EAC rejects anything rEFInd starts, because rEFInd is signed with the user's own key.
   - Arch does not sign its kernel, so no Arch kernel meets the key requirement.
-  - Lockdown disables hibernation and locally built (DKMS) modules.
+  - An entry running in lockdown integrity mode loses hibernation and locally built (DKMS) modules. Arch's stock kernel (`linux` 7.3.4.arch1-2) does not turn lockdown on under Secure Boot (`CONFIG_LOCK_DOWN_KERNEL_FORCE_NONE=y`), so normal InayOS entries keep hibernation with Secure Boot on.
 - InayOS stays ready without installing anything for it:
   - Secure Boot with the Microsoft and built-in keys.
   - TPM 2.0 and IOMMU checked by the installer.
@@ -86,10 +89,11 @@ The default layout on a whole disk:
 ### Encryption (installer option)
 
 - Offered only when the machine has a TPM 2.0. The disk is never unlocked with a typed password in normal use.
-- The system and home partitions are LUKS2 volumes, enrolled with `systemd-cryptenroll` against the TPM, bound to measurement register 7 (the Secure Boot state). Register 7 changes with the Secure Boot keys and database, not with kernel updates.
+- The system and home partitions are LUKS2 volumes, enrolled with `systemd-cryptenroll` against the TPM, bound to measurement register 7 (the Secure Boot state).
+- Register 7 changes when Secure Boot is turned on or off, when PK, KEK, db or dbx change (fwupd updates, and Windows Update on a dual-boot machine, which can write db and dbx through Microsoft's KEK), and when a binary is approved by a different db certificate, so a new signing key changes it. Kernel updates signed with the same key do not change it.
 - With encryption on, rEFInd cannot read the system partition. The kernel then goes on the EFI partition as a unified kernel image built by mkinitcpio: kernel, initramfs and kernel options in one signed file.
 - Hibernation with encryption needs the home volume unlocked in the initramfs, because the swap file lives there.
-- **Recovery key.** `systemd-cryptenroll` generates one. The TPM can refuse to unlock after a firmware change to the Secure Boot keys, after the TPM is cleared, or when the disk moves to another machine. The installer hands the key over two ways:
+- **Recovery key.** `systemd-cryptenroll` generates one. The TPM can refuse to unlock after a Secure Boot database update the guard did not see (Windows Update on a dual-boot machine), after a firmware update that resets the keys, after the TPM is cleared, or when the disk moves to another machine. bootvine answers every systemd password request, so its screen shows systemd-cryptsetup's "passphrase or recovery key" prompt. The installer hands the key over two ways:
   - A file in the new user's home folder. Inside an encrypted disk it is useless when it is needed, so the first login shows a reminder until the user has copied it into a password manager and deleted it.
   - A QR code on the final screen, read with a phone's camera app and copied into the password manager on the phone.
 
@@ -99,7 +103,8 @@ The default layout on a whole disk:
 - That keeps rEFInd's signature out of the TPM's record of that boot:
   - BitLocker does not ask for its recovery key.
   - An anti-cheat check sees a boot rEFInd never touched.
-- The rEFInd option for this is `scanfor firmware`. See "Checks before building".
+- rEFInd's `scanfor ...,firmware` adds a "Reboot to <label>" entry for each firmware boot entry. A manual stanza with `firmware_bootnum <hex>` adds one chosen entry. Either way, picking it writes `BootNext` and resets the machine, and rEFInd is not in that boot path.
+- The rEFInd configuration sets `enable_mouse`, uses `dont_scan_firmware` (or one `firmware_bootnum` stanza) to show only the wanted firmware entries, and `dont_scan_files EFI/Microsoft/Boot/bootmgfw.efi` so rEFInd adds no chain-loading Windows entry of its own.
 
 ### Hibernation lock
 
@@ -118,8 +123,12 @@ The guard is a small binary, separate from `inayos`, shipped in the same package
   4. only then does rEFInd see the new entry.
 
   When a check fails, the previous entry stays the default and the user gets a desktop notification.
-- **"Previous system" entry.** The guard writes a rEFInd entry that boots the last pre-update snapshot: its kernel, modules and system. Snapshots are read-only, so the entry adds a writable overlay in memory, the method `grub-btrfs` uses. With encryption, the guard keeps a copy of the previous unified kernel image on the EFI partition, pointing at the same snapshot. rEFInd does not fall back by itself: when a new kernel fails to boot, the user clicks this entry.
-- **Firmware updates.** Firmware updates go through InayOS (`fwupd`). The guard re-binds the TPM around firmware and Secure Boot database updates, so routine updates never need the recovery key.
+- **"Previous system" entry.** The guard writes a rEFInd entry that boots the last pre-update snapshot: its kernel, modules and system.
+  - Snapshots are read-only, so the entry uses systemd's own overlay: mkinitcpio's `sd-volatile` hook is in the hooks from installation on, and the entry passes `systemd.volatile=overlay rootflags=subvol=<snapshot>`. `grub-btrfs` is not used: its hook pulls in GRUB and does not run in a systemd initramfs.
+  - With encryption, the guard builds and signs a previous unified kernel image with the snapshot's kernel and that command line.
+  - rEFInd does not fall back by itself: when a new kernel fails to boot, the user clicks this entry.
+- **Lockdown check.** The guard checks that `/sys/kernel/security/lockdown` reads `[none]` on normal entries, which catches a future Arch kernel that would disable hibernation.
+- **Firmware updates.** Firmware updates go through InayOS (`fwupd`). Before a firmware or Secure Boot database update, the guard adds a temporary TPM slot with no measurement registers. At the next good boot it enrolls register 7 again and removes the temporary slot. During that window the disk unlocks without the Secure Boot check. Routine updates never need the recovery key.
 
 ## Snapshots
 
@@ -180,24 +189,30 @@ Arch already ships the timer that refreshes its keyring.
   1. Partition and format.
   2. `pacstrap`.
   3. Create the user.
-  4. Run `inayos install` as that user inside the new system, in installer mode, through `arch-chroot -N`.
+  4. Run `inayos install` as that user inside the new system, in installer mode: `arch-chroot -S -u <user> /mnt env SYSTEMD_OFFLINE=1 inayos install ...`.
   5. Set up the boot chain.
   6. Run the guard's checks.
   7. Reboot.
 
   No service runs at first login to finish the install.
-  - `arch-chroot` version 32 bind-mounts the live system's `/run` into the new system by default. Commands inside could then talk to the live session's systemd and D-Bus, and the Plasma steps could change the installer's own desktop. The `-N` mode gives the new system an empty `/run`.
-  - The run starts with `runuser -u <user>`, never `su -l`, so PAM does not open a login session. Installer mode never sets `XDG_RUNTIME_DIR` or `DBUS_SESSION_BUS_ADDRESS`.
+  - `arch-chroot` version 32 bind-mounts the live system's `/run` into the new system by default. Commands inside could then talk to the live session's systemd and D-Bus, and the Plasma steps could change the installer's own desktop.
+  - `-S` runs the chroot through `systemd-run` and binds `/run/udev` read-only. `-u` switches to the user with no PAM login session and a cleared environment, so no `XDG_RUNTIME_DIR` or `DBUS_SESSION_BUS_ADDRESS` reaches the run. Installer mode never sets them.
+  - `-N` (unshare mode) is not used: it needs a subordinate id range for root, and it maps the user's id into that range, so files in the new home would get the wrong owner on disk.
 - **Logins** (GitHub, Tailscale and any other) are left to the user after the install. The `login` module does not run from the installer.
 
 ## Installer mode in `Context`
 
 CachyOS's installer (Calamares, configuration in the CachyOS `calamares-config` repository) follows one rule: at install time it only writes files and enables services. Services start at first boot. The desktop configuration is a set of files in `/etc/skel` copied into the new home. InayOS follows the same rule inside `Context`, so most modules need no change:
 
+- `Context` sets `SYSTEMD_OFFLINE=1` for every command. Inside the new system, run as the user, `systemctl --user enable` then creates the links in `~/.config/systemd/user` with no running user manager. `systemctl --user --root=<dir>` from outside does not work (systemd 262 refuses user scope with `--root`).
 - `enable_service` enables without starting.
-- Starting, stopping, restarting, reloading the user manager, "is it active" and `active_group` report a deferred result.
+- Starting, stopping, restarting, reloading the user manager, "is it active" and `active_group` report a deferred result. `service_state` reports a service as not active.
+- Modules stop calling runtime `systemctl` commands directly and go through `Context`. A repository test forbids raw runtime `systemctl` calls in modules.
 - `verify` checks that services are enabled, not running.
 - `ctx.confirm` answers come from the installer's answers file.
+- Commands that exit 0 without doing their work need explicit handling, because the exit status hides the failure:
+  - `gsettings set` without a session bus saves nothing. It runs under `dbus-run-session`, with `XDG_CONFIG_HOME` pointing into the new user's home.
+  - `plasma-apply-colorscheme --accent-color` rebuilds light Breeze colors unless it sees Breeze Dark, which only a Plasma session puts in `XDG_CONFIG_DIRS`. The `plasma-apply-*` tools run with `XDG_CONFIG_DIRS=$HOME/.config/kdedefaults:/etc/xdg`.
 
 The current profile, run inside a never-booted system, gives:
 
@@ -207,7 +222,8 @@ The current profile, run inside a never-booted system, gives:
 | ssh | Refuses because `/run/systemd/system` is missing | Drop that check in installer mode |
 | kanata, handy, agent-config | `modprobe uinput` targets the USB stick's running kernel, and `systemctl --user daemon-reload` fails | Skip `modprobe`, since the boot-time `modules-load.d` file covers it, and use the deferred `Context` calls |
 | kanata-kde, pipewire | User manager calls fail | Deferred `Context` calls |
-| kde-plasma | `systemctl --user daemon-reload` fails, and `gsettings` saves nothing without a session bus | Deferred `Context` calls, `gsettings` under `dbus-run-session`, and the panel layout as Plasma's default layout |
+| kde-plasma | `systemctl --user daemon-reload` fails, `gsettings` saves nothing without a session bus, and the accent color rebuilds light Breeze colors | Deferred `Context` calls, `gsettings` under `dbus-run-session`, `plasma-apply-*` with the `kdedefaults` folder in `XDG_CONFIG_DIRS`, the KWin reconfigure and layout run skipped, and the panel layout as Plasma's default layout |
+| t3code-desktop, and the T3 Code server module if the InayOS profile takes it | The server module calls `loginctl` and `is-active`; `setting/plasma_panels.rs` calls plasmashell | To check when the InayOS profile list is set |
 | docker | Start, `is-active` and `docker info` need the running daemon | Enable and set the Docker contexts at install; the daemon starts at first boot |
 | tailscale | Setting the operator needs `tailscaled` running | Enable at install; set the operator after the user logs in |
 | axidev-osk | Its login-screen setup asks the running systemd whether Plasma Login exists, and its permission setup runs `modprobe uinput` | Fix in the `axidev-osk` repository: check the unit file instead, and rely on the boot-time module file |
@@ -216,17 +232,22 @@ The current profile, run inside a never-booted system, gives:
 
 The Axidev fix is required: the on-screen keyboard must appear on the login screen at first boot.
 
-The panel layout ships as the default layout of a look-and-feel package. Plasma runs that script for a user who has no panels yet. It is Plasma's documented mechanism and needs no service of ours.
+The panel layout ships as the default layout of an InayOS look-and-feel package:
+
+- When plasmashell starts with no containments in `plasma-org.kde.plasma.desktop-appletsrc`, it creates one desktop per screen and runs `contents/layouts/org.kde.plasma.desktop-layout.js` of the look-and-feel package named in `kdeglobals` `[KDE] LookAndFeelPackage`, through the same scripting engine as `evaluateScript`. Every global `layout.js` uses exists there, and its own two variables fall back to a first run, which builds the bars, the dock and its default pins (plasma-workspace 6.8.3 sources).
+- The package holds `metadata.json`, the layout script, and a copy of Breeze Dark's `contents/defaults`, because a package without them falls back to light Breeze. The kde-plasma module applies it, so `LookAndFeelPackage` names it before the first login.
+- The installer never creates `plasma-org.kde.plasma.desktop-appletsrc`: a file with containments skips the default layout.
+- `print()` only reaches Plasma's debug log there. When a widget is missing or the script fails, the default-layout version falls back to `loadTemplate("org.kde.plasma.desktop.defaultPanel")`, so the user never gets a desktop with no panels.
+- The layout command and its user service stay for displays plugged in later: Plasma adds desktops, not panels, for a new display.
 
 ## Repository changes
 
 1. **Rename to InayOS first**, before new work, so all new code uses the new names. Names that already exist on installed machines migrate:
    - the state record moves from `~/.local/state/myconfig/state.json` (and `%LOCALAPPDATA%\myconfig`), with a `format` increase and a migration;
    - the layout script recognizes the old `myconfig*` panel markers, so existing docks keep their pins;
-   - installed units such as `myconfig-kanata.service`, `myconfig-handy.service` and `myconfig-plasma-layout.service` are replaced cleanly;
-   - the release file names, the `install.sh` and `install.ps1` download addresses, and the GitHub repository name change. GitHub redirects the old repository address.
-
-   The current name appears about 1,050 times in 119 files.
+   - files installed under the old names (units such as `myconfig-kanata.service`, the `myconfig-*` scripts, `/etc/libinput/plugins/90-myconfig-*.lua`, APT sources, Windows Startup shortcuts, the rEFInd block) stay in place next to the new ones after an install. Left alone, they double the pointer speed (both libinput plugins multiply by 4), break `apt-get update` on the Ubuntu Devbox (two sources with different `Signed-By`), and run Kanata, Handy, the tray icons and AutoHotkey twice. Install never undoes an earlier install, so a state migration (format 3) puts every pending record that names an old file into a `myconfig-leftovers` group. One `inayos remove myconfig-leftovers`, run before the first install of the renamed version, undoes only those records, the old stow links included;
+   - the release file names change to `inayos-*`. The latest release only has `myconfig-*` files, so the merge into `main` and a new release happen together;
+   - the `install.sh` and `install.ps1` download addresses and the GitHub repository name change last. GitHub redirects the old repository address to the new one, not the reverse.
 2. **New apps:**
    - the InayOS profile (plain Arch desktop);
    - the installer;
@@ -278,15 +299,13 @@ Scenarios:
 
 ## Checks before building
 
-These are unknowns. Each one needs a check, and its result can change the design.
+These are unknowns that sources and local tests could not settle. Each needs a VM, and its result can change the design.
 
-- Whether `layout.js` runs unchanged as a look-and-feel package's default layout.
-- Whether rEFInd's `scanfor firmware` starts firmware entries through `BootNext`, from a mouse click.
-- Whether Arch's stock kernel turns on lockdown under Secure Boot. If it does, hibernation and Secure Boot cannot be used together.
-- Whether bootvine shows the encryption recovery prompt.
-- Whether rootless Docker, `gsettings` under `dbus-run-session`, and the `plasma-apply-*` tools work in installer mode.
-- Whether `systemctl --user enable` creates the links with no running user manager, or `Context` writes them itself.
-- Whether the "Previous system" overlay boots cleanly from a read-only snapshot.
+- That the default layout really builds the bars and the dock at a first login.
+- That a mouse click on a rEFInd firmware entry starts it through `BootNext`, and that the pointer works in rEFInd on the test firmware.
+- That rootless Docker can be enabled in installer mode and starts at first boot.
+- That the "Previous system" entry boots cleanly from a read-only snapshot with `systemd.volatile=overlay`, including the remount of `/` and the mounts of `/var/log` and `/home`.
+- That sd-encrypt's console password agent does not disturb bootvine's screen when the recovery prompt shows.
 
 ## Proposed order of work
 

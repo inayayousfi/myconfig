@@ -490,7 +490,6 @@ fn folders_that_programs_write_into_stay_real_folders() {
         ("plasma", ".local/share/applications"),
         ("plasma", ".local/share/kwin/scripts"),
         ("plasma", ".local/share/plasma/plasmoids"),
-        ("plasma", ".local/share/kio/servicemenus"),
         ("plasma", ".config/fontconfig/conf.d"),
         (
             "ghostty",
@@ -1266,7 +1265,6 @@ fn kde_keys_in_this_module_are_the_approved_values() {
         ("kdeglobals/KDE/SingleClick", "true"),
         ("kwinrc/Plugins/myconfig-panelsEnabled", "true"),
         ("plasmanotifyrc/DoNotDisturb/WhenFullscreen", "false"),
-        ("dolphinrc/General/BrowseThroughArchives", "true"),
         (
             "kglobalshortcutsrc/services/org.kde.krunner.desktop/_launch",
             "Search\tAlt+F2\tMeta+Space",

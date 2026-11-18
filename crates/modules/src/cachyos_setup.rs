@@ -62,7 +62,6 @@ const UNWANTED: &[Package] = &[
     Package::Mpv,
     Package::Kdeconnect,
     Package::Partitionmanager,
-    Package::Ark,
     Package::Gwenview,
 ];
 

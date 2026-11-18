@@ -16,7 +16,15 @@ use crate::{
 
 pub struct KdePlasma;
 
-const PACKAGES: &[Package] = &[Package::PlexFonts, Package::BlexMonoFont, Package::Libinput];
+/// Ark opens archives from Dolphin and adds its Extract and Compress entries to Dolphin's
+/// context menu. It reads and writes 7z archives through the 7-Zip program.
+const PACKAGES: &[Package] = &[
+    Package::PlexFonts,
+    Package::BlexMonoFont,
+    Package::Libinput,
+    Package::Ark,
+    Package::SevenZip,
+];
 const LOOK_AND_FEEL: &str = "org.kde.breezedark.desktop";
 /// The pink that Black & Pink uses in the terminal and Zsh.
 const ACCENT_COLOR: &str = "255,78,173";
@@ -77,8 +85,6 @@ pub(crate) fn kde_settings() -> Vec<(Setting, &'static str)> {
         "WhenFullscreen",
         "false",
     );
-    // Without Ark, Dolphin opens zip, tar and 7z archives as folders.
-    add("dolphinrc", &["General"], "BrowseThroughArchives", "true");
     add(
         "kglobalshortcutsrc",
         &["services", "org.kde.krunner.desktop"],

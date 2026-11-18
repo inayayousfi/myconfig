@@ -6,11 +6,13 @@ This document describes the CachyOS KDE Plasma setup: the `kde-plasma` module in
 
 The module applies KDE's stock Breeze Dark global theme with personal settings: the pink accent color, IBM Plex fonts, input settings and window rules.
 
+The session uses a US keyboard layout whose right Alt key is the Compose key: press and release it, then type a sequence such as `'` `e` for é. The login and lock screens keep the system layout from `localectl`.
+
 The interface uses IBM Plex Sans and the fixed-width font is BlexMono Nerd Font Mono, the IBM Plex Mono copy with Nerd Font icons. The `plasma` package's fontconfig file makes IBM Plex Sans, IBM Plex Serif and BlexMono Nerd Font Mono the defaults for programs that ask for sans-serif, serif or monospace text.
 
 ## Panel layout
 
-The `plasma` package owns the panel layout. `myconfig-plasma-layout` sends `~/.local/share/myconfig-plasma/layout.js` to Plasma. The layout gives every display a top bar and a dock. The top bar holds a KDE session menu (the `myconfig.session` widget), the global menu, the tray and the clock. The dock holds the application launcher, a one-click Overview icon and the task icons.
+The `plasma` package owns the panel layout. `myconfig-plasma-layout` sends `~/.local/share/myconfig-plasma/layout.js` to Plasma. The layout gives every display a top bar and a dock. The top bar holds a KDE session menu (the `myconfig.session` widget), the global menu, the tray and the clock. The dock holds a one-click Overview icon and the task icons. A new dock pins Overview, Chrome, T3 Code, VSCodium, Ghostty, LyX and Qalculate, and a rebuilt dock keeps its own pins. The task widget shows a blank icon for a pin whose application is missing, so the CachyOS profile installs each pinned application.
 
 The session menu shows a one-color Tux in the bar's text color. The drawing comes from CachyOS's char-white icon theme, which is GPL, so the widget is GPL. Its labels reuse the translations that KDE installs, so the widget stores no text in any language and follows the system language.
 

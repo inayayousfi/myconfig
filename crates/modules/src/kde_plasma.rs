@@ -134,6 +134,16 @@ pub(crate) fn kde_settings() -> Vec<(Setting, &'static str)> {
         "0",
     );
     add("kcminputrc", &["Mouse"], "cursorSize", CURSOR_SIZE);
+    // A US layout whose right Alt is the Compose key: press and release it, then type a
+    // sequence such as ' e for é. The login and lock screens keep the system layout.
+    for (key, value) in [
+        ("Use", "true"),
+        ("LayoutList", "us"),
+        ("ResetOldOptions", "true"),
+        ("Options", "compose:ralt"),
+    ] {
+        add("kxkbrc", &["Layout"], key, value);
+    }
     settings
 }
 

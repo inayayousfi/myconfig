@@ -6,6 +6,18 @@ const firstRun = typeof myconfigFirstRun === "undefined" ? true : myconfigFirstR
 const ensureOverview = typeof myconfigEnsureOverview === "undefined" ? false : myconfigEnsureOverview;
 
 const overviewLauncher = "applications:myconfig-overview.desktop";
+// A new dock starts with these pins. The task widget shows a blank icon for a
+// pin whose application is not installed, so each one needs a module that
+// installs it.
+const defaultLaunchers = [
+    overviewLauncher,
+    "applications:google-chrome.desktop",
+    "applications:t3code.desktop",
+    "applications:vscodium.desktop",
+    "applications:com.mitchellh.ghostty.desktop",
+    "applications:lyx.desktop",
+    "applications:io.github.Qalculate.qalculate-qt.desktop",
+];
 const wallpaper = "/usr/share/wallpapers/Next/";
 const topWidgetTypes = [
     "myconfig.session",
@@ -15,7 +27,6 @@ const topWidgetTypes = [
     "org.kde.plasma.digitalclock",
 ];
 const dockWidgetTypes = [
-    "org.kde.plasma.kickerdash",
     "org.kde.plasma.icontasks",
 ];
 
@@ -44,8 +55,7 @@ if (missingWidgetTypes.length > 0) {
         return panel.widgets().find(widget => widget.type === "org.kde.plasma.icontasks");
     }
 
-    function launchersOf(panel) {
-        const tasks = tasksOf(panel);
+    function launchersIn(tasks) {
         if (!tasks) {
             return [];
         }
@@ -53,16 +63,12 @@ if (missingWidgetTypes.length > 0) {
         return tasks.readConfig("launchers", []);
     }
 
-    function withOverview(launchers) {
-        return launchers.includes(overviewLauncher) ? launchers : [overviewLauncher].concat(launchers);
+    function launchersOf(panel) {
+        return launchersIn(tasksOf(panel));
     }
 
-    function configureLauncher(launcher) {
-        launcher.currentConfigGroup = ["General"];
-        launcher.writeConfig("alphaSort", true);
-        launcher.writeConfig("highlightNewlyInstalledApps", false);
-        launcher.writeConfig("showRecentApps", false);
-        launcher.writeConfig("showRecentDocs", false);
+    function withOverview(launchers) {
+        return launchers.includes(overviewLauncher) ? launchers : [overviewLauncher].concat(launchers);
     }
 
     function configureTasks(tasks, launchers) {
@@ -79,11 +85,13 @@ if (missingWidgetTypes.length > 0) {
         topWidgetTypes.forEach(type => panel.addWidget(type));
     }
 
+    // Plasma still lists a removed widget for a while, so a lookup by type
+    // could find the old task widget: the new one is returned instead.
     function fillDock(panel, launchers) {
         panel.widgets().slice().forEach(widget => widget.remove());
-        configureLauncher(panel.addWidget("org.kde.plasma.kickerdash"));
-        panel.addWidget("org.kde.plasma.icontasks");
-        configureTasks(tasksOf(panel), launchers);
+        const tasks = panel.addWidget("org.kde.plasma.icontasks");
+        configureTasks(tasks, launchers);
+        return tasks;
     }
 
     function configureTop(panel, screen) {
@@ -117,13 +125,8 @@ if (missingWidgetTypes.length > 0) {
     const retained = new Map();
     const stale = [];
     const oldLaunchers = new Map();
-    if (rebuildAll) {
-        initialPanels.forEach(panel => {
-            if (!oldLaunchers.has(panel.screen) && tasksOf(panel)) {
-                oldLaunchers.set(panel.screen, launchersOf(panel));
-            }
-        });
-    } else {
+    // The pins of the distribution's own panels are dropped with them.
+    if (!rebuildAll) {
         managed.forEach(panel => {
             const role = readPanel(panel, "myconfigRole", "");
             const screen = Number(readPanel(panel, "myconfigScreen", panel.screen));
@@ -160,16 +163,18 @@ if (missingWidgetTypes.length > 0) {
             configureTop(top, screen);
 
             let dock = retained.get(`dock:${screen}`);
+            let tasks;
             if (!dock) {
                 dock = new Panel();
                 created.push(dock);
-                fillDock(dock, withOverview(oldLaunchers.get(screen) || []));
+                tasks = fillDock(dock, oldLaunchers.has(screen) ? withOverview(oldLaunchers.get(screen)) : defaultLaunchers);
             } else if (!hasWidgets(dock, dockWidgetTypes)) {
-                fillDock(dock, launchersOf(dock));
+                tasks = fillDock(dock, launchersOf(dock));
+            } else {
+                tasks = tasksOf(dock);
             }
-            configureLauncher(dock.widgets()[0]);
-            const launchers = launchersOf(dock);
-            configureTasks(tasksOf(dock), ensureOverview ? withOverview(launchers) : launchers);
+            const launchers = launchersIn(tasks);
+            configureTasks(tasks, ensureOverview ? withOverview(launchers) : launchers);
             configureDock(dock, screen);
         }
 

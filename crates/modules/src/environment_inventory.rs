@@ -23,6 +23,8 @@ const T3_CODE_DESKTOP: &str = "the desktop app (AUR package `t3code-bin`), which
 
 const CACHYOS_INVENTORY: &[&str] = &[
     "- **Editor**: VSCodium with the Black & Pink theme and Open Remote SSH. It opens text files from the desktop, and `EDITOR` is `codium --wait`.\n",
+    "- **Browser**: Google Chrome from the AUR.\n",
+    "- **Math and documents**: LyX with TeX Live, the Qalculate calculator with gnuplot for plots, and Okular as the default PDF viewer.\n",
     "- **On-screen keyboard**: Axidev OSK with desktop and login-screen startup.\n",
     "- **Keyboard remapping**: Kanata keyboard remapping with a KDE tray profile selector.\n",
     "- **Dictation**: Handy offline push-to-talk dictation on Ctrl+Space.\n",
@@ -45,12 +47,14 @@ const CONTAINERS: &str = "- **Containers**: rootless Docker with Buildx and Comp
 
 /// A phrase of the template for each module that it describes. The template of a profile
 /// holds the phrase exactly when the profile holds the module.
-const CLAIMS: [(&str, &str); 12] = [
+const CLAIMS: [(&str, &str); 14] = [
     ("system-monitor", "btop"),
     ("tailscale", "Tailscale service"),
     ("ssh-server", "OpenSSH server"),
     ("docker", "rootless Docker"),
     ("vscodium", "VSCodium with"),
+    ("chrome", "Google Chrome from the AUR"),
+    ("math", "LyX with TeX Live"),
     ("axidev-osk", "Axidev OSK"),
     ("kanata", "Kanata keyboard remapping"),
     ("kanata-kde", "KDE tray profile selector"),

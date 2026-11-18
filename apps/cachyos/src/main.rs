@@ -31,6 +31,8 @@ static MODULES: &[&dyn Module] = &[
     },
     &AndroidPhone,
     &Vscodium,
+    &Chrome,
+    &Math,
     &Refind,
     &Bootvine,
     &Kanata {
@@ -142,6 +144,8 @@ mod tests {
             "flatpak",
             "appimage",
             "vscodium",
+            "chrome",
+            "math",
             "bootvine",
             "t3code-desktop",
             "agent-config",

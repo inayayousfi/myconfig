@@ -47,8 +47,9 @@ PlasmoidItem {
 
         readonly property bool menuOpen: menu.status === PlasmaExtras.Menu.Open
 
-        // The icon keeps the margins that the global menu entries leave around
-        // their text, while the highlight fills the bar height.
+        // The icon keeps the top and bottom margins that the global menu
+        // entries leave around their text, while the highlight fills the bar
+        // height.
         implicitHeight: Kirigami.Units.iconSizes.medium
         implicitWidth: availableHeight + leftPadding + rightPadding
         Layout.fillHeight: true
@@ -57,8 +58,11 @@ PlasmoidItem {
         hoverEnabled: true
         topPadding: frame.margins.top
         bottomPadding: frame.margins.bottom
-        leftPadding: frame.margins.left
-        rightPadding: frame.margins.right
+        // The bar adds its own space between widgets, so narrower sides than
+        // the menu entries' keep Tux as far from the first entry as the
+        // entries are from each other, and close to the screen edge.
+        leftPadding: Kirigami.Units.smallSpacing
+        rightPadding: Kirigami.Units.smallSpacing
         Accessible.name: i18nd("libkicker", "Session")
         Accessible.role: Accessible.ButtonMenu
         // Like the global menu, the menu opens on press.

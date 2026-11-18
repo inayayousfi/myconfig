@@ -1,6 +1,7 @@
 //! Installer modules, the trait they share, the recorded state, and the runner.
 //!
 //! `MODULES-DESIGN.md` at the repository root describes this structure.
+mod chrome;
 mod context;
 mod deploy;
 mod package_manager;
@@ -11,6 +12,7 @@ mod support;
 #[cfg(all(test, unix))]
 mod tests;
 
+pub use chrome::Chrome;
 pub use context::{Context, Event, Interaction, ServiceScope, ServiceState, Step, Unanswered};
 pub use myconfig_utils::PackageSystem;
 pub use package_catalog::Package;
@@ -40,6 +42,7 @@ mod kanata_kde;
 mod kde_plasma;
 mod llvm_path;
 mod login;
+mod math;
 mod media;
 mod oh_my_posh;
 mod oh_my_posh_font;
@@ -87,6 +90,7 @@ pub use kanata_kde::KanataKde;
 pub use kde_plasma::KdePlasma;
 pub use llvm_path::LlvmPath;
 pub use login::Login;
+pub use math::Math;
 pub use media::Media;
 pub use oh_my_posh::OhMyPosh;
 pub use oh_my_posh_font::OhMyPoshFont;

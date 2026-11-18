@@ -16,12 +16,13 @@ use crate::{Context, ModuleResult, state::Change};
 /// programs write later would land inside the deployed tree. systemd ignores a linked
 /// drop-in directory, so those stay real directories as well. Each one applies only to a
 /// package that contains it.
-const UNFOLDED: [&str; 11] = [
+const UNFOLDED: [&str; 12] = [
     ".local/bin",
     ".claude",
     ".local/share/applications",
     ".local/share/kwin/scripts",
     ".local/share/plasma/plasmoids",
+    ".local/share/plasma/look-and-feel",
     ".config/fontconfig/conf.d",
     ".config/systemd/user/app-com.mitchellh.ghostty.service.d",
     // VSCodium keeps its history and workspace storage beside its settings.

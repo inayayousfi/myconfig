@@ -9,4 +9,5 @@ crossterm = "0.29.0"
 inayos-modules = { path = "../modules" }
 inayos-utils = { path = "../utils" }
 ratatui = "0.30.2"
+serde_json = "1.0.151"
 xshell = "0.2.7"

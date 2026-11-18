@@ -1,5 +1,5 @@
 [package]
-name = "inayos-cachyos"
+name = "inayos-arch-desktop"
 version.workspace = true
 edition = "2024"
 

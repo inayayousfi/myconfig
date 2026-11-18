@@ -1,20 +1,19 @@
 # VM xtask
 
-This document describes the VM xtask in `test/vm/`, the `inayos-xtask` crate. It builds the installers from the working tree and tests them in throwaway QEMU virtual machines of CachyOS, Ubuntu 26.04 LTS and Windows 11. A commit or a release is not needed. It runs on a Linux host and only by hand.
+This document describes the VM xtask in `test/vm/`, the `inayos-xtask` crate. It builds the installers from the working tree and tests them in throwaway QEMU virtual machines of Ubuntu 26.04 LTS and Windows 11. A commit or a release is not needed. It runs on a Linux host and only by hand.
 
-The CachyOS and Ubuntu cycles have passed on real guests, image builds included. Nothing has run on Windows, the Arch WSL checks included.
+The Ubuntu cycle has passed on a real guest, image build included. Nothing has run on Windows, the Arch WSL checks included. No guest runs the InayOS desktop profile.
 
 ## Commands
 
 The cargo alias in `.cargo/config.toml` runs the crate as `cargo xtask`.
 
 ```bash
-cargo xtask vm image build <os>    # builds the clean image of cachyos, ubuntu or windows
+cargo xtask vm image build <os>    # builds the clean image of ubuntu or windows
 cargo xtask vm cycle <os>          # tests the installer of that system
 cargo xtask vm run <os>            # boots a throwaway copy with the fresh installer in it
 cargo xtask vm run <os> --failed   # boots the kept disk of the last failed cycle
 cargo xtask vm run <os> --resume   # boots the throwaway disk of the previous run again
-cargo xtask vm run cachyos --displays 2
 ```
 
 `--watch` opens a `remote-viewer` window on the guest display for any command. Without it, the guest has no window, and `run` prints the viewer command.
@@ -55,13 +54,11 @@ The test account is `tester` with the password `inayos`, set in `src/os.rs`.
 
 `image build` finds the current release at its source, downloads it, checks its SHA-256, installs it unattended, logs in once over SSH, and records the release in the image's `release` file. The new image replaces the old one only when it is complete, and the throwaway and failed layers of that system go with the old image.
 
-- CachyOS comes from the current Desktop ISO on the CachyOS download page. The live session runs the CachyOS command-line installer in headless mode from a settings file, and a script then mounts the installed system, adds the SSH key and turns on the SSH server. The xtask starts that script by typing a command into a live session terminal.
-
 - Ubuntu comes from the official 26.04 LTS cloud image, set up by cloud-init from a NoCloud seed disc.
 
 - Windows comes from Microsoft's consumer ISO, downloaded with the requests that the Mido script uses. When Microsoft refuses to give a download link to the host's network address, the build stops and names the page to download the English x64 ISO from by hand. A file saved into the `windows` folder of the download folder is used when its SHA-256 matches the one on that page. An answer file on a seed disc creates a local account that logs on automatically, installs the OpenSSH server and adds the key. A failure of that setup writes the failure line to the first serial port, which stops the build.
 
-The release file holds the CachyOS ISO number, the Ubuntu cloud image build serial, or the Windows version with its build number.
+The release file holds the Ubuntu cloud image build serial, or the Windows version with its build number.
 
 ## Cycle
 
@@ -69,9 +66,9 @@ The release file holds the CachyOS ISO number, the Ubuntu cloud image build seri
 
 1. It warns when the image's source lists a newer release than the image, or says that it could not check, then continues.
 
-2. It builds the installers from the working tree: `inayos-cachyos` or `inayos-ubuntu-devbox` for `x86_64-unknown-linux-musl`, and for Windows `inayos-windows` with `cargo xwin` plus `inayos-arch-wsl`.
+2. It builds the installers from the working tree: `inayos-ubuntu-devbox` for `x86_64-unknown-linux-musl`, and for Windows `inayos-windows` with `cargo xwin` plus `inayos-arch-wsl`.
 
-3. It boots the guest, copies the installers in, and prints the number of pending package updates. On Linux it syncs a temporary copy of the package database and counts with `pacman -Qu` or `apt list --upgradable` against it, so the guest's own package lists stay unchanged.
+3. It boots the guest, copies the installers in, and prints the number of pending package updates. On Ubuntu it refreshes a temporary copy of the package lists and counts with `apt list --upgradable` against it, so the guest's own package lists stay unchanged.
 
 4. It saves the `before` state lists.
 
@@ -109,4 +106,4 @@ On Windows, the installer runs unelevated in the logged-on desktop session, star
 
 ## Hands-on mode
 
-`run <os>` boots a throwaway copy of the clean image, the failed layer with `--failed`, or with `--resume` the throwaway layer that the previous `run` left, copies the fresh installer in, prints the SSH command, and keeps the guest running until it shuts down. `--displays 2` gives the CachyOS guest a QXL device with two outputs; the second one turns on in the viewer under View > Displays.
+`run <os>` boots a throwaway copy of the clean image, the failed layer with `--failed`, or with `--resume` the throwaway layer that the previous `run` left, copies the fresh installer in, prints the SSH command, and keeps the guest running until it shuts down. `--displays 2` gives a desktop guest a QXL device with two outputs, and no current guest is one.

@@ -21,7 +21,8 @@ impl Kind for CursorTheme {
             .unwrap_or_else(|| "24".to_owned());
         ctx.run(
             cmd!(ctx.shell, "plasma-apply-cursortheme --size {size} {value}")
-                .env("QT_QPA_PLATFORM", "offscreen"),
+                .env("QT_QPA_PLATFORM", "offscreen")
+                .env("XDG_CONFIG_DIRS", super::kde_config_dirs(ctx)),
         )
     }
 

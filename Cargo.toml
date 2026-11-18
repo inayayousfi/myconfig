@@ -1,6 +1,6 @@
 [workspace]
 members = [
-  "apps/cachyos",
+  "apps/arch-desktop",
   "apps/windows",
   "apps/arch-wsl",
   "apps/ubuntu-devbox",

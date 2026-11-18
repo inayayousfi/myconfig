@@ -6,7 +6,7 @@ use typed_fs_rs::EmbeddedDirectory;
 use xshell::cmd;
 
 use crate::{
-    Context, Footprint, Module, ModuleResult, Need, Package, ServiceScope, Setting,
+    Applied, Context, Footprint, Module, ModuleResult, Need, Package, ServiceScope, Setting,
     deploy::verify_package,
     plasma_version::require_supported_plasma,
     support::{
@@ -17,10 +17,12 @@ use crate::{
 pub struct KdePlasma;
 
 /// Ark opens archives from Dolphin and adds its Extract and Compress entries to Dolphin's
-/// context menu. It reads and writes 7z archives through the 7-Zip program.
+/// context menu. It reads and writes 7z archives through the 7-Zip program. Noto CJK
+/// draws Chinese, Japanese and Korean text, which the IBM Plex fonts lack.
 const PACKAGES: &[Package] = &[
     Package::PlexFonts,
     Package::BlexMonoFont,
+    Package::NotoFontsCjk,
     Package::Libinput,
     Package::Ark,
     Package::SevenZip,
@@ -76,13 +78,17 @@ const PLASMA: &[Package] = &[
     Package::Drkonqi,
     Package::FlatpakKcm,
 ];
-const LOOK_AND_FEEL: &str = "org.kde.breezedark.desktop";
+/// The global theme of the `plasma` package: Breeze Dark's settings, with the top bar and
+/// dock as the layout that Plasma builds when it starts with no desktops.
+const LOOK_AND_FEEL: &str = "inayos.desktop";
 /// The pink that Black & Pink uses in the terminal and Zsh.
 const ACCENT_COLOR: &str = "255,78,173";
 const CURSOR_THEME: &str = "breeze_cursors";
 const CURSOR_SIZE: &str = "24";
 const LIBINPUT_PLUGINS: &str = "/etc/libinput/plugins";
 const LAYOUT_SERVICE: &str = "inayos-plasma-layout.service";
+/// Plasma Login Manager, the login screen.
+const LOGIN_SERVICE: &str = "plasmalogin.service";
 const WINDOW_RULE: &str = "inayos-picture-in-picture";
 
 const LAYOUT_COMMAND: &str = ".local/bin/inayos-plasma-layout";
@@ -359,6 +365,7 @@ impl Module for KdePlasma {
                 "sudo",
             ],
         )?;
+        ctx.enable_service(LOGIN_SERVICE, ServiceScope::System)?;
         ctx.deploy_config("plasma")?;
         let home = ctx.home;
         require_executable(&home.join(LAYOUT_COMMAND))?;
@@ -378,18 +385,30 @@ impl Module for KdePlasma {
         configure_cursor(ctx)?;
 
         let runtime = user_runtime_directory(ctx)?;
-        let bus = sh
-            .var_os("DBUS_SESSION_BUS_ADDRESS")
-            .filter(|value| !value.is_empty())
-            .unwrap_or_else(|| format!("unix:path={}/bus", runtime.display()).into());
-        let _runtime = sh.push_env("XDG_RUNTIME_DIR", &runtime);
-        let _bus = sh.push_env("DBUS_SESSION_BUS_ADDRESS", bus);
-        ctx.run(cmd!(sh, "systemctl --user daemon-reload"))?;
-        if ctx.succeeds(cmd!(sh, "qdbus6 org.kde.KWin /KWin"))? {
-            ctx.run(cmd!(
-                sh,
-                "qdbus6 org.kde.KWin /KWin org.kde.KWin.reconfigure"
-            ))?;
+        // The running Plasma session is reached through its runtime folder and bus.
+        let session = || {
+            let bus = sh
+                .var_os("DBUS_SESSION_BUS_ADDRESS")
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| format!("unix:path={}/bus", runtime.display()).into());
+            (
+                sh.push_env("XDG_RUNTIME_DIR", &runtime),
+                sh.push_env("DBUS_SESSION_BUS_ADDRESS", bus),
+            )
+        };
+        {
+            let _session = session();
+            ctx.reload_user_manager()?;
+            // The installed system's KWin reads the new settings when it starts.
+            let _ = ctx.on_running_system("reconfigure the running KWin", || {
+                if ctx.succeeds(cmd!(sh, "qdbus6 org.kde.KWin /KWin"))? {
+                    ctx.run(cmd!(
+                        sh,
+                        "qdbus6 org.kde.KWin /KWin org.kde.KWin.reconfigure"
+                    ))?;
+                }
+                Ok(())
+            })?;
         }
 
         // The layout script rewrites the panel layout and records its own version.
@@ -401,20 +420,27 @@ impl Module for KdePlasma {
         // panels.
         ctx.enable_service(LAYOUT_SERVICE, ServiceScope::User)?;
         let layout = home.join(LAYOUT_COMMAND);
-        match ctx.run_status(cmd!(sh, "{layout}").env("INAYOS_PLASMA_ENSURE_OVERVIEW", "1"))? {
-            Some(0) => {
-                ctx.note("Applied the KDE Plasma top bar and dock");
-                Ok(())
+        let applied = ctx.on_running_system("apply the KDE Plasma top bar and dock", || {
+            let _session = session();
+            match ctx.run_status(cmd!(sh, "{layout}").env("INAYOS_PLASMA_ENSURE_OVERVIEW", "1"))? {
+                Some(0) => {
+                    ctx.note("Applied the KDE Plasma top bar and dock");
+                    Ok(())
+                }
+                // The layout script exits with 75 when Plasma is not running.
+                Some(75) => {
+                    ctx.note(
+                        "KDE Plasma is not active; the top bar and dock will apply at the next KDE Plasma login",
+                    );
+                    Ok(())
+                }
+                code => Err(format!("KDE Plasma layout failed with exit code {code:?}").into()),
             }
-            // The layout script exits with 75 when Plasma is not running.
-            Some(75) => {
-                ctx.note(
-                    "KDE Plasma is not active; the top bar and dock will apply at the next KDE Plasma login",
-                );
-                Ok(())
-            }
-            code => Err(format!("KDE Plasma layout failed with exit code {code:?}").into()),
+        })?;
+        if applied == Applied::Deferred {
+            ctx.note("The top bar and dock will apply at the first KDE Plasma login");
         }
+        Ok(())
     }
 
     fn verify(&self, ctx: &Context) -> ModuleResult {
@@ -445,6 +471,12 @@ impl Module for KdePlasma {
         let rules = rule_list().read(ctx)?.unwrap_or_default();
         if !rules.split(',').any(|rule| rule == WINDOW_RULE) {
             return Err(format!("the KWin rule list lacks {WINDOW_RULE}").into());
+        }
+        if !ctx
+            .service_state(LOGIN_SERVICE, ServiceScope::System)?
+            .enabled
+        {
+            return Err(format!("{LOGIN_SERVICE} is not enabled").into());
         }
         ctx.run(cmd!(
             ctx.shell,

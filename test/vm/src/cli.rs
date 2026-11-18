@@ -47,7 +47,7 @@ enum VmCommand {
         /// instead of a new copy.
         #[arg(long)]
         resume: bool,
-        /// The number of displays; 2 is available for CachyOS only.
+        /// The number of displays; 2 is available only for a desktop guest.
         #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=2))]
         displays: u8,
     },

@@ -75,6 +75,18 @@ impl Session {
                 .is_ok_and(|status| status.success())
     }
 
+    /// Whether sudo keeps `SYSTEMD_OFFLINE` for a command, as installer mode asks it to.
+    pub fn preserves_offline(system: PackageSystem) -> bool {
+        !Self::needed(system)
+            || Command::new("sudo")
+                .args(["-n", "--preserve-env=SYSTEMD_OFFLINE", "true"])
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .is_ok_and(|status| status.success())
+    }
+
     /// Starts the permission with a password typed into the screen.
     pub fn start_with_password(system: PackageSystem, password: &str) -> ModuleResult<Self> {
         if !Self::needed(system) {

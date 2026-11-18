@@ -14,7 +14,9 @@ mod support;
 mod tests;
 
 pub use chrome::Chrome;
-pub use context::{Context, Event, Interaction, ServiceScope, ServiceState, Step, Unanswered};
+pub use context::{
+    Applied, Context, Event, Interaction, RunMode, ServiceScope, ServiceState, Step, Unanswered,
+};
 pub use inayos_utils::PackageSystem;
 pub use package_catalog::Package;
 pub use setting::Setting;
@@ -30,7 +32,6 @@ mod axidev_osk;
 mod base;
 mod boot_config;
 mod bootvine;
-mod cachyos_setup;
 mod cli;
 mod docker;
 mod environment_inventory;
@@ -60,6 +61,7 @@ mod runtimes;
 mod shared_desktop;
 mod ssh;
 mod system_monitor;
+mod system_tuning;
 mod t3code;
 mod tailscale;
 mod taskbar_auto_hide;
@@ -79,7 +81,6 @@ pub use autohotkey::AutoHotkey;
 pub use axidev_osk::AxidevOsk;
 pub use base::Base;
 pub use bootvine::Bootvine;
-pub use cachyos_setup::CachyosSetup;
 pub use cli::Cli;
 pub use docker::Docker;
 pub use environment_inventory::EnvironmentInventory;
@@ -114,6 +115,7 @@ pub mod internal {
 }
 pub use ssh::{Ssh, SshServer};
 pub use system_monitor::SystemMonitor;
+pub use system_tuning::SystemTuning;
 pub use t3code::{T3Code, T3CodeDesktop};
 pub use tailscale::Tailscale;
 pub use taskbar_auto_hide::TaskbarAutoHide;

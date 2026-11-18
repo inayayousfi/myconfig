@@ -11,6 +11,26 @@ pub(crate) use kde_key::Entries as KdeEntries;
 /// The value of a setting that only exists or not, such as a group membership.
 pub(crate) const PRESENT: &str = "present";
 
+/// The `XDG_CONFIG_DIRS` for the `plasma-apply-*` tools, with the user's `kdedefaults`
+/// folder first. A Plasma session puts it there, and it holds the global theme's defaults:
+/// without it, `plasma-apply-colorscheme --accent-color` rebuilds light Breeze colors.
+fn kde_config_dirs(ctx: &Context) -> std::ffi::OsString {
+    let defaults = config_home(ctx).join("kdedefaults");
+    let current = ctx
+        .shell
+        .var("XDG_CONFIG_DIRS")
+        .ok()
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "/etc/xdg".to_owned());
+    if std::env::split_paths(&current).any(|directory| directory == defaults) {
+        return current.into();
+    }
+    let mut dirs = defaults.into_os_string();
+    dirs.push(":");
+    dirs.push(current);
+    dirs
+}
+
 mod accent_color;
 mod claude_mcp_server;
 mod controlled_folder_access_app;

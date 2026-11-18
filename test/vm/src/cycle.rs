@@ -94,7 +94,7 @@ pub fn cycle(os: Os, watch: bool, repository: &Path) -> Result<(), CycleError> {
     let allowed = parse(os.name(), compare::allowed_changes(os))?;
     let arch_wsl_allowed = match os {
         Os::Windows => Some(parse("arch-wsl", compare::ARCH_WSL_ALLOWED_CHANGES)?),
-        Os::Cachyos | Os::Ubuntu => None,
+        Os::Ubuntu => None,
     };
     let mut started = start::start(
         Options {
@@ -176,7 +176,7 @@ impl Steps<'_> {
 
         let answers = Answers::new();
         let mut driver: Box<dyn Driver> = match self.os {
-            Os::Cachyos | Os::Ubuntu => Box::new(Terminal::new(self.guest, &answers)),
+            Os::Ubuntu => Box::new(Terminal::new(self.guest, &answers)),
             Os::Windows => Box::new(Desktop::new(
                 self.guest,
                 &answers,

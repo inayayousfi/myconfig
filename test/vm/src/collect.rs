@@ -41,13 +41,13 @@ pub fn collect(
 ) -> Result<Snapshot, CollectError> {
     let windows_path = format!(r"{WINDOWS_TOOL_DIR}\lists.ps1");
     let (script, guest_path) = match os {
-        Os::Cachyos | Os::Ubuntu => (LINUX_SCRIPT, LINUX_GUEST_PATH.to_owned()),
+        Os::Ubuntu => (LINUX_SCRIPT, LINUX_GUEST_PATH.to_owned()),
         // scp takes `/` between the folders of a Windows path.
         Os::Windows => (WINDOWS_SCRIPT, windows_path.replace('\\', "/")),
     };
     let local = scratch.join(match os {
         Os::Windows => "lists.ps1",
-        Os::Cachyos | Os::Ubuntu => "lists.sh",
+        Os::Ubuntu => "lists.sh",
     });
     fs::create_dir_all(scratch).map_err(|error| CollectError::Io(scratch.to_owned(), error))?;
     fs::write(&local, script).map_err(|error| CollectError::Io(local.clone(), error))?;
@@ -60,8 +60,8 @@ pub fn collect(
 
     let mut snapshot = Snapshot::default();
     match os {
-        Os::Cachyos | Os::Ubuntu => {
-            let tool = if os == Os::Cachyos { "pacman" } else { "dpkg" };
+        Os::Ubuntu => {
+            let tool = "dpkg";
             snapshot.read(&guest.run(&format!("bash {LINUX_GUEST_PATH} user"))?)?;
             // The system lists read files that only root can read.
             snapshot.read(&guest.run(&format!(

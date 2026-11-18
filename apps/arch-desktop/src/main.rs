@@ -7,10 +7,10 @@ static MODULES: &[&dyn Module] = &[
     &PlasmaVersion,
     &Base {
         packages: Base::ARCH,
-        unwanted: &[Package::CachyUpdate],
+        unwanted: &[],
         needs: &[Need::Hard("plasma-version")],
     },
-    &CachyosSetup,
+    &SystemTuning,
     &Media,
     &Ssh { keys_only: false },
     &Cli,
@@ -24,7 +24,6 @@ static MODULES: &[&dyn Module] = &[
     },
     &TerminalTools,
     &Ghostty,
-    &AxidevOsk,
     &Tailscale,
     &AgentsPackages {
         extra: &[Package::Ydotool],
@@ -39,6 +38,7 @@ static MODULES: &[&dyn Module] = &[
         start_at_login: false,
     },
     &KdePlasma,
+    &AxidevOsk,
     &Printing,
     &KanataKde,
     &Handy,
@@ -49,10 +49,19 @@ static MODULES: &[&dyn Module] = &[
     &SshServer,
     &GitConfig { windows_ssh: false },
     &Login,
-    &EnvironmentInventory::CACHYOS,
+    &EnvironmentInventory::ARCH_DESKTOP,
 ];
 
 const PACKAGE_SYSTEM: PackageSystem = PackageSystem::Arch;
+
+fn running_in_wsl() -> bool {
+    let kernel = std::fs::read_to_string("/proc/sys/kernel/osrelease")
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    std::env::var_os("WSL_DISTRO_NAME").is_some()
+        || kernel.contains("microsoft")
+        || kernel.contains("wsl")
+}
 
 fn main() -> ExitCode {
     let id = std::fs::read_to_string("/etc/os-release")
@@ -62,15 +71,15 @@ fn main() -> ExitCode {
             line.strip_prefix("ID=")
                 .map(|id| id.trim_matches('"').to_owned())
         });
-    if id.as_deref() != Some("cachyos") {
+    if id.as_deref() != Some("arch") || running_in_wsl() {
         eprintln!(
-            "error: the CachyOS installer requires CachyOS; detected {}",
+            "error: the InayOS desktop installer requires Arch Linux outside WSL; detected {}",
             id.as_deref().unwrap_or("unknown")
         );
         return ExitCode::FAILURE;
     }
     inayos_interface::main(Profile {
-        title: "CachyOS",
+        title: "InayOS desktop",
         package_system: PACKAGE_SYSTEM,
         modules: MODULES,
     })
@@ -90,7 +99,7 @@ mod tests {
     #[test]
     fn the_environment_inventory_describes_the_modules_of_the_profile() {
         assert_eq!(
-            EnvironmentInventory::CACHYOS.claim_problems(MODULES),
+            EnvironmentInventory::ARCH_DESKTOP.claim_problems(MODULES),
             Vec::<String>::new()
         );
     }
@@ -132,6 +141,7 @@ mod tests {
     fn the_profile_is_the_full_desktop() {
         let names: Vec<_> = MODULES.iter().map(|module| module.name()).collect();
         for wanted in [
+            "system-tuning",
             "axidev-osk",
             "ghostty",
             "kde-plasma",
@@ -154,7 +164,7 @@ mod tests {
             "git-config",
             "login",
         ] {
-            assert!(names.contains(&wanted), "CachyOS lacks {wanted}");
+            assert!(names.contains(&wanted), "the InayOS desktop lacks {wanted}");
         }
         assert_eq!(
             names[0], "plasma-version",

@@ -11,7 +11,8 @@ use std::{
 
 use clap::{Parser, Subcommand};
 use inayos_modules::{
-    Context, Interaction, Module, ModuleResult, PackageSystem, leftovers, runner, state::StateStore,
+    Context, Interaction, Module, ModuleResult, PackageSystem, RunMode, leftovers, runner,
+    state::StateStore,
 };
 use xshell::Shell;
 
@@ -33,9 +34,27 @@ struct Arguments {
 #[derive(Subcommand)]
 enum Command {
     /// Installs all modules, or only the named ones, then verifies each.
-    Install { modules: Vec<String> },
+    Install {
+        modules: Vec<String>,
+        /// Runs inside a never-booted system, as the InayOS installer does through
+        /// `arch-chroot`: services are enabled without starting, and steps that need the
+        /// running system wait until the installed system starts. Questions are answered
+        /// from `--answers` only, and sudo must work without a password.
+        #[arg(long, hide = true)]
+        installer_mode: bool,
+        /// A JSON object that maps each question's exact text to true or false. A question
+        /// it lacks has no answer.
+        #[arg(long, hide = true, requires = "installer_mode")]
+        answers: Option<PathBuf>,
+    },
     /// Verifies all modules, or only the named ones.
-    Verify { modules: Vec<String> },
+    Verify {
+        modules: Vec<String>,
+        /// Verifies inside a never-booted system, as the InayOS installer does after
+        /// `install --installer-mode`: services must be enabled instead of running.
+        #[arg(long, hide = true)]
+        installer_mode: bool,
+    },
     /// Removes the named modules. `myconfig-leftovers` names what myconfig, the earlier
     /// name of InayOS, installed under its own names.
     Remove {
@@ -132,6 +151,24 @@ fn home() -> ModuleResult<PathBuf> {
     ))
 }
 
+/// The user name and home folder in `entry`, a line of the passwd database.
+fn account_fields(entry: &str) -> ModuleResult<(String, PathBuf)> {
+    let fields: Vec<&str> = entry.trim_end().split(':').collect();
+    match fields[..] {
+        [name, _, _, _, _, home, _] if !name.is_empty() && home.starts_with('/') => {
+            Ok((name.to_owned(), PathBuf::from(home)))
+        }
+        _ => Err(format!("could not read the passwd entry {entry}").into()),
+    }
+}
+
+/// The user that runs this process and its home folder, from the passwd entry of its uid.
+/// `arch-chroot -u` clears the environment, so installer mode cannot trust HOME or USER.
+fn running_account(shell: &Shell) -> ModuleResult<(String, PathBuf)> {
+    let uid = xshell::cmd!(shell, "id -u").read()?;
+    account_fields(&xshell::cmd!(shell, "getent passwd {uid}").read()?)
+}
+
 /// Points user services at the login session's runtime folder and message bus when the
 /// run starts outside a desktop session, so `systemctl --user` reaches the user manager.
 #[cfg(unix)]
@@ -166,13 +203,28 @@ fn set_session_bus(_shell: &Shell) {}
 fn with_context<T>(
     package_system: PackageSystem,
     io: &dyn Interaction,
+    mode: RunMode,
     action: impl FnOnce(&Context) -> ModuleResult<T>,
 ) -> ModuleResult<T> {
     let shell = Shell::new()?;
-    set_session_bus(&shell);
-    let home = home()?;
+    let home = match mode {
+        RunMode::Live => {
+            set_session_bus(&shell);
+            home()?
+        }
+        // Installer mode must not reach the session of the system the installer runs on,
+        // and the commands it runs see the account of its passwd entry.
+        RunMode::Installer => {
+            let (user, home) = running_account(&shell)?;
+            shell.set_var("HOME", &home);
+            shell.set_var("USER", &user);
+            shell.set_var("LOGNAME", &user);
+            home
+        }
+    };
     let state = RefCell::new(StateStore::open_user(&home)?);
-    let ctx = Context::new(package_system, &shell, Path::new(&home), io, &state);
+    let ctx =
+        Context::new(package_system, &shell, Path::new(&home), io, &state).with_run_mode(mode);
     action(&ctx)
 }
 
@@ -212,47 +264,83 @@ fn select_removal<'a>(
 fn run_plain(profile: &Profile<'_>, command: Command) -> ModuleResult<bool> {
     // Unknown module names are reported before sudo asks for a password.
     let (modules, leftovers) = match &command {
-        Command::Install { modules } | Command::Verify { modules } => {
+        Command::Install { modules, .. } | Command::Verify { modules, .. } => {
             (select(profile, modules)?, false)
         }
         Command::Remove { modules, .. } => select_removal(profile, modules)?,
         Command::List | Command::Internal(_) => return Ok(false),
     };
-    let io = plain::Plain;
-    let _session = sudo::Session::start_interactive(profile.package_system)?;
-    with_context(profile.package_system, &io, |ctx| match command {
-        Command::Install { .. } => match runner::install(ctx, profile.modules, &modules) {
-            Ok(()) => {
-                println!("{} profile completed successfully", profile.title);
-                Ok(false)
+    let (mode, io): (RunMode, Box<dyn Interaction>) = match &command {
+        Command::Install {
+            installer_mode: true,
+            answers,
+            ..
+        } => (
+            RunMode::Installer,
+            Box::new(plain::Answered::read(answers.as_deref())?),
+        ),
+        Command::Verify {
+            installer_mode: true,
+            ..
+        } => (RunMode::Installer, Box::new(plain::Answered::read(None)?)),
+        _ => (RunMode::Live, Box::new(plain::Plain)),
+    };
+    let _session = match mode {
+        RunMode::Live => sudo::Session::start_interactive(profile.package_system)?,
+        // Nobody can type a password inside the installer's run.
+        RunMode::Installer => {
+            if !sudo::Session::cached(profile.package_system) {
+                return Err("installer mode needs sudo to work without a password".into());
             }
-            Err(error) if matches!(&error, runner::InstallError::Incomplete(report) if report.only_unanswered()) =>
-            {
-                eprintln!("{error}");
-                Ok(true)
+            if !sudo::Session::preserves_offline(profile.package_system) {
+                return Err(
+                    "installer mode needs sudo to keep SYSTEMD_OFFLINE, which a sudoers rule for every command allows"
+                        .into(),
+                );
             }
-            Err(error) => Err(error.into()),
+            sudo::Session::start_cached(profile.package_system)
+        }
+    };
+    with_context(
+        profile.package_system,
+        io.as_ref(),
+        mode,
+        |ctx| match command {
+            Command::Install { .. } => match runner::install(ctx, profile.modules, &modules) {
+                Ok(()) => {
+                    println!("{} profile completed successfully", profile.title);
+                    Ok(false)
+                }
+                Err(error) if matches!(&error, runner::InstallError::Incomplete(report) if report.only_unanswered()) =>
+                {
+                    eprintln!("{error}");
+                    Ok(true)
+                }
+                Err(error) => Err(error.into()),
+            },
+            Command::Verify { .. } => {
+                let failures: Vec<_> = runner::verify(ctx, &modules)
+                    .into_iter()
+                    .filter_map(|(name, result)| {
+                        result.err().map(|error| format!("{name}: {error}"))
+                    })
+                    .collect();
+                if failures.is_empty() {
+                    println!("Every module verified successfully");
+                    Ok(false)
+                } else {
+                    Err(failures.join("\n").into())
+                }
+            }
+            Command::Remove { force, .. } => {
+                let report = if leftovers {
+                    runner::remove_with_leftovers(ctx, profile.modules, &modules, force)?
+                } else {
+                    runner::remove(ctx, profile.modules, &modules, force)?
+                };
+                Ok(report.unanswered)
+            }
+            Command::List | Command::Internal(_) => Ok(false),
         },
-        Command::Verify { .. } => {
-            let failures: Vec<_> = runner::verify(ctx, &modules)
-                .into_iter()
-                .filter_map(|(name, result)| result.err().map(|error| format!("{name}: {error}")))
-                .collect();
-            if failures.is_empty() {
-                println!("Every module verified successfully");
-                Ok(false)
-            } else {
-                Err(failures.join("\n").into())
-            }
-        }
-        Command::Remove { force, .. } => {
-            let report = if leftovers {
-                runner::remove_with_leftovers(ctx, profile.modules, &modules, force)?
-            } else {
-                runner::remove(ctx, profile.modules, &modules, force)?
-            };
-            Ok(report.unanswered)
-        }
-        Command::List | Command::Internal(_) => Ok(false),
-    })
+    )
 }

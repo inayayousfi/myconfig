@@ -374,7 +374,10 @@ fn the_plasma_layout_script_records_its_version_and_defers_without_plasma() {
     let home = scratch.0.join("home");
     let bin = scratch.0.join("bin");
     fs::create_dir_all(home.join(".config")).unwrap();
-    fs::create_dir_all(home.join(".local/share/inayos-plasma")).unwrap();
+    fs::create_dir_all(
+        home.join(".local/share/plasma/look-and-feel/inayos.desktop/contents/layouts"),
+    )
+    .unwrap();
     fs::create_dir_all(&bin).unwrap();
     let script = home.join("inayos-plasma-layout");
     fs::copy(
@@ -383,8 +386,8 @@ fn the_plasma_layout_script_records_its_version_and_defers_without_plasma() {
     )
     .unwrap();
     fs::copy(
-        dotfiles().join("plasma/.local/share/inayos-plasma/layout.js"),
-        home.join(".local/share/inayos-plasma/layout.js"),
+        dotfiles().join("plasma/.local/share/plasma/look-and-feel/inayos.desktop/contents/layouts/org.kde.plasma.desktop-layout.js"),
+        home.join(".local/share/plasma/look-and-feel/inayos.desktop/contents/layouts/org.kde.plasma.desktop-layout.js"),
     )
     .unwrap();
     let applets = home.join(".config/plasma-org.kde.plasma.desktop-appletsrc");

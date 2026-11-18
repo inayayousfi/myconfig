@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-layout="$HOME/.local/share/inayos-plasma/layout.js"
+layout="$HOME/.local/share/plasma/look-and-feel/inayos.desktop/contents/layouts/org.kde.plasma.desktop-layout.js"
 state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/inayos"
 state_file="$state_dir/plasma-layout-version"
 

@@ -3,11 +3,26 @@
 use xshell::cmd;
 
 use crate::{
-    Context, Footprint, Module, ModuleResult, Need, Package, ServiceScope, Setting,
+    Applied, Context, Footprint, Module, ModuleResult, Need, Package, ServiceScope, Setting,
     support::{current_user, verify_packages},
 };
 
 pub struct Tailscale;
+
+const SERVICE: &str = "tailscaled";
+
+/// Notes that `user` becomes the operator only once tailscaled runs and someone logged in
+/// to Tailscale.
+fn note_operator_pending(ctx: &Context, user: &str) {
+    ctx.note(&format!(
+        "The Tailscale operator waits for the Tailscale login. After it, make {user} the operator: sudo tailscale set --operator={user}"
+    ));
+}
+
+/// Whether tailscaled has a logged-in account, as the login module checks it.
+fn logged_in(ctx: &Context) -> ModuleResult<bool> {
+    ctx.succeeds(cmd!(ctx.shell, "tailscale status"))
+}
 
 impl Module for Tailscale {
     fn name(&self) -> &'static str {
@@ -27,23 +42,35 @@ impl Module for Tailscale {
 
     fn install(&self, ctx: &Context) -> ModuleResult {
         ctx.install_packages(&[Package::Tailscale])?;
-        ctx.enable_service("tailscaled", ServiceScope::System)?;
-        ctx.run(cmd!(ctx.shell, "sudo systemctl start tailscaled"))?;
+        ctx.enable_service(SERVICE, ServiceScope::System)?;
+        let user = current_user(ctx)?;
+        // Only the running tailscaled stores its operator.
+        if ctx.start_service(SERVICE, ServiceScope::System)? == Applied::Deferred {
+            note_operator_pending(ctx, &user);
+            return Ok(());
+        }
         // t3ctl publishes T3 Code through Tailscale Serve without sudo.
-        ctx.set(Setting::TailscaleOperator, &current_user(ctx)?)
+        ctx.set(Setting::TailscaleOperator, &user)
     }
 
     fn verify(&self, ctx: &Context) -> ModuleResult {
         verify_packages(ctx, &[Package::Tailscale])?;
-        let status = ctx.read(cmd!(ctx.shell, "systemctl is-active tailscaled"))?;
-        if status != "active" {
-            return Err(format!("tailscaled is not active: {status}").into());
-        }
         let user = current_user(ctx)?;
-        if Setting::TailscaleOperator.read(ctx)?.as_deref() != Some(user.as_str()) {
-            return Err(format!("{user} is not the Tailscale operator").into());
+        if ctx.require_active(SERVICE, ServiceScope::System)? == Applied::Deferred {
+            note_operator_pending(ctx, &user);
+            return Ok(());
         }
-        Ok(())
+        match Setting::TailscaleOperator.read(ctx)? {
+            Some(operator) if operator == user => Ok(()),
+            Some(operator) => {
+                Err(format!("{operator} is the Tailscale operator instead of {user}").into())
+            }
+            None if !logged_in(ctx)? => {
+                note_operator_pending(ctx, &user);
+                Ok(())
+            }
+            None => Err(format!("{user} is not the Tailscale operator").into()),
+        }
     }
 
     fn remove(&self, _ctx: &Context) -> ModuleResult {

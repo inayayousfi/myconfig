@@ -12,7 +12,6 @@ use crate::snapshot::Snapshot;
 /// The allowed-changes file of `os`, from `test/vm/allowed-changes/`.
 pub fn allowed_changes(os: Os) -> &'static str {
     match os {
-        Os::Cachyos => include_str!("../allowed-changes/cachyos.txt"),
         Os::Ubuntu => include_str!("../allowed-changes/ubuntu.txt"),
         Os::Windows => include_str!("../allowed-changes/windows.txt"),
     }
@@ -289,7 +288,7 @@ mod tests {
 
     #[test]
     fn every_allowed_changes_file_parses() {
-        for os in [Os::Cachyos, Os::Ubuntu, Os::Windows] {
+        for os in [Os::Ubuntu, Os::Windows] {
             assert!(Allowed::parse(allowed_changes(os)).is_ok(), "{os}");
         }
         assert!(Allowed::parse(ARCH_WSL_ALLOWED_CHANGES).is_ok(), "arch-wsl");

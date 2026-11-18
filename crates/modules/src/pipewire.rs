@@ -4,7 +4,7 @@ use xshell::cmd;
 use crate::{
     Context, Footprint, Module, ModuleResult, Need, Package, ServiceScope,
     deploy::verify_package,
-    support::{graphical_session, require_executable, require_programs, verify_packages},
+    support::{require_executable, require_programs, verify_packages},
 };
 
 pub struct Pipewire;
@@ -37,12 +37,11 @@ impl Module for Pipewire {
         require_executable(&tray)?;
         ctx.run(cmd!(sh, "python -m py_compile {tray}"))?;
         ctx.enable_service(SERVICE, ServiceScope::User)?;
-        ctx.run(cmd!(sh, "systemctl --user daemon-reload"))?;
-        if graphical_session(ctx)? {
-            ctx.run(cmd!(sh, "systemctl --user restart {SERVICE}"))?;
-            ctx.run(cmd!(sh, "systemctl --user --quiet is-active {SERVICE}"))
+        ctx.reload_user_manager()?;
+        if ctx.graphical_session()? {
+            ctx.restart_service(SERVICE, ServiceScope::User).map(drop)
         } else {
-            ctx.run(cmd!(sh, "systemctl --user stop {SERVICE}"))
+            ctx.stop_service(SERVICE, ServiceScope::User)
         }
     }
 

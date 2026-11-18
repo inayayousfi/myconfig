@@ -1,9 +1,21 @@
 // Raising this version rebuilds the bars that an older layout made.
 const layoutVersion = "1";
 // The layout command says whether it has applied this layout before, and
-// whether the installer asks to pin the Overview icon again.
-const firstRun = typeof inayosFirstRun === "undefined" ? true : inayosFirstRun;
+// whether the installer asks to pin the Overview icon again. Plasma also runs
+// this file, without those two variables, as the default layout of the InayOS
+// global theme, when it starts with no desktops at a new user's first login.
+const defaultLayout = typeof inayosFirstRun === "undefined";
+const firstRun = defaultLayout ? true : inayosFirstRun;
 const ensureOverview = typeof inayosEnsureOverview === "undefined" ? false : inayosEnsureOverview;
+
+// As the default layout, the result only reaches Plasma's debug log, so a
+// layout that cannot be built gives way to Plasma's own panel instead of a
+// desktop with no panels.
+function fallBack() {
+    if (defaultLayout) {
+        loadTemplate("org.kde.plasma.desktop.defaultPanel");
+    }
+}
 
 const overviewLauncher = "applications:inayos-overview.desktop";
 const earlierOverviewLauncher = "applications:myconfig-overview.desktop";
@@ -14,7 +26,7 @@ const defaultLaunchers = [
     overviewLauncher,
     "applications:google-chrome.desktop",
     "applications:t3code.desktop",
-    "applications:vscodium.desktop",
+    "applications:codium.desktop",
     "applications:com.mitchellh.ghostty.desktop",
     "applications:lyx.desktop",
     "applications:io.github.Qalculate.qalculate-qt.desktop",
@@ -34,6 +46,7 @@ const dockWidgetTypes = [
 const missingWidgetTypes = topWidgetTypes.concat(dockWidgetTypes).filter(type => !knownWidgetTypes.includes(type));
 if (missingWidgetTypes.length > 0) {
     print(`INAYOS_PLASMA_LAYOUT=missing:${missingWidgetTypes.join(",")}`);
+    fallBack();
 } else {
     function readPanel(panel, key, fallback) {
         panel.currentConfigGroup = [];
@@ -205,5 +218,6 @@ if (missingWidgetTypes.length > 0) {
     } catch (error) {
         created.forEach(panel => panel.remove());
         print(`INAYOS_PLASMA_LAYOUT=error:${error}`);
+        fallBack();
     }
 }

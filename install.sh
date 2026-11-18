@@ -3,10 +3,10 @@
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/inayayousfi/myconfig/main/install.sh | bash
-#   curl -fsSL https://raw.githubusercontent.com/inayayousfi/myconfig/main/install.sh | bash -s -- cachyos
-#   curl -fsSL https://raw.githubusercontent.com/inayayousfi/myconfig/main/install.sh | bash -s -- cachyos install
+#   curl -fsSL https://raw.githubusercontent.com/inayayousfi/myconfig/main/install.sh | bash -s -- arch-desktop
+#   curl -fsSL https://raw.githubusercontent.com/inayayousfi/myconfig/main/install.sh | bash -s -- arch-desktop install
 #
-# The first argument may name the platform (cachyos, arch-wsl, ubuntu-devbox). Every
+# The first argument may name the platform (arch-desktop, arch-wsl, ubuntu-devbox). Every
 # other argument goes to the binary; with none, the binary opens its screen.
 
 set -euo pipefail
@@ -37,7 +37,7 @@ ask() {
 
 normalize_platform() {
     case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
-        cachyos) printf 'cachyos' ;;
+        arch-desktop | arch | desktop | inayos) printf 'arch-desktop' ;;
         arch-wsl | wsl) printf 'arch-wsl' ;;
         ubuntu-devbox | ubuntu | devbox) printf 'ubuntu-devbox' ;;
         *) return 1 ;;
@@ -49,10 +49,10 @@ detect_platform() {
     [ -r /etc/os-release ] && id="$(. /etc/os-release && printf '%s' "${ID:-}")"
     local kernel=""
     [ -r /proc/sys/kernel/osrelease ] && kernel="$(tr '[:upper:]' '[:lower:]' </proc/sys/kernel/osrelease)"
-    if [ "$id" = cachyos ]; then
-        printf 'cachyos'
-    elif [ "$id" = arch ] && { [ -n "${WSL_DISTRO_NAME:-}" ] || [[ "$kernel" == *microsoft* ]] || [[ "$kernel" == *wsl* ]]; }; then
+    if [ "$id" = arch ] && { [ -n "${WSL_DISTRO_NAME:-}" ] || [[ "$kernel" == *microsoft* ]] || [[ "$kernel" == *wsl* ]]; }; then
         printf 'arch-wsl'
+    elif [ "$id" = arch ]; then
+        printf 'arch-desktop'
     elif [ "$id" = ubuntu ]; then
         printf 'ubuntu-devbox'
     fi
@@ -60,13 +60,13 @@ detect_platform() {
 }
 
 choose_platform() {
-    has_terminal || fail "could not detect the platform; pass one of: cachyos, arch-wsl, ubuntu-devbox"
+    has_terminal || fail "could not detect the platform; pass one of: arch-desktop, arch-wsl, ubuntu-devbox"
     while true; do
         local choice
-        choice="$(ask $'Choose the platform:\n  1) CachyOS\n  2) Arch WSL\n  3) Ubuntu Devbox\nChoice (1-3): ')"
+        choice="$(ask $'Choose the platform:\n  1) InayOS desktop on Arch\n  2) Arch WSL\n  3) Ubuntu Devbox\nChoice (1-3): ')"
         case "$choice" in
             1)
-                printf 'cachyos'
+                printf 'arch-desktop'
                 return
                 ;;
             2)

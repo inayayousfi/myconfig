@@ -5,7 +5,6 @@ use std::fmt;
 /// A guest system. Each one has its own clean image and its own installer profile.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
 pub enum Os {
-    Cachyos,
     Windows,
     Ubuntu,
 }
@@ -31,7 +30,6 @@ pub enum Boot {
 impl Os {
     pub fn name(self) -> &'static str {
         match self {
-            Os::Cachyos => "cachyos",
             Os::Windows => "windows",
             Os::Ubuntu => "ubuntu",
         }
@@ -40,20 +38,21 @@ impl Os {
     pub fn memory_mib(self) -> u32 {
         match self {
             Os::Windows => 8192,
-            Os::Cachyos | Os::Ubuntu => 4096,
+            Os::Ubuntu => 4096,
         }
     }
 
     pub fn boot(self) -> Boot {
         match self {
             Os::Windows => Boot::SecureUefiWithTpm,
-            Os::Cachyos | Os::Ubuntu => Boot::Uefi,
+            Os::Ubuntu => Boot::Uefi,
         }
     }
 
-    /// Whether the guest can show a second display. Only the CachyOS desktop is tested with two.
+    /// Whether the guest can show a second display. Only a desktop guest is tested with two,
+    /// and no current guest is one.
     pub fn supports_second_display(self) -> bool {
-        self == Os::Cachyos
+        false
     }
 
     /// How long the first SSH login may take after the guest starts.
@@ -61,7 +60,7 @@ impl Os {
     pub fn ssh_timeout_secs(self) -> u64 {
         match self {
             Os::Windows => 20 * 60,
-            Os::Cachyos | Os::Ubuntu => 10 * 60,
+            Os::Ubuntu => 10 * 60,
         }
     }
 }

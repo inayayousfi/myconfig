@@ -173,4 +173,4 @@ jobs:
       - name: Build the static Linux installers
         run: |
           cargo build --release --locked --target x86_64-unknown-linux-musl \
-            -p inayos-cachyos -p inayos-arch-wsl -p inayos-ubuntu-devbox
+            -p inayos-arch-desktop -p inayos-arch-wsl -p inayos-ubuntu-devbox

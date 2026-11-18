@@ -583,7 +583,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 
 [[package]]
-name = "inayos-arch-wsl"
+name = "inayos-arch-desktop"
 version = "0.54.0"
 dependencies = [
  "inayos-interface",
@@ -591,7 +591,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "inayos-cachyos"
+name = "inayos-arch-wsl"
 version = "0.54.0"
 dependencies = [
  "inayos-interface",
@@ -607,6 +607,7 @@ dependencies = [
  "inayos-modules",
  "inayos-utils",
  "ratatui",
+ "serde_json",
  "xshell",
 ]
 

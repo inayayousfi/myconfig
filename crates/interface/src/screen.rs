@@ -15,7 +15,7 @@ use crossterm::{
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use inayos_modules::{Event, Interaction, Module, ModuleResult, Step, Unanswered, runner};
+use inayos_modules::{Event, Interaction, Module, ModuleResult, RunMode, Step, Unanswered, runner};
 use ratatui::{
     DefaultTerminal, Frame,
     layout::{Constraint, Flex, Layout, Rect},
@@ -410,35 +410,41 @@ fn start<'scope>(
         let remote = Remote {
             messages: messages.clone(),
         };
-        let result = with_context(profile.package_system, &remote, |ctx| match action {
-            Action::Install => {
-                runner::install(ctx, profile.modules, &modules)?;
-                Ok(format!("{} modules installed and verified", modules.len()))
-            }
-            Action::Verify => {
-                let results = runner::verify(ctx, &modules);
-                let failed = results.iter().filter(|(_, result)| result.is_err()).count();
-                for (module, result) in &results {
-                    if result.is_err()
-                        && !modules.iter().any(|candidate| {
-                            candidate.name() == *module && runner::installed(ctx, *candidate)
-                        })
-                    {
-                        let _ =
-                            messages.send(Message::Status((*module).to_owned(), Status::Missing));
-                    }
+        let result = with_context(
+            profile.package_system,
+            &remote,
+            RunMode::Live,
+            |ctx| match action {
+                Action::Install => {
+                    runner::install(ctx, profile.modules, &modules)?;
+                    Ok(format!("{} modules installed and verified", modules.len()))
                 }
-                Ok(format!("{} verified, {failed} failed", results.len()))
-            }
-            Action::Remove => {
-                let report = runner::remove(ctx, profile.modules, &modules, false)?;
-                Ok(if report.unanswered {
-                    "Removed, but some questions had no answer and their items stayed".to_owned()
-                } else {
-                    format!("{} modules removed", modules.len())
-                })
-            }
-        });
+                Action::Verify => {
+                    let results = runner::verify(ctx, &modules);
+                    let failed = results.iter().filter(|(_, result)| result.is_err()).count();
+                    for (module, result) in &results {
+                        if result.is_err()
+                            && !modules.iter().any(|candidate| {
+                                candidate.name() == *module && runner::installed(ctx, *candidate)
+                            })
+                        {
+                            let _ = messages
+                                .send(Message::Status((*module).to_owned(), Status::Missing));
+                        }
+                    }
+                    Ok(format!("{} verified, {failed} failed", results.len()))
+                }
+                Action::Remove => {
+                    let report = runner::remove(ctx, profile.modules, &modules, false)?;
+                    Ok(if report.unanswered {
+                        "Removed, but some questions had no answer and their items stayed"
+                            .to_owned()
+                    } else {
+                        format!("{} modules removed", modules.len())
+                    })
+                }
+            },
+        );
         let _ = messages.send(Message::Done(result.map_err(|error| error.to_string())));
     });
 }

@@ -12,7 +12,7 @@ use xshell::Shell;
 
 use crate::{
     Context, EnvironmentInventory, Event, Footprint, Interaction, Module, ModuleResult, Need,
-    Package, PackageSystem, Setting, Unanswered, Zsh, runner, state::StateStore,
+    Package, PackageSystem, RunMode, Setting, Unanswered, Zsh, runner, state::StateStore,
 };
 
 /// Answers every question the same way, or not at all when `reply` is `None`.
@@ -56,8 +56,26 @@ impl Interaction for Answers {
     }
 }
 
+/// Fake `sudo`: it resets the environment as the real one does, keeping the variables named
+/// by `--preserve-env=` and those the sandbox itself needs, then runs its command.
+pub(crate) const SUDO: &str = r#"keep="PATH HOME USER INAYOS_TEST_ROOT INAYOS_TEST_LOG"
+while :; do
+    case "$1" in
+        --preserve-env=*) keep="$keep $(printf '%s' "${1#*=}" | tr , ' ')"; shift ;;
+        -*) shift ;;
+        *) break ;;
+    esac
+done
+count=$#
+for name in $keep; do
+    eval "isset=\${$name+x}"
+    [ -n "$isset" ] && eval "set -- \"\$@\" \"$name=\$$name\""
+done
+while [ "$count" -gt 0 ]; do set -- "$@" "$1"; shift; count=$((count - 1)); done
+exec env -i "$@""#;
+
 /// A temporary home with fake programs first on PATH, for one package system. Fake
-/// `sudo` runs its command directly. The fake package programs, `pacman` and `paru` on
+/// `sudo` resets the environment and runs its command directly. The fake package programs, `pacman` and `paru` on
 /// Arch or `apt-get` and `dpkg-query` on APT, keep installed packages as files under
 /// `installed/`.
 pub(crate) struct Sandbox {
@@ -96,7 +114,7 @@ impl Sandbox {
             shell,
             package_system,
         };
-        sandbox.fake("sudo", r#"exec "$@""#);
+        sandbox.fake("sudo", SUDO);
         // Never reach the real paru or the AUR: paru counts as installed, and installs
         // the same way as the fake pacman.
         fs::write(sandbox.root.join("installed/paru"), "").unwrap();
@@ -112,7 +130,6 @@ installed="$INAYOS_TEST_ROOT/installed"
 case "$1" in
     -Q) [ "$2" = plasma-workspace ] && { printf 'plasma-workspace 6.7.4-1\n'; exit 0; }
         [ -e "$installed/$2" ] ;;
-    -Si) [ -e "$INAYOS_TEST_ROOT/repository/$2" ] ;;
     -U) shift; for file in "$@"; do case "$file" in -*) ;; *) printf 'local %s\n' "$file" >> "$INAYOS_TEST_LOG" ;; esac; done ;;
     -Qi) printf 'Name            : %s\nRequired By     : %s\n' "$2" "$(cat "$INAYOS_TEST_ROOT/required-by/$2" 2>/dev/null || echo None)" ;;
     -Qqo) exit 1 ;;
@@ -187,8 +204,18 @@ if [ -e "$INAYOS_TEST_ROOT/installed/$name" ]; then printf 'install ok installed
     }
 
     pub(crate) fn with<T>(&self, io: &dyn Interaction, action: impl FnOnce(&Context) -> T) -> T {
+        self.with_mode(io, RunMode::Live, action)
+    }
+
+    pub(crate) fn with_mode<T>(
+        &self,
+        io: &dyn Interaction,
+        mode: RunMode,
+        action: impl FnOnce(&Context) -> T,
+    ) -> T {
         let state = RefCell::new(StateStore::open(&self.root.join("state")).unwrap());
-        let ctx = Context::new(self.package_system, &self.shell, &self.home, io, &state);
+        let ctx = Context::new(self.package_system, &self.shell, &self.home, io, &state)
+            .with_run_mode(mode);
         action(&ctx)
     }
 
@@ -968,8 +995,8 @@ fn the_environment_inventory_keeps_an_existing_file() {
         .with(&io, |ctx| {
             runner::install(
                 ctx,
-                &[&EnvironmentInventory::CACHYOS],
-                &[&EnvironmentInventory::CACHYOS],
+                &[&EnvironmentInventory::ARCH_DESKTOP],
+                &[&EnvironmentInventory::ARCH_DESKTOP],
             )
         })
         .unwrap();
@@ -979,13 +1006,11 @@ fn the_environment_inventory_keeps_an_existing_file() {
     );
 }
 
-/// Modules must go through `Context`, or their output breaks the screen and their
-/// changes escape the recorded state.
-#[test]
-fn modules_run_commands_and_ask_questions_only_through_context() {
-    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-    let mut offenders = Vec::new();
-    let mut files = vec![source];
+/// The source files outside `Context` and the tests, with their paths. `Context` itself
+/// runs the commands, and the tests hold the patterns and fakes.
+fn module_sources() -> Vec<(PathBuf, String)> {
+    let mut sources = Vec::new();
+    let mut files = vec![Path::new(env!("CARGO_MANIFEST_DIR")).join("src")];
     while let Some(path) = files.pop() {
         if path.is_dir() {
             files.extend(
@@ -996,11 +1021,21 @@ fn modules_run_commands_and_ask_questions_only_through_context() {
             continue;
         }
         let name = path.file_name().unwrap().to_string_lossy().into_owned();
-        // `Context` itself runs the commands, and the tests hold the patterns and fakes.
         if name == "context.rs" || path.components().any(|part| part.as_os_str() == "tests") {
             continue;
         }
         let text = fs::read_to_string(&path).unwrap();
+        sources.push((path, text));
+    }
+    sources
+}
+
+/// Modules must go through `Context`, or their output breaks the screen and their
+/// changes escape the recorded state.
+#[test]
+fn modules_run_commands_and_ask_questions_only_through_context() {
+    let mut offenders = Vec::new();
+    for (path, text) in module_sources() {
         for (number, line) in text.lines().enumerate() {
             let forbidden = [
                 ").run()",
@@ -1013,6 +1048,109 @@ fn modules_run_commands_and_ask_questions_only_through_context() {
             .any(|pattern| line.contains(pattern));
             let stdin = line.contains("stdin().read_line");
             if forbidden || stdin {
+                offenders.push(format!(
+                    "{}:{}: {}",
+                    path.display(),
+                    number + 1,
+                    line.trim()
+                ));
+            }
+        }
+    }
+    assert!(offenders.is_empty(), "{}", offenders.join("\n"));
+}
+
+/// Installer mode runs inside a never-booted system, where only `Context` knows that no
+/// service manager or login manager runs. A module that asks systemd or logind about the
+/// running system itself would fail there, or reach the installer's own system.
+#[test]
+fn modules_reach_running_services_only_through_context() {
+    // Every systemctl command that asks or changes the running service manager, from the
+    // unit, machine, job, environment, manager state and system commands of systemctl(1).
+    // Only the unit file commands, such as `enable` and `is-enabled`, work on the unit
+    // files without a running manager.
+    const RUNTIME: &[&str] = &[
+        "list-units",
+        "list-automounts",
+        "list-paths",
+        "list-sockets",
+        "list-timers",
+        "is-active",
+        "is-failed",
+        "status",
+        "show",
+        "cat",
+        "list-dependencies",
+        "start",
+        "stop",
+        "reload",
+        "restart",
+        "try-restart",
+        "enqueue-marked",
+        "reload-or-restart",
+        "try-reload-or-restart",
+        "isolate",
+        "kill",
+        "clean",
+        "freeze",
+        "thaw",
+        "set-property",
+        "bind",
+        "mount-image",
+        "service-log-level",
+        "service-log-target",
+        "reset-failed",
+        "whoami",
+        "list-machines",
+        "list-jobs",
+        "cancel",
+        "show-environment",
+        "set-environment",
+        "unset-environment",
+        "import-environment",
+        "daemon-reload",
+        "daemon-reexec",
+        "log-level",
+        "log-target",
+        "service-watchdogs",
+        "is-system-running",
+        "default",
+        "rescue",
+        "emergency",
+        "halt",
+        "poweroff",
+        "reboot",
+        "kexec",
+        "soft-reboot",
+        "exit",
+        "switch-root",
+        "sleep",
+        "suspend",
+        "hibernate",
+        "hybrid-sleep",
+        "suspend-then-hibernate",
+    ];
+    let mut offenders = Vec::new();
+    for (path, text) in module_sources() {
+        // Undoing recorded changes is part of `Context`'s records, and `remove` runs only
+        // on the running system.
+        if path.file_name().is_some_and(|name| name == "state.rs") {
+            continue;
+        }
+        for (number, line) in text.lines().enumerate() {
+            // A command run in a WSL distribution acts on that distribution's systemd,
+            // not on the system the run installs.
+            if line.contains("wsl.exe") {
+                continue;
+            }
+            let words: Vec<&str> = line
+                .split(|c: char| !(c.is_ascii_alphanumeric() || c == '-'))
+                .filter(|word| !word.is_empty())
+                .collect();
+            let systemctl =
+                words.contains(&"systemctl") && words.iter().any(|word| RUNTIME.contains(word));
+            let loginctl = line.contains("loginctl ");
+            if systemctl || loginctl {
                 offenders.push(format!(
                     "{}:{}: {}",
                     path.display(),

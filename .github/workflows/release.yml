@@ -31,9 +31,9 @@ jobs:
       - name: Build Linux installers
         run: |
           cargo build --release --locked --target x86_64-unknown-linux-musl \
-            -p inayos-cachyos -p inayos-arch-wsl -p inayos-ubuntu-devbox
+            -p inayos-arch-desktop -p inayos-arch-wsl -p inayos-ubuntu-devbox
           mkdir -p release-assets
-          for platform in cachyos arch-wsl ubuntu-devbox; do
+          for platform in arch-desktop arch-wsl ubuntu-devbox; do
             asset="inayos-${platform}-x86_64-unknown-linux-musl"
             cp "target/x86_64-unknown-linux-musl/release/inayos-${platform}" "release-assets/$asset"
             (cd release-assets && sha256sum "$asset" > "$asset.sha256")

@@ -5,8 +5,8 @@ use crate::{
     Context, Footprint, Module, ModuleResult, Need, Package, ServiceScope,
     deploy::verify_package,
     support::{
-        active_group, configure_input_access, graphical_session, input_access_settings,
-        require_executable, require_programs, verify_input_access, verify_packages,
+        configure_input_access, input_access_settings, require_executable, require_programs,
+        verify_input_access, verify_packages,
     },
 };
 
@@ -38,8 +38,8 @@ impl Module for Handy {
         let configure = ctx.home.join(".local/bin/inayos-handy-configure");
         require_executable(&configure)?;
         configure_input_access(ctx, "handy")?;
-        ctx.run(cmd!(sh, "systemctl --user daemon-reload"))?;
-        ctx.run(cmd!(sh, "systemctl --user stop {SERVICE}"))?;
+        ctx.reload_user_manager()?;
+        ctx.stop_service(SERVICE, ServiceScope::User)?;
         let settings = ctx
             .shell
             .var_os("XDG_CONFIG_HOME")
@@ -50,11 +50,10 @@ impl Module for Handy {
         ctx.record_path(&settings)?;
         ctx.run(cmd!(sh, "{configure}"))?;
         ctx.enable_service(SERVICE, ServiceScope::User)?;
-        if !active_group(ctx, "input")? || !active_group(ctx, "uinput")? {
+        if !ctx.user_manager_has_group("input")? || !ctx.user_manager_has_group("uinput")? {
             ctx.note("Log out and back in before Handy can read keyboard input");
-        } else if graphical_session(ctx)? {
-            ctx.run(cmd!(sh, "systemctl --user restart {SERVICE}"))?;
-            ctx.run(cmd!(sh, "systemctl --user --quiet is-active {SERVICE}"))?;
+        } else if ctx.graphical_session()? {
+            let _ = ctx.restart_service(SERVICE, ServiceScope::User)?;
         } else {
             ctx.note("Handy is enabled for the next KDE Plasma login");
         }

@@ -7,12 +7,12 @@ use std::{
 
 use super::{Answers, Sandbox};
 use crate::{
-    Base, CachyosSetup, Cli, Context, Docker, Footprint, Ghostty, Handy, Kanata, KanataKde, Module,
-    ModuleResult, Need, Package, PackageSystem, Runtimes, ServiceScope, runner,
+    Base, Cli, Context, Docker, Footprint, Ghostty, Handy, Kanata, KanataKde, Module, ModuleResult,
+    Need, Package, PackageSystem, RunMode, Runtimes, ServiceScope, runner,
 };
 
 /// Fake system programs that keep their state under the sandbox, so modules run as on a
-/// real machine without root: `sudo` moves `/etc`, `/usr`, `/boot` and `/efi` paths under
+/// real machine without root: `sudo` resets the environment and moves `/etc`, `/usr`, `/boot` and `/efi` paths under
 /// `system/`, groups live in `groups/`, `systemctl` remembers enabled system units in
 /// `units/system/` and user units in `units/user/`, and KDE keys live in `kde/`. A unit is
 /// active only while `<unit>.active` exists beside it: `start`, `restart` and
@@ -24,7 +24,8 @@ fn system(sandbox: &Sandbox) {
     }
     sandbox.fake(
         "sudo",
-        r#"printf 'sudo %s\n' "$*" >> "$INAYOS_TEST_LOG"
+        &format!(
+            r#"printf 'sudo %s\n' "$*" >> "$INAYOS_TEST_LOG"
 for argument in "$@"; do
     case "$argument" in
         /etc/* | /usr/* | /boot/* | /efi/*) set -- "$@" "$INAYOS_TEST_ROOT/system$argument" ;;
@@ -32,7 +33,9 @@ for argument in "$@"; do
     esac
     shift
 done
-exec "$@""#,
+{}"#,
+            super::SUDO
+        ),
     );
     sandbox.fake(
         "id",
@@ -173,213 +176,12 @@ fn install_everything(sandbox: &Sandbox, packages: &[&str]) {
 
 const MKINITCPIO: &str = "# vim:set ft=sh
 MODULES=()
-HOOKS=(base systemd autodetect microcode kms modconf block keyboard sd-vconsole plymouth filesystems fsck)
+HOOKS=(base systemd autodetect microcode kms modconf block keyboard sd-vconsole filesystems fsck)
 ";
-const REFIND_LINUX: &str = r#""Boot with standard options"    "quiet nowatchdog splash rw root=UUID=31f4 resume=UUID=31f4 resume_offset=244412416 efi_pstore.pstore_disable=0"
-"Boot to single-user mode"    "quiet nowatchdog splash rw root=UUID=31f4 resume=UUID=31f4 resume_offset=244412416" single
+const REFIND_LINUX: &str = r#""Boot with standard options"    "rw root=UUID=31f4 resume=UUID=31f4 resume_offset=244412416 efi_pstore.pstore_disable=0"
+"Boot to single-user mode"    "rw root=UUID=31f4 resume=UUID=31f4 resume_offset=244412416" single
 "Boot with minimal options"   "ro root=/dev/nvme0n1p2 resume=UUID=31f4 resume_offset=244412416"
 "#;
-
-/// A CachyOS boot with the Plymouth splash, and rEFInd when `refind` is set.
-fn cachyos_boot(sandbox: &Sandbox, refind: bool) {
-    system(sandbox);
-    let etc = sandbox.root.join("system/etc");
-    fs::create_dir_all(&etc).unwrap();
-    fs::write(etc.join("mkinitcpio.conf"), MKINITCPIO).unwrap();
-    if refind {
-        let boot = sandbox.root.join("system/boot");
-        fs::create_dir_all(&boot).unwrap();
-        fs::write(boot.join("refind_linux.conf"), REFIND_LINUX).unwrap();
-    }
-    sandbox.fake(
-        "mkinitcpio",
-        r#"printf 'mkinitcpio %s\n' "$*" >> "$INAYOS_TEST_LOG""#,
-    );
-    // A plain ext4 disk, unless `lsblk` in the test root says otherwise.
-    sandbox.fake(
-        "lsblk",
-        r#"cat "$INAYOS_TEST_ROOT/lsblk" 2>/dev/null || printf ' disk\nvfat part\next4 part\n'"#,
-    );
-}
-
-#[test]
-fn cachyos_keeps_the_disk_tools_of_the_formats_the_machine_uses() {
-    let sandbox = Sandbox::new("cachyos-disks");
-    cachyos_boot(&sandbox, true);
-    fs::write(
-        sandbox.root.join("lsblk"),
-        " disk\nvfat part\nLVM2_member part\nbtrfs lvm\n",
-    )
-    .unwrap();
-    install_everything(&sandbox, &["btrfs-progs", "lvm2", "xfsprogs", "dmraid"]);
-    let io = Answers::new(None);
-    sandbox
-        .with(&io, |ctx| {
-            runner::install(ctx, &[&CachyosSetup], &[&CachyosSetup])
-        })
-        .unwrap();
-    let installed = |name: &str| sandbox.root.join("installed").join(name).exists();
-    assert!(
-        installed("btrfs-progs"),
-        "the tools of the root filesystem were removed"
-    );
-    assert!(
-        installed("lvm2"),
-        "the LVM tools were removed from an LVM machine"
-    );
-    assert!(!installed("xfsprogs"));
-    assert!(!installed("dmraid"));
-}
-
-#[test]
-fn cachyos_removes_the_boot_splash_and_rebuilds_the_initramfs_once() {
-    let sandbox = Sandbox::new("cachyos-splash");
-    cachyos_boot(&sandbox, true);
-    let splash = [
-        "plymouth",
-        "plymouth-kcm",
-        "cachyos-plymouth-theme",
-        "cachyos-plymouth-bootanimation",
-    ];
-    install_everything(&sandbox, &splash);
-    let io = Answers::new(None);
-    for _ in 0..2 {
-        sandbox
-            .with(&io, |ctx| {
-                runner::install(ctx, &[&CachyosSetup], &[&CachyosSetup])
-            })
-            .unwrap();
-    }
-    assert_eq!(
-        system_file(&sandbox, "/etc/mkinitcpio.conf").unwrap(),
-        MKINITCPIO.replace(" plymouth", "")
-    );
-    assert_eq!(
-        system_file(&sandbox, "/boot/refind_linux.conf").unwrap(),
-        REFIND_LINUX.replace("quiet nowatchdog splash ", "")
-    );
-    for package in splash {
-        assert!(!sandbox.installed(package), "{package} is still installed");
-    }
-    assert_eq!(sandbox.calls("sudo mkinitcpio -P"), 1);
-    let calls = fs::read_to_string(sandbox.root.join("calls")).unwrap();
-    let hook = calls.find("mkinitcpio.conf").unwrap();
-    let packages = calls.find("pacman -R").unwrap();
-    assert!(hook < packages, "the packages left before the hook");
-}
-
-#[test]
-fn removing_cachyos_setup_brings_the_splash_back_and_rebuilds_the_initramfs_last() {
-    let sandbox = Sandbox::new("cachyos-splash-remove");
-    cachyos_boot(&sandbox, true);
-    let splash = [
-        "plymouth",
-        "plymouth-kcm",
-        "cachyos-plymouth-theme",
-        "cachyos-plymouth-bootanimation",
-    ];
-    install_everything(&sandbox, &splash);
-    sandbox
-        .with(&Answers::new(None), |ctx| {
-            runner::install(ctx, &[&CachyosSetup], &[&CachyosSetup])
-        })
-        .unwrap();
-    fs::remove_file(sandbox.root.join("calls")).unwrap();
-
-    let io = Answers::new(Some(true));
-    let report = sandbox
-        .with(&io, |ctx| {
-            runner::remove(ctx, &[&CachyosSetup], &[&CachyosSetup], false)
-        })
-        .unwrap();
-    assert!(!report.unanswered);
-    assert_eq!(
-        system_file(&sandbox, "/etc/mkinitcpio.conf").unwrap(),
-        MKINITCPIO
-    );
-    assert_eq!(
-        system_file(&sandbox, "/boot/refind_linux.conf").unwrap(),
-        REFIND_LINUX
-    );
-    for package in splash {
-        assert!(sandbox.installed(package), "{package} was not reinstalled");
-    }
-    assert_eq!(sandbox.calls("sudo mkinitcpio -P"), 1);
-    let calls = fs::read_to_string(sandbox.root.join("calls")).unwrap();
-    let rebuild = calls.find("sudo mkinitcpio -P").unwrap();
-    assert!(
-        calls.find("/etc/mkinitcpio.conf").unwrap() < rebuild,
-        "the initramfs was rebuilt before the plymouth hook came back"
-    );
-    assert!(
-        calls.find("pacman -S").unwrap() < rebuild,
-        "the initramfs was rebuilt before plymouth came back"
-    );
-}
-
-#[test]
-fn cachyos_skips_the_kernel_options_without_refind() {
-    let sandbox = Sandbox::new("cachyos-no-refind");
-    cachyos_boot(&sandbox, false);
-    let io = Answers::new(None);
-    sandbox
-        .with(&io, |ctx| {
-            runner::install(ctx, &[&CachyosSetup], &[&CachyosSetup])
-        })
-        .unwrap();
-    assert!(
-        io.notes.borrow().iter().any(|note| note
-            == "Skipping the kernel options because /boot/refind_linux.conf was not found")
-    );
-    assert!(system_file(&sandbox, "/boot/refind_linux.conf").is_none());
-}
-
-#[test]
-fn cachyos_replaces_its_defaults() {
-    let sandbox = Sandbox::new("cachyos-packages");
-    cachyos_boot(&sandbox, false);
-    install_everything(
-        &sandbox,
-        &["konsole", "firefox", "fish", "kate", "cachy-update", "vim"],
-    );
-    let modules: [&dyn Module; 4] = [
-        &Base {
-            packages: Base::ARCH,
-            unwanted: &[Package::CachyUpdate],
-            needs: &[],
-        },
-        &CachyosSetup,
-        &Cli,
-        &Runtimes {
-            bun_installer: false,
-        },
-    ];
-    sandbox.fake(
-        "rustup",
-        r#"[ "$#" -eq 1 ] && echo 'stable-x86_64-unknown-linux-gnu (default)'; exit 0"#,
-    );
-    let io = Answers::new(None);
-    sandbox
-        .with(&io, |ctx| runner::install(ctx, &modules, &modules))
-        .unwrap();
-    for removed in ["konsole", "firefox", "fish", "kate", "cachy-update", "vim"] {
-        assert!(!sandbox.installed(removed), "{removed} is still installed");
-    }
-    for kept in [
-        "linux-cachyos",
-        "cachyos-kernel-manager",
-        "noto-fonts-cjk",
-        "ripgrep",
-        "jq",
-        "tokei",
-        "jdk-openjdk",
-        "maven",
-        "python",
-        "bun",
-    ] {
-        assert!(sandbox.installed(kept), "{kept} was not installed");
-    }
-}
 
 #[test]
 fn packages_are_uninstalled_only_when_installed() {
@@ -969,16 +771,10 @@ fn ghostty_becomes_the_kde_terminal_until_removed() {
     );
 }
 
-#[test]
-fn axidev_installs_once_upgrades_to_a_newer_release_and_remove_uninstalls_what_it_installed() {
-    let sandbox = Sandbox::new("axidev");
-    system(&sandbox);
-    let lifecycle = sandbox.root.join("bin/axidev-osk-install");
-    let app = sandbox.root.join("bin/axidev-osk");
-    let payload = sandbox.root.join("opt/axidev-osk");
-    fs::write(sandbox.root.join("latest"), "0.18.1").unwrap();
-    // GitHub's redirect names the release in the `latest` file. The downloaded installer
-    // puts the application, its lifecycle installer and a 0.18.1 payload in place.
+/// Axidev's release server for `configure`: GitHub's redirect names the release in the
+/// `latest` file, and the downloaded installer puts the application at `app`, its lifecycle
+/// installer at `lifecycle` and a 0.19.0 payload at `payload` in place.
+fn axidev_releases(sandbox: &Sandbox, app: &Path, lifecycle: &Path, payload: &Path) {
     sandbox.fake(
         "curl",
         &format!(
@@ -1002,13 +798,24 @@ esac
 APP
 printf '#!/bin/sh\nprintf "lifecycle %%s\\n" "$*" >> "$INAYOS_TEST_LOG"\n' > {lifecycle}
 chmod +x {app} {lifecycle}
-mkdir -p {payload}/lib/python/axidev_osk-0.18.1.dist-info
+mkdir -p {payload}/lib/python/axidev_osk-0.19.0.dist-info
 SCRIPT"#,
             app = app.display(),
             lifecycle = lifecycle.display(),
             payload = payload.display()
         ),
     );
+}
+
+#[test]
+fn axidev_installs_once_upgrades_to_a_newer_release_and_remove_uninstalls_what_it_installed() {
+    let sandbox = Sandbox::new("axidev");
+    system(&sandbox);
+    let lifecycle = sandbox.root.join("bin/axidev-osk-install");
+    let app = sandbox.root.join("bin/axidev-osk");
+    let payload = sandbox.root.join("opt/axidev-osk");
+    fs::write(sandbox.root.join("latest"), "0.19.0").unwrap();
+    axidev_releases(&sandbox, &app, &lifecycle, &payload);
     let io = Answers::new(None);
     let run = || {
         sandbox.with(&io, |ctx| {
@@ -1040,7 +847,7 @@ SCRIPT"#,
         1,
         "a rerun must not download the installer again"
     );
-    fs::write(sandbox.root.join("latest"), "0.19.0").unwrap();
+    fs::write(sandbox.root.join("latest"), "0.20.0").unwrap();
     run();
     assert_eq!(sandbox.calls("lifecycle upgrade --user tester"), 1);
     sandbox
@@ -1060,6 +867,31 @@ SCRIPT"#,
         )
         .is_err()
     );
+}
+
+#[test]
+fn axidev_older_than_the_offline_setup_changes_nothing() {
+    let sandbox = Sandbox::new("axidev-old");
+    system(&sandbox);
+    let lifecycle = sandbox.root.join("bin/axidev-osk-install");
+    let app = sandbox.root.join("bin/axidev-osk");
+    let payload = sandbox.root.join("opt/axidev-osk");
+    fs::write(sandbox.root.join("latest"), "0.18.1").unwrap();
+    axidev_releases(&sandbox, &app, &lifecycle, &payload);
+    let io = Answers::new(None);
+    let result = sandbox.with(&io, |ctx| {
+        ctx.state()
+            .borrow_mut()
+            .begin(crate::state::Action::Install)
+            .unwrap();
+        ctx.set_module("axidev-osk");
+        crate::axidev_osk::configure(ctx, &lifecycle, &app, &payload)
+    });
+    let error = result.unwrap_err().to_string();
+    assert!(error.contains("0.19.0"), "{error}");
+    assert_eq!(sandbox.calls("releases/latest/download"), 0);
+    assert_eq!(sandbox.calls("pacman -S"), 0);
+    assert!(!app.exists());
 }
 
 #[test]
@@ -1133,21 +965,7 @@ fn agent_links_share_one_instruction_file_and_leave_other_skill_links() {
 }
 
 #[test]
-fn paru_comes_from_a_repository_or_else_from_the_prebuilt_aur_package() {
-    let sandbox = Sandbox::new("paru-repository");
-    fs::remove_file(sandbox.root.join("installed/paru")).unwrap();
-    fs::create_dir_all(sandbox.root.join("repository")).unwrap();
-    fs::write(sandbox.root.join("repository/paru"), "").unwrap();
-    sandbox.with(&Answers::new(None), |ctx| {
-        ctx.state()
-            .borrow_mut()
-            .begin(crate::state::Action::Install)
-            .unwrap();
-        crate::package_manager::ensure_paru(ctx).unwrap();
-    });
-    assert!(sandbox.installed("paru"));
-    assert_eq!(sandbox.calls("git clone"), 0);
-
+fn paru_is_built_from_its_prebuilt_aur_package() {
     let sandbox = Sandbox::new("paru-aur");
     fs::remove_file(sandbox.root.join("installed/paru")).unwrap();
     sandbox.fake(
@@ -1484,7 +1302,7 @@ esac"#,
             "{plugin} was not installed"
         );
     }
-    assert!(sandbox.calls("plasma-apply-lookandfeel --apply org.kde.breezedark.desktop") > 0);
+    assert!(sandbox.calls("plasma-apply-lookandfeel --apply inayos.desktop") > 0);
     assert!(sandbox.calls("plasma-apply-colorscheme --accent-color #ff4ead") > 0);
     assert!(sandbox.calls("plasma-apply-cursortheme --size 24 breeze_cursors") > 0);
     for key in ["AccentColor", "LastUsedCustomAccentColor"] {
@@ -1955,7 +1773,7 @@ done"#,
                 &format!("mimeapps.list/Default Applications/{kind}")
             )
             .as_deref(),
-            Some("vscodium.desktop")
+            Some("codium.desktop")
         );
     }
     assert_eq!(sandbox.calls("bsdtar --format zip -cf "), 1);
@@ -2042,16 +1860,19 @@ done"#,
     );
 }
 
-/// A boot that bootvine can join.
+/// An Arch boot with the systemd initramfs hooks and rEFInd, which bootvine can join.
 fn bootvine_boot(sandbox: &Sandbox) {
-    cachyos_boot(sandbox, true);
-    let config = sandbox.root.join("system/etc/mkinitcpio.conf");
-    fs::write(&config, MKINITCPIO.replace(" plymouth", "")).unwrap();
-    fs::write(
-        sandbox.root.join("system/boot/refind_linux.conf"),
-        REFIND_LINUX.replace("quiet nowatchdog splash ", ""),
-    )
-    .unwrap();
+    system(sandbox);
+    let etc = sandbox.root.join("system/etc");
+    fs::create_dir_all(&etc).unwrap();
+    fs::write(etc.join("mkinitcpio.conf"), MKINITCPIO).unwrap();
+    let boot = sandbox.root.join("system/boot");
+    fs::create_dir_all(&boot).unwrap();
+    fs::write(boot.join("refind_linux.conf"), REFIND_LINUX).unwrap();
+    sandbox.fake(
+        "mkinitcpio",
+        r#"printf 'mkinitcpio %s\n' "$*" >> "$INAYOS_TEST_LOG""#,
+    );
 }
 
 #[test]
@@ -2095,7 +1916,6 @@ fn bootvine_installs_its_package_then_joins_the_initramfs_and_the_first_boot_ent
     assert_eq!(
         system_file(&sandbox, "/boot/refind_linux.conf").unwrap(),
         REFIND_LINUX
-            .replace("quiet nowatchdog splash ", "")
             .replacen("\"rw root", "\"quiet rw root", 1)
             .replace(
                 "efi_pstore.pstore_disable=0\"",
@@ -2127,9 +1947,7 @@ fn bootvine_installs_its_package_then_joins_the_initramfs_and_the_first_boot_ent
 fn removing_bootvine_takes_its_hook_out_of_the_initramfs_before_the_package() {
     let sandbox = Sandbox::new("bootvine-remove");
     bootvine_boot(&sandbox);
-    // The CachyOS run changes the same file first, in the same run.
-    fs::write(sandbox.root.join("system/etc/mkinitcpio.conf"), MKINITCPIO).unwrap();
-    let modules: [&dyn Module; 2] = [&CachyosSetup, &crate::Bootvine];
+    let modules: [&dyn Module; 1] = [&crate::Bootvine];
     let io = Answers::new(None);
     sandbox
         .with(&io, |ctx| runner::install(ctx, &modules, &modules))
@@ -2144,7 +1962,7 @@ fn removing_bootvine_takes_its_hook_out_of_the_initramfs_before_the_package() {
     assert!(!report.unanswered);
     assert_eq!(
         system_file(&sandbox, "/etc/mkinitcpio.conf").unwrap(),
-        MKINITCPIO.replace(" plymouth", ""),
+        MKINITCPIO,
         "remove did not take out exactly the bootvine hook"
     );
     assert_eq!(sandbox.calls("sudo mkinitcpio -P"), 1);
@@ -2185,6 +2003,508 @@ fn bootvine_needs_the_systemd_hook() {
     assert_eq!(sandbox.calls("bootvine"), 0, "bootvine was installed");
 }
 
+/// The new system an installer-mode run builds, before rEFInd: the EFI system partition
+/// mounted at `/efi`, `/boot` inside the Btrfs root subvolume, and the firmware's boot
+/// entries reachable. `findmnt` answers from `mounts/` and `fstab-root`, `efibootmgr`
+/// keeps the entries in `nvram`, and `refind-install` copies what the real one copies for
+/// a Btrfs `/boot` and adds its entry unless the firmware has it.
+fn unbooted_disk(sandbox: &Sandbox) {
+    bootvine_boot(sandbox);
+    fs::remove_file(sandbox.root.join("system/boot/refind_linux.conf")).unwrap();
+    let mounts = sandbox.root.join("mounts");
+    fs::create_dir_all(&mounts).unwrap();
+    fs::write(mounts.join("efi"), "vfat").unwrap();
+    fs::write(mounts.join("boot"), "btrfs").unwrap();
+    fs::create_dir_all(mounts.join("sys/firmware/efi")).unwrap();
+    fs::write(mounts.join("sys/firmware/efi/efivars"), "efivarfs").unwrap();
+    fs::create_dir_all(sandbox.root.join("system/efi")).unwrap();
+    fs::write(
+        sandbox.root.join("fstab-root"),
+        "UUID=5e2a btrfs rw,relatime,compress=zstd:3,ssd,subvolid=256,subvol=/@\n",
+    )
+    .unwrap();
+    fs::write(
+        sandbox.root.join("nvram"),
+        "Boot0001* Windows Boot Manager\tHD(1,GPT)\n",
+    )
+    .unwrap();
+    sandbox.fake(
+        "findmnt",
+        r#"printf 'findmnt %s\n' "$*" >> "$INAYOS_TEST_LOG"
+case " $* " in
+    *" --fstab "*) cat "$INAYOS_TEST_ROOT/fstab-root" ;;
+    *" --mountpoint "*) for mount; do :; done; cat "$INAYOS_TEST_ROOT/mounts/${mount#/}" 2>/dev/null ;;
+    *" --target /boot "*) cat "$INAYOS_TEST_ROOT/mounts/boot" ;;
+    *) exit 1 ;;
+esac"#,
+    );
+    sandbox.fake(
+        "efibootmgr",
+        r#"printf 'efibootmgr %s\n' "$*" >> "$INAYOS_TEST_LOG"
+nvram="$INAYOS_TEST_ROOT/nvram"
+case "$*" in
+    "" | -v) printf 'BootOrder: 0001\n'; cat "$nvram" ;;
+    *--delete-bootnum*) grep -v "^Boot$3" "$nvram" > "$nvram.new"; mv "$nvram.new" "$nvram" ;;
+esac"#,
+    );
+    sandbox.fake(
+        "refind-install",
+        r#"printf 'refind-install %s\n' "$*" >> "$INAYOS_TEST_LOG"
+refind="$INAYOS_TEST_ROOT/system/efi/EFI/refind"
+mkdir -p "$refind/drivers_x64" "$INAYOS_TEST_ROOT/system/efi/EFI/tools"
+: > "$refind/refind_x64.efi"; : > "$refind/drivers_x64/btrfs_x64.efi"
+printf 'timeout 20\n' > "$refind/refind.conf"
+grep -q 'rEFInd Boot Manager' "$INAYOS_TEST_ROOT/nvram" ||
+    printf 'Boot0003* rEFInd Boot Manager\tHD(1,GPT)/\\EFI\\refind\\refind_x64.efi\n' >> "$INAYOS_TEST_ROOT/nvram""#,
+    );
+}
+
+const BOOT_MODULES: [&dyn Module; 2] = [&crate::Refind, &crate::Bootvine];
+
+#[test]
+fn installer_mode_installs_refind_with_entries_for_the_new_root_and_bootvine_joins_them() {
+    let sandbox = Sandbox::new("refind-installer");
+    unbooted_disk(&sandbox);
+    let io = Answers::new(None);
+    for _ in 0..2 {
+        sandbox
+            .with_mode(&io, RunMode::Installer, |ctx| {
+                runner::install(ctx, &BOOT_MODULES, &BOOT_MODULES)
+            })
+            .unwrap();
+    }
+    assert!(sandbox.installed("refind"));
+    let calls = fs::read_to_string(sandbox.root.join("calls")).unwrap();
+    let written = calls
+        .lines()
+        .position(|line| line.contains(" install -m") && line.ends_with("refind_linux.conf"))
+        .unwrap();
+    let installed = calls
+        .lines()
+        .position(|line| line == "refind-install --yes")
+        .unwrap();
+    assert!(
+        written < installed,
+        "refind-install ran before the entries existed, so it would copy the installer's own kernel options"
+    );
+    let root = "root=UUID=5e2a rw rootflags=subvol=/@";
+    let config = system_file(&sandbox, "/boot/refind_linux.conf").unwrap();
+    let entries: Vec<&str> = config.lines().collect();
+    assert_eq!(entries.len(), 2);
+    assert!(
+        entries[0].contains(&format!("\"quiet {root} vt.default_red=")),
+        "{config}"
+    );
+    assert!(
+        entries[1].contains(&format!("\"{root} single vt.default_red=")),
+        "{config}"
+    );
+    assert!(
+        system_file(&sandbox, "/efi/EFI/refind/refind.conf")
+            .unwrap()
+            .ends_with(INAYOS_REFIND_BLOCK)
+    );
+    assert_eq!(
+        fs::read_to_string(sandbox.root.join("nvram"))
+            .unwrap()
+            .matches("rEFInd Boot Manager")
+            .count(),
+        1
+    );
+    let results = sandbox.with_mode(&io, RunMode::Installer, |ctx| {
+        runner::verify(ctx, &BOOT_MODULES)
+    });
+    for (name, result) in results {
+        assert!(result.is_ok(), "{name}: {result:?}");
+    }
+
+    // The firmware still lists Windows, but its files are gone, and the fallback loader
+    // is a copy of rEFInd, so rEFInd is the only boot manager left.
+    let efi = sandbox.root.join("system/efi/EFI");
+    fs::create_dir_all(efi.join("BOOT")).unwrap();
+    fs::write(efi.join("BOOT/BOOTX64.EFI"), "rEFInd").unwrap();
+    fs::write(efi.join("BOOT/refind.conf"), "").unwrap();
+    let error = sandbox
+        .with(&io, |ctx| {
+            runner::remove(ctx, &BOOT_MODULES, &[&crate::Refind], false)
+        })
+        .unwrap_err();
+    assert!(error.to_string().contains("no boot manager"), "{error}");
+    assert!(sandbox.installed("refind"));
+    assert!(efi.join("refind/refind_x64.efi").exists());
+    assert!(
+        fs::read_to_string(sandbox.root.join("nvram"))
+            .unwrap()
+            .contains("rEFInd Boot Manager")
+    );
+    fs::remove_dir_all(efi.join("BOOT")).unwrap();
+
+    // With Windows Boot Manager back on the partition, remove takes out only rEFInd.
+    fs::create_dir_all(efi.join("Microsoft/Boot")).unwrap();
+    fs::write(efi.join("Microsoft/Boot/bootmgfw.efi"), "Windows").unwrap();
+    fs::write(
+        sandbox.root.join("nvram"),
+        fs::read_to_string(sandbox.root.join("nvram"))
+            .unwrap()
+            .replace(
+                "Windows Boot Manager\tHD(1,GPT)",
+                "Windows Boot Manager\tHD(1,GPT)/\\EFI\\Microsoft\\Boot\\bootmgfw.efi",
+            ),
+    )
+    .unwrap();
+    sandbox
+        .with(&io, |ctx| {
+            runner::remove(ctx, &BOOT_MODULES, &BOOT_MODULES, false)
+        })
+        .unwrap();
+    assert_eq!(
+        fs::read_to_string(sandbox.root.join("nvram")).unwrap(),
+        "Boot0001* Windows Boot Manager\tHD(1,GPT)/\\EFI\\Microsoft\\Boot\\bootmgfw.efi\n",
+        "remove did not take out only rEFInd's firmware entry"
+    );
+    assert!(
+        efi.join("Microsoft/Boot/bootmgfw.efi").exists(),
+        "remove deleted Windows Boot Manager"
+    );
+    for path in [
+        "/efi/EFI/refind",
+        "/efi/EFI/tools",
+        "/boot/refind_linux.conf",
+    ] {
+        assert_eq!(
+            fs::symlink_metadata(
+                sandbox
+                    .root
+                    .join("system")
+                    .join(path.trim_start_matches('/'))
+            )
+            .ok()
+            .map(|_| path),
+            None
+        );
+    }
+    assert!(!sandbox.installed("refind"));
+}
+
+#[test]
+fn installer_mode_changes_nothing_when_refind_could_not_boot_the_new_system() {
+    for (name, break_disk, reason) in [
+        (
+            "no-esp",
+            (|root: &Path| fs::remove_file(root.join("mounts/efi")).unwrap()) as fn(&Path),
+            "no EFI system partition",
+        ),
+        (
+            "no-efivars",
+            |root: &Path| fs::remove_file(root.join("mounts/sys/firmware/efi/efivars")).unwrap(),
+            "efivarfs is not mounted",
+        ),
+        (
+            "device-root",
+            |root: &Path| {
+                fs::write(root.join("fstab-root"), "/dev/vda2 btrfs rw,subvol=/@\n").unwrap()
+            },
+            "not a UUID",
+        ),
+    ] {
+        let sandbox = Sandbox::new(&format!("refind-installer-{name}"));
+        unbooted_disk(&sandbox);
+        break_disk(&sandbox.root);
+        let io = Answers::new(None);
+        let error = sandbox
+            .with_mode(&io, RunMode::Installer, |ctx| {
+                runner::install(ctx, &[&crate::Refind], &[&crate::Refind])
+            })
+            .unwrap_err();
+        assert!(error.to_string().contains(reason), "{name}: {error}");
+        assert!(!sandbox.installed("refind"), "{name}");
+        assert_eq!(sandbox.calls("refind-install"), 0, "{name}");
+        assert_eq!(
+            system_file(&sandbox, "/boot/refind_linux.conf"),
+            None,
+            "{name}"
+        );
+    }
+}
+
+#[test]
+fn installer_mode_bootvine_fails_without_the_boot_entries_and_a_running_system_skips_them() {
+    let sandbox = Sandbox::new("bootvine-no-entries");
+    bootvine_boot(&sandbox);
+    fs::remove_file(sandbox.root.join("system/boot/refind_linux.conf")).unwrap();
+    let io = Answers::new(None);
+    let error = sandbox
+        .with_mode(&io, RunMode::Installer, |ctx| {
+            runner::install(ctx, &[&crate::Bootvine], &[&crate::Bootvine])
+        })
+        .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("/boot/refind_linux.conf was not found"),
+        "{error}"
+    );
+
+    let sandbox = Sandbox::new("bootvine-live-no-entries");
+    bootvine_boot(&sandbox);
+    fs::remove_file(sandbox.root.join("system/boot/refind_linux.conf")).unwrap();
+    sandbox
+        .with(&io, |ctx| {
+            runner::install(ctx, &[&crate::Bootvine], &[&crate::Bootvine])
+        })
+        .unwrap();
+    let results = sandbox.with(&io, |ctx| runner::verify(ctx, &[&crate::Bootvine]));
+    for (name, result) in results {
+        assert!(result.is_ok(), "{name}: {result:?}");
+    }
+    assert!(io.notes.borrow().iter().any(|note| {
+        note.contains("Skipping the kernel options because /boot/refind_linux.conf was not found")
+    }));
+}
+
+#[test]
+fn a_running_system_without_refind_gets_no_boot_manager_and_no_theme() {
+    let sandbox = Sandbox::new("refind-live-absent");
+    unbooted_disk(&sandbox);
+    let io = Answers::new(None);
+    sandbox
+        .with(&io, |ctx| {
+            runner::install(ctx, &[&crate::Refind], &[&crate::Refind])
+        })
+        .unwrap();
+    let results = sandbox.with(&io, |ctx| runner::verify(ctx, &[&crate::Refind]));
+    for (name, result) in results {
+        assert!(result.is_ok(), "{name}: {result:?}");
+    }
+    assert_eq!(sandbox.calls("refind-install"), 0);
+    assert!(!sandbox.installed("refind"));
+    assert!(io.notes.borrow().iter().any(
+        |note| note == "Skipping the rEFInd theme because a rEFInd installation was not found"
+    ));
+}
+
+/// A system where NetworkManager runs, with the programs that apply kernel settings.
+fn tunable_system(sandbox: &Sandbox) {
+    system(sandbox);
+    sandbox.fake(
+        "sysctl",
+        r#"printf 'sysctl %s\n' "$*" >> "$INAYOS_TEST_LOG""#,
+    );
+    sandbox.fake(
+        "nmcli",
+        r#"printf 'nmcli %s\n' "$*" >> "$INAYOS_TEST_LOG"
+[ "$*" = "-t -f RUNNING general" ] && echo running
+exit 0"#,
+    );
+}
+
+const TUNING_FILES: [&str; 7] = [
+    "/etc/systemd/zram-generator.conf",
+    "/etc/NetworkManager/conf.d/inayos-system-tuning.conf",
+    "/etc/sysctl.d/99-inayos-system-tuning.conf",
+    "/etc/systemd/system.conf.d/inayos-system-tuning.conf",
+    "/etc/systemd/user.conf.d/inayos-system-tuning.conf",
+    "/etc/modules-load.d/inayos-system-tuning.conf",
+    "/etc/tmpfiles.d/inayos-system-tuning.conf",
+];
+
+/// The `[section]` and `key = value` lines of a configuration file, without comments.
+fn settings(text: &str) -> Vec<String> {
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(|line| match line.split_once('=') {
+            Some((key, value)) => format!("{}={}", key.trim(), value.trim()),
+            None => line.to_owned(),
+        })
+        .collect()
+}
+
+/// The first line of the call log at or after `from` that contains `pattern`.
+fn call_position(calls: &[&str], from: usize, pattern: &str) -> usize {
+    from + calls[from..]
+        .iter()
+        .position(|line| line.contains(pattern))
+        .unwrap_or_else(|| panic!("no call contains {pattern}"))
+}
+
+#[test]
+fn system_tuning_installs_the_inayos_settings_and_hands_dns_to_a_running_resolved() {
+    let sandbox = Sandbox::new("system-tuning");
+    tunable_system(&sandbox);
+    let io = Answers::new(None);
+    for _ in 0..2 {
+        sandbox
+            .with(&io, |ctx| {
+                runner::install(ctx, &[&crate::SystemTuning], &[&crate::SystemTuning])
+            })
+            .unwrap();
+    }
+    for package in ["zram-generator", "systemd-resolvconf", "networkmanager"] {
+        assert!(sandbox.installed(package), "{package} was not installed");
+    }
+    let file = |path: &str| settings(&system_file(&sandbox, path).unwrap());
+    assert_eq!(
+        file(TUNING_FILES[0]),
+        [
+            "[zram0]",
+            "zram-size=ram",
+            "compression-algorithm=zstd",
+            "swap-priority=100"
+        ]
+    );
+    assert_eq!(file(TUNING_FILES[1]), ["[main]", "dns=systemd-resolved"]);
+    assert_eq!(
+        file(TUNING_FILES[2]),
+        [
+            "vm.swappiness=100",
+            "vm.page-cluster=0",
+            "kernel.printk=3 3 3 3"
+        ]
+    );
+    for manager in [TUNING_FILES[3], TUNING_FILES[4]] {
+        assert_eq!(
+            file(manager),
+            ["[Manager]", "DefaultLimitNOFILE=2048:2097152"]
+        );
+    }
+    assert_eq!(file(TUNING_FILES[5]), ["ntsync"]);
+    // At every boot, systemd-tmpfiles writes N to the zswap switch and points
+    // /etc/resolv.conf at resolved's stub file.
+    assert_eq!(
+        system_file(&sandbox, TUNING_FILES[6])
+            .unwrap()
+            .lines()
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .collect::<Vec<_>>(),
+        [
+            "w /sys/module/zswap/parameters/enabled - - - - N",
+            "L+ /etc/resolv.conf - - - - ../run/systemd/resolve/stub-resolv.conf"
+        ]
+    );
+    assert!(enabled(
+        &sandbox,
+        ServiceScope::System,
+        "systemd-resolved.service"
+    ));
+    assert!(active(
+        &sandbox,
+        ServiceScope::System,
+        "systemd-resolved.service"
+    ));
+    assert_eq!(
+        sandbox.calls("sudo install -m"),
+        TUNING_FILES.len(),
+        "the second install wrote a file again"
+    );
+
+    let log = fs::read_to_string(sandbox.root.join("calls")).unwrap();
+    let calls: Vec<&str> = log.lines().collect();
+    let started = call_position(&calls, 0, "systemctl start systemd-resolved.service");
+    let handed = call_position(&calls, 0, "NetworkManager/conf.d/inayos-system-tuning.conf");
+    let handed = call_position(&calls, handed, "sudo install -m");
+    assert!(
+        started < handed,
+        "NetworkManager was told to use resolved before resolved ran"
+    );
+    let applied = call_position(&calls, handed, "sysctl --load");
+    assert_eq!(
+        calls[applied],
+        "sudo sysctl --load /etc/sysctl.d/99-inayos-system-tuning.conf"
+    );
+    call_position(&calls, handed, "modprobe ntsync");
+    call_position(&calls, handed, "nmcli general reload");
+
+    let results = sandbox.with(&io, |ctx| runner::verify(ctx, &[&crate::SystemTuning]));
+    for (name, result) in results {
+        assert!(result.is_ok(), "{name}: {result:?}");
+    }
+}
+
+#[test]
+fn removing_system_tuning_gives_dns_back_to_network_manager_before_resolved_stops() {
+    for mode in [RunMode::Live, RunMode::Installer] {
+        removing_system_tuning_puts_back_dns(mode);
+    }
+}
+
+/// Installs system tuning in `mode`, boots, which links `/etc/resolv.conf` to resolved's
+/// stub file, then removes it on the running system.
+fn removing_system_tuning_puts_back_dns(mode: RunMode) {
+    let sandbox = Sandbox::new(&format!("system-tuning-remove-{mode:?}"));
+    tunable_system(&sandbox);
+    let resolv = sandbox.root.join("system/etc/resolv.conf");
+    fs::create_dir_all(resolv.parent().unwrap()).unwrap();
+    fs::write(&resolv, "nameserver 192.168.1.1\n").unwrap();
+    let io = Answers::new(None);
+    for _ in 0..2 {
+        sandbox
+            .with_mode(&io, mode, |ctx| {
+                runner::install(ctx, &[&crate::SystemTuning], &[&crate::SystemTuning])
+            })
+            .unwrap();
+    }
+    // The install leaves the file to the rule, which applies at boot.
+    assert_eq!(
+        fs::read_to_string(&resolv).unwrap(),
+        "nameserver 192.168.1.1\n"
+    );
+    fs::remove_file(&resolv).unwrap();
+    std::os::unix::fs::symlink("../run/systemd/resolve/stub-resolv.conf", &resolv).unwrap();
+    fs::remove_file(sandbox.root.join("calls")).unwrap();
+
+    let report = sandbox
+        .with(&io, |ctx| {
+            runner::remove(ctx, &[&crate::SystemTuning], &[&crate::SystemTuning], false)
+        })
+        .unwrap();
+    assert!(!report.unanswered);
+    for path in TUNING_FILES {
+        assert_eq!(system_file(&sandbox, path), None, "{path} is still there");
+    }
+    for package in ["zram-generator", "systemd-resolvconf"] {
+        assert!(!sandbox.installed(package), "{package} is still installed");
+    }
+    assert!(!enabled(
+        &sandbox,
+        ServiceScope::System,
+        "systemd-resolved.service"
+    ));
+    let log = fs::read_to_string(sandbox.root.join("calls")).unwrap();
+    let calls: Vec<&str> = log.lines().collect();
+    let deleted = call_position(
+        &calls,
+        0,
+        "rm -f -- /etc/NetworkManager/conf.d/inayos-system-tuning.conf",
+    );
+    let reloaded = call_position(&calls, deleted, "nmcli general reload");
+    // Only the live install started resolved.
+    let stopped = match mode {
+        RunMode::Live => "systemctl stop systemd-resolved.service",
+        RunMode::Installer => "systemctl disable systemd-resolved.service",
+    };
+    call_position(&calls, reloaded, stopped);
+    let rule_deleted = call_position(
+        &calls,
+        0,
+        "rm -f -- /etc/tmpfiles.d/inayos-system-tuning.conf",
+    );
+    let restored = call_position(&calls, 0, "/etc/resolv.conf");
+    assert!(
+        rule_deleted < restored,
+        "{mode:?}: resolv.conf came back while the rule could still replace it"
+    );
+    assert!(
+        !fs::symlink_metadata(&resolv).unwrap().is_symlink(),
+        "{mode:?}"
+    );
+    assert_eq!(
+        fs::read_to_string(&resolv).unwrap(),
+        "nameserver 192.168.1.1\n",
+        "{mode:?}"
+    );
+}
+
 #[test]
 fn tailscale_makes_the_user_its_operator_once_and_remove_clears_it() {
     let sandbox = Sandbox::new("tailscale");
@@ -2219,6 +2539,58 @@ esac"#,
     assert_eq!(
         fs::read_to_string(sandbox.root.join("tailscale-operator")).unwrap(),
         ""
+    );
+}
+
+#[test]
+fn an_operator_unset_before_any_tailscale_login_is_pending_and_a_wrong_one_fails() {
+    let sandbox = Sandbox::new("tailscale-operator-pending");
+    system(&sandbox);
+    sandbox.fake(
+        "tailscale",
+        r#"case "$1" in
+    debug) printf '{"OperatorUser":"%s"}\n' "$(cat "$INAYOS_TEST_ROOT/tailscale-operator" 2>/dev/null)" ;;
+    status) [ -e "$INAYOS_TEST_ROOT/tailscale-login" ] ;;
+esac"#,
+    );
+    fs::write(sandbox.root.join("installed/tailscale"), "").unwrap();
+    let units = sandbox.root.join("units/system");
+    fs::write(units.join("tailscaled"), "").unwrap();
+    let verify = |mode| {
+        let io = Answers::new(None);
+        let mut results =
+            sandbox.with_mode(&io, mode, |ctx| runner::verify(ctx, &[&crate::Tailscale]));
+        let pending = io
+            .notes
+            .borrow()
+            .iter()
+            .any(|note| note.contains("sudo tailscale set --operator=tester"));
+        (
+            results.remove(0).1.map_err(|error| error.to_string()),
+            pending,
+        )
+    };
+    // The installed system has not started tailscaled yet.
+    assert_eq!(verify(RunMode::Installer), (Ok(()), true));
+
+    fs::write(units.join("tailscaled.active"), "").unwrap();
+    assert_eq!(verify(RunMode::Live), (Ok(()), true));
+    fs::write(sandbox.root.join("tailscale-login"), "").unwrap();
+    assert_eq!(
+        verify(RunMode::Live),
+        (
+            Err("tailscale: tester is not the Tailscale operator".to_owned()),
+            false
+        )
+    );
+    fs::remove_file(sandbox.root.join("tailscale-login")).unwrap();
+    fs::write(sandbox.root.join("tailscale-operator"), "someone").unwrap();
+    assert_eq!(
+        verify(RunMode::Live),
+        (
+            Err("tailscale: someone is the Tailscale operator instead of tester".to_owned()),
+            false
+        )
     );
 }
 
@@ -3365,4 +3737,222 @@ fn removing_the_myconfig_leftovers_of_a_new_machine_changes_nothing() {
         .unwrap();
     assert!(!sandbox.root.join("calls").exists());
     assert!(io.questions.borrow().is_empty());
+}
+
+/// The InayOS desktop profile's modules that touch services, the session or the kernel, in
+/// profile order. The others only install packages and write files, and `login` stays
+/// out of installer runs.
+fn installer_profile() -> Vec<&'static dyn Module> {
+    vec![
+        &crate::PlasmaVersion,
+        &Base {
+            packages: Base::ARCH,
+            unwanted: &[],
+            needs: &[Need::Hard("plasma-version")],
+        },
+        &crate::SystemTuning,
+        &crate::Ssh { keys_only: false },
+        &Cli,
+        &crate::Tailscale,
+        &Kanata {
+            start_at_login: false,
+        },
+        &crate::KdePlasma,
+        &crate::Printing,
+        &KanataKde,
+        &Handy,
+        &crate::Pipewire,
+        &DOCKER,
+        &crate::T3CodeDesktop,
+        &crate::SshServer,
+    ]
+}
+
+/// A never-booted system as `arch-chroot -u` gives it to the installer: the fake programs
+/// of `plasma`, with every program that acts on a running system logging its call, and
+/// `systemctl` logging whether it got `SYSTEMD_OFFLINE`.
+fn never_booted(sandbox: &Sandbox) {
+    plasma(sandbox);
+    docker(sandbox);
+    fs::create_dir_all(sandbox.root.join("system/etc/ssh")).unwrap();
+    for program in [
+        "sshd",
+        "ssh-keygen",
+        "handy",
+        "kanata",
+        "pactl",
+        "tailscale",
+        "sysctl",
+        "nmcli",
+    ] {
+        sandbox.fake(
+            program,
+            &format!("printf '{program} %s\\n' \"$*\" >> \"$INAYOS_TEST_LOG\""),
+        );
+    }
+    for program in ["plasmashell", "qdbus6", "loginctl"] {
+        sandbox.fake(
+            program,
+            &format!("printf '{program} %s\\n' \"$*\" >> \"$INAYOS_TEST_LOG\"; exit 1"),
+        );
+    }
+    fs::rename(
+        sandbox.root.join("bin/systemctl"),
+        sandbox.root.join("bin/systemctl-units"),
+    )
+    .unwrap();
+    sandbox.fake(
+        "systemctl",
+        r#"printf 'offline=%s\n' "$SYSTEMD_OFFLINE" >> "$INAYOS_TEST_LOG"
+exec systemctl-units "$@""#,
+    );
+    sandbox.fake(
+        "dbus-run-session",
+        r#"printf 'dbus-run-session config=%s\n' "$XDG_CONFIG_HOME" >> "$INAYOS_TEST_LOG"
+shift; exec "$@""#,
+    );
+    sandbox.fake(
+        "plasma-apply-colorscheme",
+        r#"printf 'plasma-apply-colorscheme %s dirs=%s\n' "$*" "$XDG_CONFIG_DIRS" >> "$INAYOS_TEST_LOG""#,
+    );
+    sandbox.fake(
+        "gsettings",
+        r#"printf 'gsettings %s\n' "$*" >> "$INAYOS_TEST_LOG"
+store="$INAYOS_TEST_ROOT/dconf"
+case "$1" in
+    list-keys) printf 'cursor-size\n' ;;
+    list-schemas) printf 'org.gnome.desktop.interface /org/gnome/desktop/interface/\n' ;;
+    set) mkdir -p "$store" && printf '%s' "$4" > "$store/$3" ;;
+esac"#,
+    );
+    sandbox.fake(
+        "dconf",
+        r#"[ "$1" = read ] && cat "$INAYOS_TEST_ROOT/dconf/${2##*/}" 2>/dev/null; exit 0"#,
+    );
+    // `-u` clears the environment, and the modules read an empty value as unset.
+    sandbox.shell.set_var("XDG_RUNTIME_DIR", "");
+    sandbox.shell.set_var("DBUS_SESSION_BUS_ADDRESS", "");
+    sandbox.shell.set_var("XDG_CONFIG_DIRS", "");
+}
+
+#[test]
+fn installer_mode_enables_the_profile_without_touching_a_running_system() {
+    let sandbox = Sandbox::new("installer-mode");
+    never_booted(&sandbox);
+    let profile = installer_profile();
+    // The answers source turns the SSH server on.
+    let io = Answers::new(Some(true));
+    sandbox
+        .with_mode(&io, RunMode::Installer, |ctx| {
+            runner::install(ctx, &profile, &profile)
+        })
+        .unwrap();
+
+    let calls = fs::read_to_string(sandbox.root.join("calls")).unwrap();
+    for line in calls.lines() {
+        let words: Vec<&str> = line.split_whitespace().collect();
+        if let Some(("systemctl", arguments)) = words.split_first().map(|(a, b)| (*a, b)) {
+            let action = arguments
+                .iter()
+                .find(|word| !word.starts_with("--"))
+                .unwrap();
+            assert!(
+                ["enable", "disable", "is-enabled"].contains(action)
+                    && !arguments.contains(&"--now"),
+                "installer mode ran `{line}`"
+            );
+        }
+        for program in [
+            "loginctl",
+            "modprobe",
+            "udevadm",
+            "qdbus6",
+            "plasmashell",
+            "sysctl",
+            "nmcli",
+        ] {
+            assert_ne!(words.first(), Some(&program), "installer mode ran `{line}`");
+            assert!(
+                !line.contains(&format!("sudo {program}")),
+                "installer mode ran `{line}`"
+            );
+        }
+        if let Some(offline) = line.strip_prefix("offline=") {
+            assert_eq!(offline, "1", "systemctl ran without SYSTEMD_OFFLINE=1");
+        }
+    }
+    assert!(sandbox.calls("offline=1") > 0);
+    // Plasma builds the top bar and dock from the global theme's default layout only
+    // when it starts without a panel file.
+    assert!(
+        !sandbox
+            .home
+            .join(".config/plasma-org.kde.plasma.desktop-appletsrc")
+            .exists()
+    );
+    assert_eq!(
+        kde(&sandbox, "kdeglobals/KDE/LookAndFeelPackage").as_deref(),
+        Some("inayos.desktop")
+    );
+
+    for unit in [
+        "inayos-plasma-layout.service",
+        "inayos-kanata-tray.service",
+        "inayos-handy.service",
+        "inayos-pipewire-tray.service",
+        "docker.service",
+    ] {
+        assert!(enabled(&sandbox, ServiceScope::User, unit), "{unit}");
+    }
+    for unit in [
+        "tailscaled",
+        "cups.socket",
+        "sshd.service",
+        "systemd-resolved.service",
+        "NetworkManager.service",
+        "plasmalogin.service",
+    ] {
+        assert!(enabled(&sandbox, ServiceScope::System, unit), "{unit}");
+    }
+
+    // The settings that save through a session bus save through a bus of their own, into
+    // the user's configuration folder.
+    assert_eq!(
+        sandbox.calls(&format!(
+            "dbus-run-session config={}\ngsettings set org.gnome.desktop.interface cursor-size 24",
+            sandbox.home.join(".config").display()
+        )),
+        1
+    );
+    assert_eq!(
+        fs::read_to_string(sandbox.root.join("dconf/cursor-size")).ok(),
+        Some("24".to_owned())
+    );
+    assert_eq!(
+        sandbox.calls(&format!(
+            "plasma-apply-colorscheme --accent-color #ff4ead dirs={}:/etc/xdg",
+            sandbox.home.join(".config/kdedefaults").display()
+        )),
+        1
+    );
+
+    // Docker's client contexts need no daemon; `docker info` does.
+    assert_eq!(
+        fs::read_to_string(sandbox.root.join("docker/.current")).unwrap(),
+        "rootless"
+    );
+    assert_eq!(sandbox.calls("docker info"), 0);
+    // Only a running tailscaled stores its operator, so the person sets it after login.
+    assert_eq!(sandbox.calls("tailscale set"), 0);
+    assert!(
+        io.notes
+            .borrow()
+            .iter()
+            .any(|note| note.contains("sudo tailscale set --operator=tester"))
+    );
+
+    let results = sandbox.with_mode(&io, RunMode::Installer, |ctx| runner::verify(ctx, &profile));
+    for (name, result) in results {
+        assert!(result.is_ok(), "{name}: {result:?}");
+    }
 }

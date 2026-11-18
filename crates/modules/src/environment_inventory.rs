@@ -21,7 +21,8 @@ const INVENTORY_END: &str =
 const T3_CODE_SERVER: &str = "the `t3` server from npm in `~/.local/bin/t3`, run at boot by the user service `t3code.service` on `127.0.0.1:3773`. `t3ctl status`, `remote`, `update` and `repair` manage it; `remote` turns T3 Connect or the Tailscale route (HTTPS port 10000) on or off. Both routes start off.";
 const T3_CODE_DESKTOP: &str = "the desktop app (AUR package `t3code-bin`), which runs its own server on `127.0.0.1:3773` while it is open. Its CLI is `~/.t3/bin/t3`. `~/.t3/userdata/client-settings.json` links into the deployed `t3code-desktop` package.";
 
-const CACHYOS_INVENTORY: &[&str] = &[
+const DESKTOP_INVENTORY: &[&str] = &[
+    "- **System settings**: zram swap as large as RAM, DNS through systemd-resolved, an open-file limit of 2097152, and the `ntsync` module for Wine and Proton.\n",
     "- **Editor**: VSCodium with the Black & Pink theme and Open Remote SSH. It opens text files from the desktop, and `EDITOR` is `codium --wait`.\n",
     "- **Browser**: Google Chrome from the AUR.\n",
     "- **Math and documents**: LyX with TeX Live, the Qalculate calculator with gnuplot for plots, and Okular as the default PDF viewer.\n",
@@ -48,7 +49,8 @@ const CONTAINERS: &str = "- **Containers**: rootless Docker with Buildx and Comp
 
 /// A phrase of the template for each module that it describes. The template of a profile
 /// holds the phrase exactly when the profile holds the module.
-const CLAIMS: [(&str, &str); 15] = [
+const CLAIMS: [(&str, &str); 16] = [
+    ("system-tuning", "zram swap"),
     ("system-monitor", "btop"),
     ("tailscale", "Tailscale service"),
     ("ssh-server", "OpenSSH server"),
@@ -67,7 +69,7 @@ const CLAIMS: [(&str, &str); 15] = [
 ];
 
 pub struct EnvironmentInventory {
-    /// The platform sentence, such as "CachyOS development workstation".
+    /// The platform sentence, such as "Arch WSL development environment".
     pub platform: &'static str,
     /// The terminal tools, as a list in a sentence.
     pub terminal_tools: &'static str,
@@ -78,11 +80,11 @@ pub struct EnvironmentInventory {
 }
 
 impl EnvironmentInventory {
-    pub const CACHYOS: Self = Self {
-        platform: "CachyOS development workstation",
+    pub const ARCH_DESKTOP: Self = Self {
+        platform: "InayOS desktop, an Arch Linux development workstation",
         terminal_tools: "Yazi, ripgrep, jq, fastfetch, and tokei",
         t3_code: T3_CODE_DESKTOP,
-        extra: CACHYOS_INVENTORY,
+        extra: DESKTOP_INVENTORY,
     };
 
     pub const ARCH_WSL: Self = Self {

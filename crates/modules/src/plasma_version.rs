@@ -1,4 +1,4 @@
-//! The check that KDE Plasma is a supported version. In the CachyOS profile, `base`
+//! The check that KDE Plasma is a supported version. In the desktop profile, `base`
 //! needs it, so no module changes the machine on an unsupported Plasma.
 use xshell::cmd;
 

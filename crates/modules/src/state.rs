@@ -430,6 +430,9 @@ impl Change {
                     )?;
                 }
                 Previous::Missing => ctx.run(cmd!(sh, "sudo rm -f -- {path}"))?,
+                Previous::Link { target } => {
+                    ctx.run(cmd!(sh, "sudo ln -sfn -- {target} {path}"))?;
+                }
                 _ => {
                     return Err(
                         format!("unexpected recorded system path: {}", path.display()).into(),

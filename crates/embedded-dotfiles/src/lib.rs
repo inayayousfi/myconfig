@@ -21,6 +21,7 @@ embed_dir!(pub static ZSH = "../../dotfiles/zsh");
 embed_dir!(pub static BOOTVINE_ASSETS = "../../dotfiles/assets/bootvine");
 embed_dir!(pub static KDE_PLASMA_ASSETS = "../../dotfiles/assets/kde-plasma");
 embed_dir!(pub static REFIND_ASSETS = "../../dotfiles/assets/refind");
+embed_dir!(pub static SYSTEM_TUNING_ASSETS = "../../dotfiles/assets/system-tuning");
 embed_dir!(pub static WINDOWS_ASSETS = "../../dotfiles/assets/windows");
 
 /// The config packages that Linux modules stow, by package name. Paths in each package

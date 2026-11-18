@@ -104,12 +104,6 @@ impl Binary {
 /// runs it inside WSL to list and remove its modules.
 fn recipes(os: Os) -> &'static [Recipe] {
     match os {
-        Os::Cachyos => &[Recipe {
-            package: "inayos-cachyos",
-            windows: false,
-            guest_path: ".local/bin/inayos",
-            launch: Launch::Linux,
-        }],
         Os::Ubuntu => &[Recipe {
             package: "inayos-ubuntu-devbox",
             windows: false,
@@ -169,7 +163,7 @@ pub fn install(os: Os, guest: &Guest, binaries: &[Binary]) -> Result<(), BinaryE
                     let folder = folder.replace('/', "\\");
                     format!("if not exist \"{folder}\" mkdir \"{folder}\"")
                 }
-                Os::Cachyos | Os::Ubuntu => format!("mkdir -p '{folder}'"),
+                Os::Ubuntu => format!("mkdir -p '{folder}'"),
             };
             guest.run(&command).map_err(copy_error)?;
         }

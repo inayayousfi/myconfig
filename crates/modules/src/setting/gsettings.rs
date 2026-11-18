@@ -33,11 +33,11 @@ impl Kind for Gsettings<'_> {
 
     fn write(&self, ctx: &Context, value: &str) -> ModuleResult {
         let Self { schema, key } = self;
-        ctx.run(cmd!(ctx.shell, "gsettings set {schema} {key} {value}"))
+        ctx.run_with_session_bus(cmd!(ctx.shell, "gsettings set {schema} {key} {value}"))
     }
 
     fn delete(&self, ctx: &Context) -> ModuleResult {
         let Self { schema, key } = self;
-        ctx.run(cmd!(ctx.shell, "gsettings reset {schema} {key}"))
+        ctx.run_with_session_bus(cmd!(ctx.shell, "gsettings reset {schema} {key}"))
     }
 }

@@ -141,6 +141,8 @@ fn pacman_names(specs: &[PackageSpec]) -> ModuleResult<Vec<&'static str>> {
 }
 
 /// Installs paru for the first AUR package, recorded under the module that needs it.
+/// paru cannot install itself, so makepkg builds its AUR package. That package holds
+/// paru's official release binary, so nothing is compiled.
 pub(crate) fn ensure_paru(ctx: &Context) -> ModuleResult {
     let sh = ctx.shell;
     for installed in ["paru", "paru-bin", "paru-git"] {
@@ -148,21 +150,15 @@ pub(crate) fn ensure_paru(ctx: &Context) -> ModuleResult {
             return Ok(());
         }
     }
-    // CachyOS ships paru in its own repository; plain Arch has it only in the AUR.
-    if ctx.succeeds(cmd!(sh, "pacman -Si paru"))? {
-        return ctx.install_packages(&[crate::Package::Paru]);
-    }
-    // paru-bin packages paru's official release binary, so nothing is compiled.
+    let name = ctx.spec(crate::Package::Paru)?.name;
     ctx.run(cmd!(
         sh,
         "sudo pacman -S --needed --noconfirm base-devel git"
     ))?;
     with_temporary_directory("paru", |root| {
-        let repo = root.join("paru-bin");
-        ctx.run(cmd!(
-            sh,
-            "git clone https://aur.archlinux.org/paru-bin.git {repo}"
-        ))?;
+        let repo = root.join(name);
+        let url = format!("https://aur.archlinux.org/{name}.git");
+        ctx.run(cmd!(sh, "git clone {url} {repo}"))?;
         let _cwd = sh.push_dir(&repo);
         ctx.run(cmd!(sh, "makepkg --noconfirm"))?;
         let packages: Vec<PathBuf> = ctx
@@ -180,7 +176,7 @@ pub(crate) fn ensure_paru(ctx: &Context) -> ModuleResult {
         if packages.is_empty() {
             return Err("makepkg did not produce a package".into());
         }
-        ctx.local_package_installed("paru-bin")?;
+        ctx.local_package_installed(name)?;
         ctx.run(cmd!(
             sh,
             "sudo pacman -U --needed --noconfirm {packages...}"

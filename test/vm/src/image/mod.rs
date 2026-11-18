@@ -5,7 +5,6 @@
 //! An image is built in its own folder and replaces the clean image only when it is complete,
 //! so a failed build leaves the previous image as it was.
 
-mod cachyos;
 mod ubuntu;
 mod windows;
 
@@ -119,8 +118,6 @@ pub enum ImageError {
     QemuImgSpawn(io::Error),
     #[error("qemu-img could not prepare {0}: {1}")]
     QemuImg(PathBuf, String),
-    #[error("the installation did not start; its serial output is in {serial}")]
-    NotStarted { serial: PathBuf },
     #[error("the installation failed; see {serial} and the last screen in {screen}")]
     InstallFailed { serial: PathBuf, screen: PathBuf },
     #[error(
@@ -146,7 +143,6 @@ pub enum ImageError {
 /// The release the source of `os` lists now.
 pub fn latest_release(os: Os) -> Result<String, SourceError> {
     match os {
-        Os::Cachyos => cachyos::latest_release(),
         Os::Windows => windows::latest_release(),
         Os::Ubuntu => ubuntu::latest_release(),
     }
@@ -154,7 +150,6 @@ pub fn latest_release(os: Os) -> Result<String, SourceError> {
 
 fn source(os: Os) -> Result<Source, SourceError> {
     match os {
-        Os::Cachyos => cachyos::source(),
         Os::Windows => windows::source(),
         Os::Ubuntu => ubuntu::source(),
     }
@@ -259,11 +254,6 @@ impl Build {
         public_key: &str,
     ) -> Result<(), ImageError> {
         let (label, files, timeout): (&str, Vec<SeedFile>, Duration) = match self.os {
-            Os::Cachyos => (
-                cachyos::SEED_LABEL,
-                cachyos::seed_files(public_key),
-                cachyos::INSTALL_TIMEOUT,
-            ),
             Os::Windows => (
                 windows::SEED_LABEL,
                 windows::seed_files(public_key),
@@ -289,7 +279,6 @@ impl Build {
         );
         let mut vm = Vm::start(&self.machine(media, &serial), &self.runtime, self.watch)?;
         match self.os {
-            Os::Cachyos => cachyos::start_install(&mut vm, &serial)?,
             Os::Windows => windows::start_install(&mut vm)?,
             Os::Ubuntu => {}
         }
@@ -335,12 +324,12 @@ impl Build {
         guest.wait_until_ready(&mut vm, Duration::from_secs(self.os.ssh_timeout_secs()))?;
         let build = match self.os {
             Os::Windows => Some(windows::build_number(&guest)?),
-            Os::Cachyos | Os::Ubuntu => None,
+            Os::Ubuntu => None,
         };
 
         let shutdown = match self.os {
             Os::Windows => "shutdown /s /t 0".to_owned(),
-            Os::Cachyos | Os::Ubuntu => {
+            Os::Ubuntu => {
                 format!("printf '%s\\n' '{GUEST_PASSWORD}' | sudo -S -p '' systemctl poweroff")
             }
         };

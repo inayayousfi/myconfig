@@ -47,7 +47,7 @@ pub struct Machine {
     pub layer: Layer,
     pub sockets: Sockets,
     pub media: Media,
-    /// 1, or 2 for a CachyOS guest tested with a second display.
+    /// 1, or 2 for a guest tested with a second display.
     pub displays: u8,
     /// The host file that receives the guest's first serial port, which image installers
     /// use to report their progress.
@@ -232,7 +232,7 @@ mod tests {
 
     #[test]
     fn ssh_reaches_the_guest_only_from_the_host_loopback() {
-        for os in [Os::Cachyos, Os::Ubuntu, Os::Windows] {
+        for os in [Os::Ubuntu, Os::Windows] {
             let netdev = values(&machine(os, "/state"), "-netdev");
             assert_eq!(
                 netdev,
@@ -244,13 +244,13 @@ mod tests {
 
     #[test]
     fn a_linux_guest_has_a_spice_display_with_the_agent_channel_and_its_outputs() {
-        let mut cachyos = machine(Os::Cachyos, "/state");
-        cachyos.displays = 2;
+        let mut ubuntu = machine(Os::Ubuntu, "/state");
+        ubuntu.displays = 2;
         assert_eq!(
-            values(&cachyos, "-spice"),
+            values(&ubuntu, "-spice"),
             ["unix=on,disable-ticketing=on,addr=/state/run/spice.sock"]
         );
-        let devices = values(&cachyos, "-device");
+        let devices = values(&ubuntu, "-device");
         assert!(devices.contains(&"qxl-vga,xres=1920,yres=1080,max_outputs=2".to_owned()));
         assert!(
             devices.contains(&"virtserialport,chardev=vdagent,name=com.redhat.spice.0".to_owned())

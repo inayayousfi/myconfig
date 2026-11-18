@@ -16,7 +16,7 @@ use repository_tests::{Scratch, repository, run};
 fn release(scratch: &Scratch) -> std::path::PathBuf {
     let release = scratch.0.join("release");
     fs::create_dir_all(&release).unwrap();
-    for platform in ["cachyos", "arch-wsl", "ubuntu-devbox"] {
+    for platform in ["arch-desktop", "arch-wsl", "ubuntu-devbox"] {
         let asset = format!("inayos-{platform}-x86_64-unknown-linux-musl");
         fs::write(
             release.join(&asset),
@@ -77,7 +77,7 @@ fn a_named_platform_installs_its_binary_and_passes_the_arguments() {
 fn an_unattended_run_without_a_command_stops_before_downloading() {
     let scratch = Scratch::new("install-unattended");
     let release = release(&scratch);
-    let output = install(&scratch, &release, &["cachyos"]);
+    let output = install(&scratch, &release, &["arch-desktop"]);
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("pass a command such as: install"));
     assert!(!scratch.0.join("home/.local/bin/inayos").exists());

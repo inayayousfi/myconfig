@@ -2,29 +2,29 @@
 
 > A modular configuration bank for building reproducible development environments across platforms.
 
-This repository provides installers and dotfiles for CachyOS, Arch WSL, Ubuntu Devbox, and Windows Workstation. CachyOS installs the complete development profile. Arch WSL installs the shell, terminal and agent tools. Ubuntu Devbox sets up a personal Ubuntu machine for coding and long-running agents.
+This repository provides installers and dotfiles for the InayOS desktop on Arch Linux, Arch WSL, Ubuntu Devbox, and Windows Workstation. The InayOS desktop installs the complete development profile. Arch WSL installs the shell, terminal and agent tools. Ubuntu Devbox sets up a personal Ubuntu machine for coding and long-running agents.
 
 ## Quick Start
 
 Each install script downloads the binary for your platform from the latest release, checks its SHA-256, keeps it as `inayos`, and opens its screen. On the screen, `space` ticks a module, `i` installs, `v` verifies, `r` removes and `q` quits.
 
-### CachyOS, Arch WSL, and Ubuntu Devbox
+### InayOS desktop, Arch WSL, and Ubuntu Devbox
 
-Run this after completing the CachyOS graphical installer, inside the Arch WSL distribution, or on Ubuntu:
+Run this on Arch Linux with KDE Plasma installed, inside the Arch WSL distribution, or on Ubuntu:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/inayayousfi/myconfig/main/install.sh | bash
 ```
 
-The script detects the platform and asks you to confirm it. To name it yourself, pass `cachyos`, `arch-wsl`, or `ubuntu-devbox`:
+The script detects the platform and asks you to confirm it. To name it yourself, pass `arch-desktop`, `arch-wsl`, or `ubuntu-devbox`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/inayayousfi/myconfig/main/install.sh | bash -s -- cachyos
+curl -fsSL https://raw.githubusercontent.com/inayayousfi/myconfig/main/install.sh | bash -s -- arch-desktop
 ```
 
 The binary is kept as `~/.local/bin/inayos`.
 
-The CachyOS profile requires KDE Plasma 6.7 through 6.x and applies Breeze Dark with a pink accent color and a macOS-style layout: a top bar holding a KDE session menu, the global menu, tray and clock, and an application dock with a one-click Overview icon, on every display. It installs VSCodium as the text editor and the T3 Code desktop app, whose client settings come from the `t3code-desktop` package. It installs Google Chrome, and LyX with TeX Live, the Qalculate calculator and Okular as the PDF viewer. The session uses a US keyboard layout with the right Alt key as the Compose key. The profile replaces the CachyOS boot splash with [bootvine](https://codeberg.org/wvhulle/bootvine), which draws the systemd jobs still starting as a live tree on the console. It removes the `nowatchdog` and `splash` kernel options from `/boot/refind_linux.conf` and passes `quiet` only on the first boot entry. It also installs the Black & Pink rEFInd theme, installs Axidev OSK, Kanata with an independent KDE tray, and Handy offline dictation with either-side `Ctrl+Shift` push-to-talk. Log out and back in so new input-device group memberships apply, then restart the selected login manager or reboot to activate login-screen startup.
+The InayOS desktop profile requires KDE Plasma 6.7 through 6.x and applies Breeze Dark with a pink accent color and a macOS-style layout: a top bar holding a KDE session menu, the global menu, tray and clock, and an application dock with a one-click Overview icon, on every display. It installs VSCodium as the text editor and the T3 Code desktop app, whose client settings come from the `t3code-desktop` package. It installs Google Chrome, and LyX with TeX Live, the Qalculate calculator and Okular as the PDF viewer. The session uses a US keyboard layout with the right Alt key as the Compose key. The boot shows [bootvine](https://codeberg.org/wvhulle/bootvine), which draws the systemd jobs still starting as a live tree on the console, and the profile passes `quiet` only on the first boot entry of `/boot/refind_linux.conf`. The [system tuning](docs/system-tuning.md) module adds zram swap with zswap off, DNS through systemd-resolved, the swap and console kernel settings, a higher open-file limit and the `ntsync` module. It also installs the Black & Pink rEFInd theme, and on a system that the InayOS installer builds, rEFInd itself, installs Axidev OSK, Kanata with an independent KDE tray, and Handy offline dictation with either-side `Ctrl+Shift` push-to-talk. Log out and back in so new input-device group memberships apply, then restart the selected login manager or reboot to activate login-screen startup.
 
 The Ubuntu Devbox profile installs the development runtimes, the command-line tools, rootless Docker, Tailscale, the coding agents, and the T3 Code server, which keeps running after logout. It leaves the machine's SSH configuration as it is. VSCodium and VS Code open folders on the machine over SSH with their remote SSH extensions.
 
@@ -52,7 +52,7 @@ inayos remove zsh           # undoes what the zsh module changed
 inayos list                 # prints the module names
 ```
 
-The same commands work through the install script, such as `curl -fsSL .../install.sh | bash -s -- cachyos install`. A run without a terminal needs a command, because it cannot show the screen.
+The same commands work through the install script, such as `curl -fsSL .../install.sh | bash -s -- arch-desktop install`. A run without a terminal needs a command, because it cannot show the screen.
 
 Before changing anything, each module records what was there in `~/.local/state/inayos/state.json` (`%LOCALAPPDATA%\inayos\state\state.json` on Windows). `remove` uses that record to put files, settings and packages back.
 
@@ -72,7 +72,7 @@ It also deletes the links under earlier names that point into `~/dotfiles` at a 
 
 ### Virtual Machine Testing
 
-The [VM xtask](test/vm/README.md) builds the installers from the working tree and runs them in throwaway CachyOS, Ubuntu and Windows virtual machines, without a commit or release. The CachyOS and Ubuntu cycles pass on real virtual machines. The Windows cycle has not run yet.
+The [VM xtask](test/vm/README.md) builds the installers from the working tree and runs them in throwaway Ubuntu and Windows virtual machines, without a commit or release. The Ubuntu cycle passes on a real virtual machine. The Windows cycle has not run yet, and no guest runs the InayOS desktop profile.
 
 ## Features
 
@@ -84,7 +84,7 @@ The [VM xtask](test/vm/README.md) builds the installers from the working tree an
 
 Minimal requirements - the install script handles everything else:
 
-**CachyOS, Arch WSL, and Ubuntu Devbox:**
+**InayOS desktop, Arch WSL, and Ubuntu Devbox:**
 
 - `curl` and `sha256sum` - for downloading and checking the binary
 - Internet connection

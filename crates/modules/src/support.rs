@@ -84,33 +84,10 @@ pub(crate) fn current_user(ctx: &Context) -> ModuleResult<String> {
     Ok(user)
 }
 
-/// Whether the user's systemd manager, which runs the user services, has `wanted` among its
-/// groups. A login made after the group was added has it, but a manager that started earlier
-/// keeps its old groups until every session of the user ends.
-pub(crate) fn active_group(ctx: &Context, wanted: &str) -> ModuleResult<bool> {
-    let sh = ctx.shell;
-    let manager = format!("user@{}.service", ctx.read(cmd!(sh, "id -u"))?);
-    let pid = ctx.read(cmd!(
-        sh,
-        "systemctl show --property=MainPID --value {manager}"
-    ))?;
-    if pid.is_empty() || pid == "0" {
-        return Ok(false);
-    }
-    let groups = ctx.read(cmd!(sh, "ps -o supgrp= -p {pid}"))?;
-    Ok(groups.split(',').any(|group| group.trim() == wanted))
-}
-
-pub(crate) fn graphical_session(ctx: &Context) -> ModuleResult<bool> {
-    ctx.succeeds(cmd!(
-        ctx.shell,
-        "systemctl --user --quiet is-active graphical-session.target"
-    ))
-}
-
-/// The settings that give a program access to keyboard and virtual input devices.
+/// The settings that give a program access to keyboard and virtual input devices, for the
+/// user that `configure_input_access` adds to the groups.
 pub(crate) fn input_access_settings(ctx: &Context) -> Vec<Setting> {
-    let user = ctx.shell.var("USER").unwrap_or_default();
+    let user = current_user(ctx).unwrap_or_default();
     ["input", "uinput"]
         .into_iter()
         .flat_map(|group| {
@@ -147,7 +124,10 @@ pub(crate) fn configure_input_access(ctx: &Context, owner: &str) -> ModuleResult
             user: user.clone(),
         })?;
     }
-    ctx.run(cmd!(sh, "sudo modprobe uinput"))?;
+    // The installed system loads the module at boot from the modules-load.d file.
+    let _ = ctx.on_running_system("sudo modprobe uinput", || {
+        ctx.run(cmd!(sh, "sudo modprobe uinput"))
+    })?;
     ctx.write_system_file(
         &PathBuf::from(format!("/etc/modules-load.d/inayos-{owner}.conf")),
         b"uinput\n",
@@ -158,12 +138,15 @@ pub(crate) fn configure_input_access(ctx: &Context, owner: &str) -> ModuleResult
         b"KERNEL==\"uinput\", MODE=\"0660\", GROUP=\"uinput\", OPTIONS+=\"static_node=uinput\"\nSUBSYSTEM==\"input\", KERNEL==\"event*\", MODE=\"0660\", GROUP=\"input\"\n",
         "0644",
     )?;
-    ctx.run(cmd!(sh, "sudo udevadm control --reload-rules"))?;
-    ctx.run(cmd!(
-        sh,
-        "sudo udevadm trigger --subsystem-match=misc --sysname-match=uinput"
-    ))?;
-    ctx.run(cmd!(sh, "sudo udevadm trigger --subsystem-match=input"))?;
+    // The installed system's udev reads the rules when it starts.
+    let _ = ctx.on_running_system("sudo udevadm control --reload-rules and trigger", || {
+        ctx.run(cmd!(sh, "sudo udevadm control --reload-rules"))?;
+        ctx.run(cmd!(
+            sh,
+            "sudo udevadm trigger --subsystem-match=misc --sysname-match=uinput"
+        ))?;
+        ctx.run(cmd!(sh, "sudo udevadm trigger --subsystem-match=input"))
+    })?;
     Ok(())
 }
 

@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use xshell::cmd;
 
 use crate::{
-    Context, Footprint, Module, ModuleResult, Need, Package,
+    Context, Footprint, Module, ModuleResult, Need, Package, ServiceScope,
     deploy::verify_package,
     support::{current_user, require_executable, require_programs, verify_packages},
 };
@@ -23,13 +23,8 @@ const SERVER_PACKAGES: &[Package] = &[Package::Qrencode];
 const DESKTOP_PACKAGES: &[Package] = &[Package::T3codeDesktop];
 
 fn service_active(ctx: &Context) -> ModuleResult {
-    if !ctx.succeeds(cmd!(
-        ctx.shell,
-        "systemctl --user --quiet is-active t3code.service"
-    ))? {
-        return Err("t3code.service is not active".into());
-    }
-    Ok(())
+    ctx.require_active("t3code.service", ServiceScope::User)
+        .map(drop)
 }
 
 impl Module for T3Code {
@@ -63,11 +58,7 @@ impl Module for T3Code {
         // t3ctl turns on lingering, so the service runs at boot and after logout, and
         // writes the service address into service.env.
         let user = current_user(ctx)?;
-        let (_, linger) = ctx.read_unchecked(cmd!(
-            ctx.shell,
-            "loginctl show-user {user} -p Linger --value"
-        ))?;
-        if linger != "yes" {
+        if !ctx.lingering(&user)? {
             ctx.record_undo_command(Path::new("loginctl"), &["disable-linger", &user])?;
         }
         let t3_home = ctx

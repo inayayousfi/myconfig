@@ -32,17 +32,6 @@ pub(crate) fn add_initramfs_hook(ctx: &Context, hook: &str, after: &str) -> Modu
     Ok(true)
 }
 
-/// Takes `hook` out of the hook list, and reports whether it was there.
-pub(crate) fn remove_initramfs_hook(ctx: &Context, hook: &str) -> ModuleResult<bool> {
-    let setting = hook_setting(hook);
-    if setting.read(ctx)?.is_none() {
-        return Ok(false);
-    }
-    record_rebuild(ctx)?;
-    ctx.unset(setting)?;
-    Ok(true)
-}
-
 /// Applies `edit` to the hook list of each `HOOKS=(...)` line.
 fn edit_hooks(config: &str, edit: impl Fn(&mut Vec<String>)) -> String {
     config
@@ -126,14 +115,14 @@ fn edit_entries(config: &str, edit: impl Fn(usize, &str) -> String) -> String {
         .collect()
 }
 
-pub(crate) fn without_options(config: &str, removed: &[&str]) -> String {
-    edit_entries(config, |_, options| {
-        options
-            .split_whitespace()
-            .filter(|option| !removed.contains(option))
-            .collect::<Vec<_>>()
-            .join(" ")
-    })
+/// The kernel options of each boot entry, in the same lines `edit_entries` edits.
+pub(crate) fn entry_options(config: &str) -> Vec<String> {
+    let options = std::cell::RefCell::new(Vec::new());
+    edit_entries(config, |_, entry| {
+        options.borrow_mut().push(entry.to_owned());
+        entry.to_owned()
+    });
+    options.into_inner()
 }
 
 /// Passes `quiet` on the first boot entry only, so the other entries keep the kernel
@@ -212,16 +201,8 @@ mod tests {
     }
 
     #[test]
-    fn only_the_named_options_leave_each_entry() {
-        assert_eq!(
-            without_options(ENTRIES, &["quiet", "nowatchdog", "splash"]),
-            "\"Boot with standard options\"    \"rw root=UUID=31f4 resume=UUID=31f4\"\n\"Boot to single-user mode\"    \"rw root=UUID=31f4\" single\n# \"Commented\" \"quiet\"\n\"Boot with minimal options\"   \"ro root=/dev/nvme0n1p2\"\n"
-        );
-    }
-
-    #[test]
     fn only_the_first_entry_becomes_quiet() {
-        let clean = without_options(ENTRIES, &["quiet", "nowatchdog", "splash"]);
+        let clean = ENTRIES.replace("quiet nowatchdog splash ", "");
         let quiet = with_quiet_default(&clean);
         assert_eq!(
             quiet,

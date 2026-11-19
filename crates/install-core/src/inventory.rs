@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use crate::{
-    Choice, Error,
+    Choice, Error, hibernation,
     host::{Command, Host},
     install::{checks::LIVE_MEDIUM, machine::Machine},
     parse::{self, ListedDevice},
@@ -17,7 +17,7 @@ const LIVE_LABEL_PREFIX: &str = "INAYOS_";
 /// The GPT type of an EFI system partition.
 const EFI_TYPE: &str = "c12a7328-f81f-11d2-ba4b-00a0c93ec93b";
 const SYSTEM_LABEL: &str = "inayos-system";
-const HOME_LABEL: &str = "inayos-home";
+pub(crate) const HOME_LABEL: &str = "inayos-home";
 const TPM_VERSION: &str = "/sys/class/tpm/tpm0/tpm_version_major";
 /// The firmware variable that says whether the firmware is in Secure Boot Setup Mode.
 const SETUP_MODE: &str = "/sys/firmware/efi/efivars/SetupMode-8be4df61-93ca-11d2-aa0d-00e098032b8c";
@@ -87,6 +87,11 @@ pub fn disks(host: &dyn Host) -> Result<Vec<DiskInfo>, Error> {
             command: shown,
             problem,
         })?;
+    // The firmware variable does not say which disk the hibernated system is on.
+    let firmware_hibernated = hibernation::firmware_hibernated(&m);
+    // An unreadable memory size leaves no room aside here; the install's checks read it
+    // again and stop on the error.
+    let swap_gib = hibernation::swap_gib(&m).unwrap_or(0);
     Ok(devices
         .iter()
         .filter(|device| is_installable(device))
@@ -94,7 +99,7 @@ pub fn disks(host: &dyn Host) -> Result<Vec<DiskInfo>, Error> {
             path: disk.path.clone(),
             model: disk.model.clone(),
             size_bytes: disk.size_bytes,
-            offers: offers(&m, disk),
+            offers: offers(&m, disk, firmware_hibernated, swap_gib),
         })
         .collect())
 }
@@ -144,7 +149,32 @@ impl ListedDevice {
     }
 }
 
-fn offers(m: &Machine, disk: &ListedDevice) -> Vec<Offer> {
+/// Whether an unmounted InayOS home partition of `disk` holds a swap file that a system
+/// hibernated into. A partition that cannot be read counts as not hibernated here; the
+/// install's checks read it again and stop on the error.
+fn holds_hibernated_swap_file(m: &Machine, disk: &ListedDevice) -> bool {
+    disk.all().into_iter().any(|part| {
+        part.label == HOME_LABEL
+            && part.fstype == "ext4"
+            && part.mountpoints.is_empty()
+            && hibernation::swap_file_hibernated(m, &part.path).unwrap_or(false)
+    })
+}
+
+/// The offers of `disk`. Every home they leave has room for the hibernation swap file of
+/// `swap_gib`.
+fn offers(
+    m: &Machine,
+    disk: &ListedDevice,
+    firmware_hibernated: bool,
+    swap_gib: u64,
+) -> Vec<Offer> {
+    if firmware_hibernated || holds_hibernated_swap_file(m, disk) {
+        return Choice::ALL
+            .into_iter()
+            .map(|choice| unavailable(choice, hibernation::HIBERNATED))
+            .collect();
+    }
     let in_use = disk.all().into_iter().find_map(|part| {
         part.mountpoints
             .first()
@@ -154,7 +184,7 @@ fn offers(m: &Machine, disk: &ListedDevice) -> Vec<Offer> {
         .into_iter()
         .map(|choice| match &in_use {
             Some(reason) if choice != Choice::BesideWindows => unavailable(choice, reason.clone()),
-            _ => offer(m, disk, choice),
+            _ => offer(m, disk, choice, swap_gib),
         })
         .collect()
 }
@@ -167,11 +197,11 @@ fn unavailable(choice: Choice, reason: impl Into<String>) -> Offer {
     }
 }
 
-fn offer(m: &Machine, disk: &ListedDevice, choice: Choice) -> Offer {
+fn offer(m: &Machine, disk: &ListedDevice, choice: Choice, swap_gib: u64) -> Offer {
     match choice {
-        Choice::WipeDisk => wipe(disk),
-        Choice::ReinstallKeepHome => reinstall(disk),
-        Choice::ShrinkExt4KeepHome => shrink(m, disk),
+        Choice::WipeDisk => wipe(disk, swap_gib),
+        Choice::ReinstallKeepHome => reinstall(m, disk, swap_gib),
+        Choice::ShrinkExt4KeepHome => shrink(m, disk, swap_gib),
         Choice::BesideWindows => unavailable(choice, "comes in a later version"),
     }
 }
@@ -194,9 +224,9 @@ fn largest_fitting(min: u64, max: u64, fits: impl Fn(u64) -> bool) -> Option<u64
     Some(low)
 }
 
-fn wipe(disk: &ListedDevice) -> Offer {
+fn wipe(disk: &ListedDevice, swap_gib: u64) -> Offer {
     let sectors = disk.size_bytes / disk.sector_size;
-    let fits = |gib| sizes::wipe_layout(sectors, disk.sector_size, gib).is_ok();
+    let fits = |gib| sizes::wipe_layout(sectors, disk.sector_size, gib, swap_gib).is_ok();
     let max = sizes::MAX_SYSTEM_GIB.min(disk.size_bytes / GIB);
     match largest_fitting(sizes::MIN_SYSTEM_GIB, max, fits) {
         Some(max_gib) => Offer {
@@ -208,9 +238,10 @@ fn wipe(disk: &ListedDevice) -> Offer {
             }),
         },
         None => {
-            let needed = sizes::wipe_layout(sectors, disk.sector_size, sizes::MIN_SYSTEM_GIB)
-                .err()
-                .map_or(0, |too_small| too_small.needed_bytes);
+            let needed =
+                sizes::wipe_layout(sectors, disk.sector_size, sizes::MIN_SYSTEM_GIB, swap_gib)
+                    .err()
+                    .map_or(0, |too_small| too_small.needed_bytes);
             unavailable(
                 Choice::WipeDisk,
                 format!(
@@ -228,15 +259,37 @@ fn efi_partition(disk: &ListedDevice) -> Option<&ListedDevice> {
         .find(|part| part.parttype == EFI_TYPE && part.fstype == "vfat")
 }
 
-fn reinstall(disk: &ListedDevice) -> Offer {
+/// The GiB free on the kept home `partition` for the swap file, counting the earlier
+/// system's swap file, which the install deletes. None when the filesystem cannot be read:
+/// the install's checks read it again and stop on the error.
+fn swap_room_gib(m: &Machine, partition: &str) -> Option<f64> {
+    let dump = Command::query("dumpe2fs").args(["-h", partition]);
+    let usage = parse::ext4_usage(&m.query(dump).ok()?).ok()?;
+    let old = hibernation::swap_file_bytes(m, partition).ok()?;
+    Some((usage.free_bytes + old) as f64 / GIB as f64)
+}
+
+fn reinstall(m: &Machine, disk: &ListedDevice, swap_gib: u64) -> Offer {
     let labeled = |label| disk.children.iter().find(|part| part.label == label);
     let available = match (labeled(SYSTEM_LABEL), labeled(HOME_LABEL)) {
         (Some(system), Some(home)) => match efi_partition(disk) {
             None => Err("the disk has no EFI partition".to_owned()),
+            Some(_) if home.fstype == "crypto_LUKS" => Err(
+                "the InayOS on this disk is encrypted, and reinstalling keeps only a home \
+                 partition that is not"
+                    .to_owned(),
+            ),
             Some(_) if home.fstype != "ext4" => Err(format!(
                 "the InayOS home partition {} does not hold ext4",
                 home.path
             )),
+            Some(_) if swap_room_gib(m, &home.path).is_some_and(|free| free < swap_gib as f64) => {
+                Err(format!(
+                    "the InayOS home partition {} has no room for the {swap_gib} GiB \
+                     hibernation swap file, the size of the memory",
+                    home.path
+                ))
+            }
             Some(efi) => Ok(Partitions {
                 efi: Some(efi.path.clone()),
                 system: Some(system.path.clone()),
@@ -252,7 +305,7 @@ fn reinstall(disk: &ListedDevice) -> Offer {
     }
 }
 
-fn shrink(m: &Machine, disk: &ListedDevice) -> Offer {
+fn shrink(m: &Machine, disk: &ListedDevice, swap_gib: u64) -> Offer {
     let choice = Choice::ShrinkExt4KeepHome;
     let Some(home) = disk
         .children
@@ -296,8 +349,8 @@ fn shrink(m: &Machine, disk: &ListedDevice) -> Offer {
         first: home.start,
         last: home.start + home.size_bytes / sector - 1,
     };
-    let fits =
-        |gib| sizes::shrink_plan(span, sector, usage.block_size, usage.used_bytes, gib).is_ok();
+    let needed = usage.used_bytes + swap_gib * GIB;
+    let fits = |gib| sizes::shrink_plan(span, sector, usage.block_size, needed, gib).is_ok();
     let max = sizes::MAX_SYSTEM_GIB.min(home.size_bytes / GIB);
     match largest_fitting(sizes::MIN_SYSTEM_GIB, max, fits) {
         Some(max_gib) => Offer {
@@ -315,7 +368,8 @@ fn shrink(m: &Machine, disk: &ListedDevice) -> Offer {
         None => unavailable(
             choice,
             format!(
-                "the files on {} leave less than {} GiB to free",
+                "the files on {} and the {swap_gib} GiB hibernation swap file leave less than \
+                 {} GiB to free",
                 home.path,
                 sizes::MIN_SYSTEM_GIB
             ),

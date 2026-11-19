@@ -74,7 +74,7 @@ fn find_missing(os: Os, boot: Boot) -> Vec<Missing> {
         ("curl", Fix::Pacman("curl")),
         ("xorriso", Fix::Pacman("libisoburn")),
     ];
-    if boot == Boot::SecureUefiWithTpm {
+    if boot.has_tpm() {
         commands.push(("swtpm", Fix::Pacman("swtpm")));
     }
     if binary::needs_readelf(os) {

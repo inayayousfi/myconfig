@@ -50,7 +50,7 @@ impl Machine<'_> {
                 command: shown,
                 error,
             })?;
-        if command.mode() == Mode::Capture {
+        if command.mode() == Mode::Capture && !command.output_hidden() {
             for line in output.stdout.lines().chain(output.stderr.lines()) {
                 self.sink.detail(line);
             }

@@ -9,7 +9,6 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::machine::{Machine, Sockets};
-use crate::os::Boot;
 use crate::qmp::{Qmp, QmpError};
 
 const SOCKET_TIMEOUT: Duration = Duration::from_secs(15);
@@ -64,7 +63,7 @@ impl Vm {
             }
         }
 
-        let swtpm = if machine.boot == Boot::SecureUefiWithTpm {
+        let swtpm = if machine.boot.has_tpm() {
             Some(start_swtpm(machine, runtime)?)
         } else {
             None

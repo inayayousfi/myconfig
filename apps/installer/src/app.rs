@@ -12,7 +12,7 @@ use iced::{
     window,
 };
 use inayos_install_core::{
-    Answers, Host, Settings, catalog, inventory,
+    Answers, Choice, Host, Settings, catalog, inventory,
     modules::{self, ModuleEntry},
 };
 
@@ -132,11 +132,14 @@ impl App {
             disk: disk::State::new(loaded.disks),
             security: security::State::new(loaded.tpm2, loaded.setup_mode),
             user: user::State::new(loaded.zones),
-            // The Secure Boot answer chooses that module.
+            // The Secure Boot and encryption answers choose those modules.
             modules: modules_screen::State::new(loaded.modules.map(|entries| {
                 entries
                     .into_iter()
-                    .filter(|entry| entry.name != modules::SECURE_BOOT_MODULE)
+                    .filter(|entry| {
+                        entry.name != modules::SECURE_BOOT_MODULE
+                            && entry.name != modules::ENCRYPTION_MODULE
+                    })
                     .collect()
             })),
             summary: summary::State::default(),
@@ -202,6 +205,19 @@ impl App {
             Screen::Keyboard if !self.keyboard.ready() => Some("Choose a language.".into()),
             Screen::Disk if self.disk.answer().is_none() => {
                 Some("Choose a disk and something to do with it.".into())
+            }
+            Screen::Security
+                if self.security.answer().encryption
+                    && self
+                        .disk
+                        .answer()
+                        .is_some_and(|disk| disk.choice() != Choice::WipeDisk) =>
+            {
+                Some(
+                    "Encryption needs a whole disk for now: go back and choose to erase the \
+                     whole disk, or turn encryption off."
+                        .into(),
+                )
             }
             Screen::User => self.user.missing(),
             Screen::Modules if !self.modules.ready() => {
@@ -485,13 +501,14 @@ impl App {
         let task = self.progress.receive(lines);
         match ended {
             None => {}
-            Some(Ended::Succeeded) => {
+            Some(Ended::Succeeded(installed)) => {
                 self.running = None;
+                self.progress.succeed(installed);
                 self.screen = Screen::Done;
             }
-            Some(Ended::Failed(message)) => {
+            Some(Ended::Failed(message, installed)) => {
                 self.running = None;
-                self.progress.fail(message);
+                self.progress.fail(message, installed);
                 self.screen = Screen::Failed;
             }
         }

@@ -159,7 +159,7 @@ impl Machine {
 
         args.push_path_then("-qmp", "unix:", &self.sockets.qmp, ",server=on,wait=off");
 
-        if secure {
+        if self.boot.has_tpm() {
             args.push_path("-chardev", "socket,id=tpm,path=", &self.sockets.tpm);
             args.push([
                 "-tpmdev",

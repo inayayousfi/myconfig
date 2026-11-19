@@ -173,6 +173,13 @@ pub fn overview(answers: &Answers) -> Vec<String> {
     } else {
         "Secure Boot: off.".to_owned()
     });
+    lines.push(if answers.security.encryption {
+        "Encryption: on. The TPM opens the disk at start, and the end of the install shows the \
+         recovery key."
+            .to_owned()
+    } else {
+        "Encryption: off.".to_owned()
+    });
     lines.push(if answers.skip.is_empty() {
         "Modules: all of them.".to_owned()
     } else {

@@ -5,7 +5,11 @@
 //! answers file; `gui-install` goes through the installer's screens with QMP key presses.
 //! The boot chain scenarios check Secure Boot and the boot guard: `secure-boot` installs with
 //! Secure Boot on, and `broken-kernel` starts from the installed disk that the last passed
-//! `blank-disk` run kept, instead of installing again.
+//! `blank-disk` run kept, instead of installing again. The encryption scenarios check the TPM
+//! unlock, the recovery key, hibernation and the hibernation lock: `encrypted` installs with
+//! Secure Boot and encryption on and keeps its disk, which `tpm-wiped`, `hibernate-encrypted`
+//! and `firmware-db-update` start from; `hibernate` and `hibernated-disk` start from the plain
+//! kept disk.
 //!
 //! A scenario runs on its own layer. A passed scenario copies its screenshots to its
 //! `last-pass` folder and deletes the layer. A failed one keeps the layer, with its logs,
@@ -16,6 +20,8 @@ mod answers_file;
 mod boot_chain;
 mod boot_checks;
 mod checks;
+mod encryption;
+mod encryption_checks;
 mod gui;
 mod installed;
 
@@ -25,7 +31,8 @@ use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use answers_file::DiskChoice;
+use answers_file::{DiskChoice, Security};
+use installed::Kept;
 
 use crate::binary::{self, Binary, BinaryError};
 use crate::disk::{self, DiskError};
@@ -97,6 +104,27 @@ pub enum Name {
     /// in a pacman transaction, and checks that the guard makes the pre-update snapshot the
     /// default and that the machine boots it.
     BrokenKernel,
+    /// Installs on the blank disk with Secure Boot and encryption on, from firmware in Setup
+    /// Mode with a TPM, checks that the TPM unlocks both volumes with no prompt and that the
+    /// first boot binds them to PCR 7, and keeps the disk with its TPM state and recovery key.
+    Encrypted,
+    /// Starts from the kept encrypted disk with an empty TPM, and checks that the recovery key
+    /// typed at bootvine's prompt unlocks both volumes.
+    TpmWiped,
+    /// Starts from the installed disk of the last passed blank-disk run, hibernates, and checks
+    /// that the next start resumes.
+    Hibernate,
+    /// Starts from the kept encrypted disk, hibernates, and checks that the next start unlocks
+    /// with the TPM and resumes.
+    HibernateEncrypted,
+    /// Starts from the installed disk of the last passed blank-disk run, hibernates, boots the
+    /// USB stick, and checks that the installer refuses the disk without writing to it and that
+    /// the system still resumes.
+    HibernatedDisk,
+    /// Starts from the kept encrypted disk, prepares the volumes with the guard, changes the
+    /// Secure Boot database, and checks that the next boots unlock with no prompt while the
+    /// guard binds the volumes to the new PCR 7.
+    FirmwareDbUpdate,
 }
 
 impl Name {
@@ -108,24 +136,71 @@ impl Name {
             Name::GuiInstall => "gui-install",
             Name::SecureBoot => "secure-boot",
             Name::BrokenKernel => "broken-kernel",
+            Name::Encrypted => "encrypted",
+            Name::TpmWiped => "tpm-wiped",
+            Name::Hibernate => "hibernate",
+            Name::HibernateEncrypted => "hibernate-encrypted",
+            Name::HibernatedDisk => "hibernated-disk",
+            Name::FirmwareDbUpdate => "firmware-db-update",
         }
     }
 
-    /// The firmware of the scenario's guest. Secure Boot needs the Secure Boot firmware build;
-    /// its TPM is unused until encryption needs one.
+    /// The firmware of the scenario's guest. Secure Boot needs the Secure Boot firmware build,
+    /// and encryption a TPM. A scenario that starts from a kept disk boots the firmware it was
+    /// installed with. The plain hibernation scenarios have no TPM: with one, OVMF moves an
+    /// ACPI table between boots now and then, and the kernel refuses to resume into a
+    /// different memory map.
     fn boot(self) -> Boot {
         match self {
-            Name::SecureBoot => Boot::SecureUefiWithTpm,
-            Name::BrokenKernel => installed::BOOT,
+            Name::SecureBoot | Name::Encrypted => Boot::SecureUefiWithTpm,
+            Name::BrokenKernel
+            | Name::Hibernate
+            | Name::HibernatedDisk
+            | Name::TpmWiped
+            | Name::HibernateEncrypted
+            | Name::FirmwareDbUpdate => self
+                .starts_from()
+                .expect("these scenarios start from a kept disk")
+                .boot(),
             Name::BlankDisk | Name::ReinstallKeepHome | Name::ShrinkExt4 | Name::GuiInstall => {
                 Boot::Uefi
             }
         }
     }
 
-    /// Whether the scenario starts from the kept installed disk instead of a blank one.
-    fn starts_installed(self) -> bool {
-        self == Name::BrokenKernel
+    /// The kept installed disk the scenario starts from instead of a blank one.
+    fn starts_from(self) -> Option<Kept> {
+        match self {
+            Name::BrokenKernel | Name::Hibernate | Name::HibernatedDisk => Some(Kept::Plain),
+            Name::TpmWiped | Name::HibernateEncrypted | Name::FirmwareDbUpdate => {
+                Some(Kept::Encrypted)
+            }
+            Name::BlankDisk
+            | Name::ReinstallKeepHome
+            | Name::ShrinkExt4
+            | Name::GuiInstall
+            | Name::SecureBoot
+            | Name::Encrypted => None,
+        }
+    }
+
+    /// The kept installed disk that a passed run of the scenario replaces.
+    fn keeps(self) -> Option<Kept> {
+        match self {
+            Name::BlankDisk => Some(Kept::Plain),
+            Name::Encrypted => Some(Kept::Encrypted),
+            _ => None,
+        }
+    }
+
+    /// Whether the scenario boots the USB stick image.
+    fn needs_iso(self) -> bool {
+        self.starts_from().is_none() || self == Name::HibernatedDisk
+    }
+
+    /// Whether the scenario's install turns encryption on.
+    fn encryption(self) -> bool {
+        self == Name::Encrypted
     }
 }
 
@@ -174,9 +249,10 @@ pub enum ScenarioError {
         error: io::Error,
     },
     #[error(
-        "the blank-disk scenario passed, but its installed disk could not be kept in {installed}: {error}"
+        "the {name} scenario passed, but its installed disk could not be kept in {installed}: {error}"
     )]
     InstalledNotKept {
+        name: &'static str,
         installed: PathBuf,
         error: io::Error,
     },
@@ -221,12 +297,15 @@ pub fn run(name: Name, watch: bool, repository: &Path) -> Result<(), ScenarioErr
     host::check_boot(OS, name.boot())?;
     let _lock = VmLock::acquire(&paths.lock())?;
     let iso = paths.usb_iso();
-    let installed = if name.starts_installed() {
-        Some(installed::find(&paths.scenario_installed())?)
-    } else if !iso.is_file() {
+    if name.needs_iso() && !iso.is_file() {
         return Err(ScenarioError::NoIso(iso));
-    } else {
-        None
+    }
+    let installed = match name.starts_from() {
+        Some(kept) => Some(installed::find(
+            kept,
+            &paths.scenario_installed(kept.folder()),
+        )?),
+        None => None,
     };
     let key = SshKey::ensure(&paths.ssh_key())?;
     let binaries = binary::build(OS, repository)?;
@@ -247,7 +326,9 @@ pub fn run(name: Name, watch: bool, repository: &Path) -> Result<(), ScenarioErr
             disk::blank(&work, TARGET_DISK_SIZE, name.boot())?;
         }
     }
-    let installed_copy = (name == Name::BlankDisk).then(|| paths.scenario_installed_copy());
+    let installed_copy = name
+        .keeps()
+        .map(|kept| paths.scenario_installed_copy(kept.folder()));
 
     let mut scenario = Scenario {
         watch,
@@ -260,6 +341,8 @@ pub fn run(name: Name, watch: bool, repository: &Path) -> Result<(), ScenarioErr
         vm: None,
         boots: 0,
         boot: name.boot(),
+        encryption: name.encryption(),
+        installed: installed.clone(),
         installed_copy: installed_copy.clone(),
     };
     let result = scenario.steps(name);
@@ -286,9 +369,9 @@ pub fn run(name: Name, watch: bool, repository: &Path) -> Result<(), ScenarioErr
                     last_pass.display()
                 );
             }
-            if let Some(copy) = &installed_copy {
-                let installed = paths.scenario_installed();
-                if let Err(error) = installed::promote(copy, &installed) {
+            if let (Some(copy), Some(kept)) = (&installed_copy, name.keeps()) {
+                let installed = paths.scenario_installed(kept.folder());
+                if let Err(error) = installed::promote(copy, &installed, name.name()) {
                     if let Err(remove_error) = installed::remove(copy) {
                         eprintln!(
                             "vm: could not remove the installed disk copy {}: {remove_error}",
@@ -296,12 +379,13 @@ pub fn run(name: Name, watch: bool, repository: &Path) -> Result<(), ScenarioErr
                         );
                     }
                     return Err(ScenarioError::InstalledNotKept {
+                        name: name.name(),
                         installed: installed.dir().to_owned(),
                         error,
                     });
                 }
                 println!(
-                    "vm: the installed disk is kept in {} for the boot chain scenarios",
+                    "vm: the installed disk is kept in {} for the scenarios that start from it",
                     installed.dir().display()
                 );
             }
@@ -356,7 +440,11 @@ struct Scenario {
     boots: u32,
     /// The firmware of the guest, which the install also takes as the Secure Boot answer.
     boot: Boot,
-    /// Where a `blank-disk` run copies the installed disk before its first boot.
+    /// The encryption answer of the install.
+    encryption: bool,
+    /// The kept installed disk the scenario started from.
+    installed: Option<Layer>,
+    /// Where a scenario that keeps its installed disk copies it before its first boot.
     installed_copy: Option<Layer>,
 }
 
@@ -430,6 +518,78 @@ impl Scenario {
                 let user = self.boot_installed()?;
                 self.check_desktop(&user)
             }
+            Name::Encrypted => {
+                self.install_on_blank_disk()?;
+                self.copy_installed_disk()?;
+                let user = self.boot_installed()?;
+                self.check_unlocked_without_prompt("first-boot")?;
+                self.save_recovery_key(&user)?;
+                self.check_secure_boot(&user)?;
+                self.check_guard_boot_ran(&user)?;
+                self.check_tpm_enrolled(&user, "first-boot")?;
+                self.check_guard_reports_pcr7(&user)?;
+                self.power_off(&user, &user_power_off())?;
+                let user = self.boot_installed()?;
+                self.check_unlocked_without_prompt("second-boot")?;
+                self.check_tpm_enrolled(&user, "second-boot")?;
+                self.check_desktop(&user)
+            }
+            Name::TpmWiped => {
+                let key = self.kept_recovery_key()?;
+                self.replace_tpm_state()?;
+                let user = self.boot_with_recovery_key(&key)?;
+                self.check_volumes_open(&user)
+            }
+            Name::Hibernate | Name::HibernateEncrypted => {
+                let user = self.boot_installed()?;
+                if name == Name::HibernateEncrypted {
+                    self.check_unlocked_without_prompt("first-boot")?;
+                    // The guard's first boot binds the volumes to PCR 7 before the machine sleeps.
+                    self.check_guard_boot_ran(&user)?;
+                }
+                self.wait_for_swap_file(&user)?;
+                let marker = self.start_marker(&user)?;
+                self.hibernate(&user)?;
+                let user = self.boot_installed()?;
+                self.check_resumed(&user, &marker)
+            }
+            Name::HibernatedDisk => {
+                let user = self.boot_installed()?;
+                self.wait_for_swap_file(&user)?;
+                let marker = self.start_marker(&user)?;
+                self.hibernate(&user)?;
+                let live = self.boot_live()?;
+                self.check_hibernated_disk_refused(&live)?;
+                self.power_off(&live, "systemctl poweroff")?;
+                let user = self.boot_installed()?;
+                self.check_resumed(&user, &marker)
+            }
+            Name::FirmwareDbUpdate => {
+                let user = self.boot_installed()?;
+                self.check_unlocked_without_prompt("first-boot")?;
+                self.check_guard_boot_ran(&user)?;
+                self.put_fresh_guard(&user)?;
+                let before = self.check_tpm_enrolled(&user, "before")?;
+                self.prepare_firmware_update(&user)?;
+                self.update_secure_boot_db(&user)?;
+                self.power_off(&user, &user_power_off())?;
+                let user = self.boot_installed()?;
+                self.check_unlocked_without_prompt("after-db-update")?;
+                self.check_guard_boot_ran(&user)?;
+                let after = self.check_tpm_enrolled(&user, "after-db-update")?;
+                let missing = encryption::missing_reenrollment(&before, &after);
+                if !missing.is_empty() {
+                    return Err(StepError::Check(format!(
+                        "check-boot did not bind {} to the new PCR 7: no new PCR 7 keyslot",
+                        missing.join(" and ")
+                    )));
+                }
+                self.power_off(&user, &user_power_off())?;
+                let user = self.boot_installed()?;
+                self.check_unlocked_without_prompt("third-boot")?;
+                self.check_tpm_enrolled(&user, "third-boot")?;
+                Ok(())
+            }
             Name::ShrinkExt4 => {
                 let live = self.boot_live()?;
                 println!("vm: building a disk like the laptop's");
@@ -483,7 +643,8 @@ impl Scenario {
             return Ok(());
         };
         println!("vm: copying the installed disk to {}", copy.dir().display());
-        installed::copy(&self.layer, &copy).map_err(|error| StepError::Io(copy.disk(), error))
+        installed::copy(&self.layer, &copy, self.boot)
+            .map_err(|error| StepError::Io(copy.disk(), error))
     }
 
     /// Boots the USB stick image with the seed disc and waits until root accepts SSH.
@@ -548,9 +709,13 @@ impl Scenario {
         Ok(())
     }
 
-    /// Whether the install turns Secure Boot on, which the Secure Boot firmware is there for.
-    fn secure_boot(&self) -> bool {
-        self.boot == Boot::SecureUefiWithTpm
+    /// The security answers of the install: Secure Boot on when the guest has the Secure Boot
+    /// firmware, which is there for it.
+    fn security(&self) -> Security {
+        Security {
+            secure_boot: self.boot == Boot::SecureUefiWithTpm,
+            encryption: self.encryption,
+        }
     }
 
     fn vm(&mut self) -> &mut Vm {
@@ -567,9 +732,21 @@ impl Scenario {
     /// Writes the answers file for `disk` into the layer, copies it into the live system, and
     /// runs the installer with it. `label` names the answers file and the logs.
     fn install(&mut self, live: &Guest, disk: &DiskChoice, label: &str) -> Result<(), StepError> {
+        self.run_installer(live, disk, label)??;
+        Ok(())
+    }
+
+    /// Like `install`, but returns how the installer ended instead of failing when it failed.
+    /// Its output and its own log are in the layer either way.
+    fn run_installer(
+        &mut self,
+        live: &Guest,
+        disk: &DiskChoice,
+        label: &str,
+    ) -> Result<Result<(), SshError>, StepError> {
         let answers = self.write(
             &format!("answers-{label}.toml"),
-            &answers_file::answers_file(disk, &self.public_key, self.secure_boot()),
+            &answers_file::answers_file(disk, &self.public_key, self.security()),
         )?;
         live.copy_to(&answers, LIVE_ANSWERS)?;
         self.copy_binaries(live)?;
@@ -583,8 +760,7 @@ impl Scenario {
         {
             eprintln!("vm: could not copy {LIVE_LOG}: {error}");
         }
-        result?;
-        Ok(())
+        Ok(result)
     }
 
     /// Checks that the installers built from the working tree run with the live system's C
@@ -612,9 +788,20 @@ impl Scenario {
     /// Runs `command`, which powers the guest off, and waits until QEMU stops.
     fn power_off(&mut self, guest: &Guest, command: &str) -> Result<(), StepError> {
         println!("vm: powering off");
+        self.power_off_within(guest, command, POWER_OFF_TIMEOUT)
+    }
+
+    /// Runs `command`, which ends with the guest off, and waits up to `timeout` until QEMU
+    /// stops.
+    fn power_off_within(
+        &mut self,
+        guest: &Guest,
+        command: &str,
+        timeout: Duration,
+    ) -> Result<(), StepError> {
         // The connection may drop while the guest goes down, so only the power-off counts.
         let _ = guest.run(command);
-        let deadline = Instant::now() + POWER_OFF_TIMEOUT;
+        let deadline = Instant::now() + timeout;
         loop {
             match self.vm().check_running() {
                 Ok(()) => {}
@@ -622,7 +809,7 @@ impl Scenario {
                 Err(error) => return Err(error.into()),
             }
             if Instant::now() >= deadline {
-                return Err(StepError::NoPowerOff(POWER_OFF_TIMEOUT));
+                return Err(StepError::NoPowerOff(timeout));
             }
             thread::sleep(POLL);
         }

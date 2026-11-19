@@ -9,20 +9,21 @@ use std::{
     thread::{self, JoinHandle},
 };
 
-use inayos_install_core::{Answers, ChannelSink, Host, Line, Settings, Sink, install};
+use inayos_install_core::{Answers, ChannelSink, Host, Installed, Line, Settings, Sink, install};
 
 use crate::log_file::LogFile;
 
 /// A running install.
 pub struct Running {
     lines: Receiver<Line>,
-    thread: Option<JoinHandle<Result<(), String>>>,
+    thread: Option<JoinHandle<Result<Installed, (String, Installed)>>>,
 }
 
-/// How the install ended, once it ended.
+/// How the install ended, once it ended. A failure carries what the install made before
+/// it, such as the recovery key.
 pub enum Ended {
-    Succeeded,
-    Failed(String),
+    Succeeded(Installed),
+    Failed(String, Installed),
 }
 
 impl Running {
@@ -45,7 +46,7 @@ impl Running {
             install(&answers, &settings, host.as_ref(), &sink).map_err(|failure| {
                 let message = failure.to_string();
                 sink.log.line(&format!("error: {message}"));
-                message
+                (message, failure.installed)
             })
         });
         Ok(Running {
@@ -64,9 +65,12 @@ impl Running {
         let mut lines = lines;
         lines.extend(self.lines.try_iter());
         let ended = match self.thread.take().map(JoinHandle::join) {
-            Some(Ok(Ok(()))) => Ended::Succeeded,
-            Some(Ok(Err(message))) => Ended::Failed(message),
-            Some(Err(_)) => Ended::Failed("the install stopped on an internal error".to_owned()),
+            Some(Ok(Ok(installed))) => Ended::Succeeded(installed),
+            Some(Ok(Err((message, installed)))) => Ended::Failed(message, installed),
+            Some(Err(_)) => Ended::Failed(
+                "the install stopped on an internal error".to_owned(),
+                Installed::default(),
+            ),
             None => return (lines, None),
         };
         (lines, Some(ended))

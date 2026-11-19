@@ -2,7 +2,7 @@
 
 This document describes the VM xtask in `test/vm/`, the `inayos-xtask` crate. It builds the installers from the working tree and tests them in throwaway QEMU virtual machines of Ubuntu 26.04 LTS and Windows 11. It also builds the InayOS USB stick image in an Arch Linux virtual machine, and runs the InayOS installer from that image in scenarios. A commit or a release is not needed. It runs on a Linux host and only by hand.
 
-The Ubuntu cycle has passed on a real guest, image build included. Nothing has run on Windows, the Arch WSL checks included. The Arch image build with its glibc check, the USB stick build, the three Basics scenarios and the `gui-install` scenario have passed on a real guest, with the `last-pass` copy of screenshots, and so have the kept installed disk and the `secure-boot` and `broken-kernel` scenarios.
+The Ubuntu cycle has passed on a real guest, image build included. Nothing has run on Windows, the Arch WSL checks included. The Arch image build with its glibc check, the USB stick build, the three Basics scenarios and the `gui-install` scenario have passed on a real guest, with the `last-pass` copy of screenshots, and so have the kept installed disk and kept encrypted disk and every other scenario.
 
 ## Commands
 
@@ -40,9 +40,9 @@ The state folder is `${XDG_DATA_HOME:-~/.local/share}/inayos/vm`, or `INAYOS_VM_
 
 - `failed` is the layer of the last failed cycle or USB stick build, kept until the next one of that system.
 
-The state folder also holds the USB stick image at `usb/inayos.iso`, and a folder per scenario under `scenario/` with the same `work` and `failed` layers and a `last-pass` folder with the screenshots of the last passed run. `scenario/installed` holds the installed disk that the last passed `blank-disk` run kept, which the boot chain scenarios start from.
+The state folder also holds the USB stick image at `usb/inayos.iso`, and a folder per scenario under `scenario/` with the same `work` and `failed` layers and a `last-pass` folder with the screenshots of the last passed run. `scenario/installed` holds the installed disk that the last passed `blank-disk` run kept. `scenario/installed-encrypted` holds the one that the last passed `encrypted` run kept, with its TPM state and the recovery key of its volumes in `recovery-key.txt`. Other scenarios start from these kept disks.
 
-A layer holds a qcow2 disk that reads unchanged blocks from the clean image disk, a copy of the UEFI variables, and for Windows a copy of the TPM state.
+A layer holds a qcow2 disk that reads unchanged blocks from the clean image disk, a copy of the UEFI variables, and the TPM state of a guest with a TPM. A layer over a guest with the Secure Boot firmware copies its TPM state, because that state holds what the TPM sealed.
 
 The download folder is `${XDG_CACHE_HOME:-~/.cache}/inayos/vm`, or `INAYOS_VM_CACHE_DIR`. It holds the verified ISO or cloud image of each system.
 
@@ -110,7 +110,7 @@ The xtask copies the image to `usb/inayos.iso.part` in the state folder and rena
 
 ## Scenarios
 
-`scenario <name>` installs InayOS from the USB stick image. Its guest has 8 GiB of memory, UEFI without Secure Boot unless the scenario says otherwise, a new blank 80 GB qcow2 target disk and fresh UEFI variables in the scenario's layer. The image is a CD drive that the firmware starts first. A NoCloud seed disc labeled `CIDATA` gives root on the live system the xtask's SSH key.
+`scenario <name>` installs InayOS from the USB stick image. Its guest has 8 GiB of memory, UEFI without Secure Boot and without a TPM unless the scenario says otherwise, a new blank 80 GB qcow2 target disk and fresh UEFI variables in the scenario's layer. The image is a CD drive that the firmware starts first. A NoCloud seed disc labeled `CIDATA` gives root on the live system the xtask's SSH key.
 
 The xtask builds `inayos-installer`, `inayos-arch-desktop` and `inayos-guard` from the working tree, checks the installer against the live system's glibc as `usb build` does, and puts them in place of the copies on the image, so a scenario tests the working tree without a new image. Each binary goes to a file next to its place and a rename replaces the old one, because the Sway session of the stick runs the installer's screens from that place and Linux refuses a write to a running program. It drives the live system over SSH as root. The Basics scenarios write the answers file in `src/scenario/answers_file.rs`, copies it in, and runs `inayos-installer install --answers` with it. The answers file creates the `tester` account with the password from `src/os.rs` and the xtask's key in `authorized_keys`. It answers yes to the SSH server question and no to the GitHub and Tailscale login questions, as the answer table of the cycle does. The installer's output and its own log go to the `logs` folder of the layer.
 
@@ -143,6 +143,8 @@ The scenarios are:
 - `gui-install` installs on the blank disk through the installer's screens, with QMP key presses only, as `src/scenario/gui.rs` plans them. It is described below.
 
 - `secure-boot` and `broken-kernel` test the boot chain. They are described below.
+
+- `encrypted`, `tpm-wiped`, `hibernate`, `hibernate-encrypted`, `hibernated-disk` and `firmware-db-update` test encryption, hibernation and the hibernation lock. They are described below.
 
 The layer keeps the answers files, logs, serial logs of each boot and screenshots. A passed scenario copies the PNG screenshots of its layer to its `last-pass` folder, replacing the previous ones, and deletes its layer. A failed scenario saves the last screen and keeps the layer as that scenario's `failed` layer until its next run.
 
@@ -184,6 +186,45 @@ Then it runs the desktop checks.
 5. It checks that `/proc/cmdline` boots that snapshot with `systemd.volatile=overlay`, that `/` is an overlay, `/home` is ext4 and `/var/log` is Btrfs, and that `inayos-guard-boot.service` ran in this boot and exited with status 0, waiting while it still runs. SSH answering at all shows that sshd runs.
 
 Both scenarios keep copies of what they read in the layer: the output of `sbctl verify`, the guard's status files, and `refind.conf` and `inayos-guard.conf` at each step.
+
+### The encryption and hibernation scenarios
+
+The guests that start from the encrypted disk or install it have a TPM 2.0 from `swtpm`. `hibernate` and `hibernated-disk` boot the plain kept disk without a TPM: with one, OVMF places a small ACPI table at another address on some boots, and the kernel then refuses to resume into the changed memory map. The scenarios that start from a kept disk work over SSH as `tester`, as `broken-kernel` does, and stop with a message naming the scenario to run first when the kept disk is missing. A change to the installer or the modules reaches them only through a new pass of the scenario that keeps their disk.
+
+A boot counts as unlocked by the TPM when the new user accepts SSH while nothing was typed, since a password prompt stops the boot. The scenario also checks that the serial log of that boot holds neither "passphrase" nor "recovery key", and saves a screenshot named `unlocked-<boot>.png`.
+
+The enrollment checks read `findmnt` and `sudo cryptsetup luksDump --dump-json-metadata` for each LUKS volume on the disk. `/` must come from `/dev/mapper/system` and `/home` from `/dev/mapper/home`, and the disk must hold two LUKS volumes. A finished enrollment has a `systemd-tpm2` token bound to PCR 7 alone and no token with an empty PCR list, which is the temporary slot. The layer keeps each dump as `luks-<step>-<partition>.json`.
+
+`encrypted` boots the Secure Boot firmware in Setup Mode, as `secure-boot` does, and installs on the blank disk with `secure_boot = true` and `encryption = true`. Right after the install, it copies the target disk, the UEFI variables and the TPM state to `scenario/installed-encrypted.new`. It boots the installed disk and checks:
+
+1. The TPM unlocked the disk.
+2. `~/inayos-recovery-key.txt` has mode 600 and owner `tester`, and holds a recovery key of eight groups of eight modhex characters. No installer output or log in the layer holds the key. The key goes into `recovery-key.txt` of the copy.
+3. The Secure Boot checks of `secure-boot`.
+4. `inayos-guard-boot.service` ran and exited with status 0, both volumes have a finished enrollment, and `inayos-guard status` has a line that names PCR 7.
+
+It powers off and boots again, checks the TPM unlock and the enrollment once more, and runs the desktop checks. When the scenario passes, the copy replaces `scenario/installed-encrypted`; when it fails, the copy is deleted.
+
+`tpm-wiped` starts from the kept encrypted disk with an empty TPM state. It waits 45 seconds, past the firmware and rEFInd's wait, then until two screendumps 5 seconds apart are the same and not a single color, or 150 seconds pass. The guest must not answer SSH meanwhile. It saves the screen as `recovery-prompt-<attempt>.png` and types the kept recovery key and Enter through QMP. When SSH does not answer within three minutes, it waits and types again, up to three times, because each volume can ask for the key. Then it checks that both volumes are open.
+
+`hibernate` starts from the plain kept disk, and `hibernate-encrypted` from the kept encrypted disk, where it first checks the TPM unlock and waits for `inayos-guard-boot.service`. Both wait until `/home/swapfile` is an active swap, start `sleep 100000.<number>` outside the SSH session, and note its pid and the boot id. They run `sudo systemctl hibernate` and wait up to ten minutes for QEMU to stop. They boot again and check that the boot id and the marker's pid are unchanged, which only a resume gives, and that the `HibernateLocation` firmware variable is gone.
+
+`hibernated-disk` starts from the plain kept disk and hibernates as `hibernate` does. It then boots the USB stick on the same layer. The live system must see the `HibernateLocation` variable, which it keeps only when the stick's systemd does not clear it at boot. The scenario saves the SHA-256 of the first MiB of the disk and of each partition and of the last MiB of the disk, which hold the partition tables and the superblocks. A script that the scenario copies into the live system as `/root/disk-heads.sh` computes them.
+
+It runs the installer with reinstall answers twice. The first run sees the variable. Before the second run, the scenario saves the variable to `/root/hibernate-location` and removes it, so only the hibernation signature in the header of `/home/swapfile` can refuse the disk. After the second run it writes the variable back. Each run must pass these checks:
+
+1. The installer failed, and its output or log has a line with "This disk holds a hibernated InayOS: start it and shut it down properly first" and "the disk is unchanged", which the checks stage adds.
+2. No command in the installer's log writes to a disk: partitioning, formatting, LUKS header changes, filesystem repairs and resizes, swap, a `dd` with an `of=` file, or a mount that is not read-only.
+3. The checksums are unchanged, and no partition of the disk is mounted.
+
+Then it powers off, boots the installed disk and checks that it resumed.
+
+`firmware-db-update` starts from the kept encrypted disk. After the TPM unlock and the guard's first boot, it puts the guard built from the working tree in place and runs `check-update`, as `broken-kernel` does. It notes the keyslots bound to PCR 7, runs `sudo inayos-guard prepare-firmware-update`, and checks that each volume has a temporary token. It makes a throwaway DER certificate in `/var/lib/sbctl/keys/custom/db`, runs `sudo sbctl enroll-keys --partial db --append --custom --ignore-immutable`, which adds it to the Secure Boot database signed with the machine's KEK, and checks that the `db` variable changed. It boots again and checks:
+
+1. The TPM unlocked the disk through the temporary slot.
+2. `inayos-guard-boot.service` ran and exited with status 0.
+3. Both volumes have a finished enrollment, each with a PCR 7 keyslot that was not there before.
+
+A third boot must unlock with the TPM again and keep a finished enrollment.
 
 ## State lists
 

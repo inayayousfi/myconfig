@@ -36,9 +36,16 @@ pub enum DiskChoice {
     },
 }
 
-/// The answers file for an install with `disk`, Secure Boot on when `secure_boot`, the test
-/// account, and `authorized_key` as the only key that the new user accepts.
-pub fn answers_file(disk: &DiskChoice, authorized_key: &str, secure_boot: bool) -> String {
+/// The answers of the security screen.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Security {
+    pub secure_boot: bool,
+    pub encryption: bool,
+}
+
+/// The answers file for an install with `disk`, the `security` answers, the test account, and
+/// `authorized_key` as the only key that the new user accepts.
+pub fn answers_file(disk: &DiskChoice, authorized_key: &str, security: Security) -> String {
     let mut text = String::new();
     push(&mut text, "keyboard", string("us"));
     push(&mut text, "language", string("en_US.UTF-8"));
@@ -82,8 +89,8 @@ pub fn answers_file(disk: &DiskChoice, authorized_key: &str, secure_boot: bool) 
     }
 
     text.push_str("\n[security]\n");
-    push(&mut text, "secure_boot", secure_boot.to_string());
-    push(&mut text, "encryption", false.to_string());
+    push(&mut text, "secure_boot", security.secure_boot.to_string());
+    push(&mut text, "encryption", security.encryption.to_string());
 
     text.push_str("\n[user]\n");
     push(&mut text, "full_name", string("Tester"));
@@ -131,7 +138,7 @@ mod tests {
                 system_size_gib: 40,
             },
             KEY,
-            false,
+            Security::default(),
         );
         assert_eq!(
             text,
@@ -172,7 +179,7 @@ mod tests {
                 home_partition: "/dev/vda3",
             },
             KEY,
-            false,
+            Security::default(),
         );
         assert!(reinstall.contains(
             "[disk]\nchoice = \"reinstall-keep-home\"\ndevice = \"/dev/vda\"\n\
@@ -187,7 +194,7 @@ mod tests {
                 home_partition: "/dev/vda2",
             },
             KEY,
-            false,
+            Security::default(),
         );
         assert!(shrink.contains(
             "[disk]\nchoice = \"shrink-ext4-keep-home\"\ndevice = \"/dev/vda\"\n\
@@ -196,16 +203,29 @@ mod tests {
     }
 
     #[test]
-    fn a_secure_boot_install_turns_secure_boot_on_without_encryption() {
-        let text = answers_file(
-            &DiskChoice::WipeDisk {
-                device: "/dev/vda",
-                system_size_gib: 40,
-            },
+    fn the_security_answers_turn_secure_boot_and_encryption_on_separately() {
+        let disk = DiskChoice::WipeDisk {
+            device: "/dev/vda",
+            system_size_gib: 40,
+        };
+        let secure_boot = answers_file(
+            &disk,
             KEY,
-            true,
+            Security {
+                secure_boot: true,
+                encryption: false,
+            },
         );
-        assert!(text.contains("\n[security]\nsecure_boot = true\nencryption = false\n"));
+        assert!(secure_boot.contains("\n[security]\nsecure_boot = true\nencryption = false\n"));
+        let encrypted = answers_file(
+            &disk,
+            KEY,
+            Security {
+                secure_boot: true,
+                encryption: true,
+            },
+        );
+        assert!(encrypted.contains("\n[security]\nsecure_boot = true\nencryption = true\n"));
     }
 
     #[test]

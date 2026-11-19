@@ -65,6 +65,8 @@ fn live_system() -> FakeHost {
     host.file("/usr/share/zoneinfo/Europe/Paris", "");
     host.file("/etc/locale.gen", "#en_US.UTF-8 UTF-8\n");
     host.file("/proc/cpuinfo", "vendor_id\t: GenuineIntel\n");
+    // 1 GiB of memory, so the swap file needs 1 GiB of home.
+    host.file("/proc/meminfo", "MemTotal:        1000000 kB\n");
     host.file("/var/log/inayos-installer.log", "the log");
     host.file(
         "/etc/NetworkManager/system-connections/Home.nmconnection",
@@ -86,7 +88,7 @@ fn live_system() -> FakeHost {
     host.dir("/mnt/var/tmp", (0, 0));
     host.respond("mountpoint -q /mnt", [exit(1), ok("")]);
     host.respond(
-        "lsblk --json --output PATH,TYPE,MOUNTPOINTS /dev/vda",
+        "lsblk --json --output PATH,TYPE,FSTYPE,LABEL,MOUNTPOINTS /dev/vda",
         [ok(LSBLK)],
     );
     host.respond("blockdev --getss /dev/vda", [ok("512\n")]);
@@ -323,6 +325,15 @@ fn earlier_inayos(owner: (u32, u32)) -> FakeHost {
         "blkid --output value --match-tag TYPE /dev/vda3",
         [ok("ext4\n")],
     );
+    // 2 GiB used of 22 GiB.
+    host.respond(
+        "dumpe2fs -h /dev/vda3",
+        [ok(&format!(
+            "Block count: {}\nFree blocks: {}\nBlock size: 4096\n",
+            22 * GIB / 4096,
+            20 * GIB / 4096
+        ))],
+    );
     host.dir("/mnt/home/tester", owner);
     host.file("/mnt/home/tester/notes.txt", "kept");
     host.file("/mnt/home/tester/.local/state/inayos/state.json", "{}");
@@ -381,6 +392,63 @@ fn a_reinstall_formats_only_the_system_and_keeps_the_owner_of_the_home_folder() 
         host.node("/mnt/home/tester/.local/state/myconfig/state.json"),
         None
     );
+}
+
+#[test]
+fn a_reinstall_deletes_the_earlier_swap_file_and_needs_room_for_the_new_one() {
+    let host = earlier_inayos((1000, 1000));
+    host.file("/mnt/home/swapfile", "old swap");
+    install(&reinstall(), &settings(), &host, &FakeSink::default()).unwrap();
+    assert_eq!(host.node("/mnt/home/swapfile"), None);
+
+    // 8 GiB of memory, and 7 GiB free besides a 1 GiB earlier swap file, fit exactly.
+    let fits = |free_gib: u64| {
+        let host = earlier_inayos((1000, 1000));
+        host.file("/proc/meminfo", "MemTotal:        8000000 kB\n");
+        host.respond(
+            "dumpe2fs -h /dev/vda3",
+            [ok(&format!(
+                "Block count: {}\nFree blocks: {}\nBlock size: 4096\n",
+                22 * GIB / 4096,
+                free_gib * GIB / 4096
+            ))],
+        );
+        host.respond(
+            "debugfs -R 'stat /swapfile' /dev/vda3",
+            [ok(&format!("Inode: 12   Type: regular\nSize: {GIB}\n"))],
+        );
+        let result = install(&reinstall(), &settings(), &host, &FakeSink::default());
+        (result, host)
+    };
+    assert!(fits(7).0.is_ok());
+    let (result, host) = fits(6);
+    let failure = result.unwrap_err();
+    assert_eq!(failure.stage, Stage::Checks);
+    assert!(
+        matches!(
+            failure.error,
+            Error::NoRoomForSwapFile { needed_gib: 8, .. }
+        ),
+        "{:?}",
+        failure.error
+    );
+    assert!(host.actions().is_empty());
+}
+
+#[test]
+fn a_wiped_home_keeps_room_for_a_swap_file_as_large_as_the_memory() {
+    // 64 GiB minus 2 GiB of EFI and 40 GiB of system leaves 21 GiB of home after 1 GiB of
+    // swap file, and only 19 after 3 GiB.
+    let host = live_system();
+    host.file("/proc/meminfo", "MemTotal:        3000000 kB\n");
+    let failure = install(&wipe(), &settings(), &host, &FakeSink::default()).unwrap_err();
+    assert_eq!(failure.stage, Stage::Checks);
+    assert!(
+        matches!(failure.error, Error::DiskTooSmall(_)),
+        "{:?}",
+        failure.error
+    );
+    assert!(host.actions().is_empty());
 }
 
 #[test]
@@ -633,7 +701,7 @@ fn checks_refuse_before_the_disk_changes() {
     for (lsblk, expected) in cases {
         let host = live_system();
         host.respond(
-            "lsblk --json --output PATH,TYPE,MOUNTPOINTS /dev/vda",
+            "lsblk --json --output PATH,TYPE,FSTYPE,LABEL,MOUNTPOINTS /dev/vda",
             [ok(lsblk)],
         );
         let failure = install(&wipe(), &settings(), &host, &FakeSink::default()).unwrap_err();
@@ -695,26 +763,18 @@ fn answers_an_interface_built_with_a_bad_name_refuse_before_any_command() {
 }
 
 #[test]
-fn options_that_are_not_built_refuse_before_any_command() {
-    for (disk, extra) in [
-        (
-            "choice = \"wipe-disk\"\ndevice = \"/dev/vda\"\nsystem_size_gib = 40",
-            "[security]\nencryption = true",
-        ),
-        ("choice = \"beside-windows\"\ndevice = \"/dev/vda\"", ""),
-    ] {
-        let host = live_system();
-        let failure = install(
-            &answers(disk, extra),
-            &settings(),
-            &host,
-            &FakeSink::default(),
-        )
-        .unwrap_err();
-        assert!(matches!(failure.error, Error::NotBuilt { .. }));
-        assert!(failure.to_string().contains("not built yet"));
-        assert!(host.log.borrow().is_empty());
-    }
+fn installing_beside_windows_refuses_before_any_command() {
+    let host = live_system();
+    let failure = install(
+        &answers("choice = \"beside-windows\"\ndevice = \"/dev/vda\"", ""),
+        &settings(),
+        &host,
+        &FakeSink::default(),
+    )
+    .unwrap_err();
+    assert!(matches!(failure.error, Error::NotBuilt { .. }));
+    assert!(failure.to_string().contains("not built yet"));
+    assert!(host.log.borrow().is_empty());
 }
 
 #[test]
@@ -820,6 +880,12 @@ fn the_secure_boot_answer_chooses_whether_the_secure_boot_module_runs() {
     let enrolled = actions.iter().position(|a| a == ENROLL).unwrap();
     let verified = actions.iter().position(|a| a == VERIFY).unwrap();
     assert!(installed < enrolled && enrolled < verified, "{actions:?}");
+    // The guard signs its images only once the keys are enrolled.
+    let guarded = actions
+        .iter()
+        .position(|a| a == "arch-chroot /mnt /usr/local/bin/inayos-guard check-update")
+        .unwrap();
+    assert!(enrolled < guarded && guarded < verified, "{actions:?}");
 }
 
 const ENROLL: &str = "arch-chroot /mnt sbctl enroll-keys --microsoft --firmware-builtin";
@@ -933,4 +999,374 @@ fn the_guard_program_reaches_the_new_system_before_the_modules_run() {
         failure.error
     );
     assert!(host.actions().is_empty());
+}
+
+const RECOVERY_KEY: &str =
+    "fkhjdulc-hbinrcig-ntvcnejb-uifjlvbn-cerbtnkg-ivnbvjil-tggkjhel-nedrlkrj";
+const TEMPORARY_KEY: &str = "/run/inayos-installer-keys/temporary.key";
+const RECOVERY_ENROLL: &str = "systemd-cryptenroll --unlock-key-file=/run/inayos-installer-keys/temporary.key \
+                               --recovery-key /dev/vda2";
+
+fn encrypted() -> Answers {
+    answers(
+        "choice = \"wipe-disk\"\ndevice = \"/dev/vda\"\nsystem_size_gib = 40",
+        "[security]\nencryption = true",
+    )
+}
+
+/// The live system of `live_system` with a TPM 2.0, and LUKS tools that answer like the
+/// real ones: opening a volume creates its mapper device, and enrolling a recovery key
+/// prints it.
+fn tpm_system() -> FakeHost {
+    let host = live_system();
+    host.file("/sys/class/tpm/tpm0/tpm_version_major", "2\n");
+    for (partition, name, uuid) in [
+        ("/dev/vda2", "system", "1111"),
+        ("/dev/vda3", "home", "3333"),
+    ] {
+        host.writes_when_run(
+            &format!("cryptsetup open --key-file {TEMPORARY_KEY} {partition} {name}"),
+            &format!("/dev/mapper/{name}"),
+            "",
+        );
+        host.respond(
+            &format!("cryptsetup luksUUID {partition}"),
+            [ok(&format!("{uuid}\n"))],
+        );
+    }
+    host.writes_when_run(
+        &format!("dd if=/dev/urandom of={TEMPORARY_KEY} bs=64 count=1 iflag=fullblock status=none"),
+        TEMPORARY_KEY,
+        "random",
+    );
+    host.respond(RECOVERY_ENROLL, [ok(&format!("{RECOVERY_KEY}\n"))]);
+    host
+}
+
+#[test]
+fn an_encrypted_install_opens_with_a_temporary_key_then_leaves_only_the_recovery_key_and_the_tpm() {
+    let host = tpm_system();
+    let sink = FakeSink::default();
+    let installed = install(&encrypted(), &settings(), &host, &sink).unwrap();
+
+    let actions = host.actions();
+    let unlock = format!("--unlock-key-file={TEMPORARY_KEY}");
+    let mut expected: Vec<String> = vec![
+        format!("dd if=/dev/urandom of={TEMPORARY_KEY} bs=64 count=1 iflag=fullblock status=none"),
+        format!(
+            "cryptsetup luksFormat --batch-mode --type luks2 --key-file {TEMPORARY_KEY} --key-slot 0 --label inayos-system /dev/vda2"
+        ),
+        format!("cryptsetup open --key-file {TEMPORARY_KEY} /dev/vda2 system"),
+        format!(
+            "cryptsetup luksFormat --batch-mode --type luks2 --key-file {TEMPORARY_KEY} --key-slot 0 --label inayos-home /dev/vda3"
+        ),
+        format!("cryptsetup open --key-file {TEMPORARY_KEY} /dev/vda3 home"),
+    ];
+    expected.extend(btrfs("/dev/mapper/system"));
+    expected.push("mkfs.ext4 -F -L inayos-home /dev/mapper/home".into());
+    expected.extend(mounts("/dev/mapper/system"));
+    expected.push("mount /dev/vda1 /mnt/efi".into());
+    expected.push("mount /dev/mapper/home /mnt/home".into());
+    let formatted = actions
+        .iter()
+        .position(|a| a == "mkfs.fat -F 32 -n EFI /dev/vda1")
+        .unwrap();
+    assert_eq!(
+        actions[formatted + 1..formatted + 1 + expected.len()],
+        expected
+    );
+
+    // Once the modules passed: the recovery key on both volumes, the TPM slot without
+    // measurements on both, then the temporary key out of both, and the volumes closed after
+    // the unmount.
+    let verified = actions.iter().position(|a| a == VERIFY).unwrap();
+    assert_eq!(
+        actions[verified + 1..],
+        [
+            format!("cryptsetup luksAddKey --key-file {TEMPORARY_KEY} /dev/vda3 /dev/stdin"),
+            format!("systemd-cryptenroll {unlock} --tpm2-device=auto --tpm2-pcrs= /dev/vda2"),
+            format!("systemd-cryptenroll {unlock} --tpm2-device=auto --tpm2-pcrs= /dev/vda3"),
+            "systemd-cryptenroll --wipe-slot=0 /dev/vda2".to_owned(),
+            "systemd-cryptenroll --wipe-slot=0 /dev/vda3".to_owned(),
+            "umount -R /mnt".to_owned(),
+            "cryptsetup close home".to_owned(),
+            "cryptsetup close system".to_owned(),
+        ]
+    );
+    assert!(host.log.borrow().contains(&format!("? {RECOVERY_ENROLL}")));
+    // Before the temporary key leaves, the recovery key and the TPM each open both volumes,
+    // and the copy of the key is saved.
+    let log = host.log.borrow().clone();
+    let at = |line: &str| {
+        log.iter()
+            .position(|logged| logged == line)
+            .unwrap_or_else(|| panic!("{line} is missing"))
+    };
+    let first_wipe = at("! systemd-cryptenroll --wipe-slot=0 /dev/vda2");
+    for partition in ["/dev/vda2", "/dev/vda3"] {
+        let passphrase = format!("cryptsetup open --test-passphrase --key-file=- {partition}");
+        assert!(at(&format!("? {passphrase}")) < first_wipe);
+        assert!(
+            host.inputs
+                .borrow()
+                .contains(&(passphrase, RECOVERY_KEY.to_owned()))
+        );
+        assert!(
+            at(&format!(
+                "? cryptsetup open --test-passphrase --token-only --token-type systemd-tpm2 {partition}"
+            )) < first_wipe
+        );
+    }
+    assert!(at("write /mnt/home/tester/inayos-recovery-key.txt 600") < first_wipe);
+    // The home volume gets the same passphrase, without a line break.
+    assert!(host.inputs.borrow().contains(&(
+        format!("cryptsetup luksAddKey --key-file {TEMPORARY_KEY} /dev/vda3 /dev/stdin"),
+        RECOVERY_KEY.to_owned()
+    )));
+    assert_eq!(host.node("/run/inayos-installer-keys"), None);
+    assert_eq!(host.node(TEMPORARY_KEY), None);
+
+    assert_eq!(
+        host.node("/mnt/etc/crypttab.initramfs")
+            .map(|node| match node {
+                Node::File { text, mode, .. } => (
+                    text.lines()
+                        .filter(|line| !line.starts_with('#'))
+                        .map(str::to_owned)
+                        .collect::<Vec<_>>(),
+                    mode
+                ),
+                Node::Dir { .. } => panic!("a folder"),
+            }),
+        Some((
+            vec![
+                "system UUID=1111 none tpm2-device=auto,discard".to_owned(),
+                "home UUID=3333 none tpm2-device=auto,discard".to_owned()
+            ],
+            0o600
+        ))
+    );
+    assert_eq!(
+        host.text("/mnt/etc/kernel/cmdline").as_deref(),
+        Some("root=/dev/mapper/system rootflags=subvol=@ rw\n")
+    );
+    // The files that the modules build the boot image from exist before the modules run.
+    let log = host.log.borrow().clone();
+    let cmdline = log
+        .iter()
+        .position(|line| line == "write /mnt/etc/kernel/cmdline 644")
+        .unwrap();
+    let modules = log
+        .iter()
+        .position(|line| line == &format!("! {INSTALL}"))
+        .unwrap();
+    assert!(cmdline < modules);
+
+    let Some(Node::File { text, mode, owner }) =
+        host.node("/mnt/home/tester/inayos-recovery-key.txt")
+    else {
+        panic!("the recovery key file is missing");
+    };
+    assert!(text.lines().any(|line| line == RECOVERY_KEY), "{text}");
+    assert_eq!((mode, owner), (0o600, (1000, 1000)));
+    assert_eq!(
+        installed.recovery_key.as_ref().map(|key| key.text()),
+        Some(RECOVERY_KEY)
+    );
+    assert_eq!(
+        installed.recovery_key_file.as_deref(),
+        Some(std::path::Path::new("/home/tester/inayos-recovery-key.txt"))
+    );
+    assert!(!format!("{installed:?}").contains(RECOVERY_KEY));
+
+    let reported = sink.all().join("\n");
+    assert!(!reported.contains(RECOVERY_KEY), "{reported}");
+    assert!(reported.contains("/home/tester/inayos-recovery-key.txt"));
+}
+
+#[test]
+fn an_encrypted_install_without_the_encryption_answer_skips_the_encryption_module() {
+    let profile = "/usr/local/lib/inayos/inayos list";
+    let host = live_system();
+    host.respond(profile, [ok("base\nencryption\nrefind\n")]);
+    install(&wipe(), &settings(), &host, &FakeSink::default()).unwrap();
+    assert!(host.actions().contains(&format!("{INSTALL} base refind")));
+    assert!(!host.actions().iter().any(|a| a.starts_with("cryptsetup")));
+
+    let host = tpm_system();
+    host.respond(profile, [ok("base\nencryption\nrefind\n")]);
+    install(&encrypted(), &settings(), &host, &FakeSink::default()).unwrap();
+    // Without skipped modules the whole profile runs.
+    assert!(host.actions().contains(&INSTALL.to_owned()));
+}
+
+#[test]
+fn encryption_needs_a_tpm_and_a_whole_disk_and_refuses_before_any_change() {
+    let host = live_system();
+    let failure = install(&encrypted(), &settings(), &host, &FakeSink::default()).unwrap_err();
+    assert_eq!(failure.stage, Stage::Checks);
+    assert!(
+        matches!(failure.error, Error::EncryptionWithoutTpm),
+        "{:?}",
+        failure.error
+    );
+    assert!(host.actions().is_empty());
+
+    let host = earlier_inayos((1000, 1000));
+    host.file("/sys/class/tpm/tpm0/tpm_version_major", "2\n");
+    let mut answers = reinstall();
+    answers.security.encryption = true;
+    let failure = install(&answers, &settings(), &host, &FakeSink::default()).unwrap_err();
+    assert!(
+        matches!(failure.error, Error::EncryptionNeedsWholeDisk),
+        "{:?}",
+        failure.error
+    );
+    assert_eq!(
+        failure.to_string(),
+        "encryption needs a whole disk for now; the disk is unchanged"
+    );
+    assert!(host.log.borrow().is_empty());
+}
+
+#[test]
+fn a_failed_enrollment_still_closes_the_volumes_and_deletes_the_temporary_key() {
+    let host = tpm_system();
+    host.respond("systemd-cryptenroll --wipe-slot=0 /dev/vda2", [exit(1)]);
+    let failure = install(&encrypted(), &settings(), &host, &FakeSink::default()).unwrap_err();
+    assert_eq!(failure.stage, Stage::Keys);
+    assert!(failure.cleanup.is_empty());
+    let actions = host.actions();
+    assert_eq!(
+        actions[actions.len() - 3..],
+        [
+            "umount -R /mnt",
+            "cryptsetup close home",
+            "cryptsetup close system"
+        ]
+    );
+    assert_eq!(host.node(TEMPORARY_KEY), None);
+    // The key already controls the disk, so the failure still hands it over.
+    assert_eq!(
+        failure
+            .installed
+            .recovery_key
+            .as_ref()
+            .map(|key| key.text()),
+        Some(RECOVERY_KEY)
+    );
+    assert!(failure.installed.recovery_key_file.is_some());
+    assert!(!failure.to_string().contains(RECOVERY_KEY));
+
+    // A recovery key or a TPM slot that does not open a volume keeps the temporary key in
+    // both volumes.
+    for check in [
+        "cryptsetup open --test-passphrase --key-file=- /dev/vda3",
+        "cryptsetup open --test-passphrase --token-only --token-type systemd-tpm2 /dev/vda2",
+    ] {
+        let host = tpm_system();
+        host.respond(check, [exit(2)]);
+        let failure = install(&encrypted(), &settings(), &host, &FakeSink::default()).unwrap_err();
+        assert_eq!(failure.stage, Stage::Keys);
+        assert!(!host.actions().iter().any(|a| a.contains("--wipe-slot")));
+        assert!(failure.installed.recovery_key.is_some());
+    }
+
+    // A cleanup failure after a finished install still hands the key over.
+    let host = tpm_system();
+    host.respond("cryptsetup close home", [exit(1)]);
+    let failure = install(&encrypted(), &settings(), &host, &FakeSink::default()).unwrap_err();
+    assert_eq!(failure.stage, Stage::Finish);
+    assert_eq!(
+        failure
+            .installed
+            .recovery_key
+            .as_ref()
+            .map(|key| key.text()),
+        Some(RECOVERY_KEY)
+    );
+
+    // An enrollment that printed no key stops before the temporary key leaves the volumes.
+    let host = tpm_system();
+    host.respond(RECOVERY_ENROLL, [ok("")]);
+    let failure = install(&encrypted(), &settings(), &host, &FakeSink::default()).unwrap_err();
+    assert!(
+        matches!(failure.error, Error::NoRecoveryKey),
+        "{:?}",
+        failure.error
+    );
+    assert!(!host.actions().iter().any(|a| a.contains("--wipe-slot")));
+}
+
+const HIBERNATE_LOCATION: &str =
+    "/sys/firmware/efi/efivars/HibernateLocation-8cf2644b-4b0b-428f-9387-6d876050dc67";
+const HIBERNATED: &str =
+    "This disk holds a hibernated InayOS: start it and shut it down properly first";
+
+/// The swap file at the top of /dev/vda3 has its first page in block 1000 of 4096 bytes,
+/// and that page holds `page`.
+fn swap_file(host: &FakeHost, page: &str) {
+    host.respond("debugfs -R 'bmap /swapfile 0' /dev/vda3", [ok("1000\n")]);
+    host.respond(
+        "dumpe2fs -h /dev/vda3",
+        [ok(
+            "Block count: 5000000\nFree blocks: 4000000\nBlock size: 4096\n",
+        )],
+    );
+    host.respond(
+        "dd if=/dev/vda3 iflag=skip_bytes,count_bytes skip=4096000 count=4096 status=none",
+        [ok(page)],
+    );
+}
+
+#[test]
+fn a_hibernated_system_stops_every_install_before_anything_is_mounted() {
+    // The firmware variable that systemd writes before it hibernates.
+    for answers in [wipe(), reinstall()] {
+        let host = earlier_inayos((1000, 1000));
+        host.file(HIBERNATE_LOCATION, "{\"uuid\":\"3333\"}");
+        let failure = install(&answers, &settings(), &host, &FakeSink::default()).unwrap_err();
+        assert_eq!(failure.stage, Stage::Checks);
+        assert!(
+            matches!(failure.error, Error::Hibernated),
+            "{:?}",
+            failure.error
+        );
+        assert_eq!(
+            failure.to_string(),
+            format!("{HIBERNATED}; the disk is unchanged")
+        );
+        assert!(host.actions().is_empty());
+    }
+
+    // The swap file of the kept home, and the InayOS home of a disk to wipe, read without
+    // mounting them.
+    let lsblk = r#"{"blockdevices":[{"path":"/dev/vda","type":"disk","mountpoints":[null],
+        "children":[{"path":"/dev/vda1","type":"part","fstype":"vfat","label":"EFI","mountpoints":[null]},
+                    {"path":"/dev/vda2","type":"part","fstype":"btrfs","label":"inayos-system","mountpoints":[null]},
+                    {"path":"/dev/vda3","type":"part","fstype":"ext4","label":"inayos-home","mountpoints":[null]}]}]}"#;
+    for answers in [wipe(), reinstall()] {
+        let host = earlier_inayos((1000, 1000));
+        host.respond(
+            "lsblk --json --output PATH,TYPE,FSTYPE,LABEL,MOUNTPOINTS /dev/vda",
+            [ok(lsblk)],
+        );
+        swap_file(&host, &format!("{}S1SUSPEND\0", "\0".repeat(4086)));
+        let failure = install(&answers, &settings(), &host, &FakeSink::default()).unwrap_err();
+        assert!(
+            matches!(failure.error, Error::Hibernated),
+            "{:?}",
+            failure.error
+        );
+        assert!(host.actions().is_empty(), "{:?}", host.actions());
+    }
+
+    // A swap file that holds only the swap signature changes nothing.
+    let host = earlier_inayos((1000, 1000));
+    host.respond(
+        "lsblk --json --output PATH,TYPE,FSTYPE,LABEL,MOUNTPOINTS /dev/vda",
+        [ok(lsblk)],
+    );
+    swap_file(&host, &format!("{}SWAPSPACE2", "\0".repeat(4086)));
+    install(&reinstall(), &settings(), &host, &FakeSink::default()).unwrap();
 }

@@ -11,6 +11,7 @@ use xshell::cmd;
 
 use crate::{
     Context, Footprint, Module, ModuleResult, Need, Package, ServiceScope,
+    boot_config::images_without,
     support::{edit_system_file, read_system_bytes, read_system_file, verify_packages},
 };
 
@@ -55,28 +56,6 @@ fn snapshot_folder_mounted(ctx: &Context) -> ModuleResult<bool> {
         "findmnt --noheadings --output FSTYPE --mountpoint {SNAPSHOTS}"
     ))?;
     Ok(mounted && filesystem.lines().any(|line| line.trim() == "btrfs"))
-}
-
-/// The initramfs images in /boot that lack the `sd-volatile` hook, so a snapshot that
-/// one of them starts would not get its overlay.
-fn images_without_overlay(ctx: &Context) -> ModuleResult<Vec<String>> {
-    let sh = ctx.shell;
-    let listed = ctx.read(cmd!(
-        sh,
-        "sudo find /boot/ -maxdepth 1 -type f -name initramfs-*.img -printf %f\\n"
-    ))?;
-    let mut missing = Vec::new();
-    for name in listed.lines() {
-        let image = format!("/boot/{name}");
-        let contents = ctx.read(cmd!(sh, "sudo lsinitcpio {image}"))?;
-        if !contents
-            .lines()
-            .any(|line| line.trim().trim_start_matches("./") == VOLATILE_ROOT)
-        {
-            missing.push(image);
-        }
-    }
-    Ok(missing)
 }
 
 /// The configuration names of the `SNAPPER_CONFIGS="..."` line of `conf`.
@@ -156,7 +135,7 @@ impl Module for Snapshots {
         }
         // Read from the images rather than from the drop-in, so a run that stopped before
         // the rebuild rebuilds on the next one.
-        if !images_without_overlay(ctx)?.is_empty() {
+        if !images_without(ctx, VOLATILE_ROOT)?.is_empty() {
             ctx.run(cmd!(sh, "sudo mkinitcpio -P"))?;
         }
         ctx.enable_service(CLEANUP_TIMER, ServiceScope::System)?;
@@ -184,7 +163,7 @@ impl Module for Snapshots {
                 format!("{SNAPPER_CONFIGS} does not list the {CONFIG_NAME} configuration").into(),
             );
         }
-        let missing = images_without_overlay(ctx)?;
+        let missing = images_without(ctx, VOLATILE_ROOT)?;
         if !missing.is_empty() {
             return Err(format!(
                 "these initramfs images lack the sd-volatile hook, so a snapshot they start gets no overlay: {}",

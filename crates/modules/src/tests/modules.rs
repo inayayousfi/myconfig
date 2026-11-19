@@ -12,7 +12,7 @@ use crate::{
 };
 
 /// Fake system programs that keep their state under the sandbox, so modules run as on a
-/// real machine without root: `sudo` resets the environment and moves `/etc`, `/usr`, `/boot`, `/efi` and `/var` paths under
+/// real machine without root: `sudo` resets the environment and moves `/etc`, `/usr`, `/boot`, `/efi`, `/var`, `/sys`, `/home` and `/proc` paths under
 /// `system/`, groups live in `groups/`, `systemctl` remembers enabled system units in
 /// `units/system/` and user units in `units/user/`, and KDE keys live in `kde/`. A unit is
 /// active only while `<unit>.active` exists beside it: `start`, `restart` and
@@ -28,7 +28,7 @@ fn system(sandbox: &Sandbox) {
             r#"printf 'sudo %s\n' "$*" >> "$INAYOS_TEST_LOG"
 for argument in "$@"; do
     case "$argument" in
-        /etc/* | /usr/* | /boot/* | /efi/* | /var/* | /sys/*) set -- "$@" "$INAYOS_TEST_ROOT/system$argument" ;;
+        /etc/* | /usr/* | /boot/* | /efi/* | /var/* | /sys/* | /home/* | /proc/*) set -- "$@" "$INAYOS_TEST_ROOT/system$argument" ;;
         *) set -- "$@" "$argument" ;;
     esac
     shift
@@ -4424,9 +4424,10 @@ printf 'default_selection "Boot with standard options"\n' > "$INAYOS_TEST_ROOT/s
     .unwrap();
 }
 
-const GUARD_FILES: [&str; 4] = [
+const GUARD_FILES: [&str; 5] = [
     "/etc/pacman.d/hooks/zzz-inayos-guard.hook",
     "/etc/systemd/system/inayos-guard-boot.service",
+    "/etc/systemd/system/fwupd.service.d/inayos-guard.conf",
     "/etc/systemd/user/inayos-guard-notify.path",
     "/etc/systemd/user/inayos-guard-notify.service",
 ];
@@ -4455,6 +4456,21 @@ fn the_boot_guard_hooks_into_pacman_checks_once_at_install_and_reports_a_failed_
     ] {
         assert!(hook.contains(&wanted.to_owned()), "{wanted}: {hook:?}");
     }
+    // fwupd's start only records the Secure Boot variables; the guard adds its TPM slot
+    // when fwupd stops after changing them or staging a capsule.
+    let fwupd = settings(&system_file(&sandbox, GUARD_FILES[2]).unwrap());
+    assert_eq!(fwupd.len(), 3, "{fwupd:?}");
+    assert_eq!(fwupd[0], "[Service]");
+    assert!(
+        fwupd[1].starts_with("ExecStartPre=-+") && !fwupd[1].contains("inayos-guard "),
+        "{fwupd:?}"
+    );
+    assert!(
+        fwupd[2].starts_with("ExecStopPost=+")
+            && fwupd[2].contains("fwupd-*.cap")
+            && fwupd[2].contains("exec /usr/local/bin/inayos-guard prepare-firmware-update"),
+        "{fwupd:?}"
+    );
     assert!(enabled(
         &sandbox,
         ServiceScope::System,
@@ -4532,4 +4548,375 @@ fn the_boot_guard_without_its_program_writes_no_hook_and_a_running_system_skips_
             .iter()
             .any(|note| note.contains("Skipping the boot guard"))
     );
+}
+
+/// The system that the InayOS installer leaves for an encrypted install: the EFI system
+/// partition at `/efi`, the crypttab and kernel options it writes, and a fake mkinitcpio that
+/// builds the unified kernel image, and puts systemd-cryptsetup into the initramfs only with
+/// the encryption drop-in in place.
+fn encrypted_system(sandbox: &Sandbox) {
+    bootvine_boot(sandbox);
+    let mounts = sandbox.root.join("mounts");
+    fs::create_dir_all(&mounts).unwrap();
+    fs::write(mounts.join("efi"), "vfat").unwrap();
+    sandbox.fake(
+        "findmnt",
+        r#"for mount; do :; done; cat "$INAYOS_TEST_ROOT/mounts/${mount#/}" 2>/dev/null"#,
+    );
+    let system = sandbox.root.join("system");
+    fs::create_dir_all(system.join("etc/kernel")).unwrap();
+    fs::write(
+        system.join("etc/crypttab.initramfs"),
+        "system UUID=1111 none tpm2-device=auto,discard\nhome UUID=3333 none tpm2-device=auto,discard\n",
+    )
+    .unwrap();
+    fs::write(
+        system.join("etc/kernel/cmdline"),
+        "root=/dev/mapper/system rootflags=subvol=@ rw\n",
+    )
+    .unwrap();
+    fs::create_dir_all(system.join("efi/EFI")).unwrap();
+    fs::write(system.join("boot/initramfs-linux.img"), "").unwrap();
+    sandbox.fake(
+        "mkinitcpio",
+        r#"printf 'mkinitcpio %s\n' "$*" >> "$INAYOS_TEST_LOG"
+root="$INAYOS_TEST_ROOT/system"
+if [ -e "$root/etc/mkinitcpio.conf.d/inayos-encryption.conf" ]; then
+    printf 'usr/lib/systemd/systemd-cryptsetup\nusr/lib/systemd/systemd-hibernate-resume\n' > "$root/boot/initramfs-linux.img"
+    [ -d "$root/efi/EFI/Linux" ] && cp "$root/etc/kernel/cmdline" "$root/efi/EFI/Linux/inayos-linux.efi"
+else
+    printf 'usr/lib/systemd/systemd-hibernate-resume\n' > "$root/boot/initramfs-linux.img"
+fi
+exit 0"#,
+    );
+    sandbox.fake("lsinitcpio", r#"cat "$1""#);
+}
+
+const ENCRYPTION_FILES: [&str; 3] = [
+    "/etc/mkinitcpio.conf.d/inayos-encryption.conf",
+    "/etc/mkinitcpio.d/linux.preset",
+    "/etc/systemd/user/inayos-recovery-key-reminder.service",
+];
+
+#[test]
+fn encryption_builds_the_unified_kernel_image_that_opens_the_volumes_once() {
+    let sandbox = Sandbox::new("encryption");
+    encrypted_system(&sandbox);
+    let modules: [&dyn Module; 1] = [&crate::Encryption];
+    let io = Answers::new(None);
+    for _ in 0..2 {
+        sandbox
+            .with_mode(&io, RunMode::Installer, |ctx| {
+                runner::install(ctx, &modules, &modules)
+            })
+            .unwrap();
+    }
+    for package in ["systemd-ukify", "tpm2-tss", "libnotify"] {
+        assert!(sandbox.installed(package), "{package} was not installed");
+    }
+    let preset = settings(&system_file(&sandbox, ENCRYPTION_FILES[1]).unwrap());
+    for wanted in [
+        "PRESETS=('default')",
+        "default_image=\"/boot/initramfs-linux.img\"",
+        "default_uki=\"/efi/EFI/Linux/inayos-linux.efi\"",
+    ] {
+        assert!(preset.contains(&wanted.to_owned()), "{wanted}: {preset:?}");
+    }
+    // The image takes the kernel options that the installer wrote.
+    assert_eq!(
+        system_file(&sandbox, "/efi/EFI/Linux/inayos-linux.efi").as_deref(),
+        Some("root=/dev/mapper/system rootflags=subvol=@ rw\n")
+    );
+    assert_eq!(program_calls(&sandbox, "mkinitcpio -P"), 1);
+    let reminder = settings(&system_file(&sandbox, ENCRYPTION_FILES[2]).unwrap());
+    assert!(reminder.contains(&"ConditionPathExists=%h/inayos-recovery-key.txt".to_owned()));
+    assert!(enabled(
+        &sandbox,
+        ServiceScope::User,
+        "inayos-recovery-key-reminder.service"
+    ));
+    let results = sandbox.with_mode(&io, RunMode::Installer, |ctx| runner::verify(ctx, &modules));
+    for (name, result) in results {
+        assert!(result.is_ok(), "{name}: {result:?}");
+    }
+
+    // A kernel option that points the root elsewhere fails the check.
+    fs::write(
+        sandbox.root.join("system/etc/kernel/cmdline"),
+        "root=UUID=31f4 rw\n",
+    )
+    .unwrap();
+    let results = sandbox.with_mode(&io, RunMode::Installer, |ctx| runner::verify(ctx, &modules));
+    let error = results[0].1.as_ref().unwrap_err().to_string();
+    assert!(error.contains("root="), "{error}");
+
+    // Remove refuses while the root is encrypted, and changes nothing.
+    let error = sandbox
+        .with(&io, |ctx| runner::remove(ctx, &modules, &modules, false))
+        .unwrap_err();
+    assert!(error.to_string().contains("crypttab"), "{error}");
+    assert!(system_file(&sandbox, ENCRYPTION_FILES[1]).is_some());
+}
+
+#[test]
+fn encryption_needs_the_installers_volumes_on_the_new_system_and_skips_without_them() {
+    let sandbox = Sandbox::new("encryption-plain");
+    encrypted_system(&sandbox);
+    fs::remove_file(sandbox.root.join("system/etc/crypttab.initramfs")).unwrap();
+    let modules: [&dyn Module; 1] = [&crate::Encryption];
+    let io = Answers::new(None);
+    let error = sandbox
+        .with_mode(&io, RunMode::Installer, |ctx| {
+            runner::install(ctx, &modules, &modules)
+        })
+        .unwrap_err();
+    assert!(error.to_string().contains("crypttab"), "{error}");
+    sandbox
+        .with(&io, |ctx| runner::install(ctx, &modules, &modules))
+        .unwrap();
+    assert!(!sandbox.installed("systemd-ukify"));
+    assert_eq!(system_file(&sandbox, ENCRYPTION_FILES[1]), None);
+}
+
+/// The hooks that mkinitcpio ends up with: `/etc/mkinitcpio.conf`, then its drop-ins in
+/// name order, read by bash as mkinitcpio reads them.
+fn hooks_after_drop_ins(drop_ins: &[&[u8]]) -> String {
+    let folder = std::env::temp_dir().join(format!("inayos-hooks-{}", std::process::id()));
+    fs::create_dir_all(&folder).unwrap();
+    fs::write(folder.join("mkinitcpio.conf"), MKINITCPIO).unwrap();
+    let mut script = format!(". {}/mkinitcpio.conf\n", folder.display());
+    for (index, drop_in) in drop_ins.iter().enumerate() {
+        let path = folder.join(format!("{index}.conf"));
+        fs::write(&path, drop_in).unwrap();
+        script.push_str(&format!(". {}\n", path.display()));
+    }
+    script.push_str("printf '%s\\n' \"${HOOKS[*]}\"\n");
+    let output = std::process::Command::new("bash")
+        .args(["-c", &script])
+        .output()
+        .unwrap();
+    fs::remove_dir_all(&folder).unwrap();
+    assert!(output.status.success(), "{output:?}");
+    String::from_utf8(output.stdout).unwrap().trim().to_owned()
+}
+
+#[test]
+fn the_encryption_and_overlay_drop_ins_compose_with_the_hooks_of_mkinitcpio_conf() {
+    let encryption = embedded_dotfiles::ENCRYPTION_ASSETS
+        .etc
+        .mkinitcpio_conf_d
+        .inayos_encryption_conf
+        .content;
+    let volatile = embedded_dotfiles::SNAPSHOTS_ASSETS
+        .etc
+        .mkinitcpio_conf_d
+        .inayos_volatile_conf
+        .content;
+    // `inayos-encryption.conf` sorts before `inayos-volatile.conf`.
+    assert_eq!(
+        hooks_after_drop_ins(&[encryption, volatile]),
+        "base systemd autodetect microcode kms modconf block keyboard sd-vconsole sd-encrypt filesystems fsck sd-volatile"
+    );
+    assert_eq!(
+        hooks_after_drop_ins(&[encryption, encryption]),
+        "base systemd autodetect microcode kms modconf block keyboard sd-vconsole sd-encrypt filesystems fsck"
+    );
+}
+
+/// An ext4 home at `/home`, 1 GiB of memory, and fake swap tools: `mkswap` creates the file
+/// of the size it is given and marks it as swap, which `blkid` reads back.
+fn hibernation_system(sandbox: &Sandbox) {
+    encrypted_system(sandbox);
+    fs::write(sandbox.root.join("mounts/home"), "ext4").unwrap();
+    let system = sandbox.root.join("system");
+    fs::create_dir_all(system.join("home")).unwrap();
+    fs::create_dir_all(system.join("proc")).unwrap();
+    fs::write(system.join("proc/meminfo"), "MemTotal:        1000000 kB\n").unwrap();
+    fs::write(
+        system.join("proc/swaps"),
+        "Filename Type Size Used Priority\n",
+    )
+    .unwrap();
+    // The systemd hook puts the resume program into every image.
+    fs::write(
+        system.join("boot/initramfs-linux.img"),
+        "usr/lib/systemd/systemd-hibernate-resume\n",
+    )
+    .unwrap();
+    sandbox.fake(
+        "mkswap",
+        r#"printf 'mkswap %s\n' "$*" >> "$INAYOS_TEST_LOG"
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --size) size="$2"; shift ;;
+        --file) ;;
+        *) file="$1" ;;
+    esac
+    shift
+done
+truncate -s "$size" "$file" && : > "$file.swap""#,
+    );
+    sandbox.fake(
+        "blkid",
+        r#"for file; do :; done; [ -e "$file.swap" ] && echo swap"#,
+    );
+    sandbox.fake(
+        "stat",
+        r#"for file; do :; done; printf '%s:%s:root\n' "$(/usr/bin/stat -c %s "$file")" "$(/usr/bin/stat -c %a "$file")""#,
+    );
+    sandbox.fake("chown", r#"printf 'chown %s\n' "$*" >> "$INAYOS_TEST_LOG""#);
+}
+
+#[test]
+fn hibernation_creates_a_swap_file_as_large_as_the_memory_and_its_unit_until_removed() {
+    let sandbox = Sandbox::new("hibernation");
+    hibernation_system(&sandbox);
+    let modules: [&dyn Module; 1] = [&crate::Hibernation];
+    let io = Answers::new(None);
+    for _ in 0..2 {
+        sandbox
+            .with_mode(&io, RunMode::Installer, |ctx| {
+                runner::install(ctx, &modules, &modules)
+            })
+            .unwrap();
+    }
+    let swap_file = sandbox.root.join("system/home/swapfile");
+    let metadata = fs::metadata(&swap_file).unwrap();
+    // 1,000,000 kB of memory rounds up to 1 GiB.
+    assert_eq!(metadata.len(), 1 << 30);
+    assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
+    assert_eq!(program_calls(&sandbox, "mkswap"), 1);
+    let unit = settings(&system_file(&sandbox, "/etc/systemd/system/home-swapfile.swap").unwrap());
+    for wanted in ["What=/home/swapfile", "Priority=0", "WantedBy=swap.target"] {
+        assert!(unit.contains(&wanted.to_owned()), "{wanted}: {unit:?}");
+    }
+    assert!(enabled(
+        &sandbox,
+        ServiceScope::System,
+        "home-swapfile.swap"
+    ));
+    let results = sandbox.with_mode(&io, RunMode::Installer, |ctx| runner::verify(ctx, &modules));
+    for (name, result) in results {
+        assert!(result.is_ok(), "{name}: {result:?}");
+    }
+
+    // More memory: the check names the size, and install keeps the file it made earlier
+    // and names `remove`, which deletes it, so the next install makes it again.
+    fs::write(
+        sandbox.root.join("system/proc/meminfo"),
+        "MemTotal:        2000000 kB\n",
+    )
+    .unwrap();
+    let results = sandbox.with_mode(&io, RunMode::Installer, |ctx| runner::verify(ctx, &modules));
+    let error = results[0].1.as_ref().unwrap_err().to_string();
+    assert!(error.contains("/home/swapfile"), "{error}");
+    let error = sandbox
+        .with_mode(&io, RunMode::Installer, |ctx| {
+            runner::install(ctx, &modules, &modules)
+        })
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("inayos remove hibernation"),
+        "{error}"
+    );
+    assert_eq!(fs::metadata(&swap_file).unwrap().len(), 1 << 30);
+    sandbox
+        .with(&io, |ctx| runner::remove(ctx, &modules, &modules, false))
+        .unwrap();
+    assert!(!swap_file.exists());
+    sandbox
+        .with_mode(&io, RunMode::Installer, |ctx| {
+            runner::install(ctx, &modules, &modules)
+        })
+        .unwrap();
+    assert_eq!(fs::metadata(&swap_file).unwrap().len(), 2 << 30);
+
+    // An initramfs that cannot resume fails the check.
+    fs::write(sandbox.root.join("system/boot/initramfs-linux.img"), "").unwrap();
+    let results = sandbox.with_mode(&io, RunMode::Installer, |ctx| runner::verify(ctx, &modules));
+    let error = results[0].1.as_ref().unwrap_err().to_string();
+    assert!(error.contains("systemd-hibernate-resume"), "{error}");
+
+    let report = sandbox
+        .with(&io, |ctx| runner::remove(ctx, &modules, &modules, false))
+        .unwrap();
+    assert!(!report.unanswered);
+    assert!(!swap_file.exists());
+    assert_eq!(
+        system_file(&sandbox, "/etc/systemd/system/home-swapfile.swap"),
+        None
+    );
+    assert!(!enabled(
+        &sandbox,
+        ServiceScope::System,
+        "home-swapfile.swap"
+    ));
+}
+
+#[test]
+fn hibernation_never_deletes_a_swap_file_it_did_not_make() {
+    let sandbox = Sandbox::new("hibernation-on");
+    hibernation_system(&sandbox);
+    let swap_file = sandbox.root.join("system/home/swapfile");
+    fs::write(&swap_file, "old").unwrap();
+    fs::write(
+        sandbox.root.join("system/proc/swaps"),
+        "Filename Type Size Used Priority\n/home/swapfile file 3 0 0\n",
+    )
+    .unwrap();
+    let modules: [&dyn Module; 1] = [&crate::Hibernation];
+    let error = sandbox
+        .with(&Answers::new(None), |ctx| {
+            runner::install(ctx, &modules, &modules)
+        })
+        .unwrap_err();
+    assert!(error.to_string().contains("swapoff"), "{error}");
+    assert_eq!(fs::read_to_string(&swap_file).unwrap(), "old");
+}
+
+#[test]
+fn secure_boot_signs_the_unified_kernel_image_of_an_encrypted_system() {
+    let sandbox = Sandbox::new("secure-boot-uki");
+    secure_boot_system(&sandbox);
+    let images = sandbox.root.join("system/efi/EFI/Linux");
+    fs::create_dir_all(&images).unwrap();
+    fs::write(images.join("inayos-linux.efi"), "image").unwrap();
+    let modules: [&dyn Module; 1] = [&crate::SecureBoot];
+    sandbox
+        .with_mode(&Answers::new(None), RunMode::Installer, |ctx| {
+            runner::install(ctx, &modules, &modules)
+        })
+        .unwrap();
+    // Saved in sbctl's list, so its hooks sign it again after updates.
+    assert!(
+        sbctl_state(&sandbox, "files")
+            .unwrap()
+            .lines()
+            .any(|file| file == "/efi/EFI/Linux/inayos-linux.efi")
+    );
+}
+
+#[test]
+fn bootvine_joins_the_kernel_options_of_the_unified_kernel_image_and_rebuilds_it() {
+    let sandbox = Sandbox::new("bootvine-cmdline");
+    bootvine_boot(&sandbox);
+    let cmdline = sandbox.root.join("system/etc/kernel/cmdline");
+    fs::create_dir_all(cmdline.parent().unwrap()).unwrap();
+    fs::write(&cmdline, "root=/dev/mapper/system rootflags=subvol=@ rw\n").unwrap();
+    let modules: [&dyn Module; 1] = [&crate::Bootvine];
+    let io = Answers::new(None);
+    for _ in 0..2 {
+        sandbox
+            .with_mode(&io, RunMode::Installer, |ctx| {
+                runner::install(ctx, &modules, &modules)
+            })
+            .unwrap();
+    }
+    let options = fs::read_to_string(&cmdline).unwrap();
+    assert!(
+        options.starts_with("root=/dev/mapper/system rootflags=subvol=@ rw quiet vt.default_red="),
+        "{options}"
+    );
+    assert_eq!(options.matches("quiet").count(), 1);
+    assert_eq!(program_calls(&sandbox, "mkinitcpio -P"), 1);
 }

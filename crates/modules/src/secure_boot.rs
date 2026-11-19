@@ -1,20 +1,23 @@
 //! Secure Boot with the machine's own keys: sbctl creates the keys, signs rEFInd, its
-//! drivers, the tools rEFInd shows and every kernel in /boot, then enrolls the keys with
+//! drivers, the tools rEFInd shows, every kernel in /boot and every unified kernel image in
+//! `EFI/Linux`, then enrolls the keys with
 //! Microsoft's keys and the firmware's built-in keys while the firmware is in Setup Mode.
 //! sbctl's own pacman hook signs the saved files again after each update.
 //!
 //! Enrolling writes into the firmware and cannot be undone, so a running system asks
 //! first. In installer mode the module leaves the enrollment to the InayOS installer, which
 //! enrolls once `inayos install` has passed, so a failed install never leaves a firmware
-//! that refuses the unsigned installer stick.
+//! that refuses the unsigned installer stick. On a running encrypted system, the boot guard
+//! first gives the volumes a TPM slot that does not depend on the keys, so the disk still
+//! opens at the next boot.
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 use xshell::cmd;
 
 use crate::{
-    Applied, Context, Footprint, Module, ModuleResult, Need, Package, refind::refind_config,
-    support::verify_packages,
+    Applied, Context, Encryption, Footprint, Module, ModuleResult, Need, Package,
+    refind::refind_config, support::verify_packages,
 };
 
 pub struct SecureBoot;
@@ -69,6 +72,11 @@ struct Target {
     output: PathBuf,
 }
 
+/// The volumes of an encrypted system, which the InayOS installer writes.
+const CRYPTTAB: &str = "/etc/crypttab.initramfs";
+/// The boot guard, which adds the TPM slot that survives a change of the keys.
+const GUARD: &str = "/usr/local/bin/inayos-guard";
+
 /// The firmware's built-in signature database. Some firmware, OVMF among them, has none, and
 /// `sbctl enroll-keys --firmware-builtin` then fails.
 const FIRMWARE_DEFAULT_DB: &str =
@@ -108,8 +116,8 @@ fn efi_files(ctx: &Context, folder: &Path) -> ModuleResult<Vec<PathBuf>> {
 }
 
 /// Every file that the firmware or rEFInd starts: rEFInd and its drivers, signed from the
-/// package's copies so a rEFInd update signs them again, the tools in `EFI/tools`, and
-/// the kernels in /boot, signed in place.
+/// package's copies so a rEFInd update signs them again, the tools in `EFI/tools`, the
+/// unified kernel images in `EFI/Linux`, and the kernels in /boot, signed in place.
 fn targets(ctx: &Context, refind: &Path) -> ModuleResult<Vec<Target>> {
     let sh = ctx.shell;
     let mut targets = Vec::new();
@@ -127,12 +135,17 @@ fn targets(ctx: &Context, refind: &Path) -> ModuleResult<Vec<Target>> {
         .parent()
         .ok_or("the rEFInd folder has no parent folder")?
         .join("tools");
-    for relative in efi_files(ctx, &tools)? {
-        let path = tools.join(relative);
-        targets.push(Target {
-            source: path.clone(),
-            output: path,
-        });
+    // sbctl's mkinitcpio hook signs a unified kernel image again each time mkinitcpio
+    // builds it.
+    let images = tools.with_file_name("Linux");
+    for folder in [tools, images] {
+        for relative in efi_files(ctx, &folder)? {
+            let path = folder.join(relative);
+            targets.push(Target {
+                source: path.clone(),
+                output: path,
+            });
+        }
     }
     let kernels = ctx.read(cmd!(
         sh,
@@ -212,7 +225,7 @@ impl Module for SecureBoot {
     }
 
     fn needs(&self) -> &'static [Need] {
-        &[Need::Hard("refind")]
+        &[Need::Hard("refind"), Need::Soft(Encryption::NAME)]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {
@@ -254,6 +267,14 @@ impl Module for SecureBoot {
         // Last, because the firmware keeps the keys: from the next boot on it starts only
         // files signed with them, and every boot file is signed by now.
         if enroll {
+            // New keys change the Secure Boot state that the TPM checks before it opens
+            // an encrypted disk.
+            if ctx.succeeds(cmd!(sh, "sudo test -e {CRYPTTAB}"))? {
+                if !ctx.succeeds(cmd!(sh, "sudo test -x {GUARD}"))? {
+                    return Err(format!("{GUARD} is missing, and without its TPM slot the encrypted disk would ask for the recovery key after the keys change; install the boot-guard module first").into());
+                }
+                ctx.run(cmd!(sh, "sudo {GUARD} prepare-firmware-update"))?;
+            }
             if ctx.succeeds(cmd!(sh, "sudo test -e {FIRMWARE_DEFAULT_DB}"))? {
                 ctx.run(cmd!(
                     sh,

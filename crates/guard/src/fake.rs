@@ -2,7 +2,7 @@
 //! program run is kept in order.
 use std::{
     cell::RefCell,
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, VecDeque},
     io,
     path::{Path, PathBuf},
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -13,11 +13,16 @@ use crate::system::{Output, System};
 #[derive(Default)]
 pub struct FakeSystem {
     pub files: RefCell<BTreeMap<PathBuf, Vec<u8>>>,
-    /// Outputs by command line, such as `lsinitcpio /boot/initramfs-linux.img`. A program
-    /// with no prepared output is not installed.
-    responses: RefCell<HashMap<String, Output>>,
+    /// Outputs by command line, such as `lsinitcpio /boot/initramfs-linux.img`, given out
+    /// in turn: each run takes the first, and the last one stays. A program with no
+    /// prepared output is not installed.
+    responses: RefCell<HashMap<String, VecDeque<Output>>>,
+    /// The file each command line creates when it runs, such as the output of `ukify`.
+    creates: RefCell<HashMap<String, PathBuf>>,
     /// Each command line run, in order.
     pub log: RefCell<Vec<String>>,
+    /// What the person types when asked for a secret, or None when they give no answer.
+    pub secret: RefCell<Option<String>>,
 }
 
 pub fn ok(stdout: &str) -> Output {
@@ -47,9 +52,26 @@ pub fn kernel_image(version: &str) -> Vec<u8> {
 
 impl FakeSystem {
     pub fn respond(&self, command: &str, output: Output) {
+        self.respond_in_turn(command, vec![output]);
+    }
+
+    /// Prepares one output for each run of `command`, in order. The last one answers every
+    /// later run.
+    pub fn respond_in_turn(&self, command: &str, outputs: Vec<Output>) {
         self.responses
             .borrow_mut()
-            .insert(command.to_owned(), output);
+            .insert(command.to_owned(), outputs.into());
+    }
+
+    /// Makes `command` create the file `path` when it runs and succeeds.
+    pub fn creates(&self, command: &str, path: &str) {
+        self.creates
+            .borrow_mut()
+            .insert(command.to_owned(), path.into());
+    }
+
+    pub fn ran(&self, command: &str) -> bool {
+        self.log.borrow().iter().any(|line| line == command)
     }
 
     pub fn file(&self, path: &str, contents: &[u8]) {
@@ -73,11 +95,24 @@ impl System for FakeSystem {
             .collect::<Vec<_>>()
             .join(" ");
         self.log.borrow_mut().push(line.clone());
-        self.responses
-            .borrow()
-            .get(&line)
-            .cloned()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, format!("{program} not found")))
+        let output = {
+            let mut responses = self.responses.borrow_mut();
+            let outputs = responses.get_mut(&line).ok_or_else(|| {
+                io::Error::new(io::ErrorKind::NotFound, format!("{program} not found"))
+            })?;
+            if outputs.len() > 1 {
+                outputs.pop_front()
+            } else {
+                outputs.front().cloned()
+            }
+            .unwrap_or_default()
+        };
+        if output.success()
+            && let Some(path) = self.creates.borrow().get(&line)
+        {
+            self.files.borrow_mut().insert(path.clone(), b"MZ".to_vec());
+        }
+        Ok(output)
     }
 
     fn read(&self, path: &Path) -> io::Result<Vec<u8>> {
@@ -131,7 +166,24 @@ impl System for FakeSystem {
         Ok(())
     }
 
+    fn rename(&self, from: &Path, to: &Path) -> io::Result<()> {
+        let mut files = self.files.borrow_mut();
+        let contents = files
+            .remove(from)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, from.display().to_string()))?;
+        files.insert(to.to_owned(), contents);
+        Ok(())
+    }
+
     fn now(&self) -> SystemTime {
         UNIX_EPOCH + Duration::from_secs(1_795_000_000)
+    }
+
+    fn ask_secret(&self, prompt: &str) -> io::Result<String> {
+        self.log.borrow_mut().push(format!("ask {prompt}"));
+        self.secret
+            .borrow()
+            .clone()
+            .ok_or_else(|| io::Error::other("no answer"))
     }
 }

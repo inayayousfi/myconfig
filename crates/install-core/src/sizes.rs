@@ -11,8 +11,9 @@ pub const MIN_SYSTEM_GIB: u64 = 20;
 /// The largest system partition the answers file accepts, which keeps every product of
 /// sizes far from overflowing.
 pub const MAX_SYSTEM_GIB: u64 = 1 << 20;
-/// The smallest home partition a wiped disk must leave. The install itself fills a few GiB
-/// of it, because AUR packages build in the user's cache folder.
+/// The smallest home partition a wiped disk must leave for the user's files, besides the
+/// hibernation swap file. The install itself fills a few GiB of it, because AUR packages
+/// build in the user's cache folder.
 pub const MIN_HOME_GIB: u64 = 20;
 
 /// A run of sectors, both ends included.
@@ -56,8 +57,8 @@ pub struct TooSmall {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
 #[error(
-    "the files take {used_bytes} bytes and the shrunk home would hold {filesystem_bytes}, \
-     which leaves less than 10% free"
+    "the files and the hibernation swap file take {used_bytes} bytes and the shrunk home \
+     would hold {filesystem_bytes}, which leaves less than 10% free"
 )]
 pub struct HomeTooFull {
     pub used_bytes: u64,
@@ -87,11 +88,13 @@ pub fn last_usable_sector(disk_sectors: u64, sector_size: u64) -> u64 {
 }
 
 /// The EFI, system and home partitions of a wiped disk of `disk_sectors` sectors. Each
-/// partition starts on a 1 MiB boundary, and home keeps at least `MIN_HOME_GIB`.
+/// partition starts on a 1 MiB boundary, and home keeps at least `MIN_HOME_GIB` plus the
+/// `swap_gib` of the hibernation swap file.
 pub fn wipe_layout(
     disk_sectors: u64,
     sector_size: u64,
     system_gib: u64,
+    swap_gib: u64,
 ) -> Result<WipeLayout, TooSmall> {
     let efi_first = align_up(1, sector_size);
     let efi = Span {
@@ -104,7 +107,7 @@ pub fn wipe_layout(
         last: system_first + gib_to_sectors(system_gib, sector_size) - 1,
     };
     let home_first = align_up(system.last + 1, sector_size);
-    let needed = home_first + gib_to_sectors(MIN_HOME_GIB, sector_size) - 1;
+    let needed = home_first + gib_to_sectors(MIN_HOME_GIB + swap_gib, sector_size) - 1;
     let too_small = TooSmall {
         needed_bytes: (needed + 2 + 16 * 1024 / sector_size) * sector_size,
         disk_bytes: disk_sectors * sector_size,
@@ -120,8 +123,8 @@ pub fn wipe_layout(
 }
 
 /// Shrinks the ext4 partition `home` by `system_gib` and returns its new end. The freed space
-/// after it starts on a 1 MiB boundary and holds at least `system_gib`. The files, `used_bytes`,
-/// must leave at least 10% of the shrunk filesystem free.
+/// after it starts on a 1 MiB boundary and holds at least `system_gib`. The files and the
+/// hibernation swap file, `used_bytes`, must leave at least 10% of the shrunk filesystem free.
 pub fn shrink_plan(
     home: Span,
     sector_size: u64,
@@ -180,7 +183,7 @@ mod tests {
     fn a_wiped_disk_gets_2_gib_efi_then_the_system_then_home_to_the_end() {
         // 64 GiB of 512-byte sectors.
         let disk = 64 * GIB / 512;
-        let layout = wipe_layout(disk, 512, 40).unwrap();
+        let layout = wipe_layout(disk, 512, 40, 0).unwrap();
         assert_eq!(
             layout.efi,
             Span {
@@ -197,11 +200,18 @@ mod tests {
     #[test]
     fn a_disk_without_room_for_home_is_too_small() {
         let disk = (2 + 40) * GIB / 512 + 2048;
-        assert!(wipe_layout(disk, 512, 40).is_err());
+        assert!(wipe_layout(disk, 512, 40, 0).is_err());
         let disk = (2 + 40 + 19) * GIB / 512;
-        assert!(wipe_layout(disk, 512, 40).is_err());
+        assert!(wipe_layout(disk, 512, 40, 0).is_err());
         let disk = (2 + 40 + 21) * GIB / 512;
-        assert!(wipe_layout(disk, 512, 40).is_ok());
+        assert!(wipe_layout(disk, 512, 40, 0).is_ok());
+    }
+
+    #[test]
+    fn home_keeps_room_for_the_swap_file_besides_the_files() {
+        let disk = (2 + 40 + 21 + 8) * GIB / 512;
+        assert!(wipe_layout(disk, 512, 40, 8).is_ok());
+        assert!(wipe_layout(disk, 512, 40, 9).is_err());
     }
 
     #[test]

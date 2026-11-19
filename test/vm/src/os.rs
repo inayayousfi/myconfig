@@ -26,8 +26,21 @@ pub const WINDOWS_TOOL_DIR: &str = r"C:\inayos-vm";
 pub enum Boot {
     /// UEFI without Secure Boot and without a TPM.
     Uefi,
-    /// UEFI with the Secure Boot firmware build and a TPM 2.0 from swtpm, which Windows 11 requires.
+    /// UEFI with the Secure Boot firmware build and a TPM 2.0 from swtpm, which Windows 11
+    /// requires. A layer over another carries its TPM state, which holds what the TPM sealed.
     SecureUefiWithTpm,
+}
+
+impl Boot {
+    /// Whether the guest has a TPM 2.0 from swtpm.
+    pub fn has_tpm(self) -> bool {
+        self != Boot::Uefi
+    }
+
+    /// Whether a layer keeps TPM state that a guest needs and that a layer over it copies.
+    pub fn keeps_tpm_state(self) -> bool {
+        self == Boot::SecureUefiWithTpm
+    }
 }
 
 impl Os {

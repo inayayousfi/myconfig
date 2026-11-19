@@ -12,6 +12,10 @@ static MODULES: &[&dyn Module] = &[
     },
     &SystemTuning,
     &Snapshots,
+    // Before refind and bootvine, which find the unified kernel image it builds, and before
+    // secure-boot, which signs it. The InayOS installer skips it without encryption.
+    &Encryption,
+    &Hibernation,
     // Before the modules that set KDE defaults, because it installs Plasma and its
     // kreadconfig6 and kwriteconfig6.
     &KdePlasma,
@@ -165,6 +169,8 @@ mod tests {
             "math",
             "bootvine",
             "snapshots",
+            "encryption",
+            "hibernation",
             "secure-boot",
             "boot-guard",
             "t3code-desktop",

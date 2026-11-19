@@ -2,11 +2,14 @@
 //! Every function here is pure: the caller runs the tool and hands over its output.
 use serde::Deserialize;
 
-/// One device of `lsblk --json --output PATH,TYPE,MOUNTPOINTS`, with the devices inside it.
+/// One device of `lsblk --json --output PATH,TYPE,FSTYPE,LABEL,MOUNTPOINTS`, with the devices
+/// inside it. A missing filesystem type or label is empty.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BlockDevice {
     pub path: String,
     pub kind: String,
+    pub fstype: String,
+    pub label: String,
     pub mountpoints: Vec<String>,
     pub children: Vec<BlockDevice>,
 }
@@ -33,6 +36,10 @@ struct LsblkDevice {
     #[serde(rename = "type")]
     kind: String,
     #[serde(default)]
+    fstype: Option<String>,
+    #[serde(default)]
+    label: Option<String>,
+    #[serde(default)]
     mountpoints: Vec<Option<String>>,
     #[serde(default)]
     children: Vec<LsblkDevice>,
@@ -43,6 +50,8 @@ impl From<LsblkDevice> for BlockDevice {
         BlockDevice {
             path: device.path,
             kind: device.kind,
+            fstype: device.fstype.unwrap_or_default(),
+            label: device.label.unwrap_or_default(),
             mountpoints: device.mountpoints.into_iter().flatten().collect(),
             children: device.children.into_iter().map(Into::into).collect(),
         }
@@ -240,11 +249,12 @@ pub fn gpt_entry(text: &str) -> Result<GptEntry, String> {
     })
 }
 
-/// The size of an ext4 filesystem's blocks and the bytes its files use.
+/// The size of an ext4 filesystem's blocks, the bytes its files use and the bytes left free.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Ext4Usage {
     pub block_size: u64,
     pub used_bytes: u64,
+    pub free_bytes: u64,
 }
 
 /// The usage that `dumpe2fs -h` reports.
@@ -264,7 +274,30 @@ pub fn ext4_usage(text: &str) -> Result<Ext4Usage, String> {
     Ok(Ext4Usage {
         block_size,
         used_bytes: (blocks - free) * block_size,
+        free_bytes: free * block_size,
     })
+}
+
+/// The memory size in whole GiB, rounded up, from the text of `/proc/meminfo`. The
+/// hibernation swap file has this size.
+pub fn memory_gib(meminfo: &str) -> Option<u64> {
+    let kib: u64 = meminfo.lines().find_map(|line| {
+        let value = line.strip_prefix("MemTotal:")?;
+        value.trim().strip_suffix("kB")?.trim().parse().ok()
+    })?;
+    Some((kib * 1024).div_ceil(crate::sizes::GIB))
+}
+
+/// The file size that `debugfs -R "stat <file>"` printed. None when it printed none, as for
+/// a missing file.
+pub fn debugfs_size(stat: &str) -> Option<u64> {
+    let mut words = stat.split_whitespace();
+    while let Some(word) = words.next() {
+        if word == "Size:" {
+            return words.next()?.parse().ok();
+        }
+    }
+    None
 }
 
 /// The microcode package for the processor that `/proc/cpuinfo` describes.
@@ -319,6 +352,33 @@ pub fn has_group_id(group: &str, gid: u32) -> bool {
         let mut fields = line.split(':');
         fields.nth(2).and_then(|id| id.parse::<u32>().ok()) == Some(gid)
     })
+}
+
+/// The recovery key that `systemd-cryptenroll --recovery-key` printed: eight groups of eight
+/// modhex characters joined by `-`. None when the text holds no such key.
+pub fn recovery_key(text: &str) -> Option<String> {
+    const MODHEX: &str = "cbdefghijklnrtuv";
+    text.split_whitespace()
+        .find(|word| {
+            let groups: Vec<&str> = word.split('-').collect();
+            groups.len() == 8
+                && groups
+                    .iter()
+                    .all(|group| group.len() == 8 && group.chars().all(|c| MODHEX.contains(c)))
+        })
+        .map(str::to_owned)
+}
+
+/// Whether the first page of a swap area holds the signature the kernel writes when it
+/// hibernates into it. The kernel puts `S1SUSPEND` where `SWAPSPACE2` stood.
+pub fn holds_hibernation_signature(page: &str) -> bool {
+    page.contains("S1SUSPEND")
+}
+
+/// The number that `debugfs -R "bmap <file> 0"` printed: the first block of the file. None
+/// when debugfs printed none, as for a missing file.
+pub fn first_block(bmap: &str) -> Option<u64> {
+    bmap.trim().parse().ok().filter(|block| *block > 0)
 }
 
 /// Whether a file at the top of an EFI partition is a kernel, initramfs or microcode image of
@@ -410,8 +470,32 @@ mod tests {
             ext4_usage(text).unwrap(),
             Ext4Usage {
                 block_size: 4096,
-                used_bytes: 600 * 4096
+                used_bytes: 600 * 4096,
+                free_bytes: 400 * 4096,
             }
+        );
+    }
+
+    #[test]
+    fn meminfo_gives_the_memory_rounded_up_to_a_whole_gib() {
+        assert_eq!(
+            memory_gib("MemTotal:        8040956 kB\nMemFree: 1 kB\n"),
+            Some(8)
+        );
+        assert_eq!(memory_gib("MemTotal:        8388608 kB\n"), Some(8));
+        assert_eq!(memory_gib("MemTotal:        8388609 kB\n"), Some(9));
+        assert_eq!(memory_gib("MemFree: 1 kB\n"), None);
+    }
+
+    #[test]
+    fn debugfs_stat_gives_the_file_size() {
+        let stat = "Inode: 12   Type: regular    Mode:  0600   Flags: 0x80000\n\
+            Generation: 1    Version: 0x00000000:00000001\n\
+            User:     0   Group:     0   Project:     0   Size: 8589934592\n";
+        assert_eq!(debugfs_size(stat), Some(8 * crate::sizes::GIB));
+        assert_eq!(
+            debugfs_size("/swapfile: File not found by ext2_lookup\n"),
+            None
         );
     }
 
@@ -472,5 +556,30 @@ mod tests {
         ] {
             assert!(!is_old_boot_file(name), "{name}");
         }
+    }
+
+    #[test]
+    fn the_recovery_key_is_the_modhex_word_of_the_output() {
+        let key = "fkhjdulc-hbinrcig-ntvcnejb-uifjlvbn-cerbtnkg-ivnbvjil-tggkjhel-nedrlkrj";
+        assert_eq!(recovery_key(&format!("{key}\n")).as_deref(), Some(key));
+        assert_eq!(
+            recovery_key(&format!("\u{1b}[0;1;39m{key}")).as_deref(),
+            None
+        );
+        assert_eq!(recovery_key("fkhjdulc-hbinrcig"), None);
+        assert_eq!(recovery_key(&key.replace('f', "a")), None);
+        assert_eq!(recovery_key(""), None);
+    }
+
+    #[test]
+    fn a_hibernated_swap_page_holds_the_suspend_signature_and_a_file_has_a_first_block() {
+        let swap = format!("{}SWAPSPACE2", "\0".repeat(4086));
+        assert!(!holds_hibernation_signature(&swap));
+        assert!(holds_hibernation_signature(
+            &swap.replace("SWAPSPACE2", "S1SUSPEND\0")
+        ));
+        assert_eq!(first_block("34816\n"), Some(34816));
+        assert_eq!(first_block(""), None);
+        assert_eq!(first_block("0\n"), None);
     }
 }

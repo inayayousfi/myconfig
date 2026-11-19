@@ -20,6 +20,8 @@ embed_dir!(pub static ZSH = "../../dotfiles/zsh");
 
 embed_dir!(pub static BOOT_GUARD_ASSETS = "../../dotfiles/assets/boot-guard");
 embed_dir!(pub static BOOTVINE_ASSETS = "../../dotfiles/assets/bootvine");
+embed_dir!(pub static ENCRYPTION_ASSETS = "../../dotfiles/assets/encryption");
+embed_dir!(pub static HIBERNATION_ASSETS = "../../dotfiles/assets/hibernation");
 embed_dir!(pub static KDE_PLASMA_ASSETS = "../../dotfiles/assets/kde-plasma");
 embed_dir!(pub static REFIND_ASSETS = "../../dotfiles/assets/refind");
 embed_dir!(pub static SNAPSHOTS_ASSETS = "../../dotfiles/assets/snapshots");

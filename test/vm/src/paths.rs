@@ -100,16 +100,17 @@ impl Paths {
         self.state.join("scenario").join(name).join("last-pass")
     }
 
-    /// The installed disk and UEFI variables that the last passed `blank-disk` run left right
-    /// after the install, which the boot chain scenarios start from.
-    pub fn scenario_installed(&self) -> Layer {
-        Layer::new(self.state.join("scenario/installed"))
+    /// The kept installed disk in the scenario folder `folder`, such as `installed`: the disk,
+    /// UEFI variables and TPM state that the last passed run of the scenario that makes it left
+    /// right after the install, which other scenarios start from.
+    pub fn scenario_installed(&self, folder: &str) -> Layer {
+        Layer::new(self.state.join("scenario").join(folder))
     }
 
-    /// The copy of the installed disk that a running `blank-disk` scenario makes, which
-    /// replaces `scenario_installed` when the scenario passes.
-    pub fn scenario_installed_copy(&self) -> Layer {
-        Layer::new(self.state.join("scenario/installed.new"))
+    /// The copy of the installed disk that a running scenario makes, which replaces
+    /// `scenario_installed(folder)` when the scenario passes.
+    pub fn scenario_installed_copy(&self, folder: &str) -> Layer {
+        Layer::new(self.state.join("scenario").join(format!("{folder}.new")))
     }
 
     /// The layer of the last failed run of the scenario `name`, kept until its next run.

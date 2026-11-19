@@ -11,7 +11,7 @@ use crate::ssh::{Guest, SshError};
 
 const SECURE_BOOT_VARIABLE: &str =
     "/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c";
-const GUARD: &str = "/usr/local/bin/inayos-guard";
+pub(super) const GUARD: &str = "/usr/local/bin/inayos-guard";
 const GUARD_STATUS: &str = "/var/lib/inayos-guard/status.json";
 const GUARD_FAILED: &str = "/var/lib/inayos-guard/failed";
 const GUARD_CONF: &str = "inayos-guard.conf";
@@ -247,7 +247,7 @@ impl Scenario {
 
     /// Waits until inayos-guard-boot.service has run in this boot, and checks that it exited
     /// with status 0.
-    fn check_guard_boot_ran(&self, user: &Guest) -> Result<(), StepError> {
+    pub(super) fn check_guard_boot_ran(&self, user: &Guest) -> Result<(), StepError> {
         let command = format!(
             "systemctl show -p LoadState,ActiveState,Result,ExecMainStartTimestampMonotonic,ExecMainStatus {GUARD_BOOT_UNIT}"
         );

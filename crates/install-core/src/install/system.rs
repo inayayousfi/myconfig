@@ -1,8 +1,11 @@
 //! Installs the base system into `/mnt` and sets its locale, keymaps, time zone, host name and
-//! network.
+//! network. On an encrypted layout it also writes the files that open the volumes at boot.
 use std::path::Path;
 
-use super::{Machine, TARGET};
+use super::{
+    Machine, TARGET,
+    encryption::{self, Volumes},
+};
 use crate::{Answers, Error, host::Command, parse};
 
 const BASE_PACKAGES: [&str; 8] = [
@@ -32,7 +35,11 @@ pub(crate) fn keyboard_conf(layout: &str) -> String {
     )
 }
 
-pub(crate) fn install(m: &Machine, answers: &Answers) -> Result<(), Error> {
+pub(crate) fn install(
+    m: &Machine,
+    answers: &Answers,
+    volumes: Option<&Volumes>,
+) -> Result<(), Error> {
     m.sink.step("Installing the base system");
     let cpuinfo = m.read(Path::new("/proc/cpuinfo"))?;
     let mut packages = vec![BASE_PACKAGES[0], BASE_PACKAGES[1], BASE_PACKAGES[2]];
@@ -46,6 +53,9 @@ pub(crate) fn install(m: &Machine, answers: &Answers) -> Result<(), Error> {
 
     let fstab = m.query(Command::query("genfstab").args(["-U", TARGET]))?;
     m.write(&Path::new(TARGET).join("etc/fstab"), &fstab, 0o644)?;
+    if let Some(volumes) = volumes {
+        encryption::write_boot_files(m, volumes)?;
+    }
 
     m.sink
         .step("Setting the language, keyboard, time zone and computer name");

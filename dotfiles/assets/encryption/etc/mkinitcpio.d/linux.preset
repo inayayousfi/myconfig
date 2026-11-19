@@ -1,0 +1,12 @@
+# InayOS encryption: mkinitcpio preset for the 'linux' package. It builds the initramfs in
+# /boot, which stays in the Btrfs root so each snapshot holds the one that matches its
+# kernel, and the unified kernel image on the EFI system partition, which rEFInd starts
+# because it cannot read the encrypted root. The image takes its kernel options from
+# /etc/kernel/cmdline.
+
+ALL_kver="/boot/vmlinuz-linux"
+
+PRESETS=('default')
+
+default_image="/boot/initramfs-linux.img"
+default_uki="/efi/EFI/Linux/inayos-linux.efi"

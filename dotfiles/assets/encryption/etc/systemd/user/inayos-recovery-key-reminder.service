@@ -1,0 +1,14 @@
+# InayOS encryption: reminds at each login that the copy of the recovery key is still in
+# the home folder, until the user deletes it.
+[Unit]
+Description=Reminder to move the InayOS recovery key into a password manager
+ConditionPathExists=%h/inayos-recovery-key.txt
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/notify-send --app-name=InayOS --urgency=critical --icon=dialog-password "InayOS recovery key" "~/inayos-recovery-key.txt still exists. Copy the recovery key into your password manager, then delete the file."
+
+[Install]
+WantedBy=graphical-session.target

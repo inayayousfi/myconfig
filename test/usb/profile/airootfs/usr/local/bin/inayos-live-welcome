@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# Prints the help line of a live-session terminal, then leaves the user in a shell.
+# Prints the help line of a live-session terminal and any hibernated InayOS, then leaves
+# the user in a shell.
 set -u
+
+inayos-hibernation-check
 
 case "${1-}" in
 repair)

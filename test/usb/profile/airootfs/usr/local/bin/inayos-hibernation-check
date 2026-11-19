@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Prints a warning when an InayOS on this machine is hibernated, because writing to its
+# disk from the live system, such as mounting its home read-write, loses the work it saved.
+# It only reads: the firmware variable that systemd sets when it hibernates, and the header
+# of the swap file at the top of each unencrypted InayOS home partition, read through
+# debugfs without mounting. The InayOS installer runs the same checks before it changes a disk.
+set -u
+
+warning='This disk holds a hibernated InayOS: start it and shut it down properly first'
+efivar=/sys/firmware/efi/efivars/HibernateLocation-8cf2644b-4b0b-428f-9387-6d876050dc67
+
+# Whether the ext4 filesystem on the partition holds a swap file with a hibernation image.
+swap_file_hibernated() {
+  local partition=$1 block block_size
+  block=$(sudo -n debugfs -R 'bmap /swapfile 0' "$partition" 2>/dev/null | tr -d '[:space:]')
+  [[ $block =~ ^[0-9]+$ && $block -gt 0 ]] || return 1
+  block_size=$(sudo -n dumpe2fs -h "$partition" 2>/dev/null | sed -n 's/^Block size: *//p')
+  [[ $block_size =~ ^[0-9]+$ ]] || return 1
+  sudo -n dd if="$partition" iflag=skip_bytes,count_bytes skip=$((block * block_size)) \
+    count=4096 status=none 2>/dev/null | grep -qa S1SUSPEND
+}
+
+hibernated=()
+if [[ -e $efivar ]]; then
+  hibernated+=("the firmware records a hibernated system")
+fi
+while read -r path fstype label; do
+  if [[ $fstype == ext4 && $label == inayos-home ]] && swap_file_hibernated "$path"; then
+    hibernated+=("$path holds the memory of a hibernated InayOS")
+  fi
+done < <(lsblk --list --noheadings --paths --output PATH,FSTYPE,LABEL 2>/dev/null)
+
+if ((${#hibernated[@]})); then
+  printf '%s.\n' "$warning"
+  printf '  %s\n' "${hibernated[@]}"
+  printf '%s\n' "Do not mount its partitions read-write until it has resumed." ''
+fi

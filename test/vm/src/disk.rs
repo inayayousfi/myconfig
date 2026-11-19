@@ -32,7 +32,7 @@ pub enum DiskError {
 pub fn is_bootable(layer: &Layer, boot: Boot) -> bool {
     layer.disk().is_file()
         && layer.vars().is_file()
-        && (boot != Boot::SecureUefiWithTpm || layer.tpm().is_dir())
+        && (!boot.keeps_tpm_state() || layer.tpm().is_dir())
 }
 
 /// Whether `image` is bootable and has the release file that the image builder writes last.
@@ -41,7 +41,8 @@ pub fn is_finished(image: &Layer, boot: Boot) -> bool {
 }
 
 /// Replaces `target` with a new layer over `image`: a qcow2 disk that reads unchanged
-/// blocks from the image disk, and copies of the UEFI variables and the TPM state.
+/// blocks from the image disk, a copy of the UEFI variables, and the TPM state: a copy when
+/// `boot` keeps it, an empty one when `boot` has a TPM without keeping its state.
 /// On failure the target folder is removed, so no half-made layer is left behind.
 pub fn layer_over(image: &Layer, target: &Layer, boot: Boot) -> Result<(), DiskError> {
     if !is_finished(image, boot) {
@@ -89,7 +90,7 @@ fn build_blank(target: &Layer, size: &str, boot: Boot) -> Result<(), DiskError> 
     }
     let vars = Firmware::for_boot(boot).vars_template;
     fs::copy(&vars, target.vars()).map_err(|error| DiskError::Io(target.vars(), error))?;
-    if boot == Boot::SecureUefiWithTpm {
+    if boot.has_tpm() {
         fs::create_dir_all(target.tpm()).map_err(|error| DiskError::Io(target.tpm(), error))?;
     }
     Ok(())
@@ -125,13 +126,14 @@ fn build_layer(image: &Layer, target: &Layer, boot: Boot) -> Result<(), DiskErro
     }
 
     fs::copy(image.vars(), target.vars()).map_err(|error| DiskError::Io(target.vars(), error))?;
-    if boot == Boot::SecureUefiWithTpm {
+    if boot.keeps_tpm_state() {
         copy_dir(&image.tpm(), &target.tpm())?;
     }
     Ok(())
 }
 
-fn copy_dir(from: &Path, to: &Path) -> Result<(), DiskError> {
+/// Copies the folder `from` and everything in it to `to`.
+pub fn copy_dir(from: &Path, to: &Path) -> Result<(), DiskError> {
     let io_error = |path: &Path| {
         let path = path.to_owned();
         move |error| DiskError::Io(path, error)

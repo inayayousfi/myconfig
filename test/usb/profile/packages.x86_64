@@ -41,5 +41,10 @@ e2fsprogs
 dosfstools
 gptfdisk
 
+# Encrypted installs: the installer formats and enrolls the LUKS2 volumes, and the TPM
+# libraries let systemd-cryptenroll reach the TPM. Releng lists them too.
+cryptsetup
+tpm2-tss
+
 # Browser for the Arch wiki.
 epiphany

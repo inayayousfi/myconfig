@@ -188,6 +188,8 @@ pub enum Package {
     SnapPac,
     Sbctl,
     Libnotify,
+    SystemdUkify,
+    Tpm2Tss,
 }
 
 /// A vendor APT repository, for packages that Ubuntu does not carry or carries only in
@@ -588,6 +590,8 @@ pub const PACKAGE_NAMES: &[((Package, Platform), &str)] = &[
     ((Package::SnapPac, Platform::Pacman), "snap-pac"),
     ((Package::Sbctl, Platform::Pacman), "sbctl"),
     ((Package::Libnotify, Platform::Pacman), "libnotify"),
+    ((Package::SystemdUkify, Platform::Pacman), "systemd-ukify"),
+    ((Package::Tpm2Tss, Platform::Pacman), "tpm2-tss"),
     ((Package::Sudo, Platform::Apt), "sudo"),
     ((Package::Wget, Platform::Apt), "wget"),
     ((Package::Tar, Platform::Apt), "tar"),

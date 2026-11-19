@@ -16,6 +16,9 @@ pub enum Stage {
     User,
     /// `inayos install` and `inayos verify` inside the new system.
     Configuration,
+    /// The recovery key and the TPM unlock of the encrypted volumes, which replace the
+    /// install's temporary key.
+    Keys,
     /// Cleanup: the installer's sudo rule, the log copy and the unmount.
     Finish,
 }
@@ -29,6 +32,11 @@ impl Stage {
             Stage::System | Stage::User | Stage::Configuration => {
                 "the disk holds an unfinished system that must not be booted"
             }
+            Stage::Keys => {
+                "the disk holds an installed system whose encrypted volumes may not open \
+                 without the installer's temporary key, which is gone once the installer \
+                 stops; install again"
+            }
             Stage::Finish => "the system is installed, but its cleanup is unfinished",
         }
     }
@@ -41,6 +49,14 @@ pub enum Error {
     InvalidAnswers(#[from] crate::AnswersError),
     #[error("{option} is not built yet")]
     NotBuilt { option: &'static str },
+    #[error("{}", crate::hibernation::HIBERNATED)]
+    Hibernated,
+    #[error("encryption needs a TPM 2.0, and this machine has none")]
+    EncryptionWithoutTpm,
+    #[error("encryption needs a whole disk for now")]
+    EncryptionNeedsWholeDisk,
+    #[error("`systemd-cryptenroll --recovery-key` printed no recovery key")]
+    NoRecoveryKey,
     #[error("the installer must run as root")]
     NotRoot,
     #[error("the machine did not start in UEFI mode: /sys/firmware/efi/efivars is missing")]
@@ -80,6 +96,15 @@ pub enum Error {
     DiskTooSmall(TooSmall),
     #[error("the home partition cannot shrink enough: {0}")]
     HomeTooFull(HomeTooFull),
+    #[error(
+        "{partition} has {free_gib:.1} GiB free, and the hibernation swap file needs {needed_gib} \
+         GiB, the size of the memory"
+    )]
+    NoRoomForSwapFile {
+        partition: String,
+        free_gib: f64,
+        needed_gib: u64,
+    },
     #[error("the system binary {path} is missing")]
     NoSystemBinary { path: PathBuf },
     #[error("the boot guard program {path} is missing")]
@@ -136,12 +161,16 @@ fn stderr_suffix(stderr: &str) -> String {
     }
 }
 
-/// A failed install: the stage that failed, its error, and any cleanup that failed after it.
+/// A failed install: the stage that failed, its error, any cleanup that failed after it,
+/// and what the install made before it failed.
 #[derive(Debug)]
 pub struct Failure {
     pub stage: Stage,
     pub error: Error,
     pub cleanup: Vec<Error>,
+    /// The recovery key once the install created it, which the interface shows the user
+    /// even after a failure: the encrypted volumes may open with nothing else.
+    pub installed: crate::Installed,
 }
 
 impl fmt::Display for Failure {

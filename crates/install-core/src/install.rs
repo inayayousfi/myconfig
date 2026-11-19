@@ -2,6 +2,7 @@
 pub(crate) mod checks;
 mod configuration;
 mod disk;
+mod encryption;
 pub(crate) mod machine;
 mod system;
 mod user;
@@ -11,6 +12,7 @@ mod tests;
 
 use std::path::{Path, PathBuf};
 
+pub use encryption::RecoveryKey;
 use machine::Machine;
 
 use crate::{Answers, Error, Failure, Sink, Stage, host::Command, host::Host};
@@ -39,6 +41,16 @@ impl Settings {
     pub const GUARD_BINARY: &str = "/usr/local/lib/inayos/inayos-guard";
 }
 
+/// What a finished install hands to the interface.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Installed {
+    /// The recovery key of an encrypted install, which the interface shows the user. The
+    /// sink never receives it.
+    pub recovery_key: Option<RecoveryKey>,
+    /// Where the new system keeps a copy of the recovery key, as that system sees it.
+    pub recovery_key_file: Option<PathBuf>,
+}
+
 /// Installs InayOS on the disk the answers name. The machine does not reboot: the caller
 /// reboots or powers off. A failure says at which stage it happened, which says what it left
 /// on the disk.
@@ -47,51 +59,65 @@ pub fn install(
     settings: &Settings,
     host: &dyn Host,
     sink: &dyn Sink,
-) -> Result<(), Failure> {
+) -> Result<Installed, Box<Failure>> {
     let m = Machine { host, sink };
     let at = |stage| {
-        move |error| Failure {
-            stage,
-            error,
-            cleanup: Vec::new(),
+        move |error| {
+            Box::new(Failure {
+                stage,
+                error,
+                cleanup: Vec::new(),
+                installed: Installed::default(),
+            })
         }
     };
     sink.step("Checking the machine and the answers");
     let checked = checks::check(&m, answers, settings).map_err(at(Stage::Checks))?;
 
-    let result = (|| {
-        disk::prepare(&m, &checked.disk, &answers.user.username).map_err(at(Stage::Disk))?;
-        system::install(&m, answers).map_err(at(Stage::System))?;
+    // Holds the recovery key from the moment it exists, so a later failure still hands it
+    // to the interface.
+    let mut made = Installed::default();
+    let result = (|| -> Result<(), Box<Failure>> {
+        let volumes =
+            disk::prepare(&m, &checked.disk, &answers.user.username).map_err(at(Stage::Disk))?;
+        system::install(&m, answers, volumes.as_ref()).map_err(at(Stage::System))?;
         let user = user::create(&m, answers, checked.kept_owner).map_err(at(Stage::User))?;
         configuration::run(&m, answers, settings, &user, checked.modules.as_deref())
-            .map_err(at(Stage::Configuration))
+            .map_err(at(Stage::Configuration))?;
+        if let Some(volumes) = volumes {
+            encryption::enroll(&m, &volumes, &user, &mut made).map_err(at(Stage::Keys))?;
+        }
+        Ok(())
     })();
 
-    let cleanup = finish(&m, settings);
+    let cleanup = finish(&m, settings, answers.security.encryption);
     match result {
         Ok(()) if cleanup.is_empty() => {
             sink.step("InayOS is installed");
-            Ok(())
+            Ok(made)
         }
         Ok(()) => {
             let mut cleanup = cleanup.into_iter();
             let error = cleanup.next().expect("the cleanup has an error");
-            Err(Failure {
+            Err(Box::new(Failure {
                 stage: Stage::Finish,
                 error,
                 cleanup: cleanup.collect(),
-            })
+                installed: made,
+            }))
         }
         Err(mut failure) => {
             failure.cleanup = cleanup;
+            failure.installed = made;
             Err(failure)
         }
     }
 }
 
 /// Removes what only the install needed, copies the log into the new system and unmounts it.
-/// Runs after every install that got past the checks, and returns every step that failed.
-fn finish(m: &Machine, settings: &Settings) -> Vec<Error> {
+/// An encrypted install then closes its volumes and deletes its temporary key. Runs after
+/// every install that got past the checks, and returns every step that failed.
+fn finish(m: &Machine, settings: &Settings, encrypted: bool) -> Vec<Error> {
     m.sink.step("Cleaning up and unmounting the new system");
     let mut errors = Vec::new();
     let target = Path::new(TARGET);
@@ -123,6 +149,9 @@ fn finish(m: &Machine, settings: &Settings) -> Vec<Error> {
         }
         Ok(_) => {}
         Err(error) => errors.push(error),
+    }
+    if encrypted {
+        errors.extend(encryption::close(m));
     }
     errors
 }

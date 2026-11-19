@@ -40,7 +40,13 @@ pub trait System {
     fn create_dir_all(&self, path: &Path) -> io::Result<()>;
     /// Removes the file at `path`, and succeeds when there is none.
     fn remove_file(&self, path: &Path) -> io::Result<()>;
+    /// Moves the file `from` to `to` in one step, replacing `to`. Both are on one
+    /// filesystem.
+    fn rename(&self, from: &Path, to: &Path) -> io::Result<()>;
     fn now(&self) -> SystemTime;
+    /// Asks the person at the terminal for a secret, without showing what they type, and
+    /// returns it.
+    fn ask_secret(&self, prompt: &str) -> io::Result<String>;
 }
 
 /// The file at `path` as text, with invalid UTF-8 replaced.
@@ -117,7 +123,49 @@ impl System for RealSystem {
         }
     }
 
+    fn rename(&self, from: &Path, to: &Path) -> io::Result<()> {
+        fs::rename(from, to)?;
+        if let Some(parent) = to.parent()
+            && let Ok(folder) = fs::File::open(parent)
+        {
+            let _ = folder.sync_all();
+        }
+        Ok(())
+    }
+
     fn now(&self) -> SystemTime {
         SystemTime::now()
     }
+
+    fn ask_secret(&self, prompt: &str) -> io::Result<String> {
+        // systemd-ask-password reads from the terminal and prints the answer on stdout.
+        let output = process::Command::new("systemd-ask-password")
+            .args(["--timeout=0", "--emoji=no", prompt])
+            .stdin(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .output()?;
+        if !output.status.success() {
+            return Err(io::Error::other("systemd-ask-password got no answer"));
+        }
+        String::from_utf8(output.stdout)
+            .map(|text| text.trim_end_matches('\n').to_owned())
+            .map_err(|_| io::Error::other("the answer is not valid text"))
+    }
+}
+
+/// Where the guard's commands take turns: each command that changes the TPM slots, the
+/// status record or rEFInd's entries holds an exclusive lock on this file while it runs.
+pub const LOCK_FILE: &str = "/run/inayos-guard.lock";
+
+/// Waits until no other guard command holds the lock, then takes it. The lock lasts as
+/// long as the returned file stays open.
+pub fn lock() -> io::Result<fs::File> {
+    let file = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .mode(0o600)
+        .open(LOCK_FILE)?;
+    file.lock()?;
+    Ok(file)
 }

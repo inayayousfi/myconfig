@@ -11,6 +11,8 @@ mod live;
 #[cfg(target_os = "linux")]
 mod log_file;
 #[cfg(target_os = "linux")]
+mod qr;
+#[cfg(target_os = "linux")]
 mod questions;
 #[cfg(target_os = "linux")]
 mod running;

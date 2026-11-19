@@ -112,10 +112,18 @@ fn install_from_file(answers: PathBuf, paths: Paths) -> ExitCode {
         guard_binary,
         log_file: Some(log),
     };
+    // The install reported where the recovery key file is; the key itself stays off the
+    // terminal and the log.
     match install(&answers, &settings, &RealHost, &console) {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(_) => ExitCode::SUCCESS,
         Err(failure) => {
             console.error(&failure.to_string());
+            if let Some(file) = &failure.installed.recovery_key_file {
+                console.error(&format!(
+                    "the encrypted disk opens with the recovery key saved in {}",
+                    file.display()
+                ));
+            }
             ExitCode::FAILURE
         }
     }

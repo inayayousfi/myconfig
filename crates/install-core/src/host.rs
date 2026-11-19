@@ -19,6 +19,8 @@ pub struct Command {
     arguments: Vec<Argument>,
     stdin: Option<String>,
     mode: Mode,
+    /// Whether the output stays out of the sink, because it holds a secret.
+    hidden_output: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -44,6 +46,7 @@ impl Command {
             arguments: Vec::new(),
             stdin: None,
             mode: Mode::Capture,
+            hidden_output: false,
         }
     }
 
@@ -77,6 +80,18 @@ impl Command {
     pub fn stdin(mut self, text: impl Into<String>) -> Self {
         self.stdin = Some(text.into());
         self
+    }
+
+    /// A query whose output comes back to the caller and never reaches the sink, for output
+    /// that holds a secret or binary data. Its command line still shows.
+    pub fn hidden_output(mut self) -> Self {
+        self.mode = Mode::Capture;
+        self.hidden_output = true;
+        self
+    }
+
+    pub fn output_hidden(&self) -> bool {
+        self.hidden_output
     }
 
     pub fn program(&self) -> &str {

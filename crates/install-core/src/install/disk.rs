@@ -1,8 +1,13 @@
 //! Partitions and formats the disk as the checks planned it, and mounts the new system's
-//! filesystems under `/mnt`.
+//! filesystems under `/mnt`. On an encrypted layout it formats the system and home
+//! partitions as LUKS2 volumes and their filesystems inside them.
 use std::path::{Path, PathBuf};
 
-use super::{Machine, TARGET, checks::DiskWork};
+use super::{
+    Machine, TARGET,
+    checks::DiskWork,
+    encryption::{self, Volumes},
+};
 use crate::{Error, disk_names::partition_path, host::Command, parse};
 
 /// The Btrfs subvolumes and where each is mounted, relative to the root.
@@ -19,9 +24,18 @@ const BTRFS_OPTIONS: &str = "compress=zstd:1";
 /// The folder the shrink parks the old home folders in while it deletes the old system.
 const PARKED_HOMES: &str = ".inayos-homes";
 
-pub(crate) fn prepare(m: &Machine, work: &DiskWork, username: &str) -> Result<(), Error> {
+/// Prepares the disk, and returns the LUKS2 partitions of an encrypted layout.
+pub(crate) fn prepare(
+    m: &Machine,
+    work: &DiskWork,
+    username: &str,
+) -> Result<Option<Volumes>, Error> {
     match work {
-        DiskWork::Wipe { device, layout } => {
+        DiskWork::Wipe {
+            device,
+            layout,
+            encrypted,
+        } => {
             m.sink.step(&format!("Partitioning {device}"));
             m.run(Command::action("sgdisk").args(["--zap-all", device]))?;
             let parts = [
@@ -56,11 +70,32 @@ pub(crate) fn prepare(m: &Machine, work: &DiskWork, username: &str) -> Result<()
             m.sink
                 .step("Formatting the EFI, system and home partitions");
             m.run(Command::action("mkfs.fat").args(["-F", "32", "-n", "EFI", &efi]))?;
-            format_system(m, &system)?;
-            m.run(Command::action("mkfs.ext4").args(["-F", "-L", "inayos-home", &home]))?;
-            mount_system(m, &system)?;
+            let (system_filesystem, home_filesystem) = if *encrypted {
+                m.sink.step("Encrypting the system and home partitions");
+                encryption::create_temporary_key(m)?;
+                (
+                    encryption::format_volume(
+                        m,
+                        &system,
+                        "inayos-system",
+                        encryption::SYSTEM_NAME,
+                    )?,
+                    encryption::format_volume(m, &home, "inayos-home", encryption::HOME_NAME)?,
+                )
+            } else {
+                (system.clone(), home.clone())
+            };
+            format_system(m, &system_filesystem)?;
+            m.run(Command::action("mkfs.ext4").args([
+                "-F",
+                "-L",
+                "inayos-home",
+                &home_filesystem,
+            ]))?;
+            mount_system(m, &system_filesystem)?;
             mount(m, &efi, "efi")?;
-            mount(m, &home, "home")
+            mount(m, &home_filesystem, "home")?;
+            Ok(encrypted.then_some(Volumes { system, home }))
         }
         DiskWork::Reinstall { efi, system, home } => {
             m.sink
@@ -69,7 +104,9 @@ pub(crate) fn prepare(m: &Machine, work: &DiskWork, username: &str) -> Result<()
             mount_system(m, system)?;
             mount(m, efi, "efi")?;
             mount(m, home, "home")?;
-            forget_old_state(m, username)
+            forget_old_state(m, username)?;
+            remove_old_swap_file(m)?;
+            Ok(None)
         }
         DiskWork::Shrink {
             device,
@@ -125,7 +162,8 @@ pub(crate) fn prepare(m: &Machine, work: &DiskWork, username: &str) -> Result<()
             keep_only_homes(m, &target("home"))?;
             mount(m, efi, "efi")?;
             remove_old_boot_files(m, &target("efi"))?;
-            forget_old_state(m, username)
+            forget_old_state(m, username)?;
+            Ok(None)
         }
     }
 }
@@ -208,6 +246,17 @@ fn remove_old_boot_files(m: &Machine, root: &Path) -> Result<(), Error> {
 
 /// Deletes the InayOS state record in the kept home, which describes the erased system.
 /// `myconfig` is the earlier name of InayOS, whose record InayOS would otherwise migrate.
+/// Deletes the earlier system's hibernation swap file from the kept home. The checks found
+/// that no system hibernated into it, so it holds nothing, and the hibernation module of the
+/// new system creates its own at the size of this machine's memory.
+fn remove_old_swap_file(m: &Machine) -> Result<(), Error> {
+    let swap_file = target("home").join("swapfile");
+    if m.exists(&swap_file) {
+        m.remove_file(&swap_file)?;
+    }
+    Ok(())
+}
+
 fn forget_old_state(m: &Machine, username: &str) -> Result<(), Error> {
     for name in ["inayos", "myconfig"] {
         let record = target("home")

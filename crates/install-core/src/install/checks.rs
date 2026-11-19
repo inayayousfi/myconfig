@@ -1,16 +1,19 @@
 //! Checks the machine and the answers before the disk changes, and works out the exact disk
 //! changes. The only changes here are to the live system: the Wi-Fi connection, the package
-//! database, and a read-only look into a partition whose home folders stay.
+//! database, and a read-only look into a partition whose home folders stay. Nothing here
+//! mounts a partition read-write, so a hibernated InayOS is refused before anything could
+//! write to its disk.
 use std::path::Path;
 
 use super::{Machine, Settings, TARGET};
 use crate::{
     Answers, Disk, Error,
     disk_names::partition_number,
+    hibernation,
     host::Command,
     inventory,
-    modules::SECURE_BOOT_MODULE,
-    parse::{self, GptEntry, TableRow},
+    modules::{ENCRYPTION_MODULE, SECURE_BOOT_MODULE},
+    parse::{self, BlockDevice, GptEntry, TableRow},
     sizes::{self, ShrinkPlan, WipeLayout},
 };
 
@@ -23,6 +26,8 @@ pub(crate) enum DiskWork {
     Wipe {
         device: String,
         layout: WipeLayout,
+        /// Whether the system and home partitions are LUKS2 volumes.
+        encrypted: bool,
     },
     Reinstall {
         efi: String,
@@ -54,10 +59,8 @@ pub(crate) struct Checked {
 
 pub(crate) fn check(m: &Machine, answers: &Answers, settings: &Settings) -> Result<Checked, Error> {
     answers.check()?;
-    if answers.security.encryption {
-        return Err(Error::NotBuilt {
-            option: "Encryption",
-        });
+    if answers.security.encryption && !matches!(answers.disk, Disk::WipeDisk { .. }) {
+        return Err(Error::EncryptionNeedsWholeDisk);
     }
     if let Disk::BesideWindows { .. } = answers.disk {
         return Err(Error::NotBuilt {
@@ -74,6 +77,12 @@ pub(crate) fn check(m: &Machine, answers: &Answers, settings: &Settings) -> Resu
     }
     if !m.exists(Path::new("/sys/firmware/efi/efivars")) {
         return Err(Error::NotUefi);
+    }
+    if hibernation::firmware_hibernated(m) {
+        return Err(Error::Hibernated);
+    }
+    if answers.security.encryption && !inventory::has_tpm2(m.host) {
+        return Err(Error::EncryptionWithoutTpm);
     }
     if answers.security.secure_boot && !inventory::secure_boot_setup_mode(m.host)? {
         return Err(Error::SetupModeOff);
@@ -108,8 +117,16 @@ pub(crate) fn check(m: &Machine, answers: &Answers, settings: &Settings) -> Resu
         return Err(Error::TargetBusy);
     }
     let device = answers.disk.device();
-    check_unused_disk(m, device)?;
-    let (disk, kept_owner) = plan_disk(m, &answers.disk, &answers.user.username)?;
+    let tree = check_unused_disk(m, device)?;
+    check_not_hibernated(m, &tree, &answers.disk)?;
+    let swap_gib = hibernation::swap_gib(m)?;
+    let (disk, kept_owner) = plan_disk(
+        m,
+        &answers.disk,
+        &answers.user.username,
+        answers.security.encryption,
+        swap_gib,
+    )?;
 
     if let Some(wifi) = &answers.wifi {
         m.sink
@@ -135,14 +152,22 @@ pub(crate) fn check(m: &Machine, answers: &Answers, settings: &Settings) -> Resu
 }
 
 /// The profile modules minus the skipped ones, when the answers skip any. Without Secure
-/// Boot in the answers, the secure-boot module is skipped too.
+/// Boot in the answers, the secure-boot module is skipped too, and without encryption, the
+/// encryption module.
 fn kept_modules(
     m: &Machine,
     answers: &Answers,
     settings: &Settings,
 ) -> Result<Option<Vec<String>>, Error> {
-    let secure_boot_off = !answers.security.secure_boot;
-    if answers.skip.is_empty() && !secure_boot_off {
+    let answered_off: Vec<&str> = [
+        (answers.security.secure_boot, SECURE_BOOT_MODULE),
+        (answers.security.encryption, ENCRYPTION_MODULE),
+    ]
+    .into_iter()
+    .filter(|(on, _)| !on)
+    .map(|(_, module)| module)
+    .collect();
+    if answers.skip.is_empty() && answered_off.is_empty() {
         return Ok(None);
     }
     let binary = settings.system_binary.to_string_lossy();
@@ -160,9 +185,11 @@ fn kept_modules(
         }
     }
     let mut skip: Vec<&str> = answers.skip.iter().map(String::as_str).collect();
-    if secure_boot_off && profile.contains(&SECURE_BOOT_MODULE) {
-        skip.push(SECURE_BOOT_MODULE);
-    }
+    skip.extend(
+        answered_off
+            .into_iter()
+            .filter(|module| profile.contains(module)),
+    );
     if skip.is_empty() {
         return Ok(None);
     }
@@ -175,10 +202,15 @@ fn kept_modules(
     ))
 }
 
-/// Fails unless `device` is a whole disk with nothing of it mounted.
-fn check_unused_disk(m: &Machine, device: &str) -> Result<(), Error> {
-    let lsblk =
-        Command::query("lsblk").args(["--json", "--output", "PATH,TYPE,MOUNTPOINTS", device]);
+/// Fails unless `device` is a whole disk with nothing of it mounted, and returns its
+/// partitions.
+fn check_unused_disk(m: &Machine, device: &str) -> Result<BlockDevice, Error> {
+    let lsblk = Command::query("lsblk").args([
+        "--json",
+        "--output",
+        "PATH,TYPE,FSTYPE,LABEL,MOUNTPOINTS",
+        device,
+    ]);
     let shown = lsblk.shown();
     let tree = parse::lsblk(&m.query(lsblk)?).map_err(|problem| Error::UnexpectedOutput {
         command: shown,
@@ -204,6 +236,29 @@ fn check_unused_disk(m: &Machine, device: &str) -> Result<(), Error> {
                 device: part.path.clone(),
                 mountpoint: mountpoint.clone(),
             });
+        }
+    }
+    Ok(tree)
+}
+
+/// Fails when an InayOS home partition of the disk, or the partition the answers keep as
+/// home, holds a swap file that a system hibernated into.
+fn check_not_hibernated(m: &Machine, tree: &BlockDevice, disk: &Disk) -> Result<(), Error> {
+    let mut homes: Vec<&str> = tree
+        .all()
+        .into_iter()
+        .filter(|part| part.label == inventory::HOME_LABEL && part.fstype == "ext4")
+        .map(|part| part.path.as_str())
+        .collect();
+    if let Disk::ReinstallKeepHome { home_partition, .. }
+    | Disk::ShrinkExt4KeepHome { home_partition, .. } = disk
+        && !homes.contains(&home_partition.as_str())
+    {
+        homes.push(home_partition);
+    }
+    for home in homes {
+        if hibernation::swap_file_hibernated(m, home)? {
+            return Err(Error::Hibernated);
         }
     }
     Ok(())
@@ -273,11 +328,14 @@ fn require_filesystem(m: &Machine, partition: &str, expected: &'static str) -> R
     })
 }
 
-/// The disk changes, and the owner of the user's home folder when the disk keeps one.
+/// The disk changes, and the owner of the user's home folder when the disk keeps one. Every
+/// home keeps room for the hibernation swap file of `swap_gib`.
 fn plan_disk(
     m: &Machine,
     disk: &Disk,
     username: &str,
+    encrypted: bool,
+    swap_gib: u64,
 ) -> Result<(DiskWork, Option<(u32, u32)>), Error> {
     match disk {
         Disk::WipeDisk {
@@ -286,12 +344,13 @@ fn plan_disk(
         } => {
             let sector = sector_size(m, device)?;
             let bytes = number(m, Command::query("blockdev").args(["--getsize64", device]))?;
-            let layout = sizes::wipe_layout(bytes / sector, sector, *system_size_gib)
+            let layout = sizes::wipe_layout(bytes / sector, sector, *system_size_gib, swap_gib)
                 .map_err(Error::DiskTooSmall)?;
             Ok((
                 DiskWork::Wipe {
                     device: device.clone(),
                     layout,
+                    encrypted,
                 },
                 None,
             ))
@@ -308,6 +367,7 @@ fn plan_disk(
             }
             require_filesystem(m, efi_partition, "vfat")?;
             require_filesystem(m, home_partition, "ext4")?;
+            check_swap_room(m, home_partition, swap_gib)?;
             let owner = look_into_home(m, home_partition, Path::new(username), None)?;
             Ok((
                 DiskWork::Reinstall {
@@ -357,7 +417,7 @@ fn plan_disk(
                 },
                 sector,
                 usage.block_size,
-                usage.used_bytes,
+                usage.used_bytes + swap_gib * sizes::GIB,
                 *system_size_gib,
             )
             .map_err(Error::HomeTooFull)?;
@@ -385,6 +445,26 @@ fn plan_disk(
             option: "Installing beside Windows",
         }),
     }
+}
+
+/// Fails unless the kept home on `partition` has room for the swap file of `swap_gib`. The
+/// disk stage deletes the earlier system's swap file, so its room counts as free.
+fn check_swap_room(m: &Machine, partition: &str, swap_gib: u64) -> Result<(), Error> {
+    let dump = Command::query("dumpe2fs").args(["-h", partition]);
+    let shown = dump.shown();
+    let usage = parse::ext4_usage(&m.query(dump)?).map_err(|problem| Error::UnexpectedOutput {
+        command: shown,
+        problem,
+    })?;
+    let free = usage.free_bytes + hibernation::swap_file_bytes(m, partition)?;
+    if free < swap_gib * sizes::GIB {
+        return Err(Error::NoRoomForSwapFile {
+            partition: partition.to_owned(),
+            free_gib: free as f64 / sizes::GIB as f64,
+            needed_gib: swap_gib,
+        });
+    }
+    Ok(())
 }
 
 /// Mounts the kept partition read-only at `/mnt/home`, where the disk stage later mounts it,

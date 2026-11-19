@@ -25,6 +25,8 @@ The overlay holds only regular files and folders, so any copy keeps it intact. A
 - `live` belongs to `wheel` and `uinput` through `/etc/sysusers.d/inayos-live.conf`, and runs `sudo` without a password.
 - Workspace 1, "Installer", runs the installer's screens. Sway starts `inayos-installer` through `sudo`, which keeps `WAYLAND_DISPLAY`, `XDG_RUNTIME_DIR` and `SWAYSOCK`, so the installer runs as root and draws in the session of `live`. The session switches to workspace 1 before it starts the installer, because Sway places a window on the workspace that was focused when its command started.
 - Workspace 2, "Repair", runs a Ghostty terminal titled "InayOS repair" that lists the repair tools and the command that installs from an answers file without the screens.
+- Each terminal that `inayos-live-welcome` opens first runs `inayos-hibernation-check`. It warns when an InayOS on the machine is hibernated, because writing to its disk loses the work it saved. It reads only: the `HibernateLocation` firmware variable, and the swap file header of each unencrypted InayOS home partition through `debugfs`. The installer refuses such a disk with the same checks.
+- systemd's `systemd-hibernate-clear.service` is masked. On every boot that does not resume, it deletes the `HibernateLocation` firmware variable. On the stick, that would hide a hibernated InayOS from the checks, and that InayOS would no longer resume when it starts again, because nothing else tells it where its saved memory is.
 - Axidev OSK starts with the session. It is a layer-shell overlay, so it shows on both workspaces.
 - Super+1 and Super+2 switch workspaces, and the bar's workspace buttons do the same with a click. Super+Return opens a terminal, and Super+B opens the Arch wiki in Epiphany.
 - Super+I starts the installer's screens again on workspace 1 when none run, for example after they closed or failed to start. The repair terminal's help text and the motd say so.
@@ -53,6 +55,7 @@ Its runtime comes from the Arch packages its Linux release names: `python`, `pys
 - the libraries that the installer's screens load when they start: `wayland` for the Wayland client and cursor libraries, and `libxkbcommon`;
 - the Axidev OSK runtime;
 - the repair tools: `testdisk` (with `photorec`), `ddrescue`, `smartmontools`, `efibootmgr`, `sbctl`, `refind`, `snapper`, `mkinitcpio`, `arch-install-scripts`, `btrfs-progs`, `e2fsprogs`, `dosfstools` and `gptfdisk`;
+- `cryptsetup` and `tpm2-tss`, with which the installer formats the encrypted volumes and enrolls the TPM;
 - Epiphany, the browser for the Arch wiki.
 
 Releng already lists some of the repair tools. The overlay lists them again so that the repair workspace does not depend on releng's choice, and pacman skips the duplicates.

@@ -49,6 +49,10 @@ pub(crate) fn run(
         && modules.is_none_or(|kept| kept.iter().any(|name| name == SECURE_BOOT_MODULE));
     if secure_boot {
         enroll_keys(m)?;
+        // The guard built its images while Secure Boot was still off, so they are unsigned
+        // until it checks again with the keys enrolled.
+        m.sink.step("Checking the boot files with the guard");
+        m.run(Command::action("arch-chroot").args([TARGET, GUARD_BINARY, "check-update"]))?;
     }
 
     m.sink.step("Verifying the InayOS modules");

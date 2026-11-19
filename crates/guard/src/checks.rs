@@ -59,6 +59,26 @@ pub fn secure_boot_enforced(system: &dyn System) -> bool {
     }
 }
 
+/// Why this boot does not have the Secure Boot state the machine was set up with, or None
+/// when it has: once sbctl holds its keys, Secure Boot must be on. A firmware reset that
+/// dropped the keys, or Secure Boot turned off in the firmware, both leave it off.
+pub fn secure_boot_mismatch(system: &dyn System) -> Option<String> {
+    let on = system
+        .read(Path::new(SECURE_BOOT_VARIABLE))
+        .is_ok_and(|contents| variable_is_set(&contents));
+    if on {
+        return None;
+    }
+    let keys = match system.run("sbctl", &["status", "--json"]) {
+        Ok(output) if output.success() => {
+            serde_json::from_str::<SbctlStatus>(json_part(&output.stdout, '{'))
+                .is_ok_and(|status| status.installed)
+        }
+        _ => false,
+    };
+    keys.then(|| "Secure Boot is off although sbctl holds the machine's keys".to_owned())
+}
+
 /// What `sbctl verify --json` says about one file.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Signature {
@@ -255,6 +275,12 @@ fn device_lookup(source: &str) -> Option<(PathBuf, Vec<String>)> {
         _ => return None,
     };
     Some((Path::new("/dev/disk").join(folder).join(value), blkid))
+}
+
+/// The device link udev keeps for `source`, such as `/dev/disk/by-uuid/<uuid>` for
+/// `UUID=<uuid>`. None for a value the guard does not know.
+pub fn device_path(source: &str) -> Option<PathBuf> {
+    device_lookup(source).map(|(link, _)| link)
 }
 
 fn device_exists(system: &dyn System, source: &str) -> Option<bool> {

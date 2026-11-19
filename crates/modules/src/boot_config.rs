@@ -1,11 +1,61 @@
 //! Edits of the initramfs hooks in `/etc/mkinitcpio.conf` and the kernel options in
-//! `/boot/refind_linux.conf`, shared by the modules that change the boot.
+//! `/boot/refind_linux.conf` and `/etc/kernel/cmdline`, and the check of what the initramfs
+//! images hold, shared by the modules that change the boot.
 use std::path::Path;
+
+use xshell::cmd;
 
 use crate::{Context, ModuleResult, Setting};
 
 pub(crate) const MKINITCPIO_CONFIG: &str = "/etc/mkinitcpio.conf";
 pub(crate) const REFIND_LINUX_CONFIG: &str = "/boot/refind_linux.conf";
+/// The kernel options that mkinitcpio puts into a unified kernel image. The InayOS installer
+/// writes it on an encrypted system.
+pub(crate) const KERNEL_CMDLINE: &str = "/etc/kernel/cmdline";
+
+/// The initramfs images in /boot whose files lack `program`, a path inside the image such
+/// as `usr/lib/systemd/systemd-volatile-root`.
+pub(crate) fn images_without(ctx: &Context, program: &str) -> ModuleResult<Vec<String>> {
+    let sh = ctx.shell;
+    let listed = ctx.read(cmd!(
+        sh,
+        "sudo find /boot/ -maxdepth 1 -type f -name initramfs-*.img -printf %f\\n"
+    ))?;
+    let mut missing = Vec::new();
+    for name in listed.lines() {
+        let image = format!("/boot/{name}");
+        let contents = ctx.read(cmd!(sh, "sudo lsinitcpio {image}"))?;
+        if !contents
+            .lines()
+            .any(|line| line.trim().trim_start_matches("./") == program)
+        {
+            missing.push(image);
+        }
+    }
+    Ok(missing)
+}
+
+/// `cmdline`, the one line of kernel options of `/etc/kernel/cmdline`, with `quiet` and
+/// `options`, each of which replaces an earlier value of the same option.
+pub(crate) fn cmdline_with(cmdline: &str, options: &[String]) -> String {
+    let names: Vec<&str> = options
+        .iter()
+        .map(|option| {
+            option
+                .split_once('=')
+                .map_or(option.as_str(), |(name, _)| name)
+        })
+        .collect();
+    let mut kept: Vec<&str> = cmdline
+        .split_whitespace()
+        .filter(|option| {
+            let name = option.split_once('=').map_or(*option, |(name, _)| name);
+            !names.contains(&name)
+        })
+        .collect();
+    kept.extend(options.iter().map(String::as_str));
+    format!("{}\n", kept.join(" "))
+}
 
 fn hook_setting(hook: &str) -> Setting {
     Setting::InitramfsHook {
@@ -166,6 +216,20 @@ mod tests {
 
     const HOOKS: &str = "# vim:set ft=sh\nMODULES=()\nHOOKS=(base systemd autodetect microcode kms modconf block keyboard sd-vconsole plymouth filesystems fsck)\n";
     const ENTRIES: &str = "\"Boot with standard options\"    \"quiet nowatchdog splash rw root=UUID=31f4 resume=UUID=31f4\"\n\"Boot to single-user mode\"    \"quiet nowatchdog splash rw root=UUID=31f4\" single\n# \"Commented\" \"quiet\"\n\"Boot with minimal options\"   \"ro root=/dev/nvme0n1p2\"\n";
+
+    #[test]
+    fn options_join_the_kernel_command_line_once_and_replace_earlier_values() {
+        let options = vec!["quiet".to_owned(), "vt.default_red=1,2".to_owned()];
+        let edited = cmdline_with(
+            "root=/dev/mapper/system rootflags=subvol=@ rw vt.default_red=9\n",
+            &options,
+        );
+        assert_eq!(
+            edited,
+            "root=/dev/mapper/system rootflags=subvol=@ rw quiet vt.default_red=1,2\n"
+        );
+        assert_eq!(cmdline_with(&edited, &options), edited);
+    }
 
     #[test]
     fn only_the_named_hook_leaves_the_list() {

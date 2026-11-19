@@ -149,9 +149,9 @@ fn a_disk_too_small_for_the_smallest_layout_offers_nothing() {
     assert!(vda.offers.iter().all(|offer| offer.available.is_err()));
 }
 
-#[test]
-fn an_inayos_disk_offers_the_reinstall_with_its_three_partitions() {
-    let host = machine(vec![disk(
+/// A 64 GiB disk with an InayOS whose system and home partitions hold `system` and `home`.
+fn inayos_disk(system: &str, home: &str) -> Value {
+    disk(
         "/dev/vda",
         "",
         64 * GIB,
@@ -161,7 +161,7 @@ fn an_inayos_disk_offers_the_reinstall_with_its_three_partitions() {
                 "/dev/vda2",
                 4_196_352,
                 40 * GIB,
-                Some("btrfs"),
+                Some(system),
                 Some("inayos-system"),
                 LINUX,
             ),
@@ -169,12 +169,17 @@ fn an_inayos_disk_offers_the_reinstall_with_its_three_partitions() {
                 "/dev/vda3",
                 88_082_432,
                 22 * GIB,
-                Some("ext4"),
+                Some(home),
                 Some("inayos-home"),
                 LINUX,
             ),
         ],
-    )]);
+    )
+}
+
+#[test]
+fn an_inayos_disk_offers_the_reinstall_with_its_three_partitions() {
+    let host = machine(vec![inayos_disk("btrfs", "ext4")]);
     let vda = &disks(&host).unwrap()[0];
     assert_eq!(
         offer(vda, Choice::ReinstallKeepHome),
@@ -193,6 +198,35 @@ fn an_inayos_disk_offers_the_reinstall_with_its_three_partitions() {
     assert_eq!(
         reason(vda, Choice::ShrinkExt4KeepHome),
         "the disk holds InayOS; reinstalling keeps its home partition"
+    );
+}
+
+#[test]
+fn every_offer_leaves_home_room_for_a_swap_file_as_large_as_the_memory() {
+    let host = machine(vec![inayos_disk("btrfs", "ext4")]);
+    host.file("/proc/meminfo", "MemTotal:        8000000 kB\n");
+    // 7 GiB free on the kept home besides no swap file.
+    host.respond(
+        "dumpe2fs -h /dev/vda3",
+        [ok(&format!(
+            "Block count: {}\nFree blocks: {}\nBlock size: 4096\n",
+            22 * GIB / 4096,
+            7 * GIB / 4096
+        ))],
+    );
+    let vda = &disks(&host).unwrap()[0];
+    assert_eq!(
+        reason(vda, Choice::ReinstallKeepHome),
+        "the InayOS home partition /dev/vda3 has no room for the 8 GiB hibernation swap \
+         file, the size of the memory"
+    );
+    // 64 GiB less 2 GiB of EFI, 20 GiB of home and 8 GiB of swap file leaves 33 GiB of
+    // system once the partitions are aligned and the GPT has its room.
+    assert_eq!(
+        offer(vda, Choice::WipeDisk)
+            .system_size
+            .map(|limits| limits.max_gib),
+        Some(33)
     );
 }
 
@@ -397,4 +431,48 @@ fn only_a_version_2_tpm_counts() {
     assert!(!has_tpm2(&host));
     host.file("/sys/class/tpm/tpm0/tpm_version_major", "2\n");
     assert!(has_tpm2(&host));
+}
+
+const HIBERNATED: &str =
+    "This disk holds a hibernated InayOS: start it and shut it down properly first";
+
+#[test]
+fn a_hibernated_inayos_makes_every_offer_of_its_disk_unavailable() {
+    let every_offer_refused = |info: &DiskInfo| {
+        Choice::ALL
+            .into_iter()
+            .all(|choice| reason(info, choice) == HIBERNATED)
+    };
+    // The firmware variable does not say which disk, so it refuses every disk.
+    let host = machine(vec![inayos_disk("btrfs", "ext4")]);
+    host.file(
+        "/sys/firmware/efi/efivars/HibernateLocation-8cf2644b-4b0b-428f-9387-6d876050dc67",
+        "{}",
+    );
+    assert!(disks(&host).unwrap().iter().all(every_offer_refused));
+
+    // The swap file in the InayOS home of one disk refuses only that disk.
+    let host = machine(vec![inayos_disk("btrfs", "ext4")]);
+    host.respond("debugfs -R 'bmap /swapfile 0' /dev/vda3", [ok("1000\n")]);
+    host.respond(
+        "dumpe2fs -h /dev/vda3",
+        [ok(
+            "Block count: 5000000\nFree blocks: 4000000\nBlock size: 4096\n",
+        )],
+    );
+    let dd = "dd if=/dev/vda3 iflag=skip_bytes,count_bytes skip=4096000 count=4096 status=none";
+    host.respond(dd, [ok(&format!("{}S1SUSPEND", "\0".repeat(4086)))]);
+    assert!(every_offer_refused(&disks(&host).unwrap()[0]));
+
+    host.respond(dd, [ok(&format!("{}SWAPSPACE2", "\0".repeat(4086)))]);
+    let vda = &disks(&host).unwrap()[0];
+    assert!(offer(vda, Choice::ReinstallKeepHome).available.is_ok());
+}
+
+#[test]
+fn an_encrypted_inayos_offers_the_wipe_but_not_the_reinstall() {
+    let host = machine(vec![inayos_disk("crypto_LUKS", "crypto_LUKS")]);
+    let vda = &disks(&host).unwrap()[0];
+    assert!(offer(vda, Choice::WipeDisk).available.is_ok());
+    assert!(reason(vda, Choice::ReinstallKeepHome).contains("encrypted"));
 }

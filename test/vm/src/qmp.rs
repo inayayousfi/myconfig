@@ -9,6 +9,11 @@ use std::time::Duration;
 use serde_json::{Value, json};
 
 const REPLY_TIMEOUT: Duration = Duration::from_secs(60);
+/// The largest absolute position that QEMU's input events carry on each axis.
+const ABSOLUTE_MAX: usize = 0x7fff;
+/// How long a click holds the button: longer than the polling interval of rEFInd and of the
+/// firmware's USB pointer driver.
+const CLICK_HOLD: Duration = Duration::from_millis(300);
 
 #[derive(Debug, thiserror::Error)]
 pub enum QmpError {
@@ -128,6 +133,48 @@ impl Qmp {
             match key {
                 (code, false) => self.send_keys(&[code])?,
                 (code, true) => self.send_keys(&["shift", code])?,
+            }
+        }
+        Ok(())
+    }
+
+    /// Moves the pointer of the USB tablet to the pixel `x`, `y` of a screen of `width` by
+    /// `height` pixels. The tablet reports absolute positions from 0 to `ABSOLUTE_MAX` on
+    /// each axis, which the guest scales to its screen.
+    pub fn move_pointer(
+        &mut self,
+        x: usize,
+        y: usize,
+        width: usize,
+        height: usize,
+    ) -> Result<(), QmpError> {
+        let scale = |position: usize, size: usize| {
+            (position.min(size.saturating_sub(1)) * ABSOLUTE_MAX) / size.saturating_sub(1).max(1)
+        };
+        self.execute(
+            "input-send-event",
+            json!({ "events": [
+                { "type": "abs", "data": { "axis": "x", "value": scale(x, width) } },
+                { "type": "abs", "data": { "axis": "y", "value": scale(y, height) } },
+            ] }),
+        )?;
+        Ok(())
+    }
+
+    /// Presses the left button of the USB tablet where the pointer is, holds it for
+    /// `CLICK_HOLD`, and releases it. A program that polls the pointer, such as rEFInd, counts
+    /// a click only when one poll sees the button held and a later one sees it released, and
+    /// the firmware's pointer driver keeps only the last state between two polls.
+    pub fn click(&mut self) -> Result<(), QmpError> {
+        for down in [true, false] {
+            self.execute(
+                "input-send-event",
+                json!({ "events": [
+                    { "type": "btn", "data": { "down": down, "button": "left" } },
+                ] }),
+            )?;
+            if down {
+                std::thread::sleep(CLICK_HOLD);
             }
         }
         Ok(())

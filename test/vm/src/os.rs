@@ -60,6 +60,16 @@ impl Os {
         }
     }
 
+    /// The size of the clean image's disk in the `qemu-img` notation. The qcow2 file grows only
+    /// as the guest writes. The Windows disk leaves room beside Windows for an InayOS install
+    /// with the installer's default 150 GiB system, 20 GiB of home and the swap file.
+    pub fn disk_size(self) -> &'static str {
+        match self {
+            Os::Windows => "256G",
+            Os::Ubuntu | Os::Arch => "100G",
+        }
+    }
+
     pub fn boot(self) -> Boot {
         match self {
             Os::Windows => Boot::SecureUefiWithTpm,

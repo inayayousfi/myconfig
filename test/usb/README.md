@@ -56,6 +56,7 @@ Its runtime comes from the Arch packages its Linux release names: `python`, `pys
 - the Axidev OSK runtime;
 - the repair tools: `testdisk` (with `photorec`), `ddrescue`, `smartmontools`, `efibootmgr`, `sbctl`, `refind`, `snapper`, `mkinitcpio`, `arch-install-scripts`, `btrfs-progs`, `e2fsprogs`, `dosfstools` and `gptfdisk`;
 - `cryptsetup` and `tpm2-tss`, with which the installer formats the encrypted volumes and enrolls the TPM;
+- `ntfs-3g`, whose `ntfs-3g.probe` and `ntfsresize` the installer uses to check and shrink the Windows partition;
 - Epiphany, the browser for the Arch wiki.
 
 Releng already lists some of the repair tools. The overlay lists them again so that the repair workspace does not depend on releng's choice, and pacman skips the duplicates.

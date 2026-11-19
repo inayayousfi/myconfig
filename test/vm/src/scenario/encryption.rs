@@ -9,7 +9,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use super::answers_file::DiskChoice;
 use super::boot_chain::GUARD;
-use super::encryption_checks::{self as checks, HIBERNATE_LOCATION, Tpm2Token};
+use super::encryption_checks::{self as checks, HIBERNATE_LOCATION, HIBERNATED_MESSAGE, Tpm2Token};
 use super::installed;
 use super::{DEVICE, Scenario, StepError, sudo};
 use crate::machine::{Media, SSH_PORT};
@@ -55,7 +55,7 @@ const DB_UPDATE: &str = "sbctl enroll-keys --partial db --append --custom --igno
 /// Prints the SHA-256 of the first MiB of the disk and of each partition, which hold the
 /// partition table and every filesystem's and LUKS header's superblock, and of the disk's last
 /// MiB, which holds the backup partition table. Argument: the disk.
-const HEADS_SCRIPT: &str = r#"set -e
+pub(super) const HEADS_SCRIPT: &str = r#"set -e
 disk=$1
 for device in "$disk" "$disk"[0-9]*; do
     printf '%s %s\n' "$device" "$(dd if="$device" bs=1M count=1 status=none | sha256sum | cut -d' ' -f1)"
@@ -63,6 +63,16 @@ done
 sectors=$(( $(blockdev --getsize64 "$disk") / 512 ))
 printf 'end %s\n' "$(dd if="$disk" bs=512 skip=$(( sectors - 2048 )) count=2048 status=none | sha256sum | cut -d' ' -f1)"
 "#;
+
+/// An install that the installer's checks stage must refuse: its disk answers, the message the
+/// refusal holds, the command that prints the checksums of the disk's heads, and its output
+/// before the install.
+pub(super) struct Refusal<'a> {
+    pub disk: &'a DiskChoice,
+    pub message: &'a str,
+    pub heads: &'a str,
+    pub before: &'a str,
+}
 
 /// A process started before hibernating, with the boot it runs in. The same process in the
 /// same boot after the next start shows that the machine resumed.
@@ -387,7 +397,19 @@ impl Scenario {
         self.write("disk-heads-before.txt", &before)?;
 
         println!("vm: installing on the hibernated disk, with the firmware variable");
-        self.check_install_refused(live, "reinstall-hibernated", &heads, &before)?;
+        let reinstall = DiskChoice::ReinstallKeepHome {
+            device: DEVICE,
+            efi_partition: "/dev/vda1",
+            system_partition: "/dev/vda2",
+            home_partition: "/dev/vda3",
+        };
+        let refusal = Refusal {
+            disk: &reinstall,
+            message: HIBERNATED_MESSAGE,
+            heads: &heads,
+            before: &before,
+        };
+        self.check_install_refused(live, "reinstall-hibernated", &refusal)?;
 
         println!("vm: installing on the hibernated disk, with only the swap file's signature");
         // The saved file keeps the variable's 4 attribute bytes, which a write needs back.
@@ -395,8 +417,7 @@ impl Scenario {
             "cp {HIBERNATE_LOCATION} {SAVED_HIBERNATE_LOCATION} \
              && chattr -i {HIBERNATE_LOCATION} && rm {HIBERNATE_LOCATION}"
         ))?;
-        let refused =
-            self.check_install_refused(live, "reinstall-hibernated-swap-file", &heads, &before);
+        let refused = self.check_install_refused(live, "reinstall-hibernated-swap-file", &refusal);
         let restored = live.run(&format!(
             "cat {SAVED_HIBERNATE_LOCATION} > {HIBERNATE_LOCATION}"
         ));
@@ -406,29 +427,19 @@ impl Scenario {
         Ok(())
     }
 
-    /// Runs the installer with reinstall answers on the live system and checks that it refused
-    /// the hibernated disk in its checks stage, ran no command that writes to the disk, left
-    /// the disk's heads as `before` lists them, and left nothing of the disk mounted.
-    fn check_install_refused(
+    /// Runs the installer with the answers of `refusal` on the live system and checks that its
+    /// checks stage refused the disk with the expected message, that it ran no command that
+    /// writes to the disk, and that the disk is unchanged and unmounted.
+    pub(super) fn check_install_refused(
         &mut self,
         live: &Guest,
         label: &str,
-        heads: &str,
-        before: &str,
+        refusal: &Refusal,
     ) -> Result<(), StepError> {
-        let result = self.run_installer(
-            live,
-            &DiskChoice::ReinstallKeepHome {
-                device: DEVICE,
-                efi_partition: "/dev/vda1",
-                system_partition: "/dev/vda2",
-                home_partition: "/dev/vda3",
-            },
-            label,
-        )?;
+        let result = self.run_installer(live, refusal.disk, label)?;
         if result.is_ok() {
             return Err(StepError::Check(format!(
-                "{label}: the installer finished on a hibernated disk"
+                "{label}: the installer finished on a disk it should refuse"
             )));
         }
         let read = |name: String| {
@@ -439,7 +450,9 @@ impl Scenario {
         };
         let output = read(format!("installer-{label}"))?;
         let file_log = read(format!("installer-{label}-file"))?;
-        if let Some(problem) = checks::refusal_problem(&format!("{output}\n{file_log}")) {
+        if let Some(problem) =
+            checks::refusal_problem(&format!("{output}\n{file_log}"), refusal.message)
+        {
             return Err(StepError::Check(format!("{label}: {problem}")));
         }
         let writes = checks::disk_writes(&file_log);
@@ -449,19 +462,31 @@ impl Scenario {
                 writes.join("; ")
             )));
         }
-        let after = live.run(heads)?;
+        self.check_disk_unchanged(live, label, refusal)
+    }
+
+    /// Checks that the disk's heads are still as `refusal.before` lists them and that nothing
+    /// of the disk is mounted, after the step named `label`.
+    pub(super) fn check_disk_unchanged(
+        &mut self,
+        live: &Guest,
+        label: &str,
+        refusal: &Refusal,
+    ) -> Result<(), StepError> {
+        let after = live.run(refusal.heads)?;
         self.write(&format!("disk-heads-after-{label}.txt"), &after)?;
-        let changed = checks::changed_heads(before, &after);
+        let changed = checks::changed_heads(refusal.before, &after);
         if !changed.is_empty() {
             return Err(StepError::Check(format!(
                 "{label}: the refused install changed the start of {}",
                 changed.join(", ")
             )));
         }
-        let mounted = live.run(&format!("findmnt -rn -o SOURCE | grep '^{DEVICE}' || true"))?;
+        let device = refusal.disk.device();
+        let mounted = live.run(&format!("findmnt -rn -o SOURCE | grep '^{device}' || true"))?;
         if !mounted.trim().is_empty() {
             return Err(StepError::Check(format!(
-                "{label}: partitions of the hibernated disk are still mounted: {}",
+                "{label}: partitions of the refused disk are still mounted: {}",
                 mounted.trim()
             )));
         }

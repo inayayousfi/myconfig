@@ -4,6 +4,15 @@
   Pro on the first disk with a local account, then runs inayos-setup.ps1 from the seed disc
   at the first logon. The product key is Microsoft's generic Pro installation key, which
   selects the edition and leaves Windows unactivated.
+
+  The disk is GPT: a 300 MB EFI system partition, the Microsoft reserved partition, and NTFS C:
+  over the rest. The EFI partition is larger than Windows' 100 MB default, so the InayOS
+  installer finds room on it for rEFInd, its drivers and its theme beside Windows' boot files.
+
+  The firmware variable store has no Secure Boot keys, so Setup's check for Secure Boot is
+  turned off through LabConfig. Device encryption stays off through PreventDeviceEncryption,
+  set before the first logon, because Windows 11 turns it on by itself on some machines, and
+  an encrypted C: cannot be shrunk.
 -->
 <unattend xmlns="urn:schemas-microsoft-com:unattend" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
   <settings pass="windowsPE">
@@ -17,6 +26,12 @@
       <UserLocale>en-US</UserLocale>
     </component>
     <component name="Microsoft-Windows-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <RunSynchronous>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>1</Order>
+          <Path>reg.exe add HKLM\SYSTEM\Setup\LabConfig /v BypassSecureBootCheck /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+      </RunSynchronous>
       <DiskConfiguration>
         <Disk wcm:action="add">
           <DiskID>0</DiskID>
@@ -82,6 +97,18 @@
     <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
       <ComputerName>inayos-windows</ComputerName>
       <TimeZone>UTC</TimeZone>
+    </component>
+    <component name="Microsoft-Windows-Deployment" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+      <RunSynchronous>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>1</Order>
+          <Path>reg.exe add HKLM\SYSTEM\CurrentControlSet\Control\BitLocker /v PreventDeviceEncryption /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>2</Order>
+          <Path>reg.exe add "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Power" /v HiberbootEnabled /t REG_DWORD /d 0 /f</Path>
+        </RunSynchronousCommand>
+      </RunSynchronous>
     </component>
   </settings>
   <settings pass="oobeSystem">

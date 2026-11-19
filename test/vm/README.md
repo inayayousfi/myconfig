@@ -2,7 +2,7 @@
 
 This document describes the VM xtask in `test/vm/`, the `inayos-xtask` crate. It builds the installers from the working tree and tests them in throwaway QEMU virtual machines of Ubuntu 26.04 LTS and Windows 11. It also builds the InayOS USB stick image in an Arch Linux virtual machine, and runs the InayOS installer from that image in scenarios. A commit or a release is not needed. It runs on a Linux host and only by hand.
 
-The Ubuntu cycle has passed on a real guest, image build included. Nothing has run on Windows, the Arch WSL checks included. The Arch image build with its glibc check, the USB stick build, the three Basics scenarios and the `gui-install` scenario have passed on a real guest, with the `last-pass` copy of screenshots, and so have the kept installed disk and kept encrypted disk and every other scenario.
+The Ubuntu cycle has passed on a real guest, image build included. Nothing has run on Windows: not the image build, the cycle, the Arch WSL checks or the Windows scenarios. The Arch image build with its glibc check, the USB stick build, the three Basics scenarios and the `gui-install` scenario have passed on a real guest, with the `last-pass` copy of screenshots, and so have the kept installed disk and kept encrypted disk and every other scenario.
 
 ## Commands
 
@@ -62,7 +62,7 @@ The test account is `tester` with the password `inayos`, set in `src/os.rs`.
 
 - Arch Linux comes from Arch's official cloud image in `https://geo.mirror.pkgbuild.com/images/latest/`, set up by cloud-init from a NoCloud seed disc. The build downloads the versioned file of the newest image in that folder listing, with its `.SHA256` file. Its image only hosts the USB stick build: `cycle arch` and `run arch` refuse and point at the scenarios.
 
-- Windows comes from Microsoft's consumer ISO, downloaded with the requests that the Mido script uses. When Microsoft refuses to give a download link to the host's network address, the build stops and names the page to download the English x64 ISO from by hand. A file saved into the `windows` folder of the download folder is used when its SHA-256 matches the one on that page. An answer file on a seed disc creates a local account that logs on automatically, installs the OpenSSH server and adds the key. A failure of that setup writes the failure line to the first serial port, which stops the build.
+- Windows comes from Microsoft's consumer ISO, downloaded with the requests that the Mido script uses. When Microsoft refuses to give a download link to the host's network address, the build stops and names the page to download the English x64 ISO from by hand. A file saved into the `windows` folder of the download folder is used when its SHA-256 matches the one on that page. An answer file on a seed disc installs Windows 11 Pro on a 256 GB GPT disk: a 300 MB EFI system partition, the Microsoft reserved partition and NTFS `C:` over the rest. The disk leaves room beside Windows for the InayOS installer's default 150 GiB system, and the EFI partition has room for rEFInd beside Windows' boot files. The answer file turns Setup's Secure Boot check off, because the variable store has no keys, and sets `PreventDeviceEncryption` before the first logon. It creates a local account that logs on automatically and runs a setup script at the first logon. The script turns hibernation and Fast Startup off, decrypts `C:` when device encryption started anyway, installs the OpenSSH server from Windows Update with up to five attempts, and adds the key. A failure of that setup writes the failure line to the first serial port, which stops the build.
 
 The release file holds the Ubuntu cloud image build serial, the Arch cloud image build version, or the Windows version with its build number.
 
@@ -146,6 +146,8 @@ The scenarios are:
 
 - `encrypted`, `tpm-wiped`, `hibernate`, `hibernate-encrypted`, `hibernated-disk` and `firmware-db-update` test encryption, hibernation and the hibernation lock. They are described below.
 
+- `beside-windows`, `bitlocker-on` and `fast-startup-on` test the install beside Windows. They are described below.
+
 The layer keeps the answers files, logs, serial logs of each boot and screenshots. A passed scenario copies the PNG screenshots of its layer to its `last-pass` folder, replacing the previous ones, and deletes its layer. A failed scenario saves the last screen and keeps the layer as that scenario's `failed` layer until its next run.
 
 ### The `gui-install` scenario
@@ -225,6 +227,31 @@ Then it powers off, boots the installed disk and checks that it resumed.
 3. Both volumes have a finished enrollment, each with a PCR 7 keyslot that was not there before.
 
 A third boot must unlock with the TPM again and keep a finished enrollment.
+
+### The Windows scenarios
+
+The Windows scenarios start from a throwaway layer over the clean Windows image, with its UEFI variables and TPM state. Every boot, the USB stick's included, has the Windows guest's hardware: the Secure Boot firmware build with SMM, a TPM 2.0 from `swtpm`, a SATA disk, an `e1000e` network card and the standard VGA display. Linux names the disk `/dev/sda`. When no Windows image is built, the scenario stops and names the command that builds it.
+
+The firmware of the Windows image has no Secure Boot keys enrolled, because the host has no tool that enrolls Microsoft's keys into an OVMF variable store. The firmware stays in Setup Mode with Secure Boot off, so the unsigned USB stick and Windows both boot, and the scenarios install with `secure_boot = false`.
+
+Windows and InayOS accept the same key for the same user, so after each boot the scenario asks which system answered SSH: only the Windows command prompt has `ver`. Windows runs the scripts of `scenario/windows/` with PowerShell, copied into the user's home folder.
+
+`beside-windows` boots the stick, waits until the stick's installer shows its keyboard screen, and lists the partitions of the disk, installs with the `beside-windows` answers, and lists them again. The Windows partition must keep its first sector and partition GUID and get smaller, the EFI system partition must keep its filesystem UUID, every other earlier partition must stay as it was, and a Btrfs and an ext4 partition must follow Windows. The layer keeps both listings as `partitions-before.txt` and `partitions-after.txt`. It powers off and boots rEFInd's default entry, which must start InayOS, checks that `/efi` is the EFI system partition of Windows, and runs the desktop checks.
+
+Shrinking NTFS marks the volume for a check, so Windows checks its disk on its next boot and may restart afterwards. That restart follows the firmware's boot order into rEFInd, whose default entry starts InayOS. So before any boot through rEFInd, the scenario reads the number of the "Windows Boot Manager" entry with `efibootmgr` in InayOS, sets it as `BootNext`, powers off and boots. When InayOS answers, Windows restarted after its check, and the scenario sets `BootNext` again, up to three starts. When Windows answers, it shuts down with `shutdown /s /t 0`, and later boots of Windows do not restart. The layer keeps each listing as `efibootmgr-disk-check-<start>.txt`.
+
+Then it starts Windows from rEFInd twice:
+
+1. With keys. rEFInd gives the first nine entries of its first row the shortcut digits 1 to 9, and a digit starts its entry at once. The scenario boots, presses Up once a second for 15 seconds, which stops rEFInd's 20-second wait and moves nothing, saves `refind-key-<digit>.png`, and presses the digit. It starts with 1 and powers off and tries the next digit for each entry that starts InayOS, until one starts Windows.
+2. With a click, for the plan's open check that the pointer works in rEFInd on the test firmware and that a click on a firmware entry starts it. The scenario boots and moves the USB tablet's pointer once a second for 15 seconds in the bottom left corner. rEFInd's tags of the first row are 144 pixels wide, 152 pixels apart and centered on the screen, so their centers lie on the middle row of the screen, at the middle column plus a multiple of 76 pixels. The pointer visits each of those places. rEFInd draws its selection behind the tag under the pointer, so a place where the screen gains a change of at least 100 by 100 pixels against the screen with the pointer in the corner holds a tag. The scenario clicks the tag in the position of the entry that the digit found, saving `refind-click-pointer-on-windows.png` first. The click holds the button for 300 milliseconds, because rEFInd counts a click only when one of its polls sees the button held and a later one sees it released.
+
+Each time Windows must answer SSH, and `scenario/windows/boot-current.ps1` must print that the firmware boot entry of this boot, `BootCurrent`, is "Windows Boot Manager", which shows that the firmware started Windows through `BootNext` without rEFInd. The layer keeps that output as `boot-current-<label>.txt`. Windows shuts down with `shutdown /s /t 0`. Last, rEFInd's default entry must start InayOS again, which fails when Windows put its own boot manager first in the firmware's boot order.
+
+`bitlocker-on` boots Windows and runs `scenario/windows/bitlocker-on.ps1`, which turns BitLocker on for `C:` with a TPM protector, encrypting the used space only, and waits up to an hour until `C:` is fully encrypted. It shuts Windows down with `shutdown /s /t 0`. `fast-startup-on` boots Windows, runs `scenario/windows/fast-startup-on.ps1`, which turns hibernation and Fast Startup on, and shuts Windows down with `shutdown /s /hybrid /t 0`: Windows uses Fast Startup only for a hybrid shutdown, and a plain `shutdown /s` is a full one.
+
+Both then boot the stick, wait until the stick's installer shows its keyboard screen, save the checksums of the disk's heads with `disk-heads.sh` as `hibernated-disk` does, and run the installer with the `beside-windows` answers. The installer must fail in its checks stage with a line that holds "Turn off BitLocker in Windows" or "Turn off Fast Startup in Windows" and "the disk is unchanged". The checks of `hibernated-disk` follow: no command in the installer's log writes to the disk, the checksums are unchanged and nothing of the disk is mounted. The installer's log counts `ntfsresize` without `--info` or `--no-action`, `ntfsfix` without `--no-action`, and the filesystem relabeling commands as writes. Then the scenario starts the installer built from the working tree in the Sway session, as `gui-install` does, presses Enter on the keyboard screen, and saves the disk screen, which gives the reason, as `bitlocker-disk-screen.png` or `fast-startup-disk-screen.png`, with the single-color check. The disk checks run once more after the screens read the disk.
+
+The stick's installer reads the disks when it starts and mounts a Windows EFI system partition read-only for a moment. Waiting for its keyboard screen before the command-line install keeps that mount from meeting the install's checks, which refuse a mounted disk.
 
 ## State lists
 

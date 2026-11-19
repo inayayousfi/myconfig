@@ -70,8 +70,13 @@ pub enum Disk {
         efi_partition: String,
         home_partition: String,
     },
-    /// Shrinks Windows and installs beside it.
-    BesideWindows { device: String },
+    /// Shrinks the Windows partition and creates the system and home partitions after it,
+    /// reusing the EFI partition Windows boots from. Without a system size, the system gets
+    /// 150 GiB, or the most the disk allows when that is less.
+    BesideWindows {
+        device: String,
+        system_size_gib: Option<u64>,
+    },
 }
 
 impl Disk {
@@ -91,7 +96,7 @@ impl Disk {
             Disk::WipeDisk { device, .. }
             | Disk::ReinstallKeepHome { device, .. }
             | Disk::ShrinkExt4KeepHome { device, .. }
-            | Disk::BesideWindows { device } => device,
+            | Disk::BesideWindows { device, .. } => device,
         }
     }
 
@@ -360,7 +365,9 @@ impl From<&Answers> for RawAnswers {
                 disk.efi_partition = Some(efi_partition.clone());
                 disk.home_partition = Some(home_partition.clone());
             }
-            Disk::BesideWindows { .. } => {}
+            Disk::BesideWindows {
+                system_size_gib, ..
+            } => disk.system_size_gib = *system_size_gib,
         }
         RawAnswers {
             keyboard: answers.keyboard.clone(),
@@ -539,8 +546,11 @@ impl RawDisk {
                         system_size_gib,
                     })
                 } else {
-                    unused("disk.system_size_gib", self.system_size_gib.is_some())?;
-                    Ok(Disk::BesideWindows { device })
+                    let system_size_gib = self.system_size_gib.map(check_size).transpose()?;
+                    Ok(Disk::BesideWindows {
+                        device,
+                        system_size_gib,
+                    })
                 }
             }
             Choice::ReinstallKeepHome => {

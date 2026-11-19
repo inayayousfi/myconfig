@@ -9,7 +9,10 @@
 //! unlock, the recovery key, hibernation and the hibernation lock: `encrypted` installs with
 //! Secure Boot and encryption on and keeps its disk, which `tpm-wiped`, `hibernate-encrypted`
 //! and `firmware-db-update` start from; `hibernate` and `hibernated-disk` start from the plain
-//! kept disk.
+//! kept disk. The Windows scenarios start from a throwaway layer over the clean Windows image
+//! and boot it with the Windows guest's hardware: `beside-windows` installs beside Windows and
+//! starts Windows through its firmware boot entry from rEFInd, and `bitlocker-on` and
+//! `fast-startup-on` check that the installer refuses a Windows that cannot be shrunk.
 //!
 //! A scenario runs on its own layer. A passed scenario copies its screenshots to its
 //! `last-pass` folder and deletes the layer. A failed one keeps the layer, with its logs,
@@ -24,6 +27,8 @@ mod encryption;
 mod encryption_checks;
 mod gui;
 mod installed;
+mod windows;
+mod windows_checks;
 
 use std::fs;
 use std::io;
@@ -125,6 +130,15 @@ pub enum Name {
     /// Secure Boot database, and checks that the next boots unlock with no prompt while the
     /// guard binds the volumes to the new PCR 7.
     FirmwareDbUpdate,
+    /// Starts from the Windows image, installs beside Windows, checks the finished desktop,
+    /// and starts Windows from rEFInd's firmware entry with a key, then with a mouse click.
+    BesideWindows,
+    /// Starts from the Windows image, turns BitLocker on in Windows, and checks that the
+    /// installer refuses to install beside it without changing the disk.
+    BitlockerOn,
+    /// Starts from the Windows image, turns Fast Startup on in Windows and shuts it down, and
+    /// checks that the installer refuses to install beside it without changing the disk.
+    FastStartupOn,
 }
 
 impl Name {
@@ -142,6 +156,9 @@ impl Name {
             Name::HibernateEncrypted => "hibernate-encrypted",
             Name::HibernatedDisk => "hibernated-disk",
             Name::FirmwareDbUpdate => "firmware-db-update",
+            Name::BesideWindows => "beside-windows",
+            Name::BitlockerOn => "bitlocker-on",
+            Name::FastStartupOn => "fast-startup-on",
         }
     }
 
@@ -149,10 +166,11 @@ impl Name {
     /// and encryption a TPM. A scenario that starts from a kept disk boots the firmware it was
     /// installed with. The plain hibernation scenarios have no TPM: with one, OVMF moves an
     /// ACPI table between boots now and then, and the kernel refuses to resume into a
-    /// different memory map.
+    /// different memory map. The Windows scenarios boot the firmware of the Windows image.
     fn boot(self) -> Boot {
         match self {
             Name::SecureBoot | Name::Encrypted => Boot::SecureUefiWithTpm,
+            Name::BesideWindows | Name::BitlockerOn | Name::FastStartupOn => Os::Windows.boot(),
             Name::BrokenKernel
             | Name::Hibernate
             | Name::HibernatedDisk
@@ -180,8 +198,36 @@ impl Name {
             | Name::ShrinkExt4
             | Name::GuiInstall
             | Name::SecureBoot
-            | Name::Encrypted => None,
+            | Name::Encrypted
+            | Name::BesideWindows
+            | Name::BitlockerOn
+            | Name::FastStartupOn => None,
         }
+    }
+
+    /// Whether the scenario starts from the clean Windows image instead of a blank disk.
+    fn starts_from_windows(self) -> bool {
+        matches!(
+            self,
+            Name::BesideWindows | Name::BitlockerOn | Name::FastStartupOn
+        )
+    }
+
+    /// The guest whose virtual hardware the scenario boots. A disk that holds Windows keeps
+    /// the Windows guest's SATA disk, network card and display, which Windows drives without
+    /// extra drivers. The USB stick and InayOS drive them too.
+    fn guest(self) -> Os {
+        if self.starts_from_windows() {
+            Os::Windows
+        } else {
+            OS
+        }
+    }
+
+    /// The Secure Boot answer of the scenario's installs. The firmware of the Windows image has
+    /// no Secure Boot keys, so the Windows scenarios install with Secure Boot off.
+    fn secure_boot(self) -> bool {
+        matches!(self, Name::SecureBoot | Name::Encrypted)
     }
 
     /// The kept installed disk that a passed run of the scenario replaces.
@@ -300,6 +346,7 @@ pub fn run(name: Name, watch: bool, repository: &Path) -> Result<(), ScenarioErr
     if name.needs_iso() && !iso.is_file() {
         return Err(ScenarioError::NoIso(iso));
     }
+    let windows_image = paths.image(Os::Windows);
     let installed = match name.starts_from() {
         Some(kept) => Some(installed::find(
             kept,
@@ -313,6 +360,13 @@ pub fn run(name: Name, watch: bool, repository: &Path) -> Result<(), ScenarioErr
     let failed = paths.scenario_failed(name.name());
     disk::discard(&failed)?;
     match &installed {
+        None if name.starts_from_windows() => {
+            println!(
+                "vm: creating a throwaway layer over the Windows image in {}",
+                windows_image.dir().display()
+            );
+            disk::layer_over(&windows_image, &work, name.boot())?;
+        }
         Some(installed) => {
             println!(
                 "vm: creating a throwaway layer over the installed disk in {}, {}",
@@ -341,6 +395,8 @@ pub fn run(name: Name, watch: bool, repository: &Path) -> Result<(), ScenarioErr
         vm: None,
         boots: 0,
         boot: name.boot(),
+        guest: name.guest(),
+        secure_boot: name.secure_boot(),
         encryption: name.encryption(),
         installed: installed.clone(),
         installed_copy: installed_copy.clone(),
@@ -438,8 +494,12 @@ struct Scenario {
     vm: Option<Vm>,
     /// The number of boots so far, which names the serial log of each boot.
     boots: u32,
-    /// The firmware of the guest, which the install also takes as the Secure Boot answer.
+    /// The firmware of the guest.
     boot: Boot,
+    /// The guest whose virtual hardware each boot has.
+    guest: Os,
+    /// The Secure Boot answer of the installs.
+    secure_boot: bool,
     /// The encryption answer of the install.
     encryption: bool,
     /// The kept installed disk the scenario started from.
@@ -590,6 +650,33 @@ impl Scenario {
                 self.check_tpm_enrolled(&user, "third-boot")?;
                 Ok(())
             }
+            Name::BesideWindows => {
+                let efi_uuid = self.install_beside_windows()?;
+                let user = self.boot_inayos_by_default("after-install")?;
+                self.check_efi_reused(&user, &efi_uuid)?;
+                self.check_desktop(&user)?;
+                self.finish_windows_disk_check(user)?;
+                let index = self.find_windows_entry_with_keys()?;
+                self.start_windows_with_click(index)?;
+                let user = self.boot_inayos_by_default("after-windows")?;
+                self.power_off(&user, &user_power_off())
+            }
+            Name::BitlockerOn => {
+                let windows = self.boot_windows()?;
+                self.run_windows_script(&windows, "bitlocker-on", windows::BITLOCKER_SCRIPT)?;
+                self.shut_down_windows(&windows, "shutdown /s /t 0")?;
+                self.check_beside_windows_refused(windows_checks::BITLOCKER_MESSAGE, "bitlocker")
+            }
+            Name::FastStartupOn => {
+                let windows = self.boot_windows()?;
+                self.run_windows_script(&windows, "fast-startup-on", windows::FAST_STARTUP_SCRIPT)?;
+                // Only a hybrid shutdown uses Fast Startup; a plain `shutdown /s` is a full one.
+                self.shut_down_windows(&windows, "shutdown /s /hybrid /t 0")?;
+                self.check_beside_windows_refused(
+                    windows_checks::FAST_STARTUP_MESSAGE,
+                    "fast-startup",
+                )
+            }
             Name::ShrinkExt4 => {
                 let live = self.boot_live()?;
                 println!("vm: building a disk like the laptop's");
@@ -693,7 +780,7 @@ impl Scenario {
     fn start(&mut self, media: Media) -> Result<(), StepError> {
         self.boots += 1;
         let machine = Machine {
-            os: OS,
+            os: self.guest,
             boot: self.boot,
             layer: self.layer.clone(),
             sockets: Sockets::in_dir(&self.runtime),
@@ -709,11 +796,10 @@ impl Scenario {
         Ok(())
     }
 
-    /// The security answers of the install: Secure Boot on when the guest has the Secure Boot
-    /// firmware, which is there for it.
+    /// The security answers of the install.
     fn security(&self) -> Security {
         Security {
-            secure_boot: self.boot == Boot::SecureUefiWithTpm,
+            secure_boot: self.secure_boot,
             encryption: self.encryption,
         }
     }

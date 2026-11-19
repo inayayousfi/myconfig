@@ -30,8 +30,6 @@ use crate::seed::{self, SeedError, SeedFile};
 use crate::ssh::{Guest, SshError, SshKey};
 use crate::vm::{Vm, VmError};
 
-/// The size of a new guest disk. The qcow2 file grows only as the guest writes.
-const DISK_SIZE: &str = "100G";
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 const POLL: Duration = Duration::from_secs(5);
 /// An installer script writes this line to the first serial port when it fails.
@@ -229,7 +227,7 @@ impl Build {
                 command
                     .args(["create", "-q", "-f", "qcow2"])
                     .arg(&disk)
-                    .arg(DISK_SIZE);
+                    .arg(self.os.disk_size());
             })?,
             SourceKind::Disk => {
                 qemu_img(&disk, |command| {
@@ -239,7 +237,10 @@ impl Build {
                         .arg(&disk);
                 })?;
                 qemu_img(&disk, |command| {
-                    command.args(["resize", "-q"]).arg(&disk).arg(DISK_SIZE);
+                    command
+                        .args(["resize", "-q"])
+                        .arg(&disk)
+                        .arg(self.os.disk_size());
                 })?;
             }
         }

@@ -1,7 +1,7 @@
 //! Why an install failed, and at which stage, which says what the failure left on the disk.
 use std::{fmt, io, path::PathBuf};
 
-use crate::sizes::{HomeTooFull, TooSmall};
+use crate::sizes::{HomeTooFull, NoRoomBesideWindows, TooSmall};
 
 /// The stages of an install, in order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -47,8 +47,6 @@ impl Stage {
 pub enum Error {
     #[error("the answers are invalid: {0}")]
     InvalidAnswers(#[from] crate::AnswersError),
-    #[error("{option} is not built yet")]
-    NotBuilt { option: &'static str },
     #[error("{}", crate::hibernation::HIBERNATED)]
     Hibernated,
     #[error("encryption needs a TPM 2.0, and this machine has none")]
@@ -96,6 +94,24 @@ pub enum Error {
     DiskTooSmall(TooSmall),
     #[error("the home partition cannot shrink enough: {0}")]
     HomeTooFull(HomeTooFull),
+    /// InayOS cannot go beside the Windows on the disk; `reason` says why in plain words,
+    /// as the disk screen shows it.
+    #[error("{reason}")]
+    NotBesideWindows { reason: String },
+    #[error("{0}")]
+    NoRoomBesideWindows(NoRoomBesideWindows),
+    /// The recreated GPT entry of the Windows partition is not the planned one. The Windows
+    /// filesystem has already shrunk, and nothing else on the disk changed.
+    #[error(
+        "the new GPT entry of the Windows partition {partition} is wrong: {problem}. Windows \
+         cannot start until the entry starts at sector {first} again with its old type and \
+         unique GUID; the install made no other change to the disk"
+    )]
+    WindowsEntryChanged {
+        partition: String,
+        problem: String,
+        first: u64,
+    },
     #[error(
         "{partition} has {free_gib:.1} GiB free, and the hibernation swap file needs {needed_gib} \
          GiB, the size of the memory"

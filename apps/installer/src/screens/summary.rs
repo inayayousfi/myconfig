@@ -4,9 +4,9 @@ use iced::{
     Element, Length, Task,
     widget::{Column, column, scrollable, text, text_input},
 };
-use inayos_install_core::{Answers, Disk, inventory::DiskInfo, sizes};
+use inayos_install_core::{Answers, Choice, Disk, inventory::DiskInfo, sizes};
 
-use super::disk::{describe_disk, gib};
+use super::disk::{describe_disk, gib, shrink_line};
 use crate::theme;
 
 /// The word that enables Install.
@@ -144,9 +144,41 @@ pub fn disk_actions(disk: &Disk, info: Option<&DiskInfo>) -> Vec<String> {
                  from it."
             ),
         ],
-        Disk::BesideWindows { .. } => vec![format!(
-            "Shrinks Windows on {named} and installs InayOS beside it."
-        )],
+        Disk::BesideWindows {
+            system_size_gib, ..
+        } => {
+            let offer = info.and_then(|info| {
+                info.offers
+                    .iter()
+                    .find(|offer| offer.choice == Choice::BesideWindows)
+            });
+            let shrink = offer
+                .and_then(|offer| offer.windows.as_ref())
+                .zip(*system_size_gib)
+                .and_then(|(shrink, gib)| shrink_line(shrink, gib));
+            let system = system_size_gib.map_or_else(
+                || "a system partition (Btrfs)".to_owned(),
+                |gib| format!("a {gib} GiB system partition (Btrfs)"),
+            );
+            let efi = offer
+                .and_then(|offer| offer.available.as_ref().ok())
+                .and_then(|partitions| partitions.efi.as_deref())
+                .map_or_else(String::new, |efi| format!(" {efi}"));
+            vec![
+                format!("Installs InayOS beside Windows on {named}. No Windows file is erased."),
+                shrink.unwrap_or_else(|| {
+                    "Shrinks the Windows partition, keeping its files and 20 GiB free.".to_owned()
+                }),
+                format!(
+                    "Creates {system} and a home partition (ext4) in the free space after the \
+                     Windows partition."
+                ),
+                format!(
+                    "Reuses the EFI partition{efi} without formatting it. Windows keeps starting \
+                     from its own firmware boot entry."
+                ),
+            ]
+        }
     }
 }
 
@@ -193,7 +225,7 @@ mod tests {
     use inayos_install_core::Disk;
 
     use super::{State, disk_actions};
-    use crate::screens::disk::tests::disk;
+    use crate::screens::disk::tests::{disk, windows_shrink};
 
     #[test]
     fn a_wiped_disk_is_named_with_its_model_and_size_and_its_layout_adds_up() {
@@ -252,6 +284,41 @@ mod tests {
             actions[0],
             "Shrinks the ext4 partition /dev/vda3 on /dev/vda by 50 GiB and creates the system \
              partition (Btrfs) in the freed space after it."
+        );
+    }
+
+    #[test]
+    fn beside_windows_names_how_much_windows_shrinks_and_the_reused_efi_partition() {
+        let mut info = disk();
+        info.offers[3] = inayos_install_core::inventory::Offer {
+            choice: inayos_install_core::Choice::BesideWindows,
+            available: Ok(inayos_install_core::inventory::Partitions {
+                efi: Some("/dev/vda1".into()),
+                system: None,
+                home: None,
+            }),
+            system_size: None,
+            windows: Some(windows_shrink()),
+        };
+        let actions = disk_actions(
+            &Disk::BesideWindows {
+                device: "/dev/vda".into(),
+                system_size_gib: Some(30),
+            },
+            Some(&info),
+        );
+        assert_eq!(
+            actions,
+            [
+                "Installs InayOS beside Windows on /dev/vda, QEMU HARDDISK, 128.0 GiB. No \
+                 Windows file is erased.",
+                "The Windows partition /dev/vda3 shrinks by 60.0 GiB, from 100.0 GiB to 40.0 \
+                 GiB. Its files stay.",
+                "Creates a 30 GiB system partition (Btrfs) and a home partition (ext4) in the \
+                 free space after the Windows partition.",
+                "Reuses the EFI partition /dev/vda1 without formatting it. Windows keeps \
+                 starting from its own firmware boot entry.",
+            ]
         );
     }
 

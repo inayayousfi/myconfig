@@ -34,6 +34,21 @@ pub enum DiskChoice {
         efi_partition: &'static str,
         home_partition: &'static str,
     },
+    /// Shrinks the Windows partition of `device` and installs beside it. The installer picks
+    /// the partitions and the sizes itself.
+    BesideWindows { device: &'static str },
+}
+
+impl DiskChoice {
+    /// The whole disk the choice installs on.
+    pub fn device(&self) -> &'static str {
+        match self {
+            DiskChoice::WipeDisk { device, .. }
+            | DiskChoice::ReinstallKeepHome { device, .. }
+            | DiskChoice::ShrinkExt4KeepHome { device, .. }
+            | DiskChoice::BesideWindows { device } => device,
+        }
+    }
 }
 
 /// The answers of the security screen.
@@ -85,6 +100,10 @@ pub fn answers_file(disk: &DiskChoice, authorized_key: &str, security: Security)
             push(&mut text, "system_size_gib", system_size_gib.to_string());
             push(&mut text, "efi_partition", string(efi_partition));
             push(&mut text, "home_partition", string(home_partition));
+        }
+        DiskChoice::BesideWindows { device } => {
+            push(&mut text, "choice", string("beside-windows"));
+            push(&mut text, "device", string(device));
         }
     }
 
@@ -200,6 +219,21 @@ mod tests {
             "[disk]\nchoice = \"shrink-ext4-keep-home\"\ndevice = \"/dev/vda\"\n\
              system_size_gib = 30\nefi_partition = \"/dev/vda1\"\nhome_partition = \"/dev/vda2\"\n"
         ));
+    }
+
+    #[test]
+    fn the_beside_windows_choice_names_only_the_disk() {
+        let text = answers_file(
+            &DiskChoice::BesideWindows { device: "/dev/sda" },
+            KEY,
+            Security::default(),
+        );
+        assert!(
+            text.contains(
+                "\n[disk]\nchoice = \"beside-windows\"\ndevice = \"/dev/sda\"\n\n[security]\n"
+            ),
+            "{text}"
+        );
     }
 
     #[test]

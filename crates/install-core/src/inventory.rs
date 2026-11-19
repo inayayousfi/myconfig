@@ -8,14 +8,19 @@ use crate::{
     install::{checks::LIVE_MEDIUM, machine::Machine},
     parse::{self, ListedDevice},
     sink::Silent,
-    sizes::{self, GIB},
+    sizes::{self, BesideWindows, GIB},
+    windows,
 };
 
 /// The label prefix of the InayOS USB stick's filesystem, which stays listed as a disk when
 /// archiso copied it to memory and unmounted it.
 const LIVE_LABEL_PREFIX: &str = "INAYOS_";
-/// The GPT type of an EFI system partition.
-const EFI_TYPE: &str = "c12a7328-f81f-11d2-ba4b-00a0c93ec93b";
+/// The lsblk columns the inventory reads, which `parse::lsblk_inventory` parses.
+pub(crate) const COLUMNS: &str =
+    "NAME,PATH,TYPE,MODEL,SIZE,START,LOG-SEC,FSTYPE,LABEL,PARTTYPE,MOUNTPOINTS";
+/// Where the inventory mounts an EFI partition read-only for a moment, to look for the
+/// Windows Boot Manager.
+const ESP_LOOK: &str = "/run/inayos-installer/esp";
 const SYSTEM_LABEL: &str = "inayos-system";
 pub(crate) const HOME_LABEL: &str = "inayos-home";
 const TPM_VERSION: &str = "/sys/class/tpm/tpm0/tpm_version_major";
@@ -43,6 +48,39 @@ pub struct Offer {
     pub available: Result<Partitions, String>,
     /// The system sizes the answers may give, for an available choice that takes a size.
     pub system_size: Option<SizeLimits>,
+    /// How the Windows partition shrinks, for an available `beside-windows`.
+    pub windows: Option<WindowsShrink>,
+}
+
+/// The Windows partition that installing beside Windows shrinks.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WindowsShrink {
+    pub partition: String,
+    /// The size of the partition now.
+    pub size_bytes: u64,
+    room: BesideWindows,
+    swap_gib: u64,
+}
+
+impl WindowsShrink {
+    /// The Windows partition at `partition`, laid out as `room`, beside which home keeps
+    /// room for a swap file of `swap_gib`.
+    pub fn new(partition: impl Into<String>, room: BesideWindows, swap_gib: u64) -> Self {
+        WindowsShrink {
+            partition: partition.into(),
+            size_bytes: room.windows.sectors() * room.sector_size,
+            room,
+            swap_gib,
+        }
+    }
+
+    /// The size of the Windows partition after an install with a system of `system_gib`;
+    /// None when that system does not fit.
+    pub fn size_after(&self, system_gib: u64) -> Option<u64> {
+        sizes::beside_windows_layout(self.room, system_gib, self.swap_gib)
+            .ok()
+            .map(|layout| layout.windows_bytes(self.room.sector_size))
+    }
 }
 
 /// The existing partitions a choice reuses. A wiped disk has none.
@@ -75,12 +113,7 @@ pub fn disks(host: &dyn Host) -> Result<Vec<DiskInfo>, Error> {
         host,
         sink: &Silent,
     };
-    let lsblk = Command::query("lsblk").args([
-        "--json",
-        "--bytes",
-        "--output",
-        "NAME,PATH,TYPE,MODEL,SIZE,START,LOG-SEC,FSTYPE,LABEL,PARTTYPE,MOUNTPOINTS",
-    ]);
+    let lsblk = Command::query("lsblk").args(["--json", "--bytes", "--output", COLUMNS]);
     let shown = lsblk.shown();
     let devices =
         parse::lsblk_inventory(&m.query(lsblk)?).map_err(|problem| Error::UnexpectedOutput {
@@ -183,7 +216,7 @@ fn offers(
     Choice::ALL
         .into_iter()
         .map(|choice| match &in_use {
-            Some(reason) if choice != Choice::BesideWindows => unavailable(choice, reason.clone()),
+            Some(reason) => unavailable(choice, reason.clone()),
             _ => offer(m, disk, choice, swap_gib),
         })
         .collect()
@@ -194,6 +227,7 @@ fn unavailable(choice: Choice, reason: impl Into<String>) -> Offer {
         choice,
         available: Err(reason.into()),
         system_size: None,
+        windows: None,
     }
 }
 
@@ -202,33 +236,58 @@ fn offer(m: &Machine, disk: &ListedDevice, choice: Choice, swap_gib: u64) -> Off
         Choice::WipeDisk => wipe(disk, swap_gib),
         Choice::ReinstallKeepHome => reinstall(m, disk, swap_gib),
         Choice::ShrinkExt4KeepHome => shrink(m, disk, swap_gib),
-        Choice::BesideWindows => unavailable(choice, "comes in a later version"),
+        Choice::BesideWindows => beside_windows(m, disk, swap_gib),
     }
 }
 
-/// The largest whole number of GiB from `min` up to `max` for which `fits` holds, when it
-/// holds for `min`. `fits` must hold for every size below one that fits.
-fn largest_fitting(min: u64, max: u64, fits: impl Fn(u64) -> bool) -> Option<u64> {
-    if max < min || !fits(min) {
-        return None;
+/// The system sizes that fit beside Windows in `room`, or why none does.
+pub(crate) fn beside_windows_limits(
+    room: BesideWindows,
+    swap_gib: u64,
+) -> Result<SizeLimits, String> {
+    let fits = |gib| sizes::beside_windows_layout(room, gib, swap_gib).is_ok();
+    let room_bytes = (room.room_last + 1 - room.windows.first) * room.sector_size;
+    let max = sizes::MAX_SYSTEM_GIB.min(room_bytes / GIB);
+    match sizes::largest_fitting(sizes::MIN_SYSTEM_GIB, max, fits) {
+        Some(max_gib) => Ok(SizeLimits {
+            min_gib: sizes::MIN_SYSTEM_GIB,
+            max_gib,
+        }),
+        None => Err(
+            sizes::beside_windows_layout(room, sizes::MIN_SYSTEM_GIB, swap_gib)
+                .err()
+                .map_or_else(String::new, |no_room| no_room.to_string()),
+        ),
     }
-    let (mut low, mut high) = (min, max);
-    while low < high {
-        let middle = low + (high - low).div_ceil(2);
-        if fits(middle) {
-            low = middle;
-        } else {
-            high = middle - 1;
-        }
+}
+
+fn beside_windows(m: &Machine, disk: &ListedDevice, swap_gib: u64) -> Offer {
+    let choice = Choice::BesideWindows;
+    let found = match windows::examine(m, disk, Path::new(ESP_LOOK)) {
+        Ok(Ok(found)) => found,
+        Ok(Err(reason)) => return unavailable(choice, reason),
+        Err(error) => return unavailable(choice, format!("Windows cannot be read: {error}")),
+    };
+    match beside_windows_limits(found.room, swap_gib) {
+        Ok(limits) => Offer {
+            choice,
+            available: Ok(Partitions {
+                efi: Some(found.esp),
+                system: None,
+                home: None,
+            }),
+            system_size: Some(limits),
+            windows: Some(WindowsShrink::new(found.windows, found.room, swap_gib)),
+        },
+        Err(reason) => unavailable(choice, reason),
     }
-    Some(low)
 }
 
 fn wipe(disk: &ListedDevice, swap_gib: u64) -> Offer {
     let sectors = disk.size_bytes / disk.sector_size;
     let fits = |gib| sizes::wipe_layout(sectors, disk.sector_size, gib, swap_gib).is_ok();
     let max = sizes::MAX_SYSTEM_GIB.min(disk.size_bytes / GIB);
-    match largest_fitting(sizes::MIN_SYSTEM_GIB, max, fits) {
+    match sizes::largest_fitting(sizes::MIN_SYSTEM_GIB, max, fits) {
         Some(max_gib) => Offer {
             choice: Choice::WipeDisk,
             available: Ok(Partitions::default()),
@@ -236,6 +295,7 @@ fn wipe(disk: &ListedDevice, swap_gib: u64) -> Offer {
                 min_gib: sizes::MIN_SYSTEM_GIB,
                 max_gib,
             }),
+            windows: None,
         },
         None => {
             let needed =
@@ -256,7 +316,7 @@ fn wipe(disk: &ListedDevice, swap_gib: u64) -> Offer {
 fn efi_partition(disk: &ListedDevice) -> Option<&ListedDevice> {
     disk.children
         .iter()
-        .find(|part| part.parttype == EFI_TYPE && part.fstype == "vfat")
+        .find(|part| part.parttype == windows::EFI_TYPE && part.fstype == "vfat")
 }
 
 /// The GiB free on the kept home `partition` for the swap file, counting the earlier
@@ -302,6 +362,7 @@ fn reinstall(m: &Machine, disk: &ListedDevice, swap_gib: u64) -> Offer {
         choice: Choice::ReinstallKeepHome,
         available,
         system_size: None,
+        windows: None,
     }
 }
 
@@ -352,7 +413,7 @@ fn shrink(m: &Machine, disk: &ListedDevice, swap_gib: u64) -> Offer {
     let needed = usage.used_bytes + swap_gib * GIB;
     let fits = |gib| sizes::shrink_plan(span, sector, usage.block_size, needed, gib).is_ok();
     let max = sizes::MAX_SYSTEM_GIB.min(home.size_bytes / GIB);
-    match largest_fitting(sizes::MIN_SYSTEM_GIB, max, fits) {
+    match sizes::largest_fitting(sizes::MIN_SYSTEM_GIB, max, fits) {
         Some(max_gib) => Offer {
             choice,
             available: Ok(Partitions {
@@ -364,6 +425,7 @@ fn shrink(m: &Machine, disk: &ListedDevice, swap_gib: u64) -> Offer {
                 min_gib: sizes::MIN_SYSTEM_GIB,
                 max_gib,
             }),
+            windows: None,
         },
         None => unavailable(
             choice,

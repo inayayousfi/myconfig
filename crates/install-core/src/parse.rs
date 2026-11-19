@@ -206,6 +206,15 @@ pub fn partition_table(text: &str) -> Result<Vec<TableRow>, String> {
         .collect()
 }
 
+/// The last sector a partition may use, from the `last usable sector is N` that
+/// `sgdisk --print` prints. The table's backup sits after it.
+pub fn last_usable_sector(text: &str) -> Result<u64, String> {
+    text.lines()
+        .find_map(|line| line.split_once("last usable sector is "))
+        .and_then(|(_, rest)| rest.trim().parse().ok())
+        .ok_or_else(|| "sgdisk printed no last usable sector".to_owned())
+}
+
 /// The GPT entry of one partition, from `sgdisk --info=N`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GptEntry {
@@ -214,6 +223,9 @@ pub struct GptEntry {
     pub first: u64,
     pub last: u64,
     pub name: String,
+    /// The attribute flags as sgdisk prints them, 16 hexadecimal digits; all zero when
+    /// sgdisk printed none.
+    pub attributes: String,
 }
 
 pub fn gpt_entry(text: &str) -> Result<GptEntry, String> {
@@ -246,6 +258,7 @@ pub fn gpt_entry(text: &str) -> Result<GptEntry, String> {
         first: sector("First sector:")?,
         last: sector("Last sector:")?,
         name: name.to_owned(),
+        attributes: first_word("Attribute flags:").unwrap_or_else(|_| "0".repeat(16)),
     })
 }
 
@@ -381,6 +394,52 @@ pub fn first_block(bmap: &str) -> Option<u64> {
     bmap.trim().parse().ok().filter(|block| *block > 0)
 }
 
+/// The sizes that `ntfsresize --info` reports for an NTFS filesystem.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NtfsSizes {
+    /// The size of the filesystem now.
+    pub volume_bytes: u64,
+    /// The smallest size the filesystem can shrink to.
+    pub smallest_bytes: u64,
+}
+
+/// The sizes in the output of `ntfsresize --info`: its `Current volume size: N bytes` line,
+/// and its `You might resize at N bytes` advice. Without the advice, the filesystem cannot
+/// shrink.
+pub fn ntfs_sizes(text: &str) -> Result<NtfsSizes, String> {
+    let bytes_after = |label: &str| {
+        text.lines().find_map(|line| {
+            let rest = line.trim_start().strip_prefix(label)?;
+            rest.split_whitespace().next()?.parse::<u64>().ok()
+        })
+    };
+    let volume_bytes =
+        bytes_after("Current volume size:").ok_or("ntfsresize printed no current volume size")?;
+    let smallest_bytes = bytes_after("You might resize at").unwrap_or(volume_bytes);
+    Ok(NtfsSizes {
+        volume_bytes,
+        smallest_bytes: smallest_bytes.min(volume_bytes),
+    })
+}
+
+/// The bytes available that `df --block-size=1 --output=avail` printed under its header.
+pub fn df_available(text: &str) -> Result<u64, String> {
+    text.lines()
+        .map(str::trim)
+        .rfind(|line| !line.is_empty())
+        .and_then(|line| line.parse().ok())
+        .ok_or_else(|| format!("df printed no number of bytes: {:?}", text.trim()))
+}
+
+/// The signature at byte 3 of a partition that BitLocker encrypts, where an NTFS boot sector
+/// holds `NTFS    `.
+pub const BITLOCKER_SIGNATURE: &str = "-FVE-FS-";
+
+/// Whether the 8 bytes from byte 3 of a partition are BitLocker's signature.
+pub fn is_bitlocker_signature(bytes: &str) -> bool {
+    bytes.starts_with(BITLOCKER_SIGNATURE)
+}
+
 /// Whether a file at the top of an EFI partition is a kernel, initramfs or microcode image of
 /// a system that kept `/boot` there.
 pub fn is_old_boot_file(name: &str) -> bool {
@@ -458,8 +517,49 @@ mod tests {
                 first: 1_050_624,
                 last: 134_215_679,
                 name: "my root".into(),
+                attributes: "0000000000000000".into(),
             }
         );
+    }
+
+    #[test]
+    fn sgdisk_print_gives_the_last_usable_sector() {
+        let text = "Disk /dev/vda: 268435456 sectors, 128.0 GiB\n\
+            Sector size (logical/physical): 512/512 bytes\n\
+            Partition table holds up to 128 entries\n\
+            First usable sector is 34, last usable sector is 268435422\n\
+            Partitions will be aligned on 2048-sector boundaries\n";
+        assert_eq!(last_usable_sector(text), Ok(268_435_422));
+        assert!(last_usable_sector("Number  Start (sector)\n").is_err());
+    }
+
+    #[test]
+    fn ntfsresize_gives_the_volume_size_and_the_smallest_size() {
+        let text = "ntfsresize v2022.10.3 (libntfs-3g)\nDevice name        : /dev/vda3\n\
+            NTFS volume version: 3.1\nCluster size       : 4096 bytes\n\
+            Current volume size: 85371367936 bytes (85372 MB)\n\
+            Current device size: 85371371520 bytes (85372 MB)\n\
+            Checking filesystem consistency ...\nAccounting clusters ...\n\
+            Space in use       : 24578 MB (28.8%)\nCollecting resizing constraints ...\n\
+            You might resize at 24577306624 bytes or 24578 MB (freeing 60794 MB).\n\
+            Please make a test run using both the -n and -s options before real resizing!\n";
+        assert_eq!(
+            ntfs_sizes(text).unwrap(),
+            NtfsSizes {
+                volume_bytes: 85_371_367_936,
+                smallest_bytes: 24_577_306_624,
+            }
+        );
+        // Without the advice the filesystem cannot shrink.
+        let full = "Current volume size: 1000 bytes (0 MB)\n";
+        assert_eq!(ntfs_sizes(full).unwrap().smallest_bytes, 1000);
+        assert!(ntfs_sizes("ERROR: the partition is hibernated\n").is_err());
+    }
+
+    #[test]
+    fn df_gives_the_available_bytes_under_its_header() {
+        assert_eq!(df_available("    Avail\n70254592\n"), Ok(70_254_592));
+        assert!(df_available("    Avail\n").is_err());
     }
 
     #[test]

@@ -14,7 +14,8 @@ use crate::{
     inventory,
     modules::{ENCRYPTION_MODULE, SECURE_BOOT_MODULE},
     parse::{self, BlockDevice, GptEntry, TableRow},
-    sizes::{self, ShrinkPlan, WipeLayout},
+    sizes::{self, BesideLayout, ShrinkPlan, WipeLayout},
+    windows,
 };
 
 /// Where archiso mounts the medium it booted from.
@@ -44,6 +45,18 @@ pub(crate) enum DiskWork {
         plan: ShrinkPlan,
         system_number: u32,
     },
+    BesideWindows {
+        device: String,
+        efi: String,
+        windows: String,
+        windows_number: u32,
+        /// The GPT entry of the Windows partition before the shrink.
+        entry: GptEntry,
+        layout: BesideLayout,
+        sector_size: u64,
+        system_number: u32,
+        home_number: u32,
+    },
 }
 
 /// What the checks found.
@@ -61,11 +74,6 @@ pub(crate) fn check(m: &Machine, answers: &Answers, settings: &Settings) -> Resu
     answers.check()?;
     if answers.security.encryption && !matches!(answers.disk, Disk::WipeDisk { .. }) {
         return Err(Error::EncryptionNeedsWholeDisk);
-    }
-    if let Disk::BesideWindows { .. } = answers.disk {
-        return Err(Error::NotBuilt {
-            option: "Installing beside Windows",
-        });
     }
     let uid = m.host.effective_uid().map_err(|error| Error::Io {
         action: "read the user id of",
@@ -441,10 +449,83 @@ fn plan_disk(
                 owner,
             ))
         }
-        Disk::BesideWindows { .. } => Err(Error::NotBuilt {
-            option: "Installing beside Windows",
-        }),
+        Disk::BesideWindows {
+            device,
+            system_size_gib,
+        } => Ok((
+            plan_beside_windows(m, device, *system_size_gib, swap_gib)?,
+            None,
+        )),
     }
+}
+
+/// The disk changes that put InayOS beside the Windows on `device`. Refuses with the same
+/// words as the disk screen, read again from the real disk.
+fn plan_beside_windows(
+    m: &Machine,
+    device: &str,
+    system_size_gib: Option<u64>,
+    swap_gib: u64,
+) -> Result<DiskWork, Error> {
+    let lsblk =
+        Command::query("lsblk").args(["--json", "--bytes", "--output", inventory::COLUMNS, device]);
+    let shown = lsblk.shown();
+    let tree = parse::lsblk_inventory(&m.query(lsblk)?)
+        .map_err(|problem| Error::UnexpectedOutput {
+            command: shown.clone(),
+            problem,
+        })?
+        .into_iter()
+        .next()
+        .ok_or_else(|| Error::UnexpectedOutput {
+            command: shown,
+            problem: "lsblk printed no device".to_owned(),
+        })?;
+    let found = windows::examine(m, &tree, &Path::new(TARGET).join("efi"))?
+        .map_err(|reason| Error::NotBesideWindows { reason })?;
+    let info = Command::query("sgdisk").args([
+        format!("--info={}", found.windows_number),
+        device.to_owned(),
+    ]);
+    let shown = info.shown();
+    let entry = parse::gpt_entry(&m.query(info)?).map_err(|problem| Error::UnexpectedOutput {
+        command: shown,
+        problem,
+    })?;
+    let print = Command::query("sgdisk").args(["--print", device]);
+    let shown = print.shown();
+    let last_usable =
+        parse::last_usable_sector(&m.query(print)?).map_err(|problem| Error::UnexpectedOutput {
+            command: shown,
+            problem,
+        })?;
+    // The partition table gives the exact sectors of the Windows partition and the end of
+    // the room, which a table copied from a smaller disk puts before the end of this one.
+    let mut room = found.room;
+    room.windows = sizes::Span {
+        first: entry.first,
+        last: entry.last,
+    };
+    room.room_last = room.room_last.min(last_usable);
+    let system_gib = match system_size_gib {
+        Some(gib) => gib,
+        None => inventory::beside_windows_limits(room, swap_gib)
+            .map_err(|reason| Error::NotBesideWindows { reason })?
+            .clamp(sizes::DEFAULT_SYSTEM_GIB),
+    };
+    let layout = sizes::beside_windows_layout(room, system_gib, swap_gib)
+        .map_err(Error::NoRoomBesideWindows)?;
+    Ok(DiskWork::BesideWindows {
+        device: device.to_owned(),
+        efi: found.esp,
+        windows: found.windows,
+        windows_number: found.windows_number,
+        entry,
+        layout,
+        sector_size: room.sector_size,
+        system_number: found.system_number,
+        home_number: found.home_number,
+    })
 }
 
 /// Fails unless the kept home on `partition` has room for the swap file of `swap_gib`. The

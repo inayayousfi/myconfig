@@ -153,14 +153,13 @@ pub fn luks_devices(lsblk: &str) -> Vec<String> {
         .collect()
 }
 
-/// What is wrong with the installer's output and log for a refused install of a hibernated
-/// disk, or none when they hold the hibernation message and say that the disk is unchanged.
-pub fn refusal_problem(log: &str) -> Option<String> {
-    let refusal = log.lines().find(|line| line.contains(HIBERNATED_MESSAGE));
+/// What is wrong with the installer's output and log for an install that its checks stage
+/// should refuse with `message`, or none when a line holds the message and says that the
+/// disk is unchanged.
+pub fn refusal_problem(log: &str, message: &str) -> Option<String> {
+    let refusal = log.lines().find(|line| line.contains(message));
     match refusal {
-        None => Some(format!(
-            "the installer did not refuse with {HIBERNATED_MESSAGE:?}"
-        )),
+        None => Some(format!("the installer did not refuse with {message:?}")),
         Some(line) if !line.contains(DISK_UNCHANGED) => Some(format!(
             "the installer refused, but not in its checks stage, which says {DISK_UNCHANGED:?}: {line}"
         )),
@@ -169,8 +168,8 @@ pub fn refusal_problem(log: &str) -> Option<String> {
 }
 
 /// The commands in the installer's log, lines that start with `$ `, that can write to a disk:
-/// partitioning, formatting, LUKS header changes, filesystem repairs and resizes, swap, and
-/// any mount that is not read-only.
+/// partitioning, formatting, LUKS header changes, filesystem repairs, resizes and relabels,
+/// swap, and any mount that is not read-only.
 pub fn disk_writes(log: &str) -> Vec<String> {
     log.lines()
         .filter_map(|line| line.trim().strip_prefix("$ "))
@@ -211,6 +210,12 @@ fn writes_to_disk(command: &str) -> bool {
             .iter()
             .any(|word| word.trim_start_matches(['\'', '"']).starts_with("of=")),
         "e2fsck" | "fsck" | "fsck.ext4" => !has("-n"),
+        // ntfsresize only reads with --info or --no-action, and ntfsfix with --no-action.
+        "ntfsresize" => !["-i", "--info", "-n", "--no-action"]
+            .iter()
+            .any(|flag| has(flag)),
+        "ntfsfix" => !has("-n") && !has("--no-action"),
+        "ntfslabel" | "e2label" | "fatlabel" => true,
         "tune2fs" => !has("-l"),
         "cryptsetup" => words.iter().skip(1).any(|word| {
             matches!(
@@ -379,12 +384,16 @@ mod tests {
     fn a_refusal_counts_only_with_the_hibernation_message_in_the_checks_stage() {
         let refused =
             format!("==> Checking the machine\nerror: {HIBERNATED_MESSAGE}; {DISK_UNCHANGED}\n");
-        assert_eq!(refusal_problem(&refused), None);
+        assert_eq!(refusal_problem(&refused, HIBERNATED_MESSAGE), None);
         let late =
             format!("error: {HIBERNATED_MESSAGE}; the disk is partly partitioned or formatted\n");
-        assert!(refusal_problem(&late).unwrap().contains("checks stage"));
         assert!(
-            refusal_problem("error: no network\n")
+            refusal_problem(&late, HIBERNATED_MESSAGE)
+                .unwrap()
+                .contains("checks stage")
+        );
+        assert!(
+            refusal_problem("error: no network\n", HIBERNATED_MESSAGE)
                 .unwrap()
                 .contains("did not refuse")
         );
@@ -407,6 +416,25 @@ $ dd if=/dev/vda3 iflag=skip_bytes,count_bytes skip=135266304 count=4096 status=
 $ umount /run/inayos-installer/home
 ";
         assert_eq!(disk_writes(log), Vec::<String>::new());
+    }
+
+    #[test]
+    fn ntfs_probes_and_dry_runs_are_reads_and_real_resizes_are_writes() {
+        let log = "\
+$ ntfs-3g.probe --readwrite /dev/sda3
+$ ntfsresize --info --force --no-action /dev/sda3
+$ ntfsresize --no-action --size 60000M /dev/sda3
+$ ntfsresize --force --size 60000M /dev/sda3
+$ ntfsfix --no-action /dev/sda3
+$ ntfsfix /dev/sda3
+";
+        assert_eq!(
+            disk_writes(log),
+            [
+                "ntfsresize --force --size 60000M /dev/sda3",
+                "ntfsfix /dev/sda3"
+            ]
+        );
     }
 
     #[test]

@@ -14,6 +14,7 @@ pub mod modules;
 pub mod parse;
 mod sink;
 pub mod sizes;
+pub mod windows;
 
 pub use answers::{Answers, AnswersError, Choice, Disk, check_hostname, check_username};
 pub use error::{Error, Failure, Stage};

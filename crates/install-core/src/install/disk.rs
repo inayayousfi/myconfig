@@ -8,7 +8,7 @@ use super::{
     checks::DiskWork,
     encryption::{self, Volumes},
 };
-use crate::{Error, disk_names::partition_path, host::Command, parse};
+use crate::{Error, disk_names::partition_path, host::Command, parse, sizes};
 
 /// The Btrfs subvolumes and where each is mounted, relative to the root.
 pub(crate) const SUBVOLUMES: [(&str, &str); 5] = [
@@ -165,7 +165,117 @@ pub(crate) fn prepare(
             forget_old_state(m, username)?;
             Ok(None)
         }
+        DiskWork::BesideWindows {
+            device,
+            efi,
+            windows,
+            windows_number,
+            entry,
+            layout,
+            sector_size,
+            system_number,
+            home_number,
+        } => {
+            let n = *windows_number;
+            let new_bytes = layout.windows_bytes(*sector_size);
+            if layout.windows.last < entry.last {
+                m.sink.step(&format!(
+                    "Shrinking Windows on {windows} to {:.1} GiB",
+                    new_bytes as f64 / sizes::GIB as f64
+                ));
+                let size = new_bytes.to_string();
+                // A test run first: it stops on any problem before the filesystem changes.
+                for mode in ["--no-action", "--force"] {
+                    m.run(Command::action("ntfsresize").args([
+                        mode,
+                        "--no-progress-bar",
+                        "--size",
+                        &size,
+                        windows,
+                    ]))?;
+                }
+                // Alignment 1 keeps the exact first sector, where the filesystem starts.
+                let mut shrink = Command::action("sgdisk").args([
+                    "--set-alignment=1".to_owned(),
+                    format!("--delete={n}"),
+                    format!("--new={n}:{}:{}", layout.windows.first, layout.windows.last),
+                    format!("--typecode={n}:{}", entry.type_guid),
+                    format!("--partition-guid={n}:{}", entry.unique_guid),
+                ]);
+                if !entry.name.is_empty() {
+                    shrink = shrink.arg(format!("--change-name={n}:{}", entry.name));
+                }
+                if entry.attributes.chars().any(|digit| digit != '0') {
+                    shrink = shrink.arg(format!("--attributes={n}:=:{}", entry.attributes));
+                }
+                m.run(shrink.arg(device.as_str()))?;
+                check_windows_entry(m, device, windows, n, entry, layout.windows)?;
+            }
+            m.sink.step(&format!("Partitioning {device}"));
+            for (number, span, name) in [
+                (system_number, layout.system, "inayos-system"),
+                (home_number, layout.home, "inayos-home"),
+            ] {
+                m.run(Command::action("sgdisk").args([
+                    format!("--new={number}:{}:{}", span.first, span.last),
+                    format!("--typecode={number}:8300"),
+                    format!("--change-name={number}:{name}"),
+                    device.clone(),
+                ]))?;
+            }
+            m.run(Command::action("udevadm").arg("settle"))?;
+            let system = partition_path(device, *system_number);
+            let home = partition_path(device, *home_number);
+            m.sink.step("Formatting the system and home partitions");
+            format_system(m, &system)?;
+            m.run(Command::action("mkfs.ext4").args(["-F", "-L", "inayos-home", &home]))?;
+            mount_system(m, &system)?;
+            mount(m, efi, "efi")?;
+            mount(m, &home, "home")?;
+            Ok(None)
+        }
     }
+}
+
+/// Fails unless the GPT entry of the Windows partition number `n` is `entry` with the span
+/// `planned`, before anything else goes on the disk.
+fn check_windows_entry(
+    m: &Machine,
+    device: &str,
+    windows: &str,
+    n: u32,
+    entry: &parse::GptEntry,
+    planned: sizes::Span,
+) -> Result<(), Error> {
+    let info = Command::query("sgdisk").args([format!("--info={n}"), device.to_owned()]);
+    let shown = info.shown();
+    let found = parse::gpt_entry(&m.query(info)?).map_err(|problem| Error::UnexpectedOutput {
+        command: shown,
+        problem,
+    })?;
+    let mut differences = Vec::new();
+    if (found.first, found.last) != (planned.first, planned.last) {
+        differences.push(format!(
+            "it runs from sector {} to {}, and the plan is {} to {}",
+            found.first, found.last, planned.first, planned.last
+        ));
+    }
+    for (what, now, before) in [
+        ("type", &found.type_guid, &entry.type_guid),
+        ("unique GUID", &found.unique_guid, &entry.unique_guid),
+    ] {
+        if !now.eq_ignore_ascii_case(before) {
+            differences.push(format!("its {what} is {now}, and was {before}"));
+        }
+    }
+    if differences.is_empty() {
+        return Ok(());
+    }
+    Err(Error::WindowsEntryChanged {
+        partition: windows.to_owned(),
+        problem: differences.join("; "),
+        first: planned.first,
+    })
 }
 
 fn target(relative: &str) -> PathBuf {

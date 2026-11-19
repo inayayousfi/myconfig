@@ -1,7 +1,8 @@
 //! rEFInd, the boot manager, with the Black & Pink theme. On the system that an
 //! installer-mode run builds, the module installs rEFInd onto the EFI system partition
 //! and writes the kernel options of its Linux entries. A running system keeps the rEFInd
-//! its installer set up, and gets only the theme.
+//! its installer set up, and gets only the theme and the managed settings, which include
+//! the Windows firmware boot entry.
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -38,6 +39,10 @@ const GUARD_CONFIG_PLACEHOLDER: &[u8] =
 const ESP_MOUNTS: [&str; 3] = ["/efi", "/boot/efi", "/boot"];
 /// The label of the firmware boot entry that refind-install adds.
 const FIRMWARE_LABEL: &str = "rEFInd Boot Manager";
+/// The label Windows gives its firmware boot entry.
+const WINDOWS_LABEL: &str = "Windows Boot Manager";
+/// Windows Boot Manager on the EFI system partition, relative to the partition's root.
+const WINDOWS_LOADER: &str = "EFI/Microsoft/Boot/bootmgfw.efi";
 /// Deletes every firmware boot entry with rEFInd's label, and succeeds when none is left.
 const DELETE_FIRMWARE_ENTRIES: &str = r#"for number in $(sudo efibootmgr | sed -n 's/^Boot\([0-9A-Fa-f]\{4\}\)[* ] rEFInd Boot Manager.*/\1/p'); do
     sudo efibootmgr --quiet --bootnum "$number" --delete-bootnum || exit
@@ -98,19 +103,44 @@ fn boot_driver(ctx: &Context) -> ModuleResult<Option<&'static str>> {
     driver(&filesystem)
 }
 
-/// The numbers of the firmware boot entries with rEFInd's label in `listing`, the output
-/// of `efibootmgr`, whose entry lines read `Boot0003* <label>`.
-fn refind_entries(listing: &str) -> Vec<String> {
+/// The firmware boot entries labelled `wanted` in `listing`, the output of `efibootmgr`,
+/// as their numbers and whether they are active. Entry lines read `Boot0003* <label>`, or
+/// `Boot0003  <label>` for an inactive entry, and may go on with a tab and the entry's
+/// device path.
+fn firmware_entries_labelled(listing: &str, wanted: &str) -> Vec<(String, bool)> {
     listing
         .lines()
         .filter_map(|line| {
             let rest = line.strip_prefix("Boot")?;
             let (number, rest) = rest.split_at_checked(4)?;
+            let active = rest.starts_with('*');
             let label = rest.strip_prefix(['*', ' '])?.strip_prefix(' ')?;
-            (number.chars().all(|c| c.is_ascii_hexdigit()) && label.starts_with(FIRMWARE_LABEL))
-                .then(|| number.to_owned())
+            (number.chars().all(|c| c.is_ascii_hexdigit()) && label.starts_with(wanted))
+                .then(|| (number.to_owned(), active))
         })
         .collect()
+}
+
+/// The numbers of the firmware boot entries labelled `wanted` in `listing`, active or not.
+fn labelled_entries(listing: &str, wanted: &str) -> Vec<String> {
+    firmware_entries_labelled(listing, wanted)
+        .into_iter()
+        .map(|(number, _)| number)
+        .collect()
+}
+
+/// The numbers of the active "Windows Boot Manager" entries in `listing`. An inactive one
+/// is a leftover, such as the entry of a disk that was wiped, and the firmware may skip
+/// it when `BootNext` names it.
+fn windows_entries(listing: &str) -> Vec<String> {
+    firmware_entries_labelled(listing, WINDOWS_LABEL)
+        .into_iter()
+        .filter_map(|(number, active)| active.then_some(number))
+        .collect()
+}
+
+fn refind_entries(listing: &str) -> Vec<String> {
+    labelled_entries(listing, FIRMWARE_LABEL)
 }
 
 /// Fails unless efivarfs is mounted, so efibootmgr can add rEFInd's firmware boot entry.
@@ -319,6 +349,77 @@ fn verify_boot_manager(ctx: &Context) -> ModuleResult {
     Ok(())
 }
 
+/// The settings that let Windows start only through its own firmware boot entry, which
+/// keeps rEFInd out of the boot that BitLocker measures. Each of `windows_entries`, the
+/// numbers of the firmware's "Windows Boot Manager" entries, gets a stanza that sets
+/// `BootNext` to it and resets the machine. `scanfor` leaves out `firmware`, so no other
+/// firmware entry shows: `dont_scan_firmware` can only hide labels, and the firmware's
+/// labels differ from machine to machine. `dont_scan_files` adds Windows Boot Manager to
+/// the list in `refind.conf`, so rEFInd adds no entry that starts Windows itself. When
+/// the EFI system partition holds Windows, `windows_partition` is its partition GUID, and
+/// the partition's fallback loader, which Windows makes a copy of its boot manager, is
+/// hidden too when a Windows firmware entry exists. rEFInd checks for that copy only
+/// against loaders it shows, and the GUID keeps the fallback loaders of other disks, such
+/// as a USB stick, in the menu. Without a Windows firmware entry, the fallback loader stays
+/// in the menu as the only way into Windows.
+fn firmware_settings(windows_entries: &[String], windows_partition: Option<&str>) -> String {
+    let mut hidden = vec![WINDOWS_LOADER.to_owned()];
+    if let Some(guid) = windows_partition.filter(|_| !windows_entries.is_empty()) {
+        hidden.push(format!("{guid}:EFI/BOOT/bootx64.efi"));
+    }
+    let mut settings = format!(
+        "scanfor internal,external,optical,manual\ndont_scan_files +,{}\n",
+        hidden.join(",")
+    );
+    for number in windows_entries {
+        let title = if windows_entries.len() == 1 {
+            "Windows".to_owned()
+        } else {
+            format!("Windows (Boot{number})")
+        };
+        settings.push_str(&format!(
+            "\nmenuentry \"{title}\" {{\n    icon EFI/refind/icons/os_win.png\n    firmware_bootnum {number}\n}}\n"
+        ));
+    }
+    settings
+}
+
+/// The contents of `managed.conf` in `directory`, rEFInd's folder on the EFI system
+/// partition: the shipped global settings, then the firmware settings for this machine.
+fn managed_config(ctx: &Context, directory: &Path) -> ModuleResult<String> {
+    let sh = ctx.shell;
+    let esp = directory
+        .parent()
+        .and_then(Path::parent)
+        .ok_or("rEFInd's folder is not inside an EFI folder")?;
+    let listing = ctx.read(cmd!(sh, "sudo efibootmgr"))?;
+    let windows_entries = windows_entries(&listing);
+    let loader = esp.join(WINDOWS_LOADER);
+    let windows_partition = if ctx.succeeds(cmd!(sh, "sudo test -f {loader}"))? {
+        let guid = ctx.read(cmd!(
+            sh,
+            "findmnt --noheadings --output PARTUUID --mountpoint {esp}"
+        ))?;
+        let guid = guid.lines().next().unwrap_or_default().trim().to_owned();
+        if guid.is_empty() {
+            return Err(format!(
+                "could not read the partition GUID of the EFI system partition at {}",
+                esp.display()
+            )
+            .into());
+        }
+        Some(guid)
+    } else {
+        None
+    };
+    let global = String::from_utf8_lossy(REFIND_ASSETS.refind.global_conf.content);
+    Ok(format!(
+        "{}\n\n{}",
+        global.trim_end(),
+        firmware_settings(&windows_entries, windows_partition.as_deref())
+    ))
+}
+
 pub(crate) fn generate_images(ctx: &Context, directory: &Path) -> ModuleResult {
     let sh = ctx.shell;
     let tool = ctx
@@ -411,8 +512,8 @@ impl Module for Refind {
             for name in ["banner.png", "selection_big.png", "selection_small.png"] {
                 ctx.write_system_file(&theme.join(name), &fs::read(temporary.join(name))?, "0644")?;
             }
-            let global = REFIND_ASSETS.refind.global_conf.content;
-            ctx.write_system_file(&directory.join("managed.conf"), global, "0644")?;
+            let managed = managed_config(ctx, directory)?;
+            ctx.write_system_file(&directory.join("managed.conf"), managed.as_bytes(), "0644")?;
             // The block includes the guard's file, so it always exists: without the
             // boot-guard module it holds only this comment, and the guard replaces it.
             let guard = directory.join(GUARD_CONFIG);
@@ -436,8 +537,16 @@ impl Module for Refind {
         let directory = config
             .parent()
             .ok_or("rEFInd configuration has no parent directory")?;
+        let managed = directory.join("managed.conf");
+        let (_, contents) = ctx.read_unchecked(cmd!(ctx.shell, "sudo cat {managed}"))?;
+        if format!("{contents}\n") != managed_config(ctx, directory)? {
+            return Err(format!(
+                "{} does not hold the managed settings for this machine's firmware boot entries",
+                managed.display()
+            )
+            .into());
+        }
         for path in [
-            "managed.conf",
             GUARD_CONFIG,
             "themes/black-pink/theme.conf",
             "themes/black-pink/banner.png",
@@ -471,5 +580,58 @@ mod tests {
             updated_config(&updated_config(original)),
             updated_config(original)
         );
+    }
+
+    #[test]
+    fn only_the_windows_boot_manager_entries_are_read_from_the_firmware() {
+        let listing = "BootCurrent: 0003\nBootOrder: 0003,0001,0000,0004\nBoot0000* UiApp\tFvVol(7cb8bdc9)\nBoot0001* Windows Boot Manager\tHD(1,GPT,2f5a)/\\EFI\\Microsoft\\Boot\\bootmgfw.efi\nBoot0002* UEFI PXEv4 (MAC:525400123456)\nBoot0003* rEFInd Boot Manager\nBoot0004  Windows Boot Manager\nBootNext: 0001\n";
+        assert_eq!(labelled_entries(listing, WINDOWS_LABEL), ["0001", "0004"]);
+        assert_eq!(windows_entries(listing), ["0001"]);
+        assert_eq!(refind_entries(listing), ["0003"]);
+    }
+
+    #[test]
+    fn windows_on_the_partition_without_a_firmware_entry_keeps_its_fallback_loader() {
+        let guid = "2f5a0c1e-0000-4000-8000-000000000001";
+        assert_eq!(
+            firmware_settings(&[], Some(guid)),
+            firmware_settings(&[], None)
+        );
+    }
+
+    #[test]
+    fn a_machine_without_windows_gets_no_firmware_entry() {
+        assert_eq!(
+            firmware_settings(&[], None),
+            "scanfor internal,external,optical,manual\ndont_scan_files +,EFI/Microsoft/Boot/bootmgfw.efi\n"
+        );
+    }
+
+    #[test]
+    fn windows_starts_only_through_its_firmware_entry() {
+        let guid = "2f5a0c1e-0000-4000-8000-000000000001";
+        let settings = firmware_settings(&["0001".to_owned()], Some(guid));
+        assert_eq!(
+            settings,
+            format!(
+                "scanfor internal,external,optical,manual\n\
+                 dont_scan_files +,EFI/Microsoft/Boot/bootmgfw.efi,{guid}:EFI/BOOT/bootx64.efi\n\
+                 \n\
+                 menuentry \"Windows\" {{\n    icon EFI/refind/icons/os_win.png\n    firmware_bootnum 0001\n}}\n"
+            )
+        );
+    }
+
+    #[test]
+    fn several_windows_entries_get_titles_that_tell_them_apart() {
+        let settings = firmware_settings(&["0001".to_owned(), "0004".to_owned()], None);
+        for number in ["0001", "0004"] {
+            assert!(
+                settings.contains(&format!(
+                    "menuentry \"Windows (Boot{number})\" {{\n    icon EFI/refind/icons/os_win.png\n    firmware_bootnum {number}\n}}"
+                )),
+                "{settings}"
+            );
+        }
     }
 }

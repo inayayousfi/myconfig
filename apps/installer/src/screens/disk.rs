@@ -6,8 +6,8 @@ use iced::{
 };
 use inayos_install_core::{
     Choice, Disk,
-    inventory::{DiskInfo, Offer, SizeLimits},
-    sizes::GIB,
+    inventory::{DiskInfo, Offer, SizeLimits, WindowsShrink},
+    sizes::{self, GIB},
 };
 
 use super::{Field, Focus, Key, Reply, list};
@@ -16,7 +16,7 @@ use crate::theme;
 /// The system sizes offered as one click each, in GiB.
 pub const PRESETS: [u64; 4] = [50, 100, 150, 200];
 /// The system size chosen until the user changes it, in GiB.
-pub const DEFAULT_GIB: u64 = 150;
+pub const DEFAULT_GIB: u64 = sizes::DEFAULT_SYSTEM_GIB;
 
 /// The choices from the one that keeps the most to the one that erases the whole disk.
 const SAFEST_FIRST: [Choice; 4] = [
@@ -147,7 +147,10 @@ impl State {
                 efi_partition: partitions.efi.clone()?,
                 home_partition: partitions.home.clone()?,
             },
-            Choice::BesideWindows => Disk::BesideWindows { device },
+            Choice::BesideWindows => Disk::BesideWindows {
+                device,
+                system_size_gib: Some(self.size_gib),
+            },
         })
     }
 
@@ -297,20 +300,29 @@ impl State {
                     .on_press(Message::Size(to_u32(gib))),
             );
         }
-        column![
+        let shrink = self.chosen_offer().and_then(|offer| offer.windows.as_ref());
+        let rest = if shrink.is_some() {
+            "Windows and home, for your files, share the rest of the space."
+        } else {
+            "The rest of the space is home, for your files."
+        };
+        let mut page = column![
             text(format!("System size: {} GiB", self.size_gib))
                 .size(theme::TEXT + 4)
                 .color(theme::PINK),
             text(format!(
-                "From {} to {} GiB. The rest of the space is home, for your files.",
+                "From {} to {} GiB. {rest}",
                 limits.min_gib, limits.max_gib
             ))
             .color(theme::DIM),
-            slider(range, to_u32(self.size_gib), Message::Size).height(32),
-            presets,
         ]
-        .spacing(12)
-        .into()
+        .spacing(12);
+        if let Some(line) = shrink.and_then(|shrink| shrink_line(shrink, self.size_gib)) {
+            page = page.push(text(line));
+        }
+        page.push(slider(range, to_u32(self.size_gib), Message::Size).height(32))
+            .push(presets)
+            .into()
     }
 }
 
@@ -332,6 +344,25 @@ pub fn describe_disk(disk: &DiskInfo) -> String {
     }
 }
 
+/// How the Windows partition changes with a system of `system_gib`, in plain words.
+pub fn shrink_line(shrink: &WindowsShrink, system_gib: u64) -> Option<String> {
+    let after = shrink.size_after(system_gib)?;
+    Some(if after < shrink.size_bytes {
+        format!(
+            "The Windows partition {} shrinks by {}, from {} to {}. Its files stay.",
+            shrink.partition,
+            gib(shrink.size_bytes - after),
+            gib(shrink.size_bytes),
+            gib(after)
+        )
+    } else {
+        format!(
+            "The Windows partition {} stays as it is: InayOS fits in the free space after it.",
+            shrink.partition
+        )
+    })
+}
+
 pub fn choice_label(choice: Choice) -> &'static str {
     match choice {
         Choice::WipeDisk => "Erase the whole disk and install InayOS",
@@ -345,7 +376,8 @@ pub fn choice_label(choice: Choice) -> &'static str {
 pub(crate) mod tests {
     use inayos_install_core::{
         Choice, Disk,
-        inventory::{DiskInfo, Offer, Partitions, SizeLimits},
+        inventory::{DiskInfo, Offer, Partitions, SizeLimits, WindowsShrink},
+        sizes::{BesideWindows, Span},
     };
 
     use super::{Key, Message, State};
@@ -356,12 +388,30 @@ pub(crate) mod tests {
     };
 
     fn offer(choice: Choice, available: Result<Partitions, &str>) -> Offer {
-        let takes_size = matches!(choice, Choice::WipeDisk | Choice::ShrinkExt4KeepHome);
+        let takes_size = choice != Choice::ReinstallKeepHome;
         Offer {
             choice,
             system_size: (takes_size && available.is_ok()).then_some(LIMITS),
+            windows: (choice == Choice::BesideWindows && available.is_ok()).then(windows_shrink),
             available: available.map_err(str::to_owned),
         }
+    }
+
+    /// A 100 GiB Windows partition from 16 MiB to the end of the free space, whose files take
+    /// 20 GiB, beside which home keeps room for a 1 GiB swap file.
+    pub(crate) fn windows_shrink() -> WindowsShrink {
+        let first = (16 << 20) / 512;
+        let last = first + (100 << 30) / 512 - 1;
+        WindowsShrink::new(
+            "/dev/vda3",
+            BesideWindows {
+                windows: Span { first, last },
+                room_last: last,
+                sector_size: 512,
+                windows_files_bytes: 20 << 30,
+            },
+            1,
+        )
     }
 
     /// A 128 GiB disk with an earlier InayOS on it and an ext4 partition that can shrink.
@@ -479,6 +529,41 @@ pub(crate) mod tests {
         state.key(Key::Up);
         state.key(Key::Up);
         assert_eq!(size(&state), 50);
+    }
+
+    #[test]
+    fn beside_windows_answers_with_the_size_and_names_how_much_windows_shrinks() {
+        let mut beside = disk();
+        beside.offers[1].available = Err("no earlier InayOS".into());
+        beside.offers[2].available = Err("no ext4 partition".into());
+        beside.offers[3] = offer(
+            Choice::BesideWindows,
+            Ok(Partitions {
+                efi: Some("/dev/vda1".into()),
+                system: None,
+                home: None,
+            }),
+        );
+        let mut state = State::new(Ok(vec![beside]));
+        state.update(Message::Size(30));
+        assert_eq!(
+            state.answer(),
+            Some(Disk::BesideWindows {
+                device: "/dev/vda".into(),
+                system_size_gib: Some(30),
+            }),
+            "beside Windows comes before erasing the whole disk"
+        );
+        // Half of what the 30 GiB system leaves is less than Windows's 20 GiB of files plus
+        // 20 GiB, so Windows keeps 40 GiB.
+        assert_eq!(
+            super::shrink_line(&windows_shrink(), 30).as_deref(),
+            Some(
+                "The Windows partition /dev/vda3 shrinks by 60.0 GiB, from 100.0 GiB to 40.0 \
+                 GiB. Its files stay."
+            )
+        );
+        assert_eq!(super::shrink_line(&windows_shrink(), 60), None);
     }
 
     #[test]

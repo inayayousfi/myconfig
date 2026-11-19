@@ -2005,7 +2005,8 @@ fn bootvine_needs_the_systemd_hook() {
 
 /// The new system an installer-mode run builds, before rEFInd: the EFI system partition
 /// mounted at `/efi`, `/boot` inside the Btrfs root subvolume, and the firmware's boot
-/// entries reachable. `findmnt` answers from `mounts/` and `fstab-root`, `efibootmgr`
+/// entries reachable. `findmnt` answers from `mounts/` and `fstab-root`, and gives the
+/// partition GUID of the EFI system partition, `efibootmgr`
 /// keeps the entries in `nvram`, and `refind-install` copies what the real one copies for
 /// a Btrfs `/boot` and adds its entry unless the firmware has it.
 fn unbooted_disk(sandbox: &Sandbox) {
@@ -2033,6 +2034,7 @@ fn unbooted_disk(sandbox: &Sandbox) {
         r#"printf 'findmnt %s\n' "$*" >> "$INAYOS_TEST_LOG"
 case " $* " in
     *" --fstab "*) cat "$INAYOS_TEST_ROOT/fstab-root" ;;
+    *" --output PARTUUID --mountpoint /efi "*) printf '2f5a0c1e-0000-4000-8000-000000000001\n' ;;
     *" --mountpoint "*) for mount; do :; done; cat "$INAYOS_TEST_ROOT/mounts/${mount#/}" 2>/dev/null ;;
     *" --target /boot "*) cat "$INAYOS_TEST_ROOT/mounts/boot" ;;
     *) exit 1 ;;
@@ -2190,6 +2192,64 @@ fn installer_mode_installs_refind_with_entries_for_the_new_root_and_bootvine_joi
         );
     }
     assert!(!sandbox.installed("refind"));
+}
+
+#[test]
+fn refind_shows_windows_only_through_its_firmware_boot_entry() {
+    let sandbox = Sandbox::new("refind-beside-windows");
+    unbooted_disk(&sandbox);
+    let efi = sandbox.root.join("system/efi/EFI");
+    fs::create_dir_all(efi.join("Microsoft/Boot")).unwrap();
+    fs::write(efi.join("Microsoft/Boot/bootmgfw.efi"), "Windows").unwrap();
+    fs::create_dir_all(efi.join("BOOT")).unwrap();
+    fs::write(efi.join("BOOT/BOOTX64.EFI"), "Windows").unwrap();
+    let io = Answers::new(None);
+    sandbox
+        .with_mode(&io, RunMode::Installer, |ctx| {
+            runner::install(ctx, &[&crate::Refind], &[&crate::Refind])
+        })
+        .unwrap();
+    let managed = system_file(&sandbox, "/efi/EFI/refind/managed.conf").unwrap();
+    assert!(
+        managed.starts_with(
+            std::str::from_utf8(embedded_dotfiles::REFIND_ASSETS.refind.global_conf.content)
+                .unwrap()
+                .trim_end()
+        )
+    );
+    assert!(
+        managed.ends_with(
+            "scanfor internal,external,optical,manual\n\
+             dont_scan_files +,EFI/Microsoft/Boot/bootmgfw.efi,2f5a0c1e-0000-4000-8000-000000000001:EFI/BOOT/bootx64.efi\n\
+             \n\
+             menuentry \"Windows\" {\n    icon EFI/refind/icons/os_win.png\n    firmware_bootnum 0001\n}\n"
+        ),
+        "{managed}"
+    );
+    let results = sandbox.with_mode(&io, RunMode::Installer, |ctx| {
+        runner::verify(ctx, &[&crate::Refind])
+    });
+    for (name, result) in results {
+        assert!(result.is_ok(), "{name}: {result:?}");
+    }
+
+    // Windows gave its boot manager another firmware entry, so the stanza is stale.
+    fs::write(
+        sandbox.root.join("nvram"),
+        fs::read_to_string(sandbox.root.join("nvram"))
+            .unwrap()
+            .replace("Boot0001* Windows", "Boot0005* Windows"),
+    )
+    .unwrap();
+    let results = sandbox.with_mode(&io, RunMode::Installer, |ctx| {
+        runner::verify(ctx, &[&crate::Refind])
+    });
+    assert!(
+        results.iter().any(|(_, result)| result
+            .as_ref()
+            .is_err_and(|error| error.to_string().contains("managed settings"))),
+        "{results:?}"
+    );
 }
 
 #[test]

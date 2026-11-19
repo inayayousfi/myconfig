@@ -1,7 +1,9 @@
 # Runs once at the first logon of the new Windows installation, from the seed disc.
 # It keeps the test account logged in, keeps the display awake for the keys the xtask
-# sends, and starts an OpenSSH server that accepts the xtask key. It shuts Windows down
-# when everything succeeded, which tells the xtask that the installation is complete.
+# sends, turns hibernation and Fast Startup off so a shutdown leaves NTFS clean, makes sure
+# C: is not BitLocker-encrypted, and starts an OpenSSH server that accepts the xtask key.
+# It shuts Windows down when everything succeeded, which tells the xtask that the
+# installation is complete.
 # On an error it writes the failure line that the image builder watches for to COM1, and
 # leaves the window open with the error and the log in C:\inayos-setup.log.
 
@@ -17,11 +19,36 @@ try {
 
     powercfg.exe /change monitor-timeout-ac 0
     powercfg.exe /change standby-timeout-ac 0
+    # Without hibernation Windows has no Fast Startup either, so every shutdown is a full one.
     powercfg.exe /hibernate off
+    if ($LASTEXITCODE -ne 0) { throw 'powercfg could not turn hibernation off' }
+    Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power' `
+        -Name HiberbootEnabled -Value 0 -Type DWord
+
+    # Device encryption may have started before the answer file's PreventDeviceEncryption
+    # value applied. The InayOS installer refuses a BitLocker partition, so the image waits
+    # until C: is fully decrypted.
+    $volume = Get-BitLockerVolume -MountPoint 'C:'
+    if ($volume.VolumeStatus -ne 'FullyDecrypted') {
+        Disable-BitLocker -MountPoint 'C:' | Out-Null
+        $deadline = (Get-Date).AddHours(1)
+        while ((Get-BitLockerVolume -MountPoint 'C:').VolumeStatus -ne 'FullyDecrypted') {
+            if ((Get-Date) -gt $deadline) { throw 'C: is still not fully decrypted after an hour' }
+            Start-Sleep -Seconds 10
+        }
+    }
 
     $capability = Get-WindowsCapability -Online -Name 'OpenSSH.Server*' | Select-Object -First 1
-    if ($capability.State -ne 'Installed') {
-        Add-WindowsCapability -Online -Name $capability.Name | Out-Null
+    # The capability comes from Windows Update, which may not answer yet right after Setup.
+    for ($attempt = 1; $capability.State -ne 'Installed'; $attempt++) {
+        try {
+            Add-WindowsCapability -Online -Name $capability.Name | Out-Null
+        } catch {
+            if ($attempt -ge 5) { throw }
+            Write-Host "installing $($capability.Name) failed, trying again in a minute: $_"
+            Start-Sleep -Seconds 60
+        }
+        $capability = Get-WindowsCapability -Online -Name $capability.Name
     }
     Set-Service -Name sshd -StartupType Automatic
     # The first start creates the host keys and C:\ProgramData\ssh.

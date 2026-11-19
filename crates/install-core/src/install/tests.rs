@@ -762,19 +762,329 @@ fn answers_an_interface_built_with_a_bad_name_refuse_before_any_command() {
     }
 }
 
-#[test]
-fn installing_beside_windows_refuses_before_any_command() {
+const WINDOWS_FIRST: u64 = 239_616;
+const WINDOWS_LAST: u64 = WINDOWS_FIRST + 120 * GIB / 512 - 1;
+const WINDOWS_TYPE: &str = "EBD0A0A2-B9E5-4433-87C0-68B6B72699C7";
+const WINDOWS_GUID: &str = "6A1B2C3D-4E5F-4071-8293-A4B5C6D7E8F9";
+
+/// A live system with a 128 GiB Windows disk at /dev/vda: a 100 MiB EFI partition holding
+/// the Windows Boot Manager with 70 MiB free, the Microsoft reserved partition, Windows with
+/// `windows_fstype` on 120 GiB, of which its files take 20 GiB, and the recovery partition
+/// right after it.
+fn windows_machine(windows_fstype: &str, attributes: &str) -> FakeHost {
     let host = live_system();
+    let part = |n: u32, start: u64, size: u64, fstype: Option<&str>, parttype: &str| {
+        serde_json::json!({"name": format!("vda{n}"), "path": format!("/dev/vda{n}"),
+            "type": "part", "model": null, "size": size, "start": start, "log-sec": 512,
+            "fstype": fstype, "label": null, "parttype": parttype, "mountpoints": [null]})
+    };
+    let tree = serde_json::json!({"blockdevices": [{"name": "vda", "path": "/dev/vda",
+    "type": "disk", "model": "QEMU HARDDISK", "size": 128 * GIB, "start": null,
+    "log-sec": 512, "fstype": null, "label": null, "parttype": null,
+    "mountpoints": [null], "children": [
+        part(1, 2048, 100 << 20, Some("vfat"), "C12A7328-F81F-11D2-BA4B-00A0C93EC93B"),
+        part(2, 206_848, 16 << 20, None, "E3C9E316-0B5C-4DB8-817D-F92DF00215AE"),
+        part(3, WINDOWS_FIRST, 120 * GIB, Some(windows_fstype), WINDOWS_TYPE),
+        part(4, WINDOWS_LAST + 1, 700 << 20, Some("ntfs"),
+             "DE94BBA4-06D1-4D40-A16A-BFD50179D6AC"),
+    ]}]});
+    host.respond(
+        "lsblk --json --bytes --output \
+         NAME,PATH,TYPE,MODEL,SIZE,START,LOG-SEC,FSTYPE,LABEL,PARTTYPE,MOUNTPOINTS /dev/vda",
+        [ok(&tree.to_string())],
+    );
+    host.file("/mnt/efi/EFI/Microsoft/Boot/bootmgfw.efi", "boot manager");
+    host.respond(
+        "df --block-size=1 --output=avail /mnt/efi",
+        [ok(&format!("Avail\n{}\n", 70 << 20))],
+    );
+    host.respond(
+        "ntfsresize --info --force --no-action --no-progress-bar /dev/vda3",
+        [ok(&format!(
+            "Current volume size: {} bytes\nYou might resize at {} bytes or 21475 MB\n",
+            120 * GIB,
+            20 * GIB
+        ))],
+    );
+    host.respond(
+        "sgdisk --print /dev/vda",
+        [ok(&format!(
+            "Disk /dev/vda: {} sectors, 128.0 GiB\n\
+             First usable sector is 34, last usable sector is {}\n",
+            128 * GIB / 512,
+            128 * GIB / 512 - 34
+        ))],
+    );
+    host.respond(
+        "sgdisk --info=3 /dev/vda",
+        [ok(&windows_entry(WINDOWS_LAST, attributes))],
+    );
+    host
+}
+
+/// What `sgdisk --info=3` prints for the Windows partition ending at `last`.
+fn windows_entry(last: u64, attributes: &str) -> String {
+    format!(
+        "Partition GUID code: {WINDOWS_TYPE} (Microsoft basic data)\n\
+         Partition unique GUID: {WINDOWS_GUID}\n\
+         First sector: {WINDOWS_FIRST} (at 117.0 MiB)\nLast sector: {last} (at 120.1 GiB)\n\
+         Attribute flags: {attributes}\n\
+         Partition name: 'Basic data partition'\n"
+    )
+}
+
+/// Makes the Windows machine `host` show the Windows entry ending at `last` after the shrink.
+fn shrinks_to(host: &FakeHost, last: u64, attributes: &str) {
+    host.respond(
+        "sgdisk --info=3 /dev/vda",
+        [
+            ok(&windows_entry(WINDOWS_LAST, attributes)),
+            ok(&windows_entry(last, attributes)),
+        ],
+    );
+}
+
+fn beside_windows(size: &str) -> Answers {
+    answers(
+        &format!("choice = \"beside-windows\"\ndevice = \"/dev/vda\"\n{size}"),
+        "",
+    )
+}
+
+#[test]
+fn beside_windows_shrinks_windows_and_puts_the_system_and_home_after_it() {
+    // 120 GiB less 30 GiB of system and 2 MiB of alignment, shared evenly by Windows and
+    // home: Windows keeps 45 GiB less 1 MiB, more than its 20 GiB of files plus 20 GiB.
+    let windows_sectors = (45 * GIB - (1 << 20)) / 512;
+    let windows_last = WINDOWS_FIRST + windows_sectors - 1;
+    let host = windows_machine("ntfs", "0000000000000000");
+    shrinks_to(&host, windows_last, "0000000000000000");
+    install(
+        &beside_windows("system_size_gib = 30"),
+        &settings(),
+        &host,
+        &FakeSink::default(),
+    )
+    .unwrap();
+
+    let system_first = windows_last + 1;
+    let system_last = system_first + 30 * GIB / 512 - 1;
+    let size = windows_sectors * 512;
+    let mut expected: Vec<String> = vec![
+        "mount -o ro /dev/vda1 /mnt/efi".into(),
+        "umount /mnt/efi".into(),
+        "pacman -Sy".into(),
+        format!("ntfsresize --no-action --no-progress-bar --size {size} /dev/vda3"),
+        format!("ntfsresize --force --no-progress-bar --size {size} /dev/vda3"),
+        format!(
+            "sgdisk --set-alignment=1 --delete=3 --new=3:{WINDOWS_FIRST}:{windows_last} \
+             --typecode=3:{WINDOWS_TYPE} \
+             --partition-guid=3:{WINDOWS_GUID} '--change-name=3:Basic data partition' /dev/vda"
+        ),
+        format!(
+            "sgdisk --new=5:{system_first}:{system_last} --typecode=5:8300 \
+             --change-name=5:inayos-system /dev/vda"
+        ),
+        format!(
+            "sgdisk --new=6:{}:{WINDOWS_LAST} --typecode=6:8300 --change-name=6:inayos-home /dev/vda",
+            system_last + 1
+        ),
+        "udevadm settle".into(),
+    ];
+    expected.extend(btrfs("/dev/vda5"));
+    expected.push("mkfs.ext4 -F -L inayos-home /dev/vda6".into());
+    expected.extend(mounts("/dev/vda5"));
+    expected.push("mount /dev/vda1 /mnt/efi".into());
+    expected.push("mount /dev/vda6 /mnt/home".into());
+    expected.extend(base_system("intel-ucode "));
+    expected.extend([
+        "arch-chroot /mnt useradd -m -G wheel -c Tester tester".into(),
+        "arch-chroot /mnt chpasswd".into(),
+        INSTALL.into(),
+        VERIFY.into(),
+        "umount -R /mnt".into(),
+    ]);
+    assert_eq!(host.actions(), expected);
+    assert_eq!(system_first % 2048, 0);
+    assert_eq!((system_last + 1) % 2048, 0);
+    assert_eq!(
+        host.text("/mnt/efi/EFI/Microsoft/Boot/bootmgfw.efi")
+            .as_deref(),
+        Some("boot manager")
+    );
+}
+
+#[test]
+fn beside_windows_without_a_size_takes_the_default_moved_into_the_disk_and_keeps_attributes() {
+    let host = windows_machine("ntfs", "8000000000000000");
+    shrinks_to(
+        &host,
+        WINDOWS_FIRST + 40 * GIB / 512 - 1,
+        "8000000000000000",
+    );
+    install(
+        &beside_windows(""),
+        &settings(),
+        &host,
+        &FakeSink::default(),
+    )
+    .unwrap();
+    let actions = host.actions();
+    // Windows keeps 40 GiB and home 21 GiB, which leaves 58 whole GiB of the 120.
+    let system = actions
+        .iter()
+        .find(|line| line.contains("--change-name=5:inayos-system"))
+        .unwrap();
+    let span: Vec<u64> = system
+        .split_whitespace()
+        .nth(1)
+        .unwrap()
+        .trim_start_matches("--new=5:")
+        .split(':')
+        .map(|n| n.parse().unwrap())
+        .collect();
+    assert_eq!((span[1] - span[0] + 1) * 512, 58 * GIB);
+    assert!(
+        actions.iter().any(|line| line.contains("--delete=3")
+            && line.contains("--attributes=3:=:8000000000000000")),
+        "{actions:#?}"
+    );
+}
+
+#[test]
+fn beside_windows_stops_before_the_new_partitions_when_the_windows_entry_moved() {
+    let windows_last = WINDOWS_FIRST + (45 * GIB - (1 << 20)) / 512 - 1;
+    let host = windows_machine("ntfs", "0000000000000000");
+    // sgdisk moved the first sector to the next 8-sector boundary.
+    host.respond(
+        "sgdisk --info=3 /dev/vda",
+        [
+            ok(&windows_entry(WINDOWS_LAST, "0000000000000000")),
+            ok(&windows_entry(windows_last, "0000000000000000").replace(
+                &format!("First sector: {WINDOWS_FIRST} "),
+                &format!("First sector: {} ", WINDOWS_FIRST + 8),
+            )),
+        ],
+    );
     let failure = install(
-        &answers("choice = \"beside-windows\"\ndevice = \"/dev/vda\"", ""),
+        &beside_windows("system_size_gib = 30"),
         &settings(),
         &host,
         &FakeSink::default(),
     )
     .unwrap_err();
-    assert!(matches!(failure.error, Error::NotBuilt { .. }));
-    assert!(failure.to_string().contains("not built yet"));
-    assert!(host.log.borrow().is_empty());
+    assert_eq!(failure.stage, Stage::Disk);
+    assert!(
+        matches!(&failure.error, Error::WindowsEntryChanged { first, .. } if *first == WINDOWS_FIRST),
+        "{:?}",
+        failure.error
+    );
+    let actions = host.actions();
+    assert!(actions.iter().any(|line| line.contains("--delete=3")));
+    assert!(
+        !actions.iter().any(|line| line.contains("inayos-system")),
+        "{actions:#?}"
+    );
+}
+
+#[test]
+fn beside_windows_ends_the_room_at_the_tables_last_usable_sector() {
+    // A table copied from a smaller disk: its last usable sector is 60 GiB in.
+    let host = windows_machine("ntfs", "0000000000000000");
+    host.respond(
+        "lsblk --json --bytes --output \
+         NAME,PATH,TYPE,MODEL,SIZE,START,LOG-SEC,FSTYPE,LABEL,PARTTYPE,MOUNTPOINTS /dev/vda",
+        [ok(
+            &serde_json::json!({"blockdevices": [{"name": "vda", "path": "/dev/vda",
+            "type": "disk", "model": null, "size": 128 * GIB, "start": null, "log-sec": 512,
+            "fstype": null, "label": null, "parttype": null, "mountpoints": [null], "children": [
+                {"name": "vda1", "path": "/dev/vda1", "type": "part", "model": null,
+                 "size": 100 << 20, "start": 2048, "log-sec": 512, "fstype": "vfat", "label": null,
+                 "parttype": "C12A7328-F81F-11D2-BA4B-00A0C93EC93B", "mountpoints": [null]},
+                {"name": "vda3", "path": "/dev/vda3", "type": "part", "model": null,
+                 "size": 120 * GIB, "start": WINDOWS_FIRST, "log-sec": 512, "fstype": "ntfs",
+                 "label": null, "parttype": WINDOWS_TYPE, "mountpoints": [null]},
+            ]}]})
+            .to_string(),
+        )],
+    );
+    host.respond(
+        "sgdisk --print /dev/vda",
+        [ok(&format!(
+            "First usable sector is 34, last usable sector is {}\n",
+            WINDOWS_LAST
+        ))],
+    );
+    let failure = install(
+        &beside_windows("system_size_gib = 59"),
+        &settings(),
+        &host,
+        &FakeSink::default(),
+    )
+    .unwrap_err();
+    assert_eq!(failure.stage, Stage::Checks);
+    assert!(
+        matches!(failure.error, Error::NoRoomBesideWindows(_)),
+        "{:?}",
+        failure.error
+    );
+}
+
+#[test]
+fn beside_windows_refuses_in_the_checks_with_the_disk_screen_words_and_leaves_the_disk() {
+    let refused = |host: &FakeHost, answers: &Answers| {
+        let failure = install(answers, &settings(), host, &FakeSink::default()).unwrap_err();
+        assert_eq!(failure.stage, Stage::Checks);
+        // Only the read-only look into the EFI partition ran.
+        assert!(
+            host.actions()
+                .iter()
+                .all(|line| line == "mount -o ro /dev/vda1 /mnt/efi" || line == "umount /mnt/efi"),
+            "{:#?}",
+            host.actions()
+        );
+        failure
+    };
+    let failure = refused(
+        &windows_machine("BitLocker", "0000000000000000"),
+        &beside_windows("system_size_gib = 30"),
+    );
+    assert!(
+        matches!(failure.error, Error::NotBesideWindows { .. }),
+        "{:?}",
+        failure.error
+    );
+    assert!(failure.to_string().starts_with(
+        "BitLocker encrypts the Windows partition /dev/vda3. Turn off BitLocker in Windows"
+    ));
+
+    let host = windows_machine("ntfs", "0000000000000000");
+    host.respond("ntfs-3g.probe --readwrite /dev/vda3", [exit(14)]);
+    let failure = refused(&host, &beside_windows("system_size_gib = 30"));
+    assert!(failure.to_string().starts_with(
+        "Windows did not shut down fully, so its partition /dev/vda3 cannot change. Turn off \
+         Fast Startup in Windows"
+    ));
+
+    // 59 GiB of system no longer fits beside 40 GiB of Windows and 21 GiB of home.
+    let failure = refused(
+        &windows_machine("ntfs", "0000000000000000"),
+        &beside_windows("system_size_gib = 59"),
+    );
+    assert!(
+        matches!(failure.error, Error::NoRoomBesideWindows(_)),
+        "{:?}",
+        failure.error
+    );
+
+    let failure = refused(
+        &windows_machine("ntfs", "0000000000000000"),
+        &answers(
+            "choice = \"beside-windows\"\ndevice = \"/dev/vda\"",
+            "[security]\nencryption = true",
+        ),
+    );
+    assert!(matches!(failure.error, Error::EncryptionNeedsWholeDisk));
 }
 
 #[test]

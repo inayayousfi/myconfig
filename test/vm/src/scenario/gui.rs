@@ -171,6 +171,28 @@ impl Scenario {
         self.power_off(&live, "systemctl poweroff")
     }
 
+    /// Starts the installer built from the working tree in the stick's Sway session, goes from
+    /// the keyboard screen to the disk screen, and saves it as `shot` with the single-color
+    /// check. The wired network of the guest skips the Wi-Fi screen. The installer stays open.
+    pub(super) fn show_disk_screen(&mut self, live: &Guest, shot: &str) -> Result<(), StepError> {
+        self.wait_for_stick_installer(live)?;
+        self.restart_fresh_installer(live)?;
+        self.wait_for_screen(live, "keyboard", SCREEN_TIMEOUT)?;
+        thread::sleep(SCREEN_SETTLE);
+        self.vm().qmp()?.send_keys(&["ret"])?;
+        self.wait_for_screen(live, "disk", SCREEN_TIMEOUT)?;
+        self.checked_screenshot(shot, "disk")
+    }
+
+    /// Waits until the installer that the stick's Sway session starts shows its keyboard
+    /// screen. Its disk inventory has then ended, including the read-only mount of a Windows
+    /// EFI partition, so a command-line install that starts afterwards finds nothing mounted.
+    pub(super) fn wait_for_stick_installer(&mut self, live: &Guest) -> Result<(), StepError> {
+        println!("vm: waiting for the installer of the stick on its keyboard screen");
+        self.wait_for_screen(live, "keyboard", FIRST_SCREEN_TIMEOUT)
+            .map_err(|error| explain_first_wait(live, error))
+    }
+
     /// Gives each screen of the plan its inputs, then waits until the install ends, and
     /// returns the screen it ended on. The installer's log streams to the layer meanwhile.
     fn go_through_screens(&mut self, live: &Guest) -> Result<&'static str, StepError> {
@@ -277,9 +299,14 @@ impl Scenario {
     /// Saves the screen as `gui-<index>-<name>.png` in the layer and checks that it is not a
     /// single color.
     fn screen_shot(&mut self, index: usize, name: &str) -> Result<(), StepError> {
+        self.checked_screenshot(&format!("gui-{index:02}-{name}.png"), name)
+    }
+
+    /// Saves the screen as `shot` in the layer, once the screen named `name` has drawn, and
+    /// checks that it is not a single color.
+    fn checked_screenshot(&mut self, shot: &str, name: &str) -> Result<(), StepError> {
         thread::sleep(SCREEN_SETTLE);
-        let shot = format!("gui-{index:02}-{name}.png");
-        self.screenshot(&shot)?;
+        self.screenshot(shot)?;
         let check: PathBuf = self.layer.dir().join("screen-check.ppm");
         self.vm().qmp()?.screendump_ppm(&check)?;
         let bytes = fs::read(&check).map_err(|error| StepError::Io(check.clone(), error))?;

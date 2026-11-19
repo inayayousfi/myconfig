@@ -8,6 +8,9 @@ pub const GIB: u64 = 1 << 30;
 pub const EFI_SIZE_GIB: u64 = 2;
 /// The smallest system partition the answers file accepts.
 pub const MIN_SYSTEM_GIB: u64 = 20;
+/// The system size an interface starts with, and the one installing beside Windows takes
+/// when the answers give none, moved into what the disk allows.
+pub const DEFAULT_SYSTEM_GIB: u64 = 150;
 /// The largest system partition the answers file accepts, which keeps every product of
 /// sizes far from overflowing.
 pub const MAX_SYSTEM_GIB: u64 = 1 << 20;
@@ -15,6 +18,8 @@ pub const MAX_SYSTEM_GIB: u64 = 1 << 20;
 /// hibernation swap file. The install itself fills a few GiB of it, because AUR packages
 /// build in the user's cache folder.
 pub const MIN_HOME_GIB: u64 = 20;
+/// The free space Windows keeps on its partition besides its files when it shrinks.
+pub const WINDOWS_FREE_GIB: u64 = 20;
 
 /// A run of sectors, both ends included.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -63,6 +68,54 @@ pub struct TooSmall {
 pub struct HomeTooFull {
     pub used_bytes: u64,
     pub filesystem_bytes: u64,
+}
+
+/// The Windows partition and the free space after it, from which installing beside Windows
+/// takes the system and home partitions.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BesideWindows {
+    /// The Windows partition as it is.
+    pub windows: Span,
+    /// The last sector of the free space that follows the Windows partition: the sector
+    /// before the next partition, or the last usable sector of the disk.
+    pub room_last: u64,
+    pub sector_size: u64,
+    /// The smallest size `ntfsresize` can shrink the Windows filesystem to, which its files
+    /// and the data it cannot move take.
+    pub windows_files_bytes: u64,
+}
+
+/// The partitions after installing beside Windows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BesideLayout {
+    /// The Windows partition afterwards: the same first sector, and the same last sector
+    /// when Windows does not shrink.
+    pub windows: Span,
+    pub system: Span,
+    pub home: Span,
+}
+
+impl BesideLayout {
+    /// The size of the Windows partition afterwards, which `ntfsresize` gives its filesystem.
+    pub fn windows_bytes(&self, sector_size: u64) -> u64 {
+        self.windows.sectors() * sector_size
+    }
+}
+
+/// Why InayOS does not fit beside Windows. The message is in plain words, because an
+/// interface shows it as the reason the choice is unavailable.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
+#[error(
+    "Windows keeps its files and {WINDOWS_FREE_GIB} GiB free, which leaves {:.1} GiB, and \
+     InayOS needs {:.1} GiB: the system, {MIN_HOME_GIB} GiB of home and the {swap_gib} GiB \
+     hibernation swap file",
+    *room_bytes as f64 / GIB as f64,
+    *needed_bytes as f64 / GIB as f64
+)]
+pub struct NoRoomBesideWindows {
+    pub room_bytes: u64,
+    pub needed_bytes: u64,
+    pub swap_gib: u64,
 }
 
 pub fn gib_to_sectors(gib: u64, sector_size: u64) -> u64 {
@@ -158,6 +211,84 @@ pub fn shrink_plan(
         filesystem_bytes,
         system_first: end_byte / sector_size,
     })
+}
+
+/// The partitions of an install beside Windows with a system of `system_gib`. Windows keeps
+/// at least its files plus `WINDOWS_FREE_GIB`, home at least `MIN_HOME_GIB` plus the
+/// `swap_gib` of the hibernation swap file. What is left beyond the system, Windows and home
+/// share evenly. Windows never grows, and it stays as it is when its half is not smaller
+/// than it already is. The system and home partitions start on 1 MiB boundaries, and home
+/// ends at the end of the free space.
+pub fn beside_windows_layout(
+    input: BesideWindows,
+    system_gib: u64,
+    swap_gib: u64,
+) -> Result<BesideLayout, NoRoomBesideWindows> {
+    let sector = input.sector_size;
+    let per_mib = MIB / sector;
+    let current = input.windows.sectors();
+    let total = (input.room_last + 1).saturating_sub(input.windows.first);
+    let windows_min = (input.windows_files_bytes + WINDOWS_FREE_GIB * GIB)
+        .div_ceil(MIB)
+        .saturating_mul(per_mib)
+        .min(current);
+    let system = gib_to_sectors(system_gib, sector);
+    let home_min = gib_to_sectors(MIN_HOME_GIB + swap_gib, sector);
+    // Room for the system and home starts to move up to the next 1 MiB boundary.
+    let slack = 2 * per_mib;
+    let no_room = NoRoomBesideWindows {
+        room_bytes: total.saturating_sub(windows_min) * sector,
+        needed_bytes: (system + home_min + slack) * sector,
+        swap_gib,
+    };
+    if windows_min + system + home_min + slack > total {
+        return Err(no_room);
+    }
+    let rest = total - system - slack;
+    let upper = current.min(rest - home_min);
+    if windows_min > upper {
+        return Err(no_room);
+    }
+    let kept = (rest / 2 / per_mib * per_mib).clamp(windows_min, upper);
+    let windows = Span {
+        first: input.windows.first,
+        last: input.windows.first + kept - 1,
+    };
+    let system_first = align_up(windows.last + 1, sector);
+    let system = Span {
+        first: system_first,
+        last: system_first + system - 1,
+    };
+    let home = Span {
+        first: align_up(system.last + 1, sector),
+        last: input.room_last,
+    };
+    if home.first > home.last || home.sectors() < home_min {
+        return Err(no_room);
+    }
+    Ok(BesideLayout {
+        windows,
+        system,
+        home,
+    })
+}
+
+/// The largest whole number of GiB from `min` up to `max` for which `fits` holds, when it
+/// holds for `min`. `fits` must hold for every size below one that fits.
+pub fn largest_fitting(min: u64, max: u64, fits: impl Fn(u64) -> bool) -> Option<u64> {
+    if max < min || !fits(min) {
+        return None;
+    }
+    let (mut low, mut high) = (min, max);
+    while low < high {
+        let middle = low + (high - low).div_ceil(2);
+        if fits(middle) {
+            low = middle;
+        } else {
+            high = middle - 1;
+        }
+    }
+    Some(low)
 }
 
 #[cfg(test)]
@@ -260,5 +391,65 @@ mod tests {
             })
         );
         assert!(shrink_plan(home, 512, 4096, 0, 100).is_err());
+    }
+
+    /// A 256 GiB Windows partition from 16 MiB, with a recovery partition right after it.
+    fn windows_disk(files_gib: u64) -> BesideWindows {
+        let first = 16 * MIB / 512;
+        let last = first + 256 * GIB / 512 - 1;
+        BesideWindows {
+            windows: Span { first, last },
+            room_last: last,
+            sector_size: 512,
+            windows_files_bytes: files_gib * GIB,
+        }
+    }
+
+    #[test]
+    fn windows_and_home_share_what_the_system_leaves() {
+        // 256 GiB less 50 GiB of system and 2 MiB of alignment: about 103 GiB each.
+        let layout = beside_windows_layout(windows_disk(40), 50, 8).unwrap();
+        let input = windows_disk(40);
+        assert_eq!(layout.windows.first, input.windows.first);
+        let windows = layout.windows_bytes(512);
+        assert_eq!(windows % MIB, 0);
+        assert!(windows > 102 * GIB && windows <= 103 * GIB, "{windows}");
+        assert_eq!(layout.system.first % 2048, 0);
+        assert_eq!(layout.system.first, layout.windows.last + 1);
+        assert_eq!(layout.system.sectors() * 512, 50 * GIB);
+        assert_eq!(layout.home.first % 2048, 0);
+        assert_eq!(layout.home.last, input.room_last);
+        assert!(layout.home.sectors() * 512 >= windows);
+    }
+
+    #[test]
+    fn windows_keeps_its_files_and_20_gib_when_its_half_is_smaller() {
+        // 180 GiB of files: Windows keeps 200 GiB, which leaves 56 GiB for InayOS.
+        let layout = beside_windows_layout(windows_disk(180), 20, 4).unwrap();
+        assert_eq!(layout.windows_bytes(512), 200 * GIB);
+        assert!(layout.home.sectors() * 512 >= 34 * GIB);
+        // 33 GiB of system, 24 GiB of home and the alignment no longer fit.
+        let refused = beside_windows_layout(windows_disk(180), 33, 4).unwrap_err();
+        assert_eq!(refused.room_bytes, 56 * GIB);
+        assert_eq!(refused.needed_bytes, 57 * GIB + 2 * MIB);
+    }
+
+    #[test]
+    fn free_space_after_windows_counts_and_windows_never_grows() {
+        // A small Windows partition followed by 300 GiB of free space stays as it is.
+        let mut input = windows_disk(10);
+        input.windows.last = input.windows.first + 60 * GIB / 512 - 1;
+        input.room_last = input.windows.last + 300 * GIB / 512;
+        let layout = beside_windows_layout(input, 100, 8).unwrap();
+        assert_eq!(layout.windows, input.windows);
+        assert_eq!(layout.home.last, input.room_last);
+        assert!(layout.home.sectors() * 512 >= 199 * GIB);
+    }
+
+    #[test]
+    fn the_largest_fitting_size_is_found_by_halving() {
+        assert_eq!(largest_fitting(20, 1000, |gib| gib <= 437), Some(437));
+        assert_eq!(largest_fitting(20, 1000, |gib| gib <= 19), None);
+        assert_eq!(largest_fitting(20, 30, |_| true), Some(30));
     }
 }

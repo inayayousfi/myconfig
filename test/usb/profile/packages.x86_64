@@ -41,6 +41,10 @@ e2fsprogs
 dosfstools
 gptfdisk
 
+# Installs beside Windows: ntfs-3g.probe and ntfsresize check and shrink the Windows partition.
+# Releng lists it too.
+ntfs-3g
+
 # Encrypted installs: the installer formats and enrolls the LUKS2 volumes, and the TPM
 # libraries let systemd-cryptenroll reach the TPM. Releng lists them too.
 cryptsetup

@@ -46,6 +46,7 @@ fn wipe() -> Answers {
 fn settings() -> Settings {
     Settings {
         system_binary: "/usr/local/lib/inayos/inayos".into(),
+        guard_binary: "/usr/local/lib/inayos/inayos-guard".into(),
         log_file: Some("/var/log/inayos-installer.log".into()),
     }
 }
@@ -60,6 +61,7 @@ fn live_system() -> FakeHost {
     let host = FakeHost::default();
     host.dir("/sys/firmware/efi/efivars", (0, 0));
     host.file("/usr/local/lib/inayos/inayos", "binary");
+    host.file("/usr/local/lib/inayos/inayos-guard", "guard");
     host.file("/usr/share/zoneinfo/Europe/Paris", "");
     host.file("/etc/locale.gen", "#en_US.UTF-8 UTF-8\n");
     host.file("/proc/cpuinfo", "vendor_id\t: GenuineIntel\n");
@@ -697,10 +699,6 @@ fn options_that_are_not_built_refuse_before_any_command() {
     for (disk, extra) in [
         (
             "choice = \"wipe-disk\"\ndevice = \"/dev/vda\"\nsystem_size_gib = 40",
-            "[security]\nsecure_boot = true",
-        ),
-        (
-            "choice = \"wipe-disk\"\ndevice = \"/dev/vda\"\nsystem_size_gib = 40",
             "[security]\nencryption = true",
         ),
         ("choice = \"beside-windows\"\ndevice = \"/dev/vda\"", ""),
@@ -785,4 +783,154 @@ fn e2fsck_corrections_continue_the_shrink_and_its_failures_stop_it() {
     let failure = install(&shrink(), &settings(), &host, &FakeSink::default()).unwrap_err();
     assert_eq!(failure.stage, Stage::Disk);
     assert!(!host.actions().iter().any(|a| a.starts_with("resize2fs")));
+}
+
+const SETUP_MODE: &str = "/sys/firmware/efi/efivars/SetupMode-8be4df61-93ca-11d2-aa0d-00e098032b8c";
+
+/// The firmware's SetupMode variable as efivarfs gives it: 4 attribute bytes, then the value.
+fn setup_mode(host: &FakeHost, on: bool) {
+    host.file(
+        SETUP_MODE,
+        if on {
+            "\u{6}\0\0\0\u{1}"
+        } else {
+            "\u{6}\0\0\0\0"
+        },
+    );
+}
+
+#[test]
+fn the_secure_boot_answer_chooses_whether_the_secure_boot_module_runs() {
+    let profile = "/usr/local/lib/inayos/inayos list";
+    let host = live_system();
+    host.respond(profile, [ok("base\nrefind\nsecure-boot\nboot-guard\n")]);
+    install(&wipe(), &settings(), &host, &FakeSink::default()).unwrap();
+    let actions = host.actions();
+    assert!(actions.contains(&format!("{INSTALL} base refind boot-guard")));
+    assert!(actions.contains(&format!("{VERIFY} base refind boot-guard")));
+
+    let host = live_system();
+    host.respond(profile, [ok("base\nrefind\nsecure-boot\nboot-guard\n")]);
+    setup_mode(&host, true);
+    host.file(FIRMWARE_DEFAULT_DB, "\u{6}\0\0\0db");
+    host.writes_when_run(ENROLL, SETUP_MODE, "\u{6}\0\0\0\0");
+    install(&secure_boot(), &settings(), &host, &FakeSink::default()).unwrap();
+    let actions = host.actions();
+    let installed = actions.iter().position(|a| a == INSTALL).unwrap();
+    let enrolled = actions.iter().position(|a| a == ENROLL).unwrap();
+    let verified = actions.iter().position(|a| a == VERIFY).unwrap();
+    assert!(installed < enrolled && enrolled < verified, "{actions:?}");
+}
+
+const ENROLL: &str = "arch-chroot /mnt sbctl enroll-keys --microsoft --firmware-builtin";
+/// Firmware without a built-in signature database, such as OVMF, gets only Microsoft's keys.
+const ENROLL_WITHOUT_BUILTIN: &str = "arch-chroot /mnt sbctl enroll-keys --microsoft";
+const FIRMWARE_DEFAULT_DB: &str =
+    "/sys/firmware/efi/efivars/dbDefault-8be4df61-93ca-11d2-aa0d-00e098032b8c";
+
+fn secure_boot() -> Answers {
+    answers(
+        "choice = \"wipe-disk\"\ndevice = \"/dev/vda\"\nsystem_size_gib = 40",
+        "[security]\nsecure_boot = true",
+    )
+}
+
+#[test]
+fn the_keys_are_enrolled_only_after_the_install_passed_and_must_reach_the_firmware() {
+    // A failed install leaves the firmware in Setup Mode, so the stick still starts.
+    let host = live_system();
+    setup_mode(&host, true);
+    host.respond(INSTALL, [exit(1)]);
+    let failure = install(&secure_boot(), &settings(), &host, &FakeSink::default()).unwrap_err();
+    assert_eq!(failure.stage, Stage::Configuration);
+    assert!(!host.actions().iter().any(|a| a == ENROLL));
+
+    // A firmware still in Setup Mode after enrolling fails the install before the check.
+    let host = live_system();
+    setup_mode(&host, true);
+    let failure = install(&secure_boot(), &settings(), &host, &FakeSink::default()).unwrap_err();
+    assert!(
+        matches!(failure.error, Error::KeysNotEnrolled),
+        "{:?}",
+        failure.error
+    );
+    assert!(!host.actions().iter().any(|a| a == VERIFY));
+}
+
+#[test]
+fn firmware_without_built_in_keys_gets_only_microsofts_keys() {
+    let host = live_system();
+    setup_mode(&host, true);
+    host.writes_when_run(ENROLL_WITHOUT_BUILTIN, SETUP_MODE, "\u{6}\0\0\0\0");
+    install(&secure_boot(), &settings(), &host, &FakeSink::default()).unwrap();
+    let actions = host.actions();
+    assert!(
+        actions.iter().any(|a| a == ENROLL_WITHOUT_BUILTIN),
+        "{actions:?}"
+    );
+    assert!(!actions.iter().any(|a| a == ENROLL));
+}
+
+#[test]
+fn secure_boot_outside_setup_mode_stops_before_the_disk_changes() {
+    for variable in [Some(false), None] {
+        let host = live_system();
+        if let Some(on) = variable {
+            setup_mode(&host, on);
+        }
+        let failure = install(
+            &answers(
+                "choice = \"wipe-disk\"\ndevice = \"/dev/vda\"\nsystem_size_gib = 40",
+                "[security]\nsecure_boot = true",
+            ),
+            &settings(),
+            &host,
+            &FakeSink::default(),
+        )
+        .unwrap_err();
+        assert_eq!(failure.stage, Stage::Checks);
+        match variable {
+            Some(_) => assert!(
+                matches!(failure.error, Error::SetupModeOff),
+                "{:?}",
+                failure.error
+            ),
+            None => assert!(
+                matches!(failure.error, Error::Io { .. }),
+                "{:?}",
+                failure.error
+            ),
+        }
+        assert!(host.actions().is_empty());
+    }
+}
+
+#[test]
+fn the_guard_program_reaches_the_new_system_before_the_modules_run() {
+    let host = live_system();
+    install(&wipe(), &settings(), &host, &FakeSink::default()).unwrap();
+    let log = host.log.borrow().clone();
+    let copied = log
+        .iter()
+        .position(|line| {
+            line == "copy /usr/local/lib/inayos/inayos-guard /mnt/usr/local/bin/inayos-guard 755"
+        })
+        .expect("the guard was not copied");
+    let installed = log
+        .iter()
+        .position(|line| line == &format!("! {INSTALL}"))
+        .unwrap();
+    assert!(copied < installed);
+
+    let host = live_system();
+    host.files
+        .borrow_mut()
+        .remove(std::path::Path::new("/usr/local/lib/inayos/inayos-guard"));
+    let failure = install(&wipe(), &settings(), &host, &FakeSink::default()).unwrap_err();
+    assert!(
+        matches!(failure.error, Error::NoGuardBinary { .. }),
+        "{:?}",
+        failure.error
+    );
+    assert!(host.actions().is_empty());
 }

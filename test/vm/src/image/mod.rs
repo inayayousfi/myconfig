@@ -363,6 +363,7 @@ impl Build {
     fn machine(&self, media: Media, serial: &Path) -> Machine {
         Machine {
             os: self.os,
+            boot: self.os.boot(),
             layer: self.layer.clone(),
             sockets: Sockets::in_dir(&self.runtime),
             media,

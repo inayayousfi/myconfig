@@ -1,8 +1,11 @@
-//! The scenarios of the InayOS installer. Each one boots the USB stick image with a new blank
+//! The scenarios of the InayOS installer. Most boot the USB stick image with a new blank
 //! target disk and a seed disc, drives the live system over SSH as root, installs, powers off,
 //! boots the installed disk without the stick, and checks the result over SSH as the new user
 //! and through QMP screenshots. The Basics scenarios run `inayos-installer install` with an
 //! answers file; `gui-install` goes through the installer's screens with QMP key presses.
+//! The boot chain scenarios check Secure Boot and the boot guard: `secure-boot` installs with
+//! Secure Boot on, and `broken-kernel` starts from the installed disk that the last passed
+//! `blank-disk` run kept, instead of installing again.
 //!
 //! A scenario runs on its own layer. A passed scenario copies its screenshots to its
 //! `last-pass` folder and deletes the layer. A failed one keeps the layer, with its logs,
@@ -10,8 +13,11 @@
 //! next run.
 
 mod answers_file;
+mod boot_chain;
+mod boot_checks;
 mod checks;
 mod gui;
+mod installed;
 
 use std::fs;
 use std::io;
@@ -26,6 +32,7 @@ use crate::disk::{self, DiskError};
 use crate::host::{self, HostError};
 use crate::lock::{LockError, VmLock};
 use crate::machine::{Machine, Media, SSH_PORT, Sockets};
+use crate::os::Boot;
 use crate::os::{GUEST_PASSWORD, GUEST_USER, Os};
 use crate::paths::{Layer, Paths, PathsError};
 use crate::qmp::QmpError;
@@ -33,8 +40,8 @@ use crate::seed::{self, SeedError, SeedFile};
 use crate::ssh::{Guest, SshError, SshKey};
 use crate::vm::{Vm, VmError};
 
-/// The guests of the scenarios are Arch guests: 8 GiB of memory, UEFI without Secure Boot,
-/// and virtio devices.
+/// The guests of the scenarios are Arch guests: 8 GiB of memory and virtio devices. Their
+/// firmware is UEFI without Secure Boot unless the scenario chooses another.
 const OS: Os = Os::Arch;
 const TARGET_DISK_SIZE: &str = "80G";
 const DEVICE: &str = "/dev/vda";
@@ -83,6 +90,13 @@ pub enum Name {
     /// Installs on the blank disk through the installer's screens, driven by key presses, and
     /// checks the finished desktop.
     GuiInstall,
+    /// Installs on the blank disk with Secure Boot on, from firmware in Setup Mode, and checks
+    /// the signatures, the guard and the finished desktop.
+    SecureBoot,
+    /// Starts from the installed disk of the last passed blank-disk run, breaks the boot files
+    /// in a pacman transaction, and checks that the guard makes the pre-update snapshot the
+    /// default and that the machine boots it.
+    BrokenKernel,
 }
 
 impl Name {
@@ -92,7 +106,26 @@ impl Name {
             Name::ReinstallKeepHome => "reinstall-keep-home",
             Name::ShrinkExt4 => "shrink-ext4",
             Name::GuiInstall => "gui-install",
+            Name::SecureBoot => "secure-boot",
+            Name::BrokenKernel => "broken-kernel",
         }
+    }
+
+    /// The firmware of the scenario's guest. Secure Boot needs the Secure Boot firmware build;
+    /// its TPM is unused until encryption needs one.
+    fn boot(self) -> Boot {
+        match self {
+            Name::SecureBoot => Boot::SecureUefiWithTpm,
+            Name::BrokenKernel => installed::BOOT,
+            Name::BlankDisk | Name::ReinstallKeepHome | Name::ShrinkExt4 | Name::GuiInstall => {
+                Boot::Uefi
+            }
+        }
+    }
+
+    /// Whether the scenario starts from the kept installed disk instead of a blank one.
+    fn starts_installed(self) -> bool {
+        self == Name::BrokenKernel
     }
 }
 
@@ -110,6 +143,8 @@ pub enum ScenarioError {
     Disk(#[from] DiskError),
     #[error("no USB stick image in {0}; build it with: cargo xtask vm usb build")]
     NoIso(PathBuf),
+    #[error(transparent)]
+    NoInstalledDisk(#[from] installed::NoInstalledDisk),
     #[error(transparent)]
     Binary(#[from] BinaryError),
     #[error(
@@ -136,6 +171,13 @@ pub enum ScenarioError {
         name: &'static str,
         last_pass: PathBuf,
         work: PathBuf,
+        error: io::Error,
+    },
+    #[error(
+        "the blank-disk scenario passed, but its installed disk could not be kept in {installed}: {error}"
+    )]
+    InstalledNotKept {
+        installed: PathBuf,
         error: io::Error,
     },
 }
@@ -176,19 +218,36 @@ pub enum StepError {
 /// display.
 pub fn run(name: Name, watch: bool, repository: &Path) -> Result<(), ScenarioError> {
     let paths = Paths::from_env()?;
-    host::check(OS)?;
+    host::check_boot(OS, name.boot())?;
     let _lock = VmLock::acquire(&paths.lock())?;
     let iso = paths.usb_iso();
-    if !iso.is_file() {
+    let installed = if name.starts_installed() {
+        Some(installed::find(&paths.scenario_installed())?)
+    } else if !iso.is_file() {
         return Err(ScenarioError::NoIso(iso));
-    }
+    } else {
+        None
+    };
     let key = SshKey::ensure(&paths.ssh_key())?;
     let binaries = binary::build(OS, repository)?;
     let work = paths.scenario_work(name.name());
     let failed = paths.scenario_failed(name.name());
     disk::discard(&failed)?;
-    println!("vm: creating a blank {TARGET_DISK_SIZE} target disk");
-    disk::blank(&work, TARGET_DISK_SIZE, OS.boot())?;
+    match &installed {
+        Some(installed) => {
+            println!(
+                "vm: creating a throwaway layer over the installed disk in {}, {}",
+                installed.dir().display(),
+                installed::describe(installed)
+            );
+            disk::layer_over(installed, &work, name.boot())?;
+        }
+        None => {
+            println!("vm: creating a blank {TARGET_DISK_SIZE} target disk");
+            disk::blank(&work, TARGET_DISK_SIZE, name.boot())?;
+        }
+    }
+    let installed_copy = (name == Name::BlankDisk).then(|| paths.scenario_installed_copy());
 
     let mut scenario = Scenario {
         watch,
@@ -200,6 +259,8 @@ pub fn run(name: Name, watch: bool, repository: &Path) -> Result<(), ScenarioErr
         binaries,
         vm: None,
         boots: 0,
+        boot: name.boot(),
+        installed_copy: installed_copy.clone(),
     };
     let result = scenario.steps(name);
     let vm = scenario.vm.take();
@@ -209,23 +270,52 @@ pub fn run(name: Name, watch: bool, repository: &Path) -> Result<(), ScenarioErr
                 vm.shut_down(POWER_OFF_TIMEOUT);
             }
             let last_pass = paths.scenario_last_pass(name.name());
-            keep_screenshots(work.dir(), &last_pass).map_err(|error| {
+            let kept = keep_screenshots(work.dir(), &last_pass).map_err(|error| {
                 ScenarioError::PassNotKept {
                     name: name.name(),
                     last_pass: last_pass.clone(),
                     work: work.dir().to_owned(),
                     error,
                 }
-            })?;
-            disk::discard(&work)?;
-            println!(
-                "vm: the {} scenario passed; its screenshots are in {}",
-                name.name(),
-                last_pass.display()
-            );
-            Ok(())
+            });
+            if kept.is_ok() {
+                disk::discard(&work)?;
+                println!(
+                    "vm: the {} scenario passed; its screenshots are in {}",
+                    name.name(),
+                    last_pass.display()
+                );
+            }
+            if let Some(copy) = &installed_copy {
+                let installed = paths.scenario_installed();
+                if let Err(error) = installed::promote(copy, &installed) {
+                    if let Err(remove_error) = installed::remove(copy) {
+                        eprintln!(
+                            "vm: could not remove the installed disk copy {}: {remove_error}",
+                            copy.dir().display()
+                        );
+                    }
+                    return Err(ScenarioError::InstalledNotKept {
+                        installed: installed.dir().to_owned(),
+                        error,
+                    });
+                }
+                println!(
+                    "vm: the installed disk is kept in {} for the boot chain scenarios",
+                    installed.dir().display()
+                );
+            }
+            kept
         }
         Err(error) => {
+            if let Some(copy) = &installed_copy
+                && let Err(remove_error) = installed::remove(copy)
+            {
+                eprintln!(
+                    "vm: could not remove the installed disk copy {}: {remove_error}",
+                    copy.dir().display()
+                );
+            }
             if let Some(vm) = vm {
                 let screen = work.dir().join("screen.png");
                 if let Err(screen_error) = vm.qmp().and_then(|mut qmp| qmp.screendump(&screen)) {
@@ -264,6 +354,10 @@ struct Scenario {
     vm: Option<Vm>,
     /// The number of boots so far, which names the serial log of each boot.
     boots: u32,
+    /// The firmware of the guest, which the install also takes as the Secure Boot answer.
+    boot: Boot,
+    /// Where a `blank-disk` run copies the installed disk before its first boot.
+    installed_copy: Option<Layer>,
 }
 
 impl Scenario {
@@ -271,8 +365,25 @@ impl Scenario {
         match name {
             Name::BlankDisk => {
                 self.install_on_blank_disk()?;
+                self.copy_installed_disk()?;
                 let user = self.boot_installed()?;
                 self.check_desktop(&user)
+            }
+            Name::SecureBoot => {
+                self.install_on_blank_disk()?;
+                let user = self.boot_installed()?;
+                self.check_secure_boot(&user)?;
+                self.check_guard_after_install(&user)?;
+                self.check_desktop(&user)
+            }
+            Name::BrokenKernel => {
+                let user = self.boot_installed()?;
+                self.put_fresh_guard(&user)?;
+                let snapshot = self.break_boot_files(&user)?;
+                self.check_guard_caught(&user, snapshot)?;
+                self.power_off(&user, &user_power_off())?;
+                let user = self.boot_installed_showing_refind()?;
+                self.check_booted_snapshot(&user, snapshot)
             }
             Name::ReinstallKeepHome => {
                 self.install_on_blank_disk()?;
@@ -365,6 +476,16 @@ impl Scenario {
         self.power_off(&live, "systemctl poweroff")
     }
 
+    /// Copies the installed disk and its UEFI variables, before the installed system first
+    /// boots, to the place that replaces the kept installed disk when the scenario passes.
+    fn copy_installed_disk(&mut self) -> Result<(), StepError> {
+        let Some(copy) = self.installed_copy.clone() else {
+            return Ok(());
+        };
+        println!("vm: copying the installed disk to {}", copy.dir().display());
+        installed::copy(&self.layer, &copy).map_err(|error| StepError::Io(copy.disk(), error))
+    }
+
     /// Boots the USB stick image with the seed disc and waits until root accepts SSH.
     fn boot_live(&mut self) -> Result<Guest, StepError> {
         let seed_iso = self.layer.dir().join("seed.iso");
@@ -412,6 +533,7 @@ impl Scenario {
         self.boots += 1;
         let machine = Machine {
             os: OS,
+            boot: self.boot,
             layer: self.layer.clone(),
             sockets: Sockets::in_dir(&self.runtime),
             media,
@@ -424,6 +546,11 @@ impl Scenario {
         };
         self.vm = Some(Vm::start(&machine, &self.runtime, self.watch)?);
         Ok(())
+    }
+
+    /// Whether the install turns Secure Boot on, which the Secure Boot firmware is there for.
+    fn secure_boot(&self) -> bool {
+        self.boot == Boot::SecureUefiWithTpm
     }
 
     fn vm(&mut self) -> &mut Vm {
@@ -442,7 +569,7 @@ impl Scenario {
     fn install(&mut self, live: &Guest, disk: &DiskChoice, label: &str) -> Result<(), StepError> {
         let answers = self.write(
             &format!("answers-{label}.toml"),
-            &answers_file::answers_file(disk, &self.public_key),
+            &answers_file::answers_file(disk, &self.public_key, self.secure_boot()),
         )?;
         live.copy_to(&answers, LIVE_ANSWERS)?;
         self.copy_binaries(live)?;
@@ -469,7 +596,7 @@ impl Scenario {
     fn copy_binaries(&self, live: &Guest) -> Result<(), StepError> {
         binary::check_glibc(live, &self.binaries)?;
         for binary in &self.binaries {
-            let place = live_place(binary.package);
+            let place = live_place(binary.executable);
             let staged = format!("{place}.new");
             let copy_error = |error| StepError::Copy {
                 package: binary.package,
@@ -732,11 +859,12 @@ fn run_succeeds(guest: &Guest, remote: &str) -> Result<Result<(), String>, StepE
     }
 }
 
-/// Where the USB stick image keeps the installer built from `package`, as test/vm/usb/build-iso.sh
-/// places it.
-fn live_place(package: &str) -> &'static str {
-    match package {
+/// Where the USB stick image keeps the program `executable`, as test/vm/usb/build-iso.sh places
+/// it.
+fn live_place(executable: &str) -> &'static str {
+    match executable {
         "inayos-installer" => "/usr/local/bin/inayos-installer",
+        "inayos-guard" => "/usr/local/lib/inayos/inayos-guard",
         _ => "/usr/local/lib/inayos/inayos",
     }
 }
@@ -749,5 +877,10 @@ fn installer_command() -> String {
 
 /// Powers the installed system off as the new user, who needs the password for sudo.
 fn user_power_off() -> String {
-    format!("printf '%s\\n' '{GUEST_PASSWORD}' | sudo -S -p '' systemctl poweroff")
+    sudo("systemctl poweroff")
+}
+
+/// Runs `command` as root through sudo, as the new user, who needs the password for it.
+fn sudo(command: &str) -> String {
+    format!("printf '%s\\n' '{GUEST_PASSWORD}' | sudo -S -p '' {command}")
 }

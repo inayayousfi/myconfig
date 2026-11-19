@@ -27,7 +27,13 @@ const CANDIDATES: [&str; 3] = [
     "/boot/efi/EFI/refind/refind.conf",
     "/efi/EFI/refind/refind.conf",
 ];
-const BLOCK: &str = "\n# BEGIN INAYOS REFIND\ninclude managed.conf\ninclude themes/black-pink/theme.conf\n# END INAYOS REFIND\n";
+/// The theme comes after the managed settings, and the boot guard's file comes last, so
+/// its `default_selection` wins. The boot-guard module writes that file.
+const BLOCK: &str = "\n# BEGIN INAYOS REFIND\ninclude managed.conf\ninclude themes/black-pink/theme.conf\ninclude inayos-guard.conf\n# END INAYOS REFIND\n";
+/// The file of the boot guard's entries, next to `refind.conf`, which BLOCK includes.
+pub(crate) const GUARD_CONFIG: &str = "inayos-guard.conf";
+const GUARD_CONFIG_PLACEHOLDER: &[u8] =
+    b"# The InayOS boot guard writes its rEFInd entries here.\n";
 /// The mount points where refind-install looks for the EFI system partition, in its order.
 const ESP_MOUNTS: [&str; 3] = ["/efi", "/boot/efi", "/boot"];
 /// The label of the firmware boot entry that refind-install adds.
@@ -41,7 +47,9 @@ const NO_ESP: &str = "no EFI system partition is mounted at /efi, /boot/efi or /
 /// mounts inside the new system when the system around it has it.
 const EFIVARS: &str = "/sys/firmware/efi/efivars";
 
-fn refind_config(ctx: &Context) -> ModuleResult<Option<PathBuf>> {
+/// The rEFInd configuration file on the EFI system partition, or `None` when rEFInd is
+/// not installed there.
+pub(crate) fn refind_config(ctx: &Context) -> ModuleResult<Option<PathBuf>> {
     for candidate in CANDIDATES {
         if ctx.succeeds(cmd!(ctx.shell, "sudo test -f {candidate}"))? {
             return Ok(Some(PathBuf::from(candidate)));
@@ -405,6 +413,12 @@ impl Module for Refind {
             }
             let global = REFIND_ASSETS.refind.global_conf.content;
             ctx.write_system_file(&directory.join("managed.conf"), global, "0644")?;
+            // The block includes the guard's file, so it always exists: without the
+            // boot-guard module it holds only this comment, and the guard replaces it.
+            let guard = directory.join(GUARD_CONFIG);
+            if !ctx.succeeds(cmd!(sh, "sudo test -e {guard}"))? {
+                ctx.write_system_file(&guard, GUARD_CONFIG_PLACEHOLDER, "0644")?;
+            }
             let original = ctx.read(cmd!(sh, "sudo cat {config}"))?;
             ctx.write_system_file(&config, updated_config(&original).as_bytes(), "0644")
         })
@@ -424,6 +438,7 @@ impl Module for Refind {
             .ok_or("rEFInd configuration has no parent directory")?;
         for path in [
             "managed.conf",
+            GUARD_CONFIG,
             "themes/black-pink/theme.conf",
             "themes/black-pink/banner.png",
         ] {

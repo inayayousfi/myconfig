@@ -8,6 +8,8 @@ use crate::{
     Answers, Disk, Error,
     disk_names::partition_number,
     host::Command,
+    inventory,
+    modules::SECURE_BOOT_MODULE,
     parse::{self, GptEntry, TableRow},
     sizes::{self, ShrinkPlan, WipeLayout},
 };
@@ -52,11 +54,6 @@ pub(crate) struct Checked {
 
 pub(crate) fn check(m: &Machine, answers: &Answers, settings: &Settings) -> Result<Checked, Error> {
     answers.check()?;
-    if answers.security.secure_boot {
-        return Err(Error::NotBuilt {
-            option: "Secure Boot",
-        });
-    }
     if answers.security.encryption {
         return Err(Error::NotBuilt {
             option: "Encryption",
@@ -78,9 +75,17 @@ pub(crate) fn check(m: &Machine, answers: &Answers, settings: &Settings) -> Resu
     if !m.exists(Path::new("/sys/firmware/efi/efivars")) {
         return Err(Error::NotUefi);
     }
+    if answers.security.secure_boot && !inventory::secure_boot_setup_mode(m.host)? {
+        return Err(Error::SetupModeOff);
+    }
     if !m.exists(&settings.system_binary) || m.is_dir(&settings.system_binary) {
         return Err(Error::NoSystemBinary {
             path: settings.system_binary.clone(),
+        });
+    }
+    if !m.exists(&settings.guard_binary) || m.is_dir(&settings.guard_binary) {
+        return Err(Error::NoGuardBinary {
+            path: settings.guard_binary.clone(),
         });
     }
     let modules = kept_modules(m, answers, settings)?;
@@ -129,13 +134,15 @@ pub(crate) fn check(m: &Machine, answers: &Answers, settings: &Settings) -> Resu
     })
 }
 
-/// The profile modules minus the skipped ones, when the answers skip any.
+/// The profile modules minus the skipped ones, when the answers skip any. Without Secure
+/// Boot in the answers, the secure-boot module is skipped too.
 fn kept_modules(
     m: &Machine,
     answers: &Answers,
     settings: &Settings,
 ) -> Result<Option<Vec<String>>, Error> {
-    if answers.skip.is_empty() {
+    let secure_boot_off = !answers.security.secure_boot;
+    if answers.skip.is_empty() && !secure_boot_off {
         return Ok(None);
     }
     let binary = settings.system_binary.to_string_lossy();
@@ -152,10 +159,17 @@ fn kept_modules(
             });
         }
     }
+    let mut skip: Vec<&str> = answers.skip.iter().map(String::as_str).collect();
+    if secure_boot_off && profile.contains(&SECURE_BOOT_MODULE) {
+        skip.push(SECURE_BOOT_MODULE);
+    }
+    if skip.is_empty() {
+        return Ok(None);
+    }
     Ok(Some(
         profile
             .into_iter()
-            .filter(|name| !answers.skip.iter().any(|skip| skip == name))
+            .filter(|name| !skip.contains(name))
             .map(str::to_owned)
             .collect(),
     ))

@@ -25,5 +25,6 @@ file_permissions+=(
   ["/usr/local/bin/inayos-start-installer"]="0:0:755"
   ["/usr/local/bin/inayos-installer"]="0:0:755"
   ["/usr/local/lib/inayos/inayos"]="0:0:755"
+  ["/usr/local/lib/inayos/inayos-guard"]="0:0:755"
   ["/opt/axidev-osk/bin/axidev-osk"]="0:0:755"
 )

@@ -1,5 +1,5 @@
 //! Builds the InayOS USB stick image: boots a throwaway layer over the clean Arch image,
-//! builds the installer and the InayOS desktop installer from the working tree, assembles the
+//! builds the installer, the InayOS desktop installer and the boot guard from the working tree, assembles the
 //! mkarchiso profile from archiso's releng profile and the overlay in `test/usb/profile/`, runs
 //! mkarchiso in the guest, and copies the image to the state folder.
 //!
@@ -141,18 +141,19 @@ fn build_in_guest(
     println!("vm: building the USB stick image in the guest");
     let home = format!("/home/{GUEST_USER}");
     // `start::install_binaries` copied the binaries into the home folder.
-    let binary = |package: &str| {
+    let binary = |executable: &str| {
         let binary = binaries
             .iter()
-            .find(|binary| binary.package == package)
-            .expect("the Arch guest receives the installer and the InayOS desktop installer");
+            .find(|binary| binary.executable == executable)
+            .expect("the Arch guest receives the installer, the desktop installer and the guard");
         format!("{home}/{}", binary.guest_path)
     };
     let command = format!(
         "printf '%s\\n' '{GUEST_PASSWORD}' | sudo -S -p '' bash {home}/build-iso.sh \
-         {home}/usb-profile {} {} '{OSK_URL}' {GUEST_ISO}",
+         {home}/usb-profile {} {} {} '{OSK_URL}' {GUEST_ISO}",
         binary("inayos-installer"),
         binary("inayos-arch-desktop"),
+        binary("inayos-guard"),
     );
     guest.run_logged(&command, &folder.join("logs/build-iso.log"))?;
     Ok(())

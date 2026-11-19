@@ -4,8 +4,8 @@ use std::path::Path;
 
 use crate::{Error, host::Command, host::Host, install::machine::Machine, sink::Silent};
 
-/// The modules every InayOS system has: the desktop, its boot, its input and accessibility
-/// tools, its sound and its remote access. The modules they hard-need are locked too.
+/// The modules every InayOS system has: the desktop, its boot with its snapshots and boot
+/// guard, its input and accessibility tools, its sound and its remote access. The modules they hard-need are locked too.
 pub const LOCKED_MODULES: &[&str] = &[
     "plasma-version",
     "base",
@@ -21,7 +21,13 @@ pub const LOCKED_MODULES: &[&str] = &[
     "ssh",
     "ssh-server",
     "git-config",
+    "snapshots",
+    "boot-guard",
 ];
+
+/// The module that the Secure Boot answer chooses: the install skips it when Secure Boot
+/// is off, so an interface offers it through that answer, not as a module to skip.
+pub const SECURE_BOOT_MODULE: &str = "secure-boot";
 
 /// One profile module.
 #[derive(Clone, Debug, PartialEq, Eq)]

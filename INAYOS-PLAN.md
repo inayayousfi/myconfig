@@ -129,6 +129,7 @@ The guard is a small binary, separate from `inayos`, shipped in the same package
   - Snapshots are read-only, so the entry uses systemd's own overlay: mkinitcpio's `sd-volatile` hook is in the hooks from installation on, and the entry passes `systemd.volatile=overlay rootflags=subvol=<snapshot>`. `grub-btrfs` is not used: its hook pulls in GRUB and does not run in a systemd initramfs.
   - With encryption, the guard builds and signs a previous unified kernel image with the snapshot's kernel and that command line.
   - rEFInd does not fall back by itself: when a new kernel fails to boot, the user clicks this entry.
+  - The `broken-kernel` scenario showed it working: the entry boots a read-only snapshot on systemd's overlay, with `/var/log` and `/home` mounted.
 - **Lockdown check.** The guard checks that `/sys/kernel/security/lockdown` reads `[none]` on normal entries, which catches a future Arch kernel that would disable hibernation.
 - **Firmware updates.** Firmware updates go through InayOS (`fwupd`). Before a firmware or Secure Boot database update, the guard adds a temporary TPM slot with no measurement registers. At the next good boot it enrolls register 7 again and removes the temporary slot. During that window the disk unlocks without the Secure Boot check. Routine updates never need the recovery key.
 
@@ -309,7 +310,6 @@ These are unknowns that sources and local tests could not settle. Each needs a V
 
 - That a mouse click on a rEFInd firmware entry starts it through `BootNext`, and that the pointer works in rEFInd on the test firmware.
 - That rootless Docker can be enabled in installer mode and starts at first boot.
-- That the "Previous system" entry boots cleanly from a read-only snapshot with `systemd.volatile=overlay`, including the remount of `/` and the mounts of `/var/log` and `/home`.
 - That sd-encrypt's console password agent does not disturb bootvine's screen when the recovery prompt shows.
 
 ## Proposed order of work

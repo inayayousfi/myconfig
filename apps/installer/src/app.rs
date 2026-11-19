@@ -32,6 +32,7 @@ pub struct Options {
     /// Where to write the answers instead of installing, when set.
     pub save_answers: Option<PathBuf>,
     pub system_binary: PathBuf,
+    pub guard_binary: PathBuf,
     pub log: PathBuf,
     /// The root of the files the catalogs read: `/` on the live system.
     pub root: PathBuf,
@@ -47,6 +48,8 @@ pub struct Loaded {
     pub disks: Result<Vec<inventory::DiskInfo>, String>,
     pub modules: Result<Vec<ModuleEntry>, String>,
     pub tpm2: bool,
+    /// Whether the firmware is in Secure Boot Setup Mode, or why that could not be read.
+    pub setup_mode: Result<bool, String>,
     /// Whether the live system already has a connection, which skips the Wi-Fi screen.
     pub connected: bool,
 }
@@ -61,6 +64,7 @@ impl Loaded {
             disks: inventory::disks(host).map_err(text),
             modules: modules::list(host, &options.system_binary).map_err(text),
             tpm2: inventory::has_tpm2(host),
+            setup_mode: inventory::secure_boot_setup_mode(host).map_err(text),
             connected: live::connected(host),
         }
     }
@@ -126,9 +130,15 @@ impl App {
             keyboard: keyboard_screen::State::new(loaded.keyboards, loaded.locales),
             wifi: wifi::State::new(),
             disk: disk::State::new(loaded.disks),
-            security: security::State::new(loaded.tpm2),
+            security: security::State::new(loaded.tpm2, loaded.setup_mode),
             user: user::State::new(loaded.zones),
-            modules: modules_screen::State::new(loaded.modules),
+            // The Secure Boot answer chooses that module.
+            modules: modules_screen::State::new(loaded.modules.map(|entries| {
+                entries
+                    .into_iter()
+                    .filter(|entry| entry.name != modules::SECURE_BOOT_MODULE)
+                    .collect()
+            })),
             summary: summary::State::default(),
             progress: progress::State::default(),
             answers: Err("the summary is not open yet".to_owned()),
@@ -231,7 +241,10 @@ impl App {
                 let reply = self.disk.update(message);
                 self.reply(reply, Message::Disk)
             }
-            Message::Security(never) => match never {},
+            Message::Security(message) => {
+                self.security.update(message);
+                Task::none()
+            }
             Message::User(message) => {
                 let reply = self.user.update(message);
                 self.reply(reply, Message::User)
@@ -412,6 +425,10 @@ impl App {
                 let reply = self.disk.key(key);
                 self.reply(reply, Message::Disk)
             }
+            Screen::Security => {
+                let reply = self.security.key(key);
+                self.reply(reply, Message::Security)
+            }
             Screen::User => {
                 let reply = self.user.key(key);
                 self.reply(reply, Message::User)
@@ -447,6 +464,7 @@ impl App {
         }
         let settings = Settings {
             system_binary: self.options.system_binary.clone(),
+            guard_binary: self.options.guard_binary.clone(),
             log_file: Some(self.options.log.clone()),
         };
         match Running::start(answers, settings, self.host.clone(), &self.options.log) {
@@ -771,6 +789,7 @@ mod tests {
                 },
             ]),
             tpm2: false,
+            setup_mode: Ok(false),
             connected: true,
         }
     }
@@ -785,6 +804,7 @@ mod tests {
         let options = Options {
             save_answers: Some(saved.clone()),
             system_binary: PathBuf::from("/usr/local/lib/inayos/inayos"),
+            guard_binary: PathBuf::from("/usr/local/lib/inayos/inayos-guard"),
             log: folder.join("install.log"),
             root: folder.clone(),
             in_sway: false,
@@ -851,6 +871,7 @@ mod tests {
         let options = Options {
             save_answers: None,
             system_binary: PathBuf::from("/usr/local/lib/inayos/inayos"),
+            guard_binary: PathBuf::from("/usr/local/lib/inayos/inayos-guard"),
             log: PathBuf::from("/nonexistent/install.log"),
             root: PathBuf::from("/nonexistent"),
             in_sway: false,

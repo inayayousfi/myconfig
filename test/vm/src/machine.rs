@@ -44,6 +44,8 @@ pub struct Media {
 #[derive(Clone, Debug)]
 pub struct Machine {
     pub os: Os,
+    /// The firmware build and TPM. Each system has its own, and a scenario may choose another.
+    pub boot: Boot,
     pub layer: Layer,
     pub sockets: Sockets,
     pub media: Media,
@@ -57,7 +59,7 @@ pub struct Machine {
 impl Machine {
     pub fn qemu_args(&self) -> Vec<OsString> {
         let mut args = Args::default();
-        let secure = self.os.boot() == Boot::SecureUefiWithTpm;
+        let secure = self.boot == Boot::SecureUefiWithTpm;
         let windows = self.os == Os::Windows;
 
         // -nodefaults leaves out QEMU's own display, network card and empty CD drive, so the
@@ -75,7 +77,7 @@ impl Machine {
         args.push_path(
             "-drive",
             "if=pflash,format=raw,unit=0,readonly=on,file=",
-            &Firmware::for_boot(self.os.boot()).code,
+            &Firmware::for_boot(self.boot).code,
         );
         args.push_path(
             "-drive",
@@ -209,6 +211,7 @@ mod tests {
     fn machine(os: Os, dir: &str) -> Machine {
         Machine {
             os,
+            boot: os.boot(),
             layer: Layer::new(PathBuf::from(dir).join("work")),
             sockets: Sockets::in_dir(Path::new("/state/run")),
             media: Media::default(),
@@ -274,6 +277,25 @@ mod tests {
             values(&windows, "-tpmdev"),
             ["emulator,id=tpm0,chardev=tpm"]
         );
+    }
+
+    #[test]
+    fn a_linux_guest_can_start_with_secure_firmware_and_a_tpm() {
+        let mut arch = machine(Os::Arch, "/state");
+        arch.boot = Boot::SecureUefiWithTpm;
+        assert!(values(&arch, "-machine")[0].contains("smm=on"));
+        assert!(
+            values(&arch, "-drive")[0].ends_with("/OVMF_CODE.secboot.4m.fd"),
+            "{:?}",
+            values(&arch, "-drive")
+        );
+        let devices = values(&arch, "-device");
+        for device in [
+            "tpm-crb,tpmdev=tpm0",
+            "virtio-blk-pci,drive=disk,bootindex=0",
+        ] {
+            assert!(devices.contains(&device.to_owned()), "{device}");
+        }
     }
 
     #[test]

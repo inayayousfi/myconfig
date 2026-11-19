@@ -67,6 +67,8 @@ pub enum BinaryError {
 #[derive(Clone, Copy, Debug)]
 struct Recipe {
     package: &'static str,
+    /// The binary that the package builds, which names the program in the guest.
+    executable: &'static str,
     target: &'static str,
     /// Relative to the guest user's home folder, with `/` between folders.
     guest_path: &'static str,
@@ -89,6 +91,8 @@ pub enum Launch {
 #[derive(Clone, Debug)]
 pub struct Binary {
     pub package: &'static str,
+    /// The binary that the package builds, which names the program in the guest.
+    pub executable: &'static str,
     pub local: PathBuf,
     pub target: &'static str,
     /// Relative to the guest user's home folder, with `/` between folders.
@@ -134,36 +138,48 @@ fn recipes(os: Os) -> &'static [Recipe] {
     match os {
         Os::Ubuntu => &[Recipe {
             package: "inayos-ubuntu-devbox",
+            executable: "inayos-ubuntu-devbox",
             target: MUSL_TARGET,
             guest_path: ".local/bin/inayos",
             launch: Launch::Linux,
         }],
-        // The Arch guest builds the USB stick, which carries the installer and the InayOS
-        // desktop installer that it places in the new system. The installer's screens need
-        // the system C library of the live system.
+        // The Arch guest builds the USB stick, which carries the installer, and the InayOS
+        // desktop installer and boot guard that it places in the new system. The installer's
+        // screens need the system C library of the live system.
         Os::Arch => &[
             Recipe {
                 package: "inayos-installer",
+                executable: "inayos-installer",
                 target: GNU_TARGET,
                 guest_path: "inayos-installer",
                 launch: Launch::Linux,
             },
             Recipe {
                 package: "inayos-arch-desktop",
+                executable: "inayos-arch-desktop",
                 target: MUSL_TARGET,
                 guest_path: "inayos-arch-desktop",
+                launch: Launch::Linux,
+            },
+            Recipe {
+                package: "inayos-guard-app",
+                executable: "inayos-guard",
+                target: MUSL_TARGET,
+                guest_path: "inayos-guard",
                 launch: Launch::Linux,
             },
         ],
         Os::Windows => &[
             Recipe {
                 package: "inayos-windows",
+                executable: "inayos-windows",
                 target: WINDOWS_TARGET,
                 guest_path: "AppData/Local/inayos/inayos.exe",
                 launch: Launch::Windows,
             },
             Recipe {
                 package: "inayos-arch-wsl",
+                executable: "inayos-arch-wsl",
                 target: MUSL_TARGET,
                 guest_path: ARCH_WSL_GUEST_PATH,
                 launch: Launch::Wsl,
@@ -253,7 +269,7 @@ fn build_one(recipe: &Recipe, repository: &Path) -> Result<Binary, BinaryError> 
     let mut executable = None;
     for line in BufReader::new(stdout).lines() {
         let line = line.map_err(|error| BinaryError::Read(package, error))?;
-        if let Some(path) = artifact_executable(&line, package) {
+        if let Some(path) = artifact_executable(&line, recipe.executable) {
             executable = Some(path);
         }
     }
@@ -265,6 +281,7 @@ fn build_one(recipe: &Recipe, repository: &Path) -> Result<Binary, BinaryError> 
     }
     Ok(Binary {
         package,
+        executable: recipe.executable,
         local: executable.ok_or(BinaryError::NoExecutable(package))?,
         target: recipe.target,
         guest_path: recipe.guest_path,
@@ -373,13 +390,13 @@ fn ldd_version(ldd: &str) -> Option<GlibcVersion> {
         .and_then(GlibcVersion::parse)
 }
 
-/// The executable path in one cargo JSON message, when the message reports the binary of `package`.
-fn artifact_executable(line: &str, package: &str) -> Option<PathBuf> {
+/// The executable path in one cargo JSON message, when the message reports the binary `name`.
+fn artifact_executable(line: &str, name: &str) -> Option<PathBuf> {
     let message: Value = serde_json::from_str(line).ok()?;
     if message.get("reason")?.as_str()? != "compiler-artifact" {
         return None;
     }
-    if message.get("target")?.get("name")?.as_str()? != package {
+    if message.get("target")?.get("name")?.as_str()? != name {
         return None;
     }
     message.get("executable")?.as_str().map(PathBuf::from)

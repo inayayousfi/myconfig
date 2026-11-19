@@ -31,6 +31,7 @@ mod autohotkey;
 mod axidev_osk;
 mod base;
 mod boot_config;
+mod boot_guard;
 mod bootvine;
 mod cli;
 mod docker;
@@ -58,7 +59,9 @@ mod profile_packages;
 mod refind;
 mod registry_tweaks;
 mod runtimes;
+mod secure_boot;
 mod shared_desktop;
+mod snapshots;
 mod ssh;
 mod system_monitor;
 mod system_tuning;
@@ -80,6 +83,7 @@ pub use arch_wsl::ArchWsl;
 pub use autohotkey::AutoHotkey;
 pub use axidev_osk::AxidevOsk;
 pub use base::Base;
+pub use boot_guard::BootGuard;
 pub use bootvine::Bootvine;
 pub use cli::Cli;
 pub use docker::Docker;
@@ -107,7 +111,9 @@ pub use profile_packages::unnamed_packages;
 pub use refind::Refind;
 pub use registry_tweaks::RegistryTweaks;
 pub use runtimes::Runtimes;
+pub use secure_boot::SecureBoot;
 pub use shared_desktop::SharedDesktop;
+pub use snapshots::Snapshots;
 
 /// Steps that `inayos internal` runs on behalf of a module, such as an elevated child.
 pub mod internal {

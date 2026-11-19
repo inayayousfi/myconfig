@@ -1,7 +1,7 @@
 #!/bin/bash
 # Builds the InayOS USB stick image inside the Arch build guest. It runs as root.
 #
-#   build-iso.sh <overlay> <installer> <system-binary> <osk-url> <iso>
+#   build-iso.sh <overlay> <installer> <system-binary> <guard-binary> <osk-url> <iso>
 #
 # The profile is archiso's releng profile with the overlay copied over it: every overlay file
 # replaces or adds the file at the same path, except packages.x86_64, whose lines are appended
@@ -11,8 +11,9 @@ set -euo pipefail
 overlay=$1
 installer=$2
 system_binary=$3
-osk_url=$4
-iso=$5
+guard_binary=$4
+osk_url=$5
+iso=$6
 
 # mkarchiso needs several GB of work space, more than the /tmp memory file system holds.
 build=/var/tmp/inayos-usb
@@ -36,6 +37,7 @@ fi
 echo "==> Placing the installer binaries"
 install -D -m 755 "$installer" "$profile/airootfs/usr/local/bin/inayos-installer"
 install -D -m 755 "$system_binary" "$profile/airootfs/usr/local/lib/inayos/inayos"
+install -D -m 755 "$guard_binary" "$profile/airootfs/usr/local/lib/inayos/inayos-guard"
 
 echo "==> Adding Axidev OSK from $osk_url"
 curl --fail --location --show-error --silent --proto '=https' --output "$build/axidev-osk.tar.gz" "$osk_url"

@@ -43,6 +43,9 @@ struct Paths {
     /// The InayOS binary that the new system runs.
     #[arg(long, default_value = Settings::SYSTEM_BINARY)]
     system_binary: PathBuf,
+    /// The boot guard program that the new system runs.
+    #[arg(long, default_value = Settings::GUARD_BINARY)]
+    guard_binary: PathBuf,
 }
 
 impl Default for Paths {
@@ -50,6 +53,7 @@ impl Default for Paths {
         Paths {
             log: PathBuf::from("/var/log/inayos-installer.log"),
             system_binary: PathBuf::from(Settings::SYSTEM_BINARY),
+            guard_binary: PathBuf::from(Settings::GUARD_BINARY),
         }
     }
 }
@@ -69,6 +73,7 @@ fn screens(save_answers: Option<PathBuf>, paths: Paths) -> ExitCode {
     let options = app::Options {
         save_answers,
         system_binary: paths.system_binary,
+        guard_binary: paths.guard_binary,
         log: paths.log,
         root: PathBuf::from("/"),
         in_sway: std::env::var_os("SWAYSOCK").is_some(),
@@ -83,7 +88,11 @@ fn screens(save_answers: Option<PathBuf>, paths: Paths) -> ExitCode {
 }
 
 fn install_from_file(answers: PathBuf, paths: Paths) -> ExitCode {
-    let Paths { log, system_binary } = paths;
+    let Paths {
+        log,
+        system_binary,
+        guard_binary,
+    } = paths;
     let console = match console::Console::open(&log) {
         Ok(console) => console,
         Err(error) => {
@@ -100,6 +109,7 @@ fn install_from_file(answers: PathBuf, paths: Paths) -> ExitCode {
     };
     let settings = Settings {
         system_binary,
+        guard_binary,
         log_file: Some(log),
     };
     match install(&answers, &settings, &RealHost, &console) {

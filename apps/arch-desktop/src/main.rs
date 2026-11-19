@@ -11,6 +11,7 @@ static MODULES: &[&dyn Module] = &[
         needs: &[Need::Hard("plasma-version")],
     },
     &SystemTuning,
+    &Snapshots,
     // Before the modules that set KDE defaults, because it installs Plasma and its
     // kreadconfig6 and kwriteconfig6.
     &KdePlasma,
@@ -36,7 +37,9 @@ static MODULES: &[&dyn Module] = &[
     &Chrome,
     &Math,
     &Refind,
+    &SecureBoot,
     &Bootvine,
+    &BootGuard,
     &Kanata {
         start_at_login: false,
     },
@@ -161,6 +164,9 @@ mod tests {
             "chrome",
             "math",
             "bootvine",
+            "snapshots",
+            "secure-boot",
+            "boot-guard",
             "t3code-desktop",
             "agent-config",
             "git-config",

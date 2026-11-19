@@ -19,6 +19,8 @@ const EFI_TYPE: &str = "c12a7328-f81f-11d2-ba4b-00a0c93ec93b";
 const SYSTEM_LABEL: &str = "inayos-system";
 const HOME_LABEL: &str = "inayos-home";
 const TPM_VERSION: &str = "/sys/class/tpm/tpm0/tpm_version_major";
+/// The firmware variable that says whether the firmware is in Secure Boot Setup Mode.
+const SETUP_MODE: &str = "/sys/firmware/efi/efivars/SetupMode-8be4df61-93ca-11d2-aa0d-00e098032b8c";
 
 /// One whole disk the install can use.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -101,6 +103,21 @@ pub fn disks(host: &dyn Host) -> Result<Vec<DiskInfo>, Error> {
 pub fn has_tpm2(host: &dyn Host) -> bool {
     host.read(Path::new(TPM_VERSION))
         .is_ok_and(|version| version.trim() == "2")
+}
+
+/// Whether the firmware is in Setup Mode, where it holds no platform key and accepts the
+/// keys that the secure-boot module enrolls. efivarfs gives the variable's 4 attribute
+/// bytes, then its value byte, which is 1 in Setup Mode. Fails when the variable cannot be
+/// read, such as on a machine that did not start in UEFI mode.
+pub fn secure_boot_setup_mode(host: &dyn Host) -> Result<bool, Error> {
+    let variable = host
+        .read(Path::new(SETUP_MODE))
+        .map_err(|error| Error::Io {
+            action: "read",
+            path: SETUP_MODE.into(),
+            error,
+        })?;
+    Ok(variable.as_bytes().last() == Some(&1))
 }
 
 /// A whole disk with room on it that is not the live medium. zram devices count as disks

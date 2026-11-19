@@ -26,6 +26,8 @@ pub const INSTALLED_LOG: &str = "/var/log/inayos-installer.log";
 pub struct Settings {
     /// The InayOS binary of the profile the new system runs, copied into it.
     pub system_binary: PathBuf,
+    /// The boot guard program, copied into the new system next to the InayOS binary.
+    pub guard_binary: PathBuf,
     /// The install log, copied into the new system at the end.
     pub log_file: Option<PathBuf>,
 }
@@ -33,6 +35,8 @@ pub struct Settings {
 impl Settings {
     /// Where the USB stick keeps the InayOS binary.
     pub const SYSTEM_BINARY: &str = "/usr/local/lib/inayos/inayos";
+    /// Where the USB stick keeps the boot guard program.
+    pub const GUARD_BINARY: &str = "/usr/local/lib/inayos/inayos-guard";
 }
 
 /// Installs InayOS on the disk the answers name. The machine does not reboot: the caller

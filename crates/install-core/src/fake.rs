@@ -40,6 +40,8 @@ pub struct FakeHost {
     pub written: RefCell<Vec<(PathBuf, String)>>,
     /// The standard input each command received, by printed command.
     pub inputs: RefCell<Vec<(String, String)>>,
+    /// Files that a printed command writes when it runs, such as a firmware variable.
+    effects: RefCell<HashMap<String, Vec<(String, String)>>>,
 }
 
 pub fn ok(stdout: &str) -> Output {
@@ -62,6 +64,15 @@ impl FakeHost {
         self.responses
             .borrow_mut()
             .insert(command.to_owned(), outputs.into_iter().collect());
+    }
+
+    /// Makes `command` write `text` to `path` each time it runs.
+    pub fn writes_when_run(&self, command: &str, path: &str, text: &str) {
+        self.effects
+            .borrow_mut()
+            .entry(command.to_owned())
+            .or_default()
+            .push((path.to_owned(), text.to_owned()));
     }
 
     pub fn file(&self, path: &str, text: &str) {
@@ -131,6 +142,10 @@ impl Host for FakeHost {
             self.inputs
                 .borrow_mut()
                 .push((shown.clone(), input.to_owned()));
+        }
+        let effects = self.effects.borrow().get(&shown).cloned();
+        for (path, text) in effects.unwrap_or_default() {
+            self.file(&path, &text);
         }
         let output = match self.responses.borrow_mut().get_mut(&shown) {
             Some(queue) if queue.len() > 1 => queue.pop_front().expect("the queue is not empty"),

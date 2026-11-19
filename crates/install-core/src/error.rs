@@ -82,6 +82,18 @@ pub enum Error {
     HomeTooFull(HomeTooFull),
     #[error("the system binary {path} is missing")]
     NoSystemBinary { path: PathBuf },
+    #[error("the boot guard program {path} is missing")]
+    NoGuardBinary { path: PathBuf },
+    #[error(
+        "Secure Boot needs the firmware in Setup Mode, and it is not: turn on Setup Mode in the \
+         firmware settings, or install without Secure Boot"
+    )]
+    SetupModeOff,
+    #[error(
+        "the firmware is still in Setup Mode after `sbctl enroll-keys`, so it holds no Secure \
+         Boot keys of this machine"
+    )]
+    KeysNotEnrolled,
     #[error("the locale {locale} is not in /etc/locale.gen")]
     UnknownLocale { locale: String },
     #[error("the time zone {timezone} is not in /usr/share/zoneinfo")]

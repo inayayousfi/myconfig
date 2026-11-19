@@ -2,7 +2,7 @@
 
 This document describes the VM xtask in `test/vm/`, the `inayos-xtask` crate. It builds the installers from the working tree and tests them in throwaway QEMU virtual machines of Ubuntu 26.04 LTS and Windows 11. It also builds the InayOS USB stick image in an Arch Linux virtual machine, and runs the InayOS installer from that image in scenarios. A commit or a release is not needed. It runs on a Linux host and only by hand.
 
-The Ubuntu cycle has passed on a real guest, image build included. Nothing has run on Windows, the Arch WSL checks included. The Arch image build with its glibc check, the USB stick build, the three Basics scenarios and the `gui-install` scenario have passed on a real guest, with the `last-pass` copy of screenshots.
+The Ubuntu cycle has passed on a real guest, image build included. Nothing has run on Windows, the Arch WSL checks included. The Arch image build with its glibc check, the USB stick build, the three Basics scenarios and the `gui-install` scenario have passed on a real guest, with the `last-pass` copy of screenshots, and so have the kept installed disk and the `secure-boot` and `broken-kernel` scenarios.
 
 ## Commands
 
@@ -40,7 +40,7 @@ The state folder is `${XDG_DATA_HOME:-~/.local/share}/inayos/vm`, or `INAYOS_VM_
 
 - `failed` is the layer of the last failed cycle or USB stick build, kept until the next one of that system.
 
-The state folder also holds the USB stick image at `usb/inayos.iso`, and a folder per scenario under `scenario/` with the same `work` and `failed` layers and a `last-pass` folder with the screenshots of the last passed run.
+The state folder also holds the USB stick image at `usb/inayos.iso`, and a folder per scenario under `scenario/` with the same `work` and `failed` layers and a `last-pass` folder with the screenshots of the last passed run. `scenario/installed` holds the installed disk that the last passed `blank-disk` run kept, which the boot chain scenarios start from.
 
 A layer holds a qcow2 disk that reads unchanged blocks from the clean image disk, a copy of the UEFI variables, and for Windows a copy of the TPM state.
 
@@ -92,13 +92,13 @@ A passed cycle deletes its layer. A failed cycle saves the guest screen, shuts t
 
 ## USB stick
 
-`usb build` boots a throwaway layer over the clean Arch image and builds `inayos-installer` for `x86_64-unknown-linux-gnu` and `inayos-arch-desktop` for `x86_64-unknown-linux-musl` from the working tree. The installer links to the system C library, because winit, under its Iced screens, loads the Wayland libraries at run time, which a static binary cannot do. It copies them into the guest with the profile overlay in `test/usb/profile/` and the script `usb/build-iso.sh`, which runs as root:
+`usb build` boots a throwaway layer over the clean Arch image and builds `inayos-installer` for `x86_64-unknown-linux-gnu`, and `inayos-arch-desktop` and the `inayos-guard` binary of the `inayos-guard-app` package for `x86_64-unknown-linux-musl`, from the working tree. The installer links to the system C library, because winit, under its Iced screens, loads the Wayland libraries at run time, which a static binary cannot do. It copies them into the guest with the profile overlay in `test/usb/profile/` and the script `usb/build-iso.sh`, which runs as root:
 
 1. It upgrades the guest and installs `archiso`.
 
 2. It copies archiso's `releng` profile from `/usr/share/archiso/configs/releng`, then copies the overlay over it. Every overlay file replaces or adds the file at the same path, except `packages.x86_64`, whose lines are appended to releng's list.
 
-3. It places the installer at `airootfs/usr/local/bin/inayos-installer` and the InayOS desktop installer at `airootfs/usr/local/lib/inayos/inayos`, with mode 755.
+3. It places the installer at `airootfs/usr/local/bin/inayos-installer`, the InayOS desktop installer at `airootfs/usr/local/lib/inayos/inayos` and the boot guard at `airootfs/usr/local/lib/inayos/inayos-guard`, with mode 755. The installer copies the last two into the new system.
 
 4. It extracts the latest Axidev OSK release into `airootfs/opt/`, which gives `/opt/axidev-osk/bin/axidev-osk`.
 
@@ -110,9 +110,9 @@ The xtask copies the image to `usb/inayos.iso.part` in the state folder and rena
 
 ## Scenarios
 
-`scenario <name>` installs InayOS from the USB stick image. Its guest has 8 GiB of memory, UEFI without Secure Boot, a new blank 80 GB qcow2 target disk and fresh UEFI variables in the scenario's layer. The image is a CD drive that the firmware starts first. A NoCloud seed disc labeled `CIDATA` gives root on the live system the xtask's SSH key.
+`scenario <name>` installs InayOS from the USB stick image. Its guest has 8 GiB of memory, UEFI without Secure Boot unless the scenario says otherwise, a new blank 80 GB qcow2 target disk and fresh UEFI variables in the scenario's layer. The image is a CD drive that the firmware starts first. A NoCloud seed disc labeled `CIDATA` gives root on the live system the xtask's SSH key.
 
-The xtask builds `inayos-installer` and `inayos-arch-desktop` from the working tree, checks the installer against the live system's glibc as `usb build` does, and puts them in place of the copies on the image, so a scenario tests the working tree without a new image. Each binary goes to a file next to its place and a rename replaces the old one, because the Sway session of the stick runs the installer's screens from that place and Linux refuses a write to a running program. It drives the live system over SSH as root. The Basics scenarios write the answers file in `src/scenario/answers_file.rs`, copies it in, and runs `inayos-installer install --answers` with it. The answers file creates the `tester` account with the password from `src/os.rs` and the xtask's key in `authorized_keys`. It answers yes to the SSH server question and no to the GitHub and Tailscale login questions, as the answer table of the cycle does. The installer's output and its own log go to the `logs` folder of the layer.
+The xtask builds `inayos-installer`, `inayos-arch-desktop` and `inayos-guard` from the working tree, checks the installer against the live system's glibc as `usb build` does, and puts them in place of the copies on the image, so a scenario tests the working tree without a new image. Each binary goes to a file next to its place and a rename replaces the old one, because the Sway session of the stick runs the installer's screens from that place and Linux refuses a write to a running program. It drives the live system over SSH as root. The Basics scenarios write the answers file in `src/scenario/answers_file.rs`, copies it in, and runs `inayos-installer install --answers` with it. The answers file creates the `tester` account with the password from `src/os.rs` and the xtask's key in `authorized_keys`. It answers yes to the SSH server question and no to the GitHub and Tailscale login questions, as the answer table of the cycle does. The installer's output and its own log go to the `logs` folder of the layer.
 
 After the install, the xtask powers the guest off and boots the target disk without the image. It checks the installed system over SSH as `tester`, which works through the SSH server that the ssh module turns on. It takes QMP screenshots.
 
@@ -128,7 +128,7 @@ The desktop checks are:
 
 The scenarios are:
 
-- `blank-disk` wipes the target disk with the default layout, with a 40 GiB system, and runs the desktop checks.
+- `blank-disk` wipes the target disk with the default layout, with a 40 GiB system, and runs the desktop checks. Right after the install powers the live system off, it copies the target disk and its UEFI variables to `scenario/installed.new`. When the scenario passes, that copy replaces `scenario/installed`; when it fails, the copy is deleted.
 
 - `reinstall-keep-home` installs as `blank-disk` does, writes a marker file into the home folder of the installed system, boots the image again and reinstalls keeping home on `/dev/vda1` to `/dev/vda3`. It checks that the marker survived with its owner and that the home folder kept its uid and gid, then runs the desktop checks.
 
@@ -141,6 +141,8 @@ The scenarios are:
   Then it runs the desktop checks.
 
 - `gui-install` installs on the blank disk through the installer's screens, with QMP key presses only, as `src/scenario/gui.rs` plans them. It is described below.
+
+- `secure-boot` and `broken-kernel` test the boot chain. They are described below.
 
 The layer keeps the answers files, logs, serial logs of each boot and screenshots. A passed scenario copies the PNG screenshots of its layer to its `last-pass` folder, replacing the previous ones, and deletes its layer. A failed scenario saves the last screen and keeps the layer as that scenario's `failed` layer until its next run.
 
@@ -159,6 +161,29 @@ The installer writes the name of its current screen to `/run/inayos-installer/sc
 5. The screens take no SSH key, so the scenario mounts the partition labeled `inayos-home` and adds the xtask's key to `~/.ssh/authorized_keys` of `tester`, with the owner of the home folder and mode 600. This is the one change to the new system that does not go through the screens.
 
 6. It powers the live system off, boots the installed disk and runs the desktop checks. The module questions got the installer's built-in answers, which turn the SSH server on.
+
+### The boot chain scenarios
+
+These scenarios check Secure Boot, snapper's snapshots of pacman transactions, and the boot guard, `inayos-guard`.
+
+`secure-boot` boots the Secure Boot firmware build `OVMF_CODE.secboot.4m.fd`, with SMM, the secure flash and a TPM 2.0 from `swtpm`, as the Windows guest does. Its fresh variable store `OVMF_VARS.4m.fd` has no keys, so the firmware is in Setup Mode and the unsigned USB stick boots. It installs on the blank disk as `blank-disk` does, with `secure_boot = true` in the answers file, powers off and boots the installed disk. It checks:
+
+1. The `SecureBoot` firmware variable is 1.
+2. `sudo sbctl verify` lists signed files and no unsigned one.
+3. The guard's status file, `/var/lib/inayos-guard/status.json`, says the last result passed.
+4. rEFInd's `refind.conf` has the line `include inayos-guard.conf`. The guard's `inayos-guard.conf` next to it has a "Previous system" entry that is not the default. Its options `rootflags=subvol=@snapshots/<n>/snapshot` and `systemd.volatile=overlay` name a pre snapshot that snapper lists, its loader is in that snapshot's `/boot`, and that kernel file exists. The entry need not name the newest pre snapshot: the guard's pacman hook runs only for transactions that touch the boot files, and the modules after boot-guard install packages that take newer snapshots.
+
+Then it runs the desktop checks.
+
+`broken-kernel` starts from a throwaway layer over `scenario/installed`, with UEFI without Secure Boot, and installs nothing. When no installed disk is kept, it stops and says to run `blank-disk` first. A change to the installer or the modules reaches it only through a new `blank-disk` pass. A new pass replaces the kept disk, and the failed layers made over the old one can no longer boot. The scenario works over SSH as `tester`, with `sudo` reading the guest password from its input:
+
+1. It puts the guard built from the working tree at `/usr/local/bin/inayos-guard`, runs `inayos-guard check-update`, and checks that the result passed.
+2. It runs `scenario/break-boot.sh`. The script writes the mkinitcpio drop-in `/etc/mkinitcpio.conf.d/zz-test-break.conf`, with `HOOKS=(base)` and no modules, so mkinitcpio builds an initramfs without kernel modules and still succeeds. Then it reinstalls the installed `linux` package from the pacman cache, or from the mirror when the cache lacks it.
+3. It checks that snapper lists a new pre snapshot whose description names `linux`, that the guard's result failed with failures, that `/var/lib/inayos-guard/failed` exists, and that `inayos-guard.conf` makes "Previous system" the default and boots that snapshot.
+4. It powers off and boots the installed disk again. It saves a screenshot every 3 seconds for the first 24 seconds, named `refind-<number>.png`, which covers rEFInd's menu and its 20-second wait.
+5. It checks that `/proc/cmdline` boots that snapshot with `systemd.volatile=overlay`, that `/` is an overlay, `/home` is ext4 and `/var/log` is Btrfs, and that `inayos-guard-boot.service` ran in this boot and exited with status 0, waiting while it still runs. SSH answering at all shows that sshd runs.
+
+Both scenarios keep copies of what they read in the layer: the output of `sbctl verify`, the guard's status files, and `refind.conf` and `inayos-guard.conf` at each step.
 
 ## State lists
 

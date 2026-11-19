@@ -59,7 +59,7 @@ enum VmCommand {
     },
     /// Boots the USB stick image with a blank target disk, installs InayOS from it with an
     /// answers file or through the installer's screens, boots the installed system, and
-    /// checks it.
+    /// checks it. broken-kernel starts from the installed disk that blank-disk kept instead.
     Scenario { name: scenario::Name },
     /// Manages the clean images that every throwaway disk starts from.
     Image {

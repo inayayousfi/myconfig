@@ -1452,6 +1452,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "inayos-guard"
+version = "0.54.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "inayos-guard-app"
+version = "0.54.0"
+dependencies = [
+ "inayos-guard",
+]
+
+[[package]]
 name = "inayos-install-core"
 version = "0.54.0"
 dependencies = [

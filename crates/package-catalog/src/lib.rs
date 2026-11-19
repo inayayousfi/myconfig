@@ -184,6 +184,10 @@ pub enum Package {
     SystemdResolvconf,
     Networkmanager,
     Refind,
+    Snapper,
+    SnapPac,
+    Sbctl,
+    Libnotify,
 }
 
 /// A vendor APT repository, for packages that Ubuntu does not carry or carries only in
@@ -580,6 +584,10 @@ pub const PACKAGE_NAMES: &[((Package, Platform), &str)] = &[
         "networkmanager",
     ),
     ((Package::Refind, Platform::Pacman), "refind"),
+    ((Package::Snapper, Platform::Pacman), "snapper"),
+    ((Package::SnapPac, Platform::Pacman), "snap-pac"),
+    ((Package::Sbctl, Platform::Pacman), "sbctl"),
+    ((Package::Libnotify, Platform::Pacman), "libnotify"),
     ((Package::Sudo, Platform::Apt), "sudo"),
     ((Package::Wget, Platform::Apt), "wget"),
     ((Package::Tar, Platform::Apt), "tar"),

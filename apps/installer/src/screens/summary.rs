@@ -168,6 +168,11 @@ pub fn overview(answers: &Answers) -> Vec<String> {
     if let Some(wifi) = &answers.wifi {
         lines.push(format!("Wi-Fi: {}.", wifi.ssid));
     }
+    lines.push(if answers.security.secure_boot {
+        "Secure Boot: on, with this computer's own keys enrolled in the firmware.".to_owned()
+    } else {
+        "Secure Boot: off.".to_owned()
+    });
     lines.push(if answers.skip.is_empty() {
         "Modules: all of them.".to_owned()
     } else {

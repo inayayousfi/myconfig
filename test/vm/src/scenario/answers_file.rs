@@ -36,9 +36,9 @@ pub enum DiskChoice {
     },
 }
 
-/// The answers file for an install with `disk`, the test account, and `authorized_key` as the
-/// only key that the new user accepts.
-pub fn answers_file(disk: &DiskChoice, authorized_key: &str) -> String {
+/// The answers file for an install with `disk`, Secure Boot on when `secure_boot`, the test
+/// account, and `authorized_key` as the only key that the new user accepts.
+pub fn answers_file(disk: &DiskChoice, authorized_key: &str, secure_boot: bool) -> String {
     let mut text = String::new();
     push(&mut text, "keyboard", string("us"));
     push(&mut text, "language", string("en_US.UTF-8"));
@@ -81,7 +81,9 @@ pub fn answers_file(disk: &DiskChoice, authorized_key: &str) -> String {
         }
     }
 
-    text.push_str("\n[security]\nsecure_boot = false\nencryption = false\n");
+    text.push_str("\n[security]\n");
+    push(&mut text, "secure_boot", secure_boot.to_string());
+    push(&mut text, "encryption", false.to_string());
 
     text.push_str("\n[user]\n");
     push(&mut text, "full_name", string("Tester"));
@@ -129,6 +131,7 @@ mod tests {
                 system_size_gib: 40,
             },
             KEY,
+            false,
         );
         assert_eq!(
             text,
@@ -169,6 +172,7 @@ mod tests {
                 home_partition: "/dev/vda3",
             },
             KEY,
+            false,
         );
         assert!(reinstall.contains(
             "[disk]\nchoice = \"reinstall-keep-home\"\ndevice = \"/dev/vda\"\n\
@@ -183,11 +187,25 @@ mod tests {
                 home_partition: "/dev/vda2",
             },
             KEY,
+            false,
         );
         assert!(shrink.contains(
             "[disk]\nchoice = \"shrink-ext4-keep-home\"\ndevice = \"/dev/vda\"\n\
              system_size_gib = 30\nefi_partition = \"/dev/vda1\"\nhome_partition = \"/dev/vda2\"\n"
         ));
+    }
+
+    #[test]
+    fn a_secure_boot_install_turns_secure_boot_on_without_encryption() {
+        let text = answers_file(
+            &DiskChoice::WipeDisk {
+                device: "/dev/vda",
+                system_size_gib: 40,
+            },
+            KEY,
+            true,
+        );
+        assert!(text.contains("\n[security]\nsecure_boot = true\nencryption = false\n"));
     }
 
     #[test]

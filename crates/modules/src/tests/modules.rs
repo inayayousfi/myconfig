@@ -12,7 +12,7 @@ use crate::{
 };
 
 /// Fake system programs that keep their state under the sandbox, so modules run as on a
-/// real machine without root: `sudo` resets the environment and moves `/etc`, `/usr`, `/boot` and `/efi` paths under
+/// real machine without root: `sudo` resets the environment and moves `/etc`, `/usr`, `/boot`, `/efi` and `/var` paths under
 /// `system/`, groups live in `groups/`, `systemctl` remembers enabled system units in
 /// `units/system/` and user units in `units/user/`, and KDE keys live in `kde/`. A unit is
 /// active only while `<unit>.active` exists beside it: `start`, `restart` and
@@ -28,7 +28,7 @@ fn system(sandbox: &Sandbox) {
             r#"printf 'sudo %s\n' "$*" >> "$INAYOS_TEST_LOG"
 for argument in "$@"; do
     case "$argument" in
-        /etc/* | /usr/* | /boot/* | /efi/*) set -- "$@" "$INAYOS_TEST_ROOT/system$argument" ;;
+        /etc/* | /usr/* | /boot/* | /efi/* | /var/* | /sys/*) set -- "$@" "$INAYOS_TEST_ROOT/system$argument" ;;
         *) set -- "$@" "$argument" ;;
     esac
     shift
@@ -2104,6 +2104,12 @@ fn installer_mode_installs_refind_with_entries_for_the_new_root_and_bootvine_joi
             .unwrap()
             .ends_with(INAYOS_REFIND_BLOCK)
     );
+    // The block's include of the boot guard's file never points at a missing file.
+    assert!(
+        system_file(&sandbox, "/efi/EFI/refind/inayos-guard.conf")
+            .unwrap()
+            .starts_with('#')
+    );
     assert_eq!(
         fs::read_to_string(sandbox.root.join("nvram"))
             .unwrap()
@@ -3378,7 +3384,7 @@ esac"#,
 
 /// The rEFInd block that myconfig added, and the one that InayOS adds.
 const MYCONFIG_REFIND_BLOCK: &str = "\n# BEGIN MYCONFIG REFIND\ninclude managed.conf\ninclude themes/black-pink/theme.conf\n# END MYCONFIG REFIND\n";
-const INAYOS_REFIND_BLOCK: &str = "\n# BEGIN INAYOS REFIND\ninclude managed.conf\ninclude themes/black-pink/theme.conf\n# END INAYOS REFIND\n";
+const INAYOS_REFIND_BLOCK: &str = "\n# BEGIN INAYOS REFIND\ninclude managed.conf\ninclude themes/black-pink/theme.conf\ninclude inayos-guard.conf\n# END INAYOS REFIND\n";
 const REFIND_CONF: &str = "/boot/EFI/refind/refind.conf";
 
 fn write_kde(sandbox: &Sandbox, path: &str, value: &str) {
@@ -3955,4 +3961,575 @@ fn installer_mode_enables_the_profile_without_touching_a_running_system() {
     for (name, result) in results {
         assert!(result.is_ok(), "{name}: {result:?}");
     }
+}
+
+/// A Btrfs system as the installer mounts it: the `@snapshots` subvolume at `/.snapshots`,
+/// and snapper's shipped `/etc/conf.d/snapper`, which lists no configuration.
+fn snapshot_system(sandbox: &Sandbox) {
+    bootvine_boot(sandbox);
+    let mounts = sandbox.root.join("mounts");
+    fs::create_dir_all(&mounts).unwrap();
+    fs::write(mounts.join(".snapshots"), "btrfs").unwrap();
+    sandbox.fake(
+        "findmnt",
+        r#"for mount; do :; done; cat "$INAYOS_TEST_ROOT/mounts/${mount#/}" 2>/dev/null"#,
+    );
+    let conf = sandbox.root.join("system/etc/conf.d");
+    fs::create_dir_all(&conf).unwrap();
+    fs::write(conf.join("snapper"), SHIPPED_SNAPPER_CONFIGS).unwrap();
+    // The image holds the sd-volatile program only when mkinitcpio built it with the
+    // drop-in in place.
+    fs::write(sandbox.root.join("system/boot/initramfs-linux.img"), "").unwrap();
+    sandbox.fake(
+        "mkinitcpio",
+        r#"printf 'mkinitcpio %s\n' "$*" >> "$INAYOS_TEST_LOG"
+image="$INAYOS_TEST_ROOT/system/boot/initramfs-linux.img"
+if [ -e "$INAYOS_TEST_ROOT/system/etc/mkinitcpio.conf.d/inayos-volatile.conf" ]; then
+    printf 'usr/lib/systemd/systemd-volatile-root\n' > "$image"
+else
+    : > "$image"
+fi"#,
+    );
+    sandbox.fake("lsinitcpio", r#"cat "$1""#);
+    sandbox.fake(
+        "snapper",
+        r#"[ -e "$INAYOS_TEST_ROOT/system/etc/snapper/configs/root" ]"#,
+    );
+}
+
+const SHIPPED_SNAPPER_CONFIGS: &str =
+    "## Path: System/Snapper\n\n# List of snapper configurations.\nSNAPPER_CONFIGS=\"\"\n";
+const SNAPSHOT_FILES: [&str; 2] = [
+    "/etc/snapper/configs/root",
+    "/etc/mkinitcpio.conf.d/inayos-volatile.conf",
+];
+
+#[test]
+fn snapshots_configure_snapper_for_the_system_and_add_the_overlay_hook_until_removed() {
+    let sandbox = Sandbox::new("snapshots");
+    snapshot_system(&sandbox);
+    let modules: [&dyn Module; 1] = [&crate::Snapshots];
+    let io = Answers::new(None);
+    for _ in 0..2 {
+        sandbox
+            .with_mode(&io, RunMode::Installer, |ctx| {
+                runner::install(ctx, &modules, &modules)
+            })
+            .unwrap();
+    }
+    for package in ["snapper", "snap-pac"] {
+        assert!(sandbox.installed(package), "{package} was not installed");
+    }
+    let config = settings(&system_file(&sandbox, SNAPSHOT_FILES[0]).unwrap());
+    for wanted in [
+        "SUBVOLUME=\"/\"",
+        "FSTYPE=\"btrfs\"",
+        "NUMBER_CLEANUP=\"yes\"",
+        "NUMBER_LIMIT=\"10\"",
+        "NUMBER_LIMIT_IMPORTANT=\"5\"",
+        "TIMELINE_CREATE=\"no\"",
+    ] {
+        assert!(config.contains(&wanted.to_owned()), "{wanted}: {config:?}");
+    }
+    assert_eq!(
+        settings(&system_file(&sandbox, SNAPSHOT_FILES[1]).unwrap()),
+        ["HOOKS+=(sd-volatile)"]
+    );
+    assert_eq!(
+        system_file(&sandbox, "/etc/conf.d/snapper").unwrap(),
+        SHIPPED_SNAPPER_CONFIGS.replace("SNAPPER_CONFIGS=\"\"", "SNAPPER_CONFIGS=\"root\"")
+    );
+    // The hooks that other modules add to mkinitcpio.conf stay there.
+    assert_eq!(
+        system_file(&sandbox, "/etc/mkinitcpio.conf").unwrap(),
+        MKINITCPIO
+    );
+    assert_eq!(
+        program_calls(&sandbox, "mkinitcpio -P"),
+        1,
+        "the initramfs was not rebuilt exactly once, while its image lacked the hook"
+    );
+    assert!(enabled(
+        &sandbox,
+        ServiceScope::System,
+        "snapper-cleanup.timer"
+    ));
+    let results = sandbox.with_mode(&io, RunMode::Installer, |ctx| runner::verify(ctx, &modules));
+    for (name, result) in results {
+        assert!(result.is_ok(), "{name}: {result:?}");
+    }
+
+    // A run that stopped after writing the drop-in left an image without the hook: verify
+    // names it, and the next install rebuilds it although the drop-in is current.
+    fs::write(sandbox.root.join("system/boot/initramfs-linux.img"), "").unwrap();
+    let results = sandbox.with_mode(&io, RunMode::Installer, |ctx| runner::verify(ctx, &modules));
+    let error = results[0].1.as_ref().unwrap_err().to_string();
+    assert!(error.contains("/boot/initramfs-linux.img"), "{error}");
+    sandbox
+        .with_mode(&io, RunMode::Installer, |ctx| {
+            runner::install(ctx, &modules, &modules)
+        })
+        .unwrap();
+    assert_eq!(program_calls(&sandbox, "mkinitcpio -P"), 2);
+    let results = sandbox.with_mode(&io, RunMode::Installer, |ctx| runner::verify(ctx, &modules));
+    for (name, result) in results {
+        assert!(result.is_ok(), "{name}: {result:?}");
+    }
+
+    fs::remove_file(sandbox.root.join("calls")).unwrap();
+    let report = sandbox
+        .with(&io, |ctx| runner::remove(ctx, &modules, &modules, false))
+        .unwrap();
+    assert!(!report.unanswered);
+    for path in SNAPSHOT_FILES {
+        assert_eq!(system_file(&sandbox, path), None, "{path} is still there");
+    }
+    assert_eq!(
+        system_file(&sandbox, "/etc/conf.d/snapper").unwrap(),
+        SHIPPED_SNAPPER_CONFIGS
+    );
+    let log = fs::read_to_string(sandbox.root.join("calls")).unwrap();
+    let calls: Vec<&str> = log.lines().collect();
+    let deleted = call_position(&calls, 0, "inayos-volatile.conf");
+    call_position(&calls, deleted, "sudo mkinitcpio -P");
+    assert!(!enabled(
+        &sandbox,
+        ServiceScope::System,
+        "snapper-cleanup.timer"
+    ));
+    for package in ["snapper", "snap-pac"] {
+        assert!(!sandbox.installed(package), "{package} is still installed");
+    }
+}
+
+#[test]
+fn snapshots_need_the_snapshot_subvolume_on_the_new_system_and_skip_without_it_on_a_running_one() {
+    let modules: [&dyn Module; 1] = [&crate::Snapshots];
+    let io = Answers::new(None);
+    let sandbox = Sandbox::new("snapshots-no-subvolume");
+    snapshot_system(&sandbox);
+    fs::remove_file(sandbox.root.join("mounts/.snapshots")).unwrap();
+    let error = sandbox
+        .with_mode(&io, RunMode::Installer, |ctx| {
+            runner::install(ctx, &modules, &modules)
+        })
+        .unwrap_err();
+    assert!(error.to_string().contains("/.snapshots"), "{error}");
+    assert!(!sandbox.installed("snapper"));
+    assert_eq!(system_file(&sandbox, SNAPSHOT_FILES[0]), None);
+
+    sandbox
+        .with(&io, |ctx| runner::install(ctx, &modules, &modules))
+        .unwrap();
+    assert!(!sandbox.installed("snapper"));
+    assert!(
+        io.notes
+            .borrow()
+            .iter()
+            .any(|note| note.contains("Skipping the snapshots"))
+    );
+}
+
+/// rEFInd on the EFI system partition at `/efi` with its Btrfs driver, the refind
+/// package's copies in `/usr/share/refind`, one kernel in /boot, and a fake `sbctl` that
+/// keeps its keys, Setup Mode, saved files and signatures under `sbctl/`. The firmware
+/// starts in Setup Mode with no keys.
+fn secure_boot_system(sandbox: &Sandbox) {
+    system(sandbox);
+    let system_root = sandbox.root.join("system");
+    for folder in ["efi/EFI/refind", "usr/share/refind"] {
+        let folder = system_root.join(folder);
+        fs::create_dir_all(folder.join("drivers_x64")).unwrap();
+        fs::write(folder.join("refind_x64.efi"), "rEFInd").unwrap();
+        fs::write(folder.join("drivers_x64/btrfs_x64.efi"), "btrfs").unwrap();
+    }
+    fs::write(
+        system_root.join("efi/EFI/refind/refind.conf"),
+        "timeout 5\n",
+    )
+    .unwrap();
+    fs::create_dir_all(system_root.join("boot")).unwrap();
+    fs::write(system_root.join("boot/vmlinuz-linux"), "kernel").unwrap();
+    let state = sandbox.root.join("sbctl");
+    fs::create_dir_all(&state).unwrap();
+    fs::write(state.join("setup-mode"), "").unwrap();
+    sandbox.fake(
+        "sbctl",
+        r#"printf 'sbctl %s\n' "$*" >> "$INAYOS_TEST_LOG"
+state="$INAYOS_TEST_ROOT/sbctl"
+strip() { printf '%s' "${1#"$INAYOS_TEST_ROOT"/system}"; }
+flag() { if [ -e "$state/$1" ]; then printf true; else printf false; fi; }
+command="$1"; shift
+case "$command" in
+    status) printf '{"installed":%s,"guid":"","setup_mode":%s,"secure_boot":%s,"vendors":[]}\n' \
+        "$(flag keys)" "$(flag setup-mode)" "$(flag secure-boot)" ;;
+    create-keys) : > "$state/keys" ;;
+    enroll-keys) [ -e "$state/setup-mode" ] && [ -e "$state/keys" ] || exit 1
+        rm "$state/setup-mode"; printf '%s\n' "$*" > "$state/enrolled" ;;
+    sign) [ -e "$state/keys" ] || exit 1
+        save= output=
+        while [ "$#" -gt 0 ]; do
+            case "$1" in
+                -s) save=1 ;;
+                -o) output="$2"; shift ;;
+                *) file="$1" ;;
+            esac
+            shift
+        done
+        [ -n "$output" ] || output="$file"
+        strip "$output" >> "$state/signed"; echo >> "$state/signed"
+        if [ -n "$save" ] && ! grep -qxF "$(strip "$file")" "$state/files" 2>/dev/null; then
+            strip "$file" >> "$state/files"; echo >> "$state/files"
+        fi ;;
+    list-files) [ -e "$state/keys" ] || exit 1
+        printf '['; separator=
+        if [ -e "$state/files" ]; then while read -r file; do
+            printf '%s{"file":"%s","output_file":"%s","is_signed":true}' "$separator" "$file" "$file"; separator=,
+        done < "$state/files"; fi
+        printf ']\n' ;;
+    remove-file) grep -vxF "$(strip "$1")" "$state/files" > "$state/files.new"; mv "$state/files.new" "$state/files" ;;
+    verify) shift; printf '['; separator=
+        for file; do
+            name="$(strip "$file")"; signed=0
+            grep -qxF "$name" "$state/signed" 2>/dev/null && signed=1
+            printf '%s{"file_name":"%s","is_signed":%s}' "$separator" "$name" "$signed"; separator=,
+        done
+        printf ']\n' ;;
+esac"#,
+    );
+}
+
+/// How many times a fake program logged a call that starts with `call`. sudo logs its own
+/// line, with the options it got, before the program logs this one.
+fn program_calls(sandbox: &Sandbox, call: &str) -> usize {
+    fs::read_to_string(sandbox.root.join("calls"))
+        .unwrap_or_default()
+        .lines()
+        .filter(|line| line.starts_with(call))
+        .count()
+}
+
+fn sbctl_state(sandbox: &Sandbox, name: &str) -> Option<String> {
+    fs::read_to_string(sandbox.root.join("sbctl").join(name)).ok()
+}
+
+#[test]
+fn secure_boot_on_the_new_system_signs_every_boot_file_and_leaves_enrolling_to_the_installer() {
+    let sandbox = Sandbox::new("secure-boot");
+    secure_boot_system(&sandbox);
+    let modules: [&dyn Module; 1] = [&crate::SecureBoot];
+    let io = Answers::new(None);
+    sandbox
+        .with_mode(&io, RunMode::Installer, |ctx| {
+            runner::install(ctx, &modules, &modules)
+        })
+        .unwrap();
+    assert!(sandbox.installed("sbctl"));
+    assert!(sbctl_state(&sandbox, "keys").is_some());
+    assert_eq!(program_calls(&sandbox, "sbctl enroll-keys"), 0);
+    assert!(io.questions.borrow().is_empty(), "{:?}", io.questions);
+    // rEFInd and its driver are signed from the package's copies, so sbctl's hook signs
+    // them again after a rEFInd update; the kernel is signed in place.
+    assert_eq!(
+        sbctl_state(&sandbox, "files").unwrap(),
+        "/usr/share/refind/drivers_x64/btrfs_x64.efi\n/usr/share/refind/refind_x64.efi\n/boot/vmlinuz-linux\n"
+    );
+    assert_eq!(
+        sbctl_state(&sandbox, "signed").unwrap(),
+        "/efi/EFI/refind/drivers_x64/btrfs_x64.efi\n/efi/EFI/refind/refind_x64.efi\n/boot/vmlinuz-linux\n"
+    );
+
+    // On a running system, a firmware still in Setup Mode fails the check.
+    let results = sandbox.with(&io, |ctx| runner::verify(ctx, &modules));
+    let error = results[0].1.as_ref().unwrap_err().to_string();
+    assert!(error.contains("Setup Mode"), "{error}");
+
+    // The installer enrolls once the install passed; the check then passes, and the next
+    // run keeps the keys.
+    fs::remove_file(sandbox.root.join("sbctl/setup-mode")).unwrap();
+    let results = sandbox.with(&io, |ctx| runner::verify(ctx, &modules));
+    for (name, result) in results {
+        assert!(result.is_ok(), "{name}: {result:?}");
+    }
+    sandbox
+        .with(&io, |ctx| runner::install(ctx, &modules, &modules))
+        .unwrap();
+    assert_eq!(program_calls(&sandbox, "sbctl create-keys"), 1);
+    assert_eq!(program_calls(&sandbox, "sbctl enroll-keys"), 0);
+
+    // A kernel that nothing signed fails the check.
+    fs::write(sandbox.root.join("system/boot/vmlinuz-linux-zen"), "kernel").unwrap();
+    let results = sandbox.with(&io, |ctx| runner::verify(ctx, &modules));
+    let error = results[0].1.as_ref().unwrap_err().to_string();
+    assert!(error.contains("/boot/vmlinuz-linux-zen"), "{error}");
+}
+
+#[test]
+fn secure_boot_on_a_running_system_asks_then_enrolls_after_the_last_signature() {
+    let sandbox = Sandbox::new("secure-boot-live");
+    secure_boot_system(&sandbox);
+    let efivars = sandbox.root.join("system/sys/firmware/efi/efivars");
+    fs::create_dir_all(&efivars).unwrap();
+    fs::write(
+        efivars.join("dbDefault-8be4df61-93ca-11d2-aa0d-00e098032b8c"),
+        "db",
+    )
+    .unwrap();
+    let modules: [&dyn Module; 1] = [&crate::SecureBoot];
+    let io = Answers::new(Some(true));
+    sandbox
+        .with(&io, |ctx| runner::install(ctx, &modules, &modules))
+        .unwrap();
+    assert_eq!(io.questions.borrow().len(), 1);
+    assert_eq!(
+        sbctl_state(&sandbox, "enrolled").as_deref(),
+        Some("--microsoft --firmware-builtin\n"),
+        "the keys were not enrolled with Microsoft's and the firmware's keys"
+    );
+    let log = fs::read_to_string(sandbox.root.join("calls")).unwrap();
+    let calls: Vec<&str> = log.lines().collect();
+    let created = call_position(&calls, 0, "sbctl create-keys");
+    let last_sign = calls
+        .iter()
+        .rposition(|line| line.starts_with("sbctl sign"))
+        .unwrap();
+    let enrolled = call_position(&calls, 0, "sbctl enroll-keys");
+    assert!(created < last_sign && last_sign < enrolled, "{log}");
+    let results = sandbox.with(&io, |ctx| runner::verify(ctx, &modules));
+    for (name, result) in results {
+        assert!(result.is_ok(), "{name}: {result:?}");
+    }
+}
+
+#[test]
+fn secure_boot_declined_on_a_running_system_creates_and_signs_nothing() {
+    let sandbox = Sandbox::new("secure-boot-declined");
+    secure_boot_system(&sandbox);
+    let modules: [&dyn Module; 1] = [&crate::SecureBoot];
+    let io = Answers::new(Some(false));
+    sandbox
+        .with(&io, |ctx| runner::install(ctx, &modules, &modules))
+        .unwrap();
+    assert_eq!(sandbox.calls("sbctl create-keys"), 0);
+    assert_eq!(sandbox.calls("sbctl sign"), 0);
+    assert_eq!(sandbox.calls("sbctl enroll-keys"), 0);
+    let results = sandbox.with(&io, |ctx| runner::verify(ctx, &modules));
+    for (name, result) in results {
+        assert!(result.is_ok(), "{name}: {result:?}");
+    }
+
+    // Nobody to answer: the run skips the module instead of enrolling.
+    let sandbox = Sandbox::new("secure-boot-unanswered");
+    secure_boot_system(&sandbox);
+    let io = Answers::new(None);
+    let error = sandbox
+        .with(&io, |ctx| runner::install(ctx, &modules, &modules))
+        .unwrap_err();
+    assert!(format!("{error:?}").contains("Unanswered"), "{error:?}");
+    assert_eq!(sandbox.calls("sbctl create-keys"), 0);
+    assert_eq!(sandbox.calls("sbctl enroll-keys"), 0);
+}
+
+#[test]
+fn secure_boot_without_setup_mode_or_keys_asks_for_setup_mode_and_signs_nothing() {
+    let sandbox = Sandbox::new("secure-boot-no-setup");
+    secure_boot_system(&sandbox);
+    fs::remove_file(sandbox.root.join("sbctl/setup-mode")).unwrap();
+    let modules: [&dyn Module; 1] = [&crate::SecureBoot];
+    let io = Answers::new(Some(true));
+    let error = sandbox
+        .with_mode(&io, RunMode::Installer, |ctx| {
+            runner::install(ctx, &modules, &modules)
+        })
+        .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("turn on Setup Mode in the firmware settings"),
+        "{error}"
+    );
+    // A running system goes on without Secure Boot, and says why.
+    sandbox
+        .with(&io, |ctx| runner::install(ctx, &modules, &modules))
+        .unwrap();
+    let results = sandbox.with(&io, |ctx| runner::verify(ctx, &modules));
+    assert!(results[0].1.is_ok(), "{:?}", results[0].1);
+    assert!(
+        io.notes
+            .borrow()
+            .iter()
+            .any(|note| note.contains("turn on Setup Mode in the firmware settings"))
+    );
+    assert_eq!(sandbox.calls("sbctl create-keys"), 0);
+    assert_eq!(sandbox.calls("sbctl sign"), 0);
+    assert_eq!(sandbox.calls("sbctl enroll-keys"), 0);
+}
+
+#[test]
+fn removing_secure_boot_waits_for_secure_boot_off_and_keeps_the_keys() {
+    let sandbox = Sandbox::new("secure-boot-remove");
+    secure_boot_system(&sandbox);
+    let modules: [&dyn Module; 1] = [&crate::SecureBoot];
+    let io = Answers::new(Some(true));
+    sandbox
+        .with(&io, |ctx| runner::install(ctx, &modules, &modules))
+        .unwrap();
+    fs::write(sandbox.root.join("sbctl/secure-boot"), "").unwrap();
+    let error = sandbox
+        .with(&io, |ctx| runner::remove(ctx, &modules, &modules, false))
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("Turn off Secure Boot"),
+        "{error}"
+    );
+    assert!(sandbox.installed("sbctl"));
+    assert_eq!(sbctl_state(&sandbox, "files").unwrap().lines().count(), 3);
+
+    fs::remove_file(sandbox.root.join("sbctl/secure-boot")).unwrap();
+    let report = sandbox
+        .with(&io, |ctx| runner::remove(ctx, &modules, &modules, false))
+        .unwrap();
+    assert!(!report.unanswered);
+    assert_eq!(sbctl_state(&sandbox, "files").as_deref(), Some(""));
+    assert!(!sandbox.installed("sbctl"));
+    assert!(
+        sbctl_state(&sandbox, "keys").is_some(),
+        "remove deleted the keys that the firmware trusts"
+    );
+}
+
+/// rEFInd on `/efi` and the guard program where the installer puts it. The fake guard
+/// writes `guard-status` as its status file and a default entry next to `refind.conf`.
+fn guarded_system(sandbox: &Sandbox) {
+    system(sandbox);
+    let system_root = sandbox.root.join("system");
+    fs::create_dir_all(system_root.join("efi/EFI/refind")).unwrap();
+    fs::write(
+        system_root.join("efi/EFI/refind/refind.conf"),
+        "timeout 5\n",
+    )
+    .unwrap();
+    fs::create_dir_all(system_root.join("usr/local/bin")).unwrap();
+    super::program(
+        &system_root.join("usr/local/bin/inayos-guard"),
+        r#"printf 'inayos-guard %s\n' "$*" >> "$INAYOS_TEST_LOG"
+mkdir -p "$INAYOS_TEST_ROOT/system/var/lib/inayos-guard"
+cp "$INAYOS_TEST_ROOT/guard-status" "$INAYOS_TEST_ROOT/system/var/lib/inayos-guard/status.json"
+printf 'default_selection "Boot with standard options"\n' > "$INAYOS_TEST_ROOT/system/efi/EFI/refind/inayos-guard.conf""#,
+    );
+    fs::write(
+        sandbox.root.join("guard-status"),
+        r#"{"time":"2026-11-19T10:00:00Z","passed":true,"failures":[]}"#,
+    )
+    .unwrap();
+}
+
+const GUARD_FILES: [&str; 4] = [
+    "/etc/pacman.d/hooks/zzz-inayos-guard.hook",
+    "/etc/systemd/system/inayos-guard-boot.service",
+    "/etc/systemd/user/inayos-guard-notify.path",
+    "/etc/systemd/user/inayos-guard-notify.service",
+];
+
+#[test]
+fn the_boot_guard_hooks_into_pacman_checks_once_at_install_and_reports_a_failed_check() {
+    let sandbox = Sandbox::new("boot-guard");
+    guarded_system(&sandbox);
+    let modules: [&dyn Module; 1] = [&crate::BootGuard];
+    let io = Answers::new(None);
+    sandbox
+        .with_mode(&io, RunMode::Installer, |ctx| {
+            runner::install(ctx, &modules, &modules)
+        })
+        .unwrap();
+    assert!(sandbox.installed("libnotify"));
+    for path in GUARD_FILES {
+        assert!(system_file(&sandbox, path).is_some(), "{path} is missing");
+    }
+    let hook = settings(&system_file(&sandbox, GUARD_FILES[0]).unwrap());
+    for wanted in [
+        "When=PostTransaction",
+        "Exec=/usr/local/bin/inayos-guard check-update",
+        "Target=usr/lib/modules/*/vmlinuz",
+        "Target=boot/*",
+    ] {
+        assert!(hook.contains(&wanted.to_owned()), "{wanted}: {hook:?}");
+    }
+    assert!(enabled(
+        &sandbox,
+        ServiceScope::System,
+        "inayos-guard-boot.service"
+    ));
+    assert!(enabled(
+        &sandbox,
+        ServiceScope::User,
+        "inayos-guard-notify.path"
+    ));
+    assert_eq!(program_calls(&sandbox, "inayos-guard check-update"), 1);
+    assert!(system_file(&sandbox, "/efi/EFI/refind/inayos-guard.conf").is_some());
+    let results = sandbox.with_mode(&io, RunMode::Installer, |ctx| runner::verify(ctx, &modules));
+    for (name, result) in results {
+        assert!(result.is_ok(), "{name}: {result:?}");
+    }
+
+    fs::write(
+        sandbox.root.join("system/var/lib/inayos-guard/status.json"),
+        r#"{"time":"2026-11-19T10:05:00Z","passed":false,"failures":["the initramfs of 7.3.4-arch1-2 holds no kernel modules"]}"#,
+    )
+    .unwrap();
+    let results = sandbox.with(&io, |ctx| runner::verify(ctx, &modules));
+    let error = results[0].1.as_ref().unwrap_err().to_string();
+    assert!(error.contains("holds no kernel modules"), "{error}");
+
+    let report = sandbox
+        .with(&io, |ctx| runner::remove(ctx, &modules, &modules, false))
+        .unwrap();
+    assert!(!report.unanswered);
+    for path in GUARD_FILES.into_iter().chain([
+        "/efi/EFI/refind/inayos-guard.conf",
+        "/var/lib/inayos-guard/status.json",
+    ]) {
+        assert_eq!(system_file(&sandbox, path), None, "{path} is still there");
+    }
+    assert!(!enabled(
+        &sandbox,
+        ServiceScope::System,
+        "inayos-guard-boot.service"
+    ));
+    assert!(!enabled(
+        &sandbox,
+        ServiceScope::User,
+        "inayos-guard-notify.path"
+    ));
+}
+
+#[test]
+fn the_boot_guard_without_its_program_writes_no_hook_and_a_running_system_skips_it() {
+    let sandbox = Sandbox::new("boot-guard-missing");
+    guarded_system(&sandbox);
+    fs::remove_file(sandbox.root.join("system/usr/local/bin/inayos-guard")).unwrap();
+    let modules: [&dyn Module; 1] = [&crate::BootGuard];
+    let io = Answers::new(None);
+    let error = sandbox
+        .with_mode(&io, RunMode::Installer, |ctx| {
+            runner::install(ctx, &modules, &modules)
+        })
+        .unwrap_err();
+    assert!(error.to_string().contains("the guard program"), "{error}");
+    assert_eq!(system_file(&sandbox, GUARD_FILES[0]), None);
+
+    // A running system without the program skips the module, and its check, with a note.
+    sandbox
+        .with(&io, |ctx| runner::install(ctx, &modules, &modules))
+        .unwrap();
+    assert_eq!(system_file(&sandbox, GUARD_FILES[0]), None);
+    assert!(!sandbox.installed("libnotify"));
+    let results = sandbox.with(&io, |ctx| runner::verify(ctx, &modules));
+    assert!(results[0].1.is_ok(), "{:?}", results[0].1);
+    assert!(
+        io.notes
+            .borrow()
+            .iter()
+            .any(|note| note.contains("Skipping the boot guard"))
+    );
 }

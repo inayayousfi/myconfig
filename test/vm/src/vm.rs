@@ -64,7 +64,7 @@ impl Vm {
             }
         }
 
-        let swtpm = if machine.os.boot() == Boot::SecureUefiWithTpm {
+        let swtpm = if machine.boot == Boot::SecureUefiWithTpm {
             Some(start_swtpm(machine, runtime)?)
         } else {
             None

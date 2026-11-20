@@ -4458,8 +4458,9 @@ fn removing_secure_boot_waits_for_secure_boot_off_and_keeps_the_keys() {
     );
 }
 
-/// rEFInd on `/efi` and the guard program where the installer puts it. The fake guard
-/// writes `guard-status` as its status file and a default entry next to `refind.conf`.
+/// rEFInd on `/efi`, and the guard program and its hook where the `inayos` package puts
+/// them. The fake guard writes `guard-status` as its status file and a default entry next
+/// to `refind.conf`.
 fn guarded_system(sandbox: &Sandbox) {
     system(sandbox);
     let system_root = sandbox.root.join("system");
@@ -4469,9 +4470,15 @@ fn guarded_system(sandbox: &Sandbox) {
         "timeout 5\n",
     )
     .unwrap();
-    fs::create_dir_all(system_root.join("usr/local/bin")).unwrap();
+    fs::create_dir_all(system_root.join("usr/bin")).unwrap();
+    fs::create_dir_all(system_root.join("usr/share/libalpm/hooks")).unwrap();
+    fs::write(
+        system_root.join("usr/share/libalpm/hooks/zzz-inayos-guard.hook"),
+        include_str!("../../../../packaging/inayos/zzz-inayos-guard.hook"),
+    )
+    .unwrap();
     super::program(
-        &system_root.join("usr/local/bin/inayos-guard"),
+        &system_root.join("usr/bin/inayos-guard"),
         r#"printf 'inayos-guard %s\n' "$*" >> "$INAYOS_TEST_LOG"
 mkdir -p "$INAYOS_TEST_ROOT/system/var/lib/inayos-guard"
 cp "$INAYOS_TEST_ROOT/guard-status" "$INAYOS_TEST_ROOT/system/var/lib/inayos-guard/status.json"
@@ -4484,8 +4491,7 @@ printf 'default_selection "Boot with standard options"\n' > "$INAYOS_TEST_ROOT/s
     .unwrap();
 }
 
-const GUARD_FILES: [&str; 5] = [
-    "/etc/pacman.d/hooks/zzz-inayos-guard.hook",
+const GUARD_FILES: [&str; 4] = [
     "/etc/systemd/system/inayos-guard-boot.service",
     "/etc/systemd/system/fwupd.service.d/inayos-guard.conf",
     "/etc/systemd/user/inayos-guard-notify.path",
@@ -4504,21 +4510,13 @@ fn the_boot_guard_hooks_into_pacman_checks_once_at_install_and_reports_a_failed_
         })
         .unwrap();
     assert!(sandbox.installed("libnotify"));
+    assert!(sandbox.installed("inayos"));
     for path in GUARD_FILES {
         assert!(system_file(&sandbox, path).is_some(), "{path} is missing");
     }
-    let hook = settings(&system_file(&sandbox, GUARD_FILES[0]).unwrap());
-    for wanted in [
-        "When=PostTransaction",
-        "Exec=/usr/local/bin/inayos-guard check-update",
-        "Target=usr/lib/modules/*/vmlinuz",
-        "Target=boot/*",
-    ] {
-        assert!(hook.contains(&wanted.to_owned()), "{wanted}: {hook:?}");
-    }
     // fwupd's start only records the Secure Boot variables; the guard adds its TPM slot
     // when fwupd stops after changing them or staging a capsule.
-    let fwupd = settings(&system_file(&sandbox, GUARD_FILES[2]).unwrap());
+    let fwupd = settings(&system_file(&sandbox, GUARD_FILES[1]).unwrap());
     assert_eq!(fwupd.len(), 3, "{fwupd:?}");
     assert_eq!(fwupd[0], "[Service]");
     assert!(
@@ -4528,7 +4526,7 @@ fn the_boot_guard_hooks_into_pacman_checks_once_at_install_and_reports_a_failed_
     assert!(
         fwupd[2].starts_with("ExecStopPost=+")
             && fwupd[2].contains("fwupd-*.cap")
-            && fwupd[2].contains("exec /usr/local/bin/inayos-guard prepare-firmware-update"),
+            && fwupd[2].contains("exec /usr/bin/inayos-guard prepare-firmware-update"),
         "{fwupd:?}"
     );
     assert!(enabled(
@@ -4580,10 +4578,10 @@ fn the_boot_guard_hooks_into_pacman_checks_once_at_install_and_reports_a_failed_
 }
 
 #[test]
-fn the_boot_guard_without_its_program_writes_no_hook_and_a_running_system_skips_it() {
+fn an_inayos_package_without_the_guard_fails_before_any_unit_is_written() {
     let sandbox = Sandbox::new("boot-guard-missing");
     guarded_system(&sandbox);
-    fs::remove_file(sandbox.root.join("system/usr/local/bin/inayos-guard")).unwrap();
+    fs::remove_file(sandbox.root.join("system/usr/bin/inayos-guard")).unwrap();
     let modules: [&dyn Module; 1] = [&crate::BootGuard];
     let io = Answers::new(None);
     let error = sandbox
@@ -4591,23 +4589,101 @@ fn the_boot_guard_without_its_program_writes_no_hook_and_a_running_system_skips_
             runner::install(ctx, &modules, &modules)
         })
         .unwrap_err();
-    assert!(error.to_string().contains("the guard program"), "{error}");
-    assert_eq!(system_file(&sandbox, GUARD_FILES[0]), None);
+    assert!(
+        error
+            .to_string()
+            .contains("/usr/bin/inayos-guard is missing"),
+        "{error}"
+    );
+    for path in GUARD_FILES {
+        assert_eq!(system_file(&sandbox, path), None, "{path} was written");
+    }
+    assert_eq!(program_calls(&sandbox, "inayos-guard check-update"), 0);
+}
 
-    // A running system without the program skips the module, and its check, with a note.
+/// The system that the InayOS installer leaves: Arch's `pacman.conf`, and both InayOS
+/// packages installed with a keyring package that trusts `ABCD1234`. The fake `pacman-key`
+/// keeps the keys of pacman's keyring as files under `keys/`.
+fn system_with_inayos_packages(sandbox: &Sandbox) {
+    system(sandbox);
+    let system_root = sandbox.root.join("system");
+    fs::create_dir_all(system_root.join("etc/pacman.d")).unwrap();
+    fs::write(
+        system_root.join("etc/pacman.conf"),
+        "[options]\nSigLevel = Required DatabaseOptional\n\n[core]\nInclude = /etc/pacman.d/mirrorlist\n",
+    )
+    .unwrap();
+    fs::create_dir_all(system_root.join("usr/share/pacman/keyrings")).unwrap();
+    fs::write(
+        system_root.join("usr/share/pacman/keyrings/inayos-trusted"),
+        "ABCD1234:4:\n",
+    )
+    .unwrap();
+    for package in ["inayos", "inayos-keyring"] {
+        fs::write(sandbox.root.join("installed").join(package), "").unwrap();
+    }
+    fs::create_dir_all(sandbox.root.join("keys")).unwrap();
+    sandbox.fake(
+        "pacman-key",
+        r#"printf 'pacman-key %s\n' "$*" >> "$INAYOS_TEST_LOG"
+keys="$INAYOS_TEST_ROOT/keys"
+case "$1" in
+    --list-keys) [ -e "$keys/$2" ] ;;
+    --populate) while IFS=: read -r key _; do [ -n "$key" ] && : > "$keys/$key"; done < "$INAYOS_TEST_ROOT/system/usr/share/pacman/keyrings/inayos-trusted" ;;
+    --delete) rm "$keys/$2" ;;
+    *) exit 1 ;;
+esac"#,
+    );
+}
+
+#[test]
+fn the_inayos_repository_joins_pacman_with_its_key_and_leaves_with_it() {
+    let sandbox = Sandbox::new("inayos-repository");
+    system_with_inayos_packages(&sandbox);
+    let shipped = system_file(&sandbox, "/etc/pacman.conf").unwrap();
+    let modules: [&dyn Module; 1] = [&crate::InayosRepository];
+    let io = Answers::new(None);
+    sandbox
+        .with_mode(&io, RunMode::Installer, |ctx| {
+            runner::install(ctx, &modules, &modules)
+        })
+        .unwrap();
+    let conf = system_file(&sandbox, "/etc/pacman.conf").unwrap();
+    assert!(conf.starts_with(&shipped), "{conf}");
+    assert_eq!(
+        settings(&conf).last().map(String::as_str),
+        Some("Include=/etc/pacman.d/inayos.conf")
+    );
+    // This binary carries the placeholder key, so the releases are not signed with the key
+    // that the keyring trusts, and pacman reads no InayOS repository.
+    let repository = system_file(&sandbox, "/etc/pacman.d/inayos.conf").unwrap();
+    assert!(
+        repository.lines().all(|line| line.starts_with('#')),
+        "{repository}"
+    );
+    assert!(sandbox.root.join("keys/ABCD1234").exists());
+    // Both packages were there, so only the run's own refresh read the databases, and
+    // nothing was installed.
+    assert_eq!(program_calls(&sandbox, "pacman -Syu"), 1);
+    assert_eq!(program_calls(&sandbox, "pacman -S "), 0);
+    let results = sandbox.with_mode(&io, RunMode::Installer, |ctx| runner::verify(ctx, &modules));
+    assert!(results[0].1.is_ok(), "{:?}", results[0].1);
+
+    // A second install changes nothing more.
     sandbox
         .with(&io, |ctx| runner::install(ctx, &modules, &modules))
         .unwrap();
-    assert_eq!(system_file(&sandbox, GUARD_FILES[0]), None);
-    assert!(!sandbox.installed("libnotify"));
-    let results = sandbox.with(&io, |ctx| runner::verify(ctx, &modules));
-    assert!(results[0].1.is_ok(), "{:?}", results[0].1);
-    assert!(
-        io.notes
-            .borrow()
-            .iter()
-            .any(|note| note.contains("Skipping the boot guard"))
-    );
+    assert_eq!(program_calls(&sandbox, "pacman-key --populate"), 1);
+    assert_eq!(system_file(&sandbox, "/etc/pacman.conf").unwrap(), conf);
+
+    sandbox
+        .with(&io, |ctx| runner::remove(ctx, &modules, &modules, false))
+        .unwrap();
+    assert_eq!(system_file(&sandbox, "/etc/pacman.conf").unwrap(), shipped);
+    assert_eq!(system_file(&sandbox, "/etc/pacman.d/inayos.conf"), None);
+    assert!(!sandbox.root.join("keys/ABCD1234").exists());
+    // The installer installed the packages, so they stay.
+    assert!(sandbox.installed("inayos"));
 }
 
 /// The system that the InayOS installer leaves for an encrypted install: the EFI system

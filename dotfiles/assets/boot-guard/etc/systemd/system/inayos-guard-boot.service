@@ -4,7 +4,7 @@ After=local-fs.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/inayos-guard check-boot
+ExecStart=/usr/bin/inayos-guard check-boot
 
 [Install]
 WantedBy=multi-user.target

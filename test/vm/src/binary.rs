@@ -144,8 +144,8 @@ fn recipes(os: Os) -> &'static [Recipe] {
             launch: Launch::Linux,
         }],
         // The Arch guest builds the USB stick, which carries the installer, and the InayOS
-        // desktop installer and boot guard that it places in the new system. The installer's
-        // screens need the system C library of the live system.
+        // desktop installer, boot guard and news reader that the inayos package holds. The
+        // installer's screens need the system C library of the live system.
         Os::Arch => &[
             Recipe {
                 package: "inayos-installer",
@@ -166,6 +166,13 @@ fn recipes(os: Os) -> &'static [Recipe] {
                 executable: "inayos-guard",
                 target: MUSL_TARGET,
                 guest_path: "inayos-guard",
+                launch: Launch::Linux,
+            },
+            Recipe {
+                package: "inayos-news-app",
+                executable: "inayos-news",
+                target: MUSL_TARGET,
+                guest_path: "inayos-news",
                 launch: Launch::Linux,
             },
         ],

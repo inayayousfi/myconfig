@@ -10,6 +10,8 @@ static MODULES: &[&dyn Module] = &[
         unwanted: &[],
         needs: &[Need::Hard("plasma-version")],
     },
+    // Before the modules that install the inayos package from it.
+    &InayosRepository,
     &SystemTuning,
     &Snapshots,
     // Before refind and bootvine, which find the unified kernel image it builds, and before
@@ -44,6 +46,7 @@ static MODULES: &[&dyn Module] = &[
     &SecureBoot,
     &Bootvine,
     &BootGuard,
+    &Maintenance,
     &Kanata {
         start_at_login: false,
     },
@@ -150,6 +153,7 @@ mod tests {
     fn the_profile_is_the_full_desktop() {
         let names: Vec<_> = MODULES.iter().map(|module| module.name()).collect();
         for wanted in [
+            "inayos-repository",
             "system-tuning",
             "axidev-osk",
             "ghostty",
@@ -173,6 +177,7 @@ mod tests {
             "hibernation",
             "secure-boot",
             "boot-guard",
+            "maintenance",
             "t3code-desktop",
             "agent-config",
             "git-config",

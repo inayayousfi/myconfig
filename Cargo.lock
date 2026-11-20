@@ -1608,6 +1608,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "inayos-news-app"
+version = "0.54.0"
+dependencies = [
+ "roxmltree",
+]
+
+[[package]]
 name = "inayos-ubuntu-devbox"
 version = "0.54.0"
 dependencies = [

@@ -11,7 +11,7 @@ use crate::ssh::{Guest, SshError};
 
 const SECURE_BOOT_VARIABLE: &str =
     "/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c";
-pub(super) const GUARD: &str = "/usr/local/bin/inayos-guard";
+pub(super) const GUARD: &str = "/usr/bin/inayos-guard";
 const GUARD_STATUS: &str = "/var/lib/inayos-guard/status.json";
 const GUARD_FAILED: &str = "/var/lib/inayos-guard/failed";
 const GUARD_CONF: &str = "inayos-guard.conf";

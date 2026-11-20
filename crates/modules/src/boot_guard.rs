@@ -1,15 +1,13 @@
-//! The boot guard: its program, the pacman hook that runs its checks after every update of
-//! the boot files, the system service that checks each boot, and the user units that
-//! notify the desktop when a check failed. The guard writes the rEFInd entries of the
-//! "Previous system" and the default entry into `inayos-guard.conf`, which the refind
-//! module's managed block includes.
+//! The boot guard: the `inayos` package with its program and the pacman hook that runs its
+//! checks after every update of the boot files, the system service that checks each boot,
+//! and the user units that notify the desktop when a check failed. The guard writes the
+//! rEFInd entries of the "Previous system" and the default entry into `inayos-guard.conf`,
+//! which the refind module's managed block includes.
 //!
-//! The unit files and the hook are under `dotfiles/assets/boot-guard`, installed at the
-//! same path under `/`.
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+//! The unit files are under `dotfiles/assets/boot-guard`, installed at the same path under
+//! `/`. The hook is part of the package, from `packaging/inayos`, and checks the boot only
+//! once this module has created the guard's folder.
+use std::path::{Path, PathBuf};
 
 use embedded_dotfiles::BOOT_GUARD_ASSETS;
 use serde::Deserialize;
@@ -17,7 +15,8 @@ use typed_fs_rs::{EmbeddedDirectory, EmbeddedFile};
 use xshell::cmd;
 
 use crate::{
-    Context, Footprint, Module, ModuleResult, Need, Package, SecureBoot, ServiceScope,
+    Context, Footprint, InayosRepository, Module, ModuleResult, Need, Package, SecureBoot,
+    ServiceScope,
     refind::{GUARD_CONFIG, refind_config},
     support::{read_system_bytes, read_system_file, verify_packages},
 };
@@ -28,18 +27,17 @@ impl BootGuard {
     pub const NAME: &'static str = "boot-guard";
 }
 
-/// `notify-send`, which the notification service runs.
-const PACKAGES: &[Package] = &[Package::Libnotify];
-/// Where the pacman hook and the services run the guard. The InayOS installer puts it
-/// there, next to `inayos`.
-const GUARD: &str = "/usr/local/bin/inayos-guard";
+/// The guard and its hook, and `notify-send`, which the notification service runs.
+const PACKAGES: &[Package] = &[Package::Inayos, Package::Libnotify];
+/// Where the `inayos` package puts the guard, which the hook and the services run.
+pub(crate) const GUARD: &str = "/usr/bin/inayos-guard";
+/// The pacman hook of the `inayos` package.
+const HOOK: &str = "/usr/share/libalpm/hooks/zzz-inayos-guard.hook";
 /// The guard's own folder, with the result of its last check.
 const STATE_FOLDER: &str = "/var/lib/inayos-guard";
 const STATUS: &str = "/var/lib/inayos-guard/status.json";
 const BOOT_SERVICE: &str = "inayos-guard-boot.service";
 const NOTIFY_PATH: &str = "inayos-guard-notify.path";
-const NO_GUARD: &str =
-    "the guard program, at /usr/local/bin/inayos-guard or next to the running inayos binary,";
 
 /// The fields of the guard's status file that the module reads.
 #[derive(Deserialize)]
@@ -63,24 +61,19 @@ fn is_current(ctx: &Context, path: &Path, file: &EmbeddedFile) -> ModuleResult<b
     Ok(read_system_bytes(ctx, path)?.as_deref() == Some(file.content))
 }
 
-fn guard_installed(ctx: &Context) -> ModuleResult<bool> {
+/// Fails unless the `inayos` package put the guard and its hook in place.
+fn verify_guard(ctx: &Context) -> ModuleResult {
     let sh = ctx.shell;
-    Ok(ctx.succeeds(cmd!(sh, "sudo test -f {GUARD}"))?
-        && ctx.succeeds(cmd!(sh, "sudo test -x {GUARD}"))?)
-}
-
-/// Puts the guard program in place and says whether it is there. A running system copies
-/// the one next to the running `inayos` binary when the guard is not there yet.
-fn place_guard(ctx: &Context) -> ModuleResult<bool> {
-    if guard_installed(ctx)? {
-        return Ok(true);
+    if !ctx.succeeds(cmd!(sh, "sudo test -x {GUARD}"))? {
+        return Err(format!("{GUARD} is missing, so the inayos package is incomplete").into());
     }
-    let beside = std::env::current_exe()?.with_file_name("inayos-guard");
-    if !beside.is_file() {
-        return Ok(false);
+    if !ctx.succeeds(cmd!(sh, "sudo test -f {HOOK}"))? {
+        return Err(format!(
+            "{HOOK} is missing, so the guard does not check the boot files after an update"
+        )
+        .into());
     }
-    ctx.write_system_file(Path::new(GUARD), &fs::read(&beside)?, "0755")?;
-    Ok(true)
+    Ok(())
 }
 
 /// The result of the guard's last check, as a failure that names what failed.
@@ -106,6 +99,7 @@ impl Module for BootGuard {
 
     fn needs(&self) -> &'static [Need] {
         &[
+            Need::Hard(InayosRepository::NAME),
             Need::Hard("refind"),
             Need::Hard("snapshots"),
             Need::Soft(SecureBoot::NAME),
@@ -124,12 +118,8 @@ impl Module for BootGuard {
         let Some(config) = refind_config(ctx)? else {
             return ctx.missing_part("a rEFInd installation", "the boot guard");
         };
-        // Checked before anything is written: a hook without its program would fail after
-        // every update of the boot files.
-        if !place_guard(ctx)? {
-            return ctx.missing_part(NO_GUARD, "the boot guard");
-        }
         ctx.install_packages(PACKAGES)?;
+        verify_guard(ctx)?;
         for (path, file) in files() {
             ctx.write_system_file(&path, file.content, "0644")?;
         }
@@ -142,7 +132,7 @@ impl Module for BootGuard {
             let _ = ctx.start_service(NOTIFY_PATH, ServiceScope::User)?;
         }
         // The first check writes the rEFInd file and the status, so the entries exist
-        // before the first reboot.
+        // before the first reboot. The folder turns the package's hook on.
         let guard_config = config
             .parent()
             .ok_or("rEFInd configuration has no parent directory")?
@@ -159,10 +149,8 @@ impl Module for BootGuard {
         let Some(config) = refind_config(ctx)? else {
             return ctx.missing_part("a rEFInd installation", "the boot guard check");
         };
-        if !guard_installed(ctx)? {
-            return ctx.missing_part(NO_GUARD, "the boot guard check");
-        }
         verify_packages(ctx, PACKAGES)?;
+        verify_guard(ctx)?;
         for (path, file) in files() {
             if !is_current(ctx, &path, file)? {
                 return Err(format!(

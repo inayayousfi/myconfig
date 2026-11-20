@@ -1,0 +1,10 @@
+# InayOS maintenance: watches the list of .pacnew files that inayos-pacnew.service writes.
+[Unit]
+Description=Watch for .pacnew files to merge
+
+[Path]
+PathExists=/var/lib/inayos-pacnew/list
+Unit=inayos-pacnew-notify.service
+
+[Install]
+WantedBy=graphical-session.target

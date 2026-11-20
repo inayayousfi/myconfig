@@ -12,7 +12,11 @@
 //! kept disk. The Windows scenarios start from a throwaway layer over the clean Windows image
 //! and boot it with the Windows guest's hardware: `beside-windows` installs beside Windows and
 //! starts Windows through its firmware boot entry from rEFInd, and `bitlocker-on` and
-//! `fast-startup-on` check that the installer refuses a Windows that cannot be shrunk.
+//! `fast-startup-on` check that the installer refuses a Windows that cannot be shrunk. The
+//! maintenance scenarios start from the plain kept disk: `pacman-update` and `arch-news` build
+//! the `inayos` package from the working tree into a signed test repository that the host
+//! serves, and `snapshot-cleanup` checks snapper's number cleanup. `rollback` and
+//! `rollback-encrypted` roll the kept disks back to a snapshot from the USB stick.
 //!
 //! A scenario runs on its own layer. A passed scenario copies its screenshots to its
 //! `last-pass` folder and deletes the layer. A failed one keeps the layer, with its logs,
@@ -25,8 +29,13 @@ mod boot_checks;
 mod checks;
 mod encryption;
 mod encryption_checks;
+mod file_server;
 mod gui;
 mod installed;
+mod maintenance;
+mod maintenance_checks;
+mod rollback;
+mod test_repository;
 mod windows;
 mod windows_checks;
 
@@ -139,6 +148,23 @@ pub enum Name {
     /// Starts from the Windows image, turns Fast Startup on in Windows and shuts it down, and
     /// checks that the installer refuses to install beside it without changing the disk.
     FastStartupOn,
+    /// Starts from the installed disk of the last passed blank-disk run, updates InayOS with
+    /// `pacman -Syu` from a signed test repository built from the working tree, and checks the
+    /// new package, the guard's hook and the next boot.
+    PacmanUpdate,
+    /// Starts from the installed disk of the last passed blank-disk run, serves a news feed
+    /// with an unread manual-step item, and checks that a pacman upgrade shows it until
+    /// `inayos-news` marks it read.
+    ArchNews,
+    /// Starts from the installed disk of the last passed blank-disk run, runs more pacman
+    /// transactions than snapper keeps, and checks that the number cleanup keeps its limits.
+    SnapshotCleanup,
+    /// Starts from the installed disk of the last passed blank-disk run, changes the system
+    /// after a snapshot, rolls back to it from the USB stick, and checks that the system is
+    /// back while home kept its files.
+    Rollback,
+    /// Like rollback, from the kept encrypted disk.
+    RollbackEncrypted,
 }
 
 impl Name {
@@ -159,6 +185,11 @@ impl Name {
             Name::BesideWindows => "beside-windows",
             Name::BitlockerOn => "bitlocker-on",
             Name::FastStartupOn => "fast-startup-on",
+            Name::PacmanUpdate => "pacman-update",
+            Name::ArchNews => "arch-news",
+            Name::SnapshotCleanup => "snapshot-cleanup",
+            Name::Rollback => "rollback",
+            Name::RollbackEncrypted => "rollback-encrypted",
         }
     }
 
@@ -176,7 +207,12 @@ impl Name {
             | Name::HibernatedDisk
             | Name::TpmWiped
             | Name::HibernateEncrypted
-            | Name::FirmwareDbUpdate => self
+            | Name::FirmwareDbUpdate
+            | Name::PacmanUpdate
+            | Name::ArchNews
+            | Name::SnapshotCleanup
+            | Name::Rollback
+            | Name::RollbackEncrypted => self
                 .starts_from()
                 .expect("these scenarios start from a kept disk")
                 .boot(),
@@ -189,10 +225,17 @@ impl Name {
     /// The kept installed disk the scenario starts from instead of a blank one.
     fn starts_from(self) -> Option<Kept> {
         match self {
-            Name::BrokenKernel | Name::Hibernate | Name::HibernatedDisk => Some(Kept::Plain),
-            Name::TpmWiped | Name::HibernateEncrypted | Name::FirmwareDbUpdate => {
-                Some(Kept::Encrypted)
-            }
+            Name::BrokenKernel
+            | Name::Hibernate
+            | Name::HibernatedDisk
+            | Name::PacmanUpdate
+            | Name::ArchNews
+            | Name::SnapshotCleanup
+            | Name::Rollback => Some(Kept::Plain),
+            Name::TpmWiped
+            | Name::HibernateEncrypted
+            | Name::FirmwareDbUpdate
+            | Name::RollbackEncrypted => Some(Kept::Encrypted),
             Name::BlankDisk
             | Name::ReinstallKeepHome
             | Name::ShrinkExt4
@@ -241,7 +284,28 @@ impl Name {
 
     /// Whether the scenario boots the USB stick image.
     fn needs_iso(self) -> bool {
-        self.starts_from().is_none() || self == Name::HibernatedDisk
+        self.starts_from().is_none()
+            || matches!(
+                self,
+                Name::HibernatedDisk | Name::Rollback | Name::RollbackEncrypted
+            )
+    }
+
+    /// The host programs that the scenario's packages need: makepkg for every package, and
+    /// repo-add and gpg for the signed test repository.
+    fn package_tools(self) -> &'static [(&'static str, host::Fix)] {
+        const PACKAGES: &[(&str, host::Fix)] = &[("makepkg", host::Fix::Pacman("pacman"))];
+        const REPOSITORY: &[(&str, host::Fix)] = &[
+            ("makepkg", host::Fix::Pacman("pacman")),
+            ("repo-add", host::Fix::Pacman("pacman")),
+            ("gpg", host::Fix::Pacman("gnupg")),
+            ("gpgconf", host::Fix::Pacman("gnupg")),
+        ];
+        match self {
+            Name::PacmanUpdate | Name::ArchNews => REPOSITORY,
+            Name::SnapshotCleanup | Name::Rollback | Name::RollbackEncrypted => PACKAGES,
+            _ => &[],
+        }
     }
 
     /// Whether the scenario's install turns encryption on.
@@ -334,6 +398,10 @@ pub enum StepError {
     },
     #[error(transparent)]
     Binary(#[from] BinaryError),
+    #[error(transparent)]
+    Repository(#[from] test_repository::RepositoryError),
+    #[error("could not build the InayOS packages: {0}")]
+    Packages(#[from] crate::packages::PackageError),
 }
 
 /// Runs the scenario `name` on a new layer. With `watch`, a viewer window shows the guest
@@ -341,6 +409,7 @@ pub enum StepError {
 pub fn run(name: Name, watch: bool, repository: &Path) -> Result<(), ScenarioError> {
     let paths = Paths::from_env()?;
     host::check_boot(OS, name.boot())?;
+    host::check_commands(name.package_tools())?;
     let _lock = VmLock::acquire(&paths.lock())?;
     let iso = paths.usb_iso();
     if name.needs_iso() && !iso.is_file() {
@@ -400,6 +469,7 @@ pub fn run(name: Name, watch: bool, repository: &Path) -> Result<(), ScenarioErr
         encryption: name.encryption(),
         installed: installed.clone(),
         installed_copy: installed_copy.clone(),
+        repository: repository.to_owned(),
     };
     let result = scenario.steps(name);
     let vm = scenario.vm.take();
@@ -506,6 +576,8 @@ struct Scenario {
     installed: Option<Layer>,
     /// Where a scenario that keeps its installed disk copies it before its first boot.
     installed_copy: Option<Layer>,
+    /// The working tree, whose packaging folder the scenarios build packages from.
+    repository: PathBuf,
 }
 
 impl Scenario {
@@ -677,6 +749,10 @@ impl Scenario {
                     "fast-startup",
                 )
             }
+            Name::PacmanUpdate => self.check_pacman_update(),
+            Name::ArchNews => self.check_arch_news(),
+            Name::SnapshotCleanup => self.check_snapshot_cleanup(),
+            Name::Rollback | Name::RollbackEncrypted => self.check_rollback(),
             Name::ShrinkExt4 => {
                 let live = self.boot_live()?;
                 println!("vm: building a disk like the laptop's");
@@ -850,7 +926,8 @@ impl Scenario {
     }
 
     /// Checks that the installers built from the working tree run with the live system's C
-    /// library, then puts them in place of the copies on the stick.
+    /// library, then puts them in place of the copies on the stick, and replaces the stick's
+    /// InayOS repository with one built from the same binaries.
     ///
     /// The Sway session of the stick runs the installer's screens from its place, and Linux
     /// refuses a write to a running program. So each binary goes to a file next to its place
@@ -858,7 +935,9 @@ impl Scenario {
     fn copy_binaries(&self, live: &Guest) -> Result<(), StepError> {
         binary::check_glibc(live, &self.binaries)?;
         for binary in &self.binaries {
-            let place = live_place(binary.executable);
+            let Some(place) = live_place(binary.executable) else {
+                continue;
+            };
             let staged = format!("{place}.new");
             let copy_error = |error| StepError::Copy {
                 package: binary.package,
@@ -868,6 +947,24 @@ impl Scenario {
             live.run(&format!("chmod 755 {staged} && mv -f {staged} {place}"))
                 .map_err(copy_error)?;
         }
+        let built = crate::packages::build_repository(
+            &self.repository,
+            &self.binaries,
+            &self.layer.dir().join("packages"),
+            1,
+        )?;
+        let copy_error = |error| StepError::Copy {
+            package: "the InayOS repository",
+            error,
+        };
+        let staged = format!("{LIVE_REPOSITORY}.new");
+        live.run(&format!("rm -rf {staged}")).map_err(copy_error)?;
+        live.copy_dir_to(&built.folder, &staged)
+            .map_err(copy_error)?;
+        live.run(&format!(
+            "rm -rf {LIVE_REPOSITORY} && mv {staged} {LIVE_REPOSITORY}"
+        ))
+        .map_err(copy_error)?;
         Ok(())
     }
 
@@ -1016,10 +1113,11 @@ impl Scenario {
                 "{GUEST_USER} and the kept files should have uid and gid {OLD_USER_ID}, but uid, gid and the files' owner are {ids:?}"
             )));
         }
+        // The old system's folders are gone; the hibernation module adds the swap file.
         let top_level = user.run("ls -A1 /home")?;
-        if top_level != format!("lost+found\n{GUEST_USER}\n") {
+        if top_level != format!("lost+found\n{SWAP_FILE}\n{GUEST_USER}\n") {
             return Err(StepError::Check(format!(
-                "the top level of the home partition should hold only lost+found and {GUEST_USER}, but holds:\n{top_level}"
+                "the top level of the home partition should hold only lost+found, {SWAP_FILE} and {GUEST_USER}, but holds:\n{top_level}"
             )));
         }
         let mounted_efi_uuid = user.run("findmnt -no UUID /efi")?;
@@ -1133,14 +1231,17 @@ fn run_succeeds(guest: &Guest, remote: &str) -> Result<Result<(), String>, StepE
 }
 
 /// Where the USB stick image keeps the program `executable`, as test/vm/usb/build-iso.sh places
-/// it.
-fn live_place(executable: &str) -> &'static str {
+/// it, or `None` for a program that only the stick's InayOS repository holds.
+fn live_place(executable: &str) -> Option<&'static str> {
     match executable {
-        "inayos-installer" => "/usr/local/bin/inayos-installer",
-        "inayos-guard" => "/usr/local/lib/inayos/inayos-guard",
-        _ => "/usr/local/lib/inayos/inayos",
+        "inayos-installer" => Some("/usr/local/bin/inayos-installer"),
+        "inayos-arch-desktop" => Some("/usr/local/lib/inayos/inayos"),
+        _ => None,
     }
 }
+
+/// Where the USB stick image keeps the local InayOS repository.
+const LIVE_REPOSITORY: &str = "/usr/local/lib/inayos/repo";
 
 /// The installer command on the live system, which places the InayOS desktop installer of
 /// the stick in the new system.
@@ -1154,6 +1255,9 @@ fn user_power_off() -> String {
 }
 
 /// Runs `command` as root through sudo, as the new user, who needs the password for it.
+/// The hibernation swap file at the top level of the home partition.
+const SWAP_FILE: &str = "swapfile";
+
 fn sudo(command: &str) -> String {
     format!("printf '%s\\n' '{GUEST_PASSWORD}' | sudo -S -p '' {command}")
 }

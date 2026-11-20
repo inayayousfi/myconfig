@@ -6,6 +6,7 @@ members = [
   "apps/ubuntu-devbox",
   "apps/installer",
   "apps/guard",
+  "apps/news",
   "crates/package-catalog",
   "crates/utils",
   "crates/modules",

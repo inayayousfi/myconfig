@@ -1,0 +1,46 @@
+# The InayOS keyring package: the public key that signs the InayOS repository, in the
+# layout of Arch's keyring packages, so `pacman-key --populate inayos` adds and trusts it.
+# It builds from the files next to it, so it has no source to download.
+#
+# Environment:
+#   INAYOS_KEYRING_DIR  a folder holding inayos.gpg, inayos-trusted and inayos-revoked to
+#                       package instead of the committed ones, such as a test key
+#   INAYOS_PKGREL       the package release, 1 when unset
+
+_root=$(cd "$startdir/../.." && pwd)
+
+pkgname=inayos-keyring
+pkgver=$(sed -n 's/^version = "\(.*\)"$/\1/p' "$_root/Cargo.toml" | head -n 1)
+pkgrel=${INAYOS_PKGREL:-1}
+pkgdesc="InayOS: the public key of the InayOS package repository"
+arch=('any')
+url="https://github.com/inayayousfi/myconfig"
+install=inayos-keyring.install
+
+_keyring() {
+    printf '%s\n' "${INAYOS_KEYRING_DIR:-$startdir}"
+}
+
+build() {
+    local keyring file
+    keyring=$(_keyring)
+    for file in inayos.gpg inayos-trusted inayos-revoked; do
+        if [[ ! -f $keyring/$file ]]; then
+            echo "error: $keyring/$file is missing" >&2
+            return 1
+        fi
+    done
+    if grep -q 'INAYOS-PLACEHOLDER' "$keyring/inayos.gpg" "$keyring/inayos-trusted"; then
+        echo "error: $keyring holds the placeholder, not the InayOS signing key." >&2
+        echo "error: docs/repository.md says how the key is made; set INAYOS_KEYRING_DIR to package a test key." >&2
+        return 1
+    fi
+}
+
+package() {
+    local keyring file
+    keyring=$(_keyring)
+    for file in inayos.gpg inayos-trusted inayos-revoked; do
+        install -D -m 644 "$keyring/$file" "$pkgdir/usr/share/pacman/keyrings/$file"
+    done
+}

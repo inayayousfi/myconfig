@@ -1,0 +1,10 @@
+# InayOS maintenance: looks for .pacnew files every day, and at boot after a missed day.
+[Unit]
+Description=Look for .pacnew files every day
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -17,6 +17,7 @@ mod image;
 mod lock;
 mod machine;
 mod os;
+mod packages;
 mod paths;
 mod ppm;
 mod qmp;

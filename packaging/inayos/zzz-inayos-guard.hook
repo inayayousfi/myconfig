@@ -1,8 +1,13 @@
 # InayOS boot guard: checks the boot files after every transaction that changes them. The
 # name sorts after 90-mkinitcpio-install.hook and zz-sbctl.hook, so the guard sees the
 # rebuilt initramfs and the new signatures. The triggers cover every path and package that
-# makes 90-mkinitcpio-install.hook rebuild the initramfs, plus the kernels, rEFInd, sbctl
-# and snapper.
+# makes 90-mkinitcpio-install.hook rebuild the initramfs, plus the kernels, rEFInd, sbctl,
+# snapper, and the guard itself, so an update of InayOS checks the boot files with the new
+# guard.
+#
+# The check runs only once the boot-guard module has created /var/lib/inayos-guard. Until
+# then rEFInd and the boot files that the guard checks may not exist yet. It also skips
+# the transaction that removes the guard.
 [Trigger]
 Operation = Install
 Operation = Upgrade
@@ -28,6 +33,7 @@ Target = usr/share/refind/*
 Target = etc/mkinitcpio.conf*
 Target = usr/bin/sbctl
 Target = usr/bin/snapper
+Target = usr/bin/inayos-guard
 
 [Trigger]
 Operation = Install
@@ -39,4 +45,4 @@ Target = mkinitcpio-git
 [Action]
 Description = Checking the boot files with the InayOS boot guard...
 When = PostTransaction
-Exec = /usr/local/bin/inayos-guard check-update
+Exec = /bin/sh -c '[ -d /var/lib/inayos-guard ] && [ -x /usr/bin/inayos-guard ] || exit 0; exec /usr/bin/inayos-guard check-update'

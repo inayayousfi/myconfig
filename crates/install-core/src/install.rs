@@ -26,10 +26,12 @@ pub const INSTALLED_LOG: &str = "/var/log/inayos-installer.log";
 /// What the installer brings besides the answers.
 #[derive(Clone, Debug)]
 pub struct Settings {
-    /// The InayOS binary of the profile the new system runs, copied into it.
+    /// The InayOS binary of the profile the new system runs, which lists the profile's
+    /// modules. The new system gets the same program from the `inayos` package.
     pub system_binary: PathBuf,
-    /// The boot guard program, copied into the new system next to the InayOS binary.
-    pub guard_binary: PathBuf,
+    /// The local pacman repository of the `inayos` and `inayos-keyring` packages, which the
+    /// base system installs from.
+    pub repository: PathBuf,
     /// The install log, copied into the new system at the end.
     pub log_file: Option<PathBuf>,
 }
@@ -37,8 +39,8 @@ pub struct Settings {
 impl Settings {
     /// Where the USB stick keeps the InayOS binary.
     pub const SYSTEM_BINARY: &str = "/usr/local/lib/inayos/inayos";
-    /// Where the USB stick keeps the boot guard program.
-    pub const GUARD_BINARY: &str = "/usr/local/lib/inayos/inayos-guard";
+    /// Where the USB stick keeps the local repository of the InayOS packages.
+    pub const REPOSITORY: &str = "/usr/local/lib/inayos/repo";
 }
 
 /// What a finished install hands to the interface.
@@ -80,9 +82,9 @@ pub fn install(
     let result = (|| -> Result<(), Box<Failure>> {
         let volumes =
             disk::prepare(&m, &checked.disk, &answers.user.username).map_err(at(Stage::Disk))?;
-        system::install(&m, answers, volumes.as_ref()).map_err(at(Stage::System))?;
+        system::install(&m, answers, settings, volumes.as_ref()).map_err(at(Stage::System))?;
         let user = user::create(&m, answers, checked.kept_owner).map_err(at(Stage::User))?;
-        configuration::run(&m, answers, settings, &user, checked.modules.as_deref())
+        configuration::run(&m, answers, &user, checked.modules.as_deref())
             .map_err(at(Stage::Configuration))?;
         if let Some(volumes) = volumes {
             encryption::enroll(&m, &volumes, &user, &mut made).map_err(at(Stage::Keys))?;

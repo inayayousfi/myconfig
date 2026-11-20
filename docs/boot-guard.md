@@ -1,12 +1,12 @@
 # Boot guard
 
-This document describes the boot guard of the InayOS desktop profile: the `boot-guard` module, `crates/modules/src/boot_guard.rs`, with its files in `dotfiles/assets/boot-guard`, and the guard program `inayos-guard`.
+This document describes the boot guard of the InayOS desktop profile: the `boot-guard` module, `crates/modules/src/boot_guard.rs`, with its files in `dotfiles/assets/boot-guard`, and the guard program `inayos-guard`, which the `inayos` package installs with its pacman hook (see `docs/repository.md`).
 
 The guard checks every boot file that rEFInd starts after each update of those files, and keeps a working way back: a rEFInd entry that starts the system as it was before the last update.
 
 ## The module
 
-The module needs `refind` and `snapshots`, and `secure-boot` when the run includes it. It comes after `refind`, `secure-boot` and `bootvine` in the profile, so its first check sees the signed files and the rebuilt initramfs.
+The module needs `inayos-repository`, `refind` and `snapshots`, and `secure-boot` when the run includes it. The guard comes only from the `inayos` package, so on a running system without that package the module runs only once `inayos-repository` can install it, which needs a binary that carries the release key and a release that holds the repository. It comes after `refind`, `secure-boot` and `bootvine` in the profile, so its first check sees the signed files and the rebuilt initramfs.
 
 ### Install
 
@@ -14,17 +14,22 @@ Install first looks for rEFInd's configuration on the EFI system partition, as t
 
 It then:
 
-1. checks that `/usr/local/bin/inayos-guard` exists and is executable. The InayOS installer copies it there next to `/usr/local/bin/inayos`. On a running system without it, the module copies the `inayos-guard` that sits next to the running `inayos` binary. Without either, an installer-mode run fails, and a running system skips the module with a note before writing anything;
-3. installs `libnotify`, which provides `notify-send`;
-4. writes its files under `/`, each a recorded write;
-5. enables `inayos-guard-boot.service` and the user unit `inayos-guard-notify.path`, and starts the path unit when a graphical session runs;
-6. runs `inayos-guard check-update` once, so `inayos-guard.conf` and the record exist before the first boot. It records `inayos-guard.conf` and the folder `/var/lib/inayos-guard` first, so remove deletes them.
+1. installs the `inayos` package and `libnotify`, which provides `notify-send`;
+2. checks that `/usr/bin/inayos-guard` is executable and that the package's hook is in place, and fails before writing anything when either is missing;
+3. writes its files under `/`, each a recorded write;
+4. enables `inayos-guard-boot.service` and the user unit `inayos-guard-notify.path`, and starts the path unit when a graphical session runs;
+5. runs `inayos-guard check-update` once, so `inayos-guard.conf` and the record exist before the first boot. It records `inayos-guard.conf` and the folder `/var/lib/inayos-guard` first, so remove deletes them.
 
 The refind module's managed block in `refind.conf` includes `inayos-guard.conf` last, after the theme, so the guard's `default_selection` wins. The refind module writes a placeholder `inayos-guard.conf` holding one comment when none exists, so the include always finds a file.
 
 ### Files
 
-- `/etc/pacman.d/hooks/zzz-inayos-guard.hook` runs `inayos-guard check-update` after every transaction that installs, upgrades or removes a kernel, a file under `/boot`, rEFInd's package files, the mkinitcpio configuration, `sbctl` or `snapper`. It also has every trigger of `90-mkinitcpio-install.hook`, which rebuilds the initramfs: its paths, such as firmware, DKMS sources, systemd and udev, and an install or upgrade of the `mkinitcpio` package. Its name sorts after `90-mkinitcpio-install.hook` and sbctl's `zz-sbctl.hook`, so the guard checks the rebuilt initramfs and the new signatures. The guard exits with 0 when a check fails, so the hook never aborts the transaction.
+The `inayos` package installs the hook, from `packaging/inayos`:
+
+- `/usr/share/libalpm/hooks/zzz-inayos-guard.hook` runs `inayos-guard check-update` after every transaction that installs, upgrades or removes a kernel, a file under `/boot`, rEFInd's package files, the mkinitcpio configuration, `sbctl`, `snapper` or the guard itself, so an update of the `inayos` package checks the boot files with the new guard. It also has every trigger of `90-mkinitcpio-install.hook`, which rebuilds the initramfs: its paths, such as firmware, DKMS sources, systemd and udev, and an install or upgrade of the `mkinitcpio` package. Its name sorts after `90-mkinitcpio-install.hook` and sbctl's `zz-sbctl.hook`, so the guard checks the rebuilt initramfs and the new signatures. The guard exits with 0 when a check fails, so the hook never aborts the transaction. The hook runs the guard only while `/var/lib/inayos-guard` exists, which this module creates: before that, the boot files the guard checks may not exist yet, as during the install of the packages that precede rEFInd. It also skips the transaction that removes the guard.
+
+The module writes the units, from `dotfiles/assets/boot-guard`:
+
 - `/etc/systemd/system/inayos-guard-boot.service` runs `inayos-guard check-boot` once at each boot.
 - `/etc/systemd/system/fwupd.service.d/inayos-guard.conf` runs `inayos-guard prepare-firmware-update` when fwupd stops after it changed what the TPM measures in PCR 7. When fwupd starts, the drop-in saves a checksum of the Secure Boot variables `PK`, `KEK`, `db` and `dbx` in `/run/inayos-guard-fwupd`. When fwupd stops, the guard runs if that checksum changed, if the record is missing, or if a UEFI capsule waits on the EFI partition (`/efi/EFI/*/fw/fwupd-*.cap`), which the firmware applies at the next boot. fwupd also starts for queries, such as Plasma Discover's at login and the daily metadata refresh; those change nothing, so they add no TPM slot bound to no PCR, which would open the disk under any boot chain. The `+` prefix runs both commands with full privileges outside fwupd's sandbox, because the guard changes the LUKS headers. fwupd stops when it has been idle for a while and at shutdown, so the slots are in place before the next boot.
 - `/etc/systemd/user/inayos-guard-notify.path` starts `inayos-guard-notify.service` while `/var/lib/inayos-guard/failed` exists. It is wanted by `graphical-session.target`, so the notification has a desktop to show on.
@@ -32,11 +37,11 @@ The refind module's managed block in `refind.conf` includes `inayos-guard.conf` 
 
 ### Verify
 
-On a running system without the guard program, `verify` skips the check with a note. Otherwise it fails when `libnotify` is missing, when a file differs from the repository copy, when the boot service or the user path unit is not enabled, when `inayos-guard.conf` is missing, or when the record says that the last check failed. The failure then lists the guard's failures.
+`verify` fails when the `inayos` package or `libnotify` is missing, when the guard or the hook is missing, when a file differs from the repository copy, when the boot service or the user path unit is not enabled, when `inayos-guard.conf` is missing, or when the record says that the last check failed. The failure then lists the guard's failures.
 
 ### Remove
 
-`remove` disables the units, deletes the files, `inayos-guard.conf` and `/var/lib/inayos-guard`, and uninstalls `libnotify` when install added it. The guard program stays, because the installer placed it. When the refind module wrote the placeholder first, remove puts the placeholder back, so the include line in rEFInd's managed block still finds a file.
+`remove` disables the units, deletes the files, `inayos-guard.conf` and `/var/lib/inayos-guard`, and uninstalls `libnotify` when install added it. The `inayos` package stays while the `inayos-repository` module needs it. When the refind module wrote the placeholder first, remove puts the placeholder back, so the include line in rEFInd's managed block still finds a file.
 
 ## The guard program
 

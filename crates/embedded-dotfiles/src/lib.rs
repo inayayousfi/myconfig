@@ -23,6 +23,7 @@ embed_dir!(pub static BOOTVINE_ASSETS = "../../dotfiles/assets/bootvine");
 embed_dir!(pub static ENCRYPTION_ASSETS = "../../dotfiles/assets/encryption");
 embed_dir!(pub static HIBERNATION_ASSETS = "../../dotfiles/assets/hibernation");
 embed_dir!(pub static KDE_PLASMA_ASSETS = "../../dotfiles/assets/kde-plasma");
+embed_dir!(pub static MAINTENANCE_ASSETS = "../../dotfiles/assets/maintenance");
 embed_dir!(pub static REFIND_ASSETS = "../../dotfiles/assets/refind");
 embed_dir!(pub static SNAPSHOTS_ASSETS = "../../dotfiles/assets/snapshots");
 embed_dir!(pub static SYSTEM_TUNING_ASSETS = "../../dotfiles/assets/system-tuning");
@@ -45,3 +46,10 @@ pub static CONFIG_PACKAGES: [(&str, &(dyn EmbeddedDirectory + Sync)); 13] = [
     ("yazi", &YAZI),
     ("zsh", &ZSH),
 ];
+
+/// The public key of the InayOS package repository, from `packaging/inayos-keyring`, with
+/// which the inayos-repository module trusts the repository before its keyring package is
+/// installed.
+pub static INAYOS_KEY: &[u8] = include_bytes!("../../../packaging/inayos-keyring/inayos.gpg");
+/// The `<fingerprint>:4:` lines of the keys that `INAYOS_KEY` holds.
+pub static INAYOS_TRUSTED: &str = include_str!("../../../packaging/inayos-keyring/inayos-trusted");

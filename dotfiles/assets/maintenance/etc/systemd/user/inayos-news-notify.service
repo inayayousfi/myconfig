@@ -1,0 +1,13 @@
+# InayOS maintenance: at each login, a notification names the unread Arch news that
+# announces a manual step.
+[Unit]
+Description=Notification of unread Arch news that announces a manual step
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/libexec/inayos-news-notify
+
+[Install]
+WantedBy=graphical-session.target

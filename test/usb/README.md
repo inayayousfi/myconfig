@@ -8,12 +8,12 @@ This folder holds the `mkarchiso` profile of the InayOS USB stick: the live syst
 
 1. Copy `releng`.
 2. Copy `profile/` over it. Each overlay file replaces or adds the file at the same path, except `packages.x86_64`, whose lines are appended to releng's list.
-3. Place the built binaries at `airootfs/usr/local/bin/inayos-installer` and `airootfs/usr/local/lib/inayos/inayos`, and extract the latest Axidev OSK Linux release into `airootfs/opt/`, which gives `/opt/axidev-osk/bin/axidev-osk`.
+3. Place the built binaries at `airootfs/usr/local/bin/inayos-installer` and `airootfs/usr/local/lib/inayos/inayos`, copy the local InayOS repository that the xtask built on the host into `airootfs/usr/local/lib/inayos/repo` (see `docs/repository.md`), and extract the latest Axidev OSK Linux release into `airootfs/opt/`, which gives `/opt/axidev-osk/bin/axidev-osk`.
 4. Run `mkarchiso -v -w <work> -o <out> <profile>`.
 
 The overlay holds only regular files and folders, so any copy keeps it intact. An overlay can replace or add files, never delete them. A releng unit that the live system must not run is masked with an empty file at `airootfs/etc/systemd/system/<unit>`, which systemd treats like a link to `/dev/null`. A unit the live system starts is pulled in by a `Wants=` drop-in on its target instead of a `.wants` link.
 
-`mkarchiso` copies `airootfs` without its file modes. Every file that needs a mode other than 644, including the three files the xtask places, has an entry in `file_permissions` in `profiledef.sh`.
+`mkarchiso` copies `airootfs` without its file modes. Every file that needs a mode other than 644, including the binaries the xtask places, has an entry in `file_permissions` in `profiledef.sh`.
 
 `profiledef.sh` replaces releng's. It sources releng's `profiledef.sh` from `/usr/share/archiso/configs/releng`, so the image takes the settings and file modes of the archiso installed where it is built. It then names the image InayOS, with `iso_name` `inayos` and `iso_label` `INAYOS_<year><month>`, and adds the modes of its own files.
 
@@ -24,7 +24,7 @@ The overlay holds only regular files and folders, so any copy keeps it intact. A
 - getty logs the user `live` in on the first console. `~/.zprofile` then starts Sway, with its output in the journal under the `sway` identifier.
 - `live` belongs to `wheel` and `uinput` through `/etc/sysusers.d/inayos-live.conf`, and runs `sudo` without a password.
 - Workspace 1, "Installer", runs the installer's screens. Sway starts `inayos-installer` through `sudo`, which keeps `WAYLAND_DISPLAY`, `XDG_RUNTIME_DIR` and `SWAYSOCK`, so the installer runs as root and draws in the session of `live`. The session switches to workspace 1 before it starts the installer, because Sway places a window on the workspace that was focused when its command started.
-- Workspace 2, "Repair", runs a Ghostty terminal titled "InayOS repair" that lists the repair tools and the command that installs from an answers file without the screens.
+- Workspace 2, "Repair", runs a Ghostty terminal titled "InayOS repair" that lists the repair tools, the rollback command (`docs/rollback.md`) and the command that installs from an answers file without the screens.
 - Each terminal that `inayos-live-welcome` opens first runs `inayos-hibernation-check`. It warns when an InayOS on the machine is hibernated, because writing to its disk loses the work it saved. It reads only: the `HibernateLocation` firmware variable, and the swap file header of each unencrypted InayOS home partition through `debugfs`. The installer refuses such a disk with the same checks.
 - systemd's `systemd-hibernate-clear.service` is masked. On every boot that does not resume, it deletes the `HibernateLocation` firmware variable. On the stick, that would hide a hibernated InayOS from the checks, and that InayOS would no longer resume when it starts again, because nothing else tells it where its saved memory is.
 - Axidev OSK starts with the session. It is a layer-shell overlay, so it shows on both workspaces.
@@ -63,7 +63,7 @@ Releng already lists some of the repair tools. The overlay lists them again so t
 
 The installer's screens draw with the CPU renderer and carry their font, so they need no GPU driver and no font package.
 
-The installer downloads every package of the new system from the Arch mirrors, so the image carries none of them.
+The installer downloads every Arch package of the new system from the Arch mirrors, so the image carries none of them. It carries only the `inayos` and `inayos-keyring` packages, in its local repository.
 
 ## Status
 

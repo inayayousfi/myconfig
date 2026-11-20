@@ -12,6 +12,7 @@ mod install;
 pub mod inventory;
 pub mod modules;
 pub mod parse;
+pub mod rollback;
 mod sink;
 pub mod sizes;
 pub mod windows;

@@ -1,0 +1,11 @@
+# InayOS maintenance: lists the .pacnew files that pacdiff finds in
+# /var/lib/inayos-pacnew/list, and removes the list when there are none. The user's
+# inayos-pacnew-notify.path watches the list.
+[Unit]
+Description=Look for .pacnew files to merge
+After=local-fs.target
+
+[Service]
+Type=oneshot
+StateDirectory=inayos-pacnew
+ExecStart=/bin/sh -c 'list=$$(pacdiff --output --nocolor) || exit 1; if [ -n "$$list" ]; then printf "%%s\\n" "$$list" > /var/lib/inayos-pacnew/list.new && mv /var/lib/inayos-pacnew/list.new /var/lib/inayos-pacnew/list; else rm -f /var/lib/inayos-pacnew/list; fi'

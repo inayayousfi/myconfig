@@ -32,7 +32,7 @@ pub struct Options {
     /// Where to write the answers instead of installing, when set.
     pub save_answers: Option<PathBuf>,
     pub system_binary: PathBuf,
-    pub guard_binary: PathBuf,
+    pub repository: PathBuf,
     pub log: PathBuf,
     /// The root of the files the catalogs read: `/` on the live system.
     pub root: PathBuf,
@@ -480,7 +480,7 @@ impl App {
         }
         let settings = Settings {
             system_binary: self.options.system_binary.clone(),
-            guard_binary: self.options.guard_binary.clone(),
+            repository: self.options.repository.clone(),
             log_file: Some(self.options.log.clone()),
         };
         match Running::start(answers, settings, self.host.clone(), &self.options.log) {
@@ -821,7 +821,7 @@ mod tests {
         let options = Options {
             save_answers: Some(saved.clone()),
             system_binary: PathBuf::from("/usr/local/lib/inayos/inayos"),
-            guard_binary: PathBuf::from("/usr/local/lib/inayos/inayos-guard"),
+            repository: PathBuf::from("/usr/local/lib/inayos/repo"),
             log: folder.join("install.log"),
             root: folder.clone(),
             in_sway: false,
@@ -888,7 +888,7 @@ mod tests {
         let options = Options {
             save_answers: None,
             system_binary: PathBuf::from("/usr/local/lib/inayos/inayos"),
-            guard_binary: PathBuf::from("/usr/local/lib/inayos/inayos-guard"),
+            repository: PathBuf::from("/usr/local/lib/inayos/repo"),
             log: PathBuf::from("/nonexistent/install.log"),
             root: PathBuf::from("/nonexistent"),
             in_sway: false,

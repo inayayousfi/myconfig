@@ -9,9 +9,9 @@ use crate::{
 
 const PASSWORD: &str = "s3cret-pass";
 const WIFI_PASSWORD: &str = "w1fi-pass";
-const INSTALL: &str = "arch-chroot -S -u tester /mnt env SYSTEMD_OFFLINE=1 TMPDIR=/var/tmp /usr/local/bin/inayos \
+const INSTALL: &str = "arch-chroot -S -u tester /mnt env SYSTEMD_OFFLINE=1 TMPDIR=/var/tmp /usr/bin/inayos \
                        install --installer-mode --answers /var/tmp/inayos-answers.json";
-const VERIFY: &str = "arch-chroot -S -u tester /mnt env SYSTEMD_OFFLINE=1 TMPDIR=/var/tmp /usr/local/bin/inayos \
+const VERIFY: &str = "arch-chroot -S -u tester /mnt env SYSTEMD_OFFLINE=1 TMPDIR=/var/tmp /usr/bin/inayos \
                       verify --installer-mode";
 
 fn answers(disk: &str, extra: &str) -> Answers {
@@ -46,7 +46,7 @@ fn wipe() -> Answers {
 fn settings() -> Settings {
     Settings {
         system_binary: "/usr/local/lib/inayos/inayos".into(),
-        guard_binary: "/usr/local/lib/inayos/inayos-guard".into(),
+        repository: "/usr/local/lib/inayos/repo".into(),
         log_file: Some("/var/log/inayos-installer.log".into()),
     }
 }
@@ -61,7 +61,8 @@ fn live_system() -> FakeHost {
     let host = FakeHost::default();
     host.dir("/sys/firmware/efi/efivars", (0, 0));
     host.file("/usr/local/lib/inayos/inayos", "binary");
-    host.file("/usr/local/lib/inayos/inayos-guard", "guard");
+    host.file("/usr/local/lib/inayos/repo/inayos.db", "");
+    host.file("/etc/pacman.conf", LIVE_PACMAN_CONF);
     host.file("/usr/share/zoneinfo/Europe/Paris", "");
     host.file("/etc/locale.gen", "#en_US.UTF-8 UTF-8\n");
     host.file("/proc/cpuinfo", "vendor_id\t: GenuineIntel\n");
@@ -133,10 +134,14 @@ fn mounts(system: &str) -> Vec<String> {
     .collect()
 }
 
+/// The live system's pacman configuration.
+const LIVE_PACMAN_CONF: &str = "[options]\nSigLevel = Required DatabaseOptional\n\n[core]\nInclude = /etc/pacman.d/mirrorlist\n";
+
 fn base_system(ucode: &str) -> Vec<String> {
     vec![
         format!(
-            "pacstrap -K /mnt base linux linux-firmware {ucode}btrfs-progs e2fsprogs dosfstools sudo networkmanager"
+            "pacstrap -K -C /tmp/inayos-pacstrap.conf /mnt base linux linux-firmware {ucode}btrfs-progs \
+             e2fsprogs dosfstools sudo networkmanager inayos-keyring inayos"
         ),
         "systemd-firstboot --root=/mnt --force --locale=en_US.UTF-8 --keymap=us \
          --timezone=Europe/Paris --hostname=inayos"
@@ -224,14 +229,6 @@ fn a_wiped_disk_gets_the_default_layout_a_base_system_a_user_and_the_modules() {
         Some(Node::Dir {
             mode: 0o700,
             owner: (1000, 1000)
-        })
-    );
-    assert_eq!(
-        host.node("/mnt/usr/local/bin/inayos"),
-        Some(Node::File {
-            text: "binary".into(),
-            mode: 0o755,
-            owner: (0, 0)
         })
     );
     assert_eq!(
@@ -1193,7 +1190,7 @@ fn the_secure_boot_answer_chooses_whether_the_secure_boot_module_runs() {
     // The guard signs its images only once the keys are enrolled.
     let guarded = actions
         .iter()
-        .position(|a| a == "arch-chroot /mnt /usr/local/bin/inayos-guard check-update")
+        .position(|a| a == "arch-chroot /mnt /usr/bin/inayos-guard check-update")
         .unwrap();
     assert!(enrolled < guarded && guarded < verified, "{actions:?}");
 }
@@ -1282,29 +1279,42 @@ fn secure_boot_outside_setup_mode_stops_before_the_disk_changes() {
 }
 
 #[test]
-fn the_guard_program_reaches_the_new_system_before_the_modules_run() {
+fn the_inayos_packages_come_from_the_sticks_repository_trusted_only_for_that_pacstrap() {
+    assert_eq!(
+        super::system::pacstrap_config(
+            LIVE_PACMAN_CONF,
+            std::path::Path::new("/usr/local/lib/inayos/repo")
+        ),
+        format!(
+            "{LIVE_PACMAN_CONF}\n[inayos]\nSigLevel = Optional TrustAll\n\
+             Server = file:///usr/local/lib/inayos/repo\n"
+        )
+    );
+
     let host = live_system();
     install(&wipe(), &settings(), &host, &FakeSink::default()).unwrap();
     let log = host.log.borrow().clone();
-    let copied = log
-        .iter()
-        .position(|line| {
-            line == "copy /usr/local/lib/inayos/inayos-guard /mnt/usr/local/bin/inayos-guard 755"
-        })
-        .expect("the guard was not copied");
-    let installed = log
-        .iter()
-        .position(|line| line == &format!("! {INSTALL}"))
-        .unwrap();
-    assert!(copied < installed);
+    let position = |wanted: &str| {
+        log.iter()
+            .position(|line| line == wanted)
+            .unwrap_or_else(|| panic!("{wanted} is not in {log:?}"))
+    };
+    let written = position("write /tmp/inayos-pacstrap.conf 644");
+    let pacstrap = position(&format!("! {}", base_system("intel-ucode ")[0]));
+    let removed = position("rm /tmp/inayos-pacstrap.conf");
+    assert!(written < pacstrap && pacstrap < removed, "{log:?}");
+    assert_eq!(
+        host.text("/etc/pacman.conf").as_deref(),
+        Some(LIVE_PACMAN_CONF)
+    );
 
     let host = live_system();
     host.files
         .borrow_mut()
-        .remove(std::path::Path::new("/usr/local/lib/inayos/inayos-guard"));
+        .remove(std::path::Path::new("/usr/local/lib/inayos/repo/inayos.db"));
     let failure = install(&wipe(), &settings(), &host, &FakeSink::default()).unwrap_err();
     assert!(
-        matches!(failure.error, Error::NoGuardBinary { .. }),
+        matches!(failure.error, Error::NoRepository { .. }),
         "{:?}",
         failure.error
     );
@@ -1679,4 +1689,21 @@ fn a_hibernated_system_stops_every_install_before_anything_is_mounted() {
     );
     swap_file(&host, &format!("{}SWAPSPACE2", "\0".repeat(4086)));
     install(&reinstall(), &settings(), &host, &FakeSink::default()).unwrap();
+}
+
+#[test]
+fn the_live_keyring_is_ready_before_pacstrap() {
+    let host = live_system();
+    host.file("/etc/systemd/system/pacman-init.service", "[Unit]\n");
+    install(&wipe(), &settings(), &host, &FakeSink::default()).unwrap();
+    let actions = host.actions();
+    let ready = actions
+        .iter()
+        .position(|a| a == "systemctl start pacman-init.service")
+        .expect("the install waits for the live keyring");
+    let pacstrap = actions
+        .iter()
+        .position(|a| a.starts_with("pacstrap "))
+        .unwrap();
+    assert!(ready < pacstrap, "{actions:?}");
 }

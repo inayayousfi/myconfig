@@ -1,7 +1,8 @@
 //! Builds the InayOS USB stick image: boots a throwaway layer over the clean Arch image,
-//! builds the installer, the InayOS desktop installer and the boot guard from the working tree, assembles the
-//! mkarchiso profile from archiso's releng profile and the overlay in `test/usb/profile/`, runs
-//! mkarchiso in the guest, and copies the image to the state folder.
+//! builds the installer and the InayOS binaries from the working tree, packages the binaries
+//! into the local InayOS repository on the host, assembles the mkarchiso profile from
+//! archiso's releng profile and the overlay in `test/usb/profile/`, runs mkarchiso in the
+//! guest, and copies the image to the state folder.
 //!
 //! The installer links to the system C library, so the build checks that it needs no newer
 //! glibc than the image carries. The new image replaces the previous one only when it is
@@ -16,6 +17,7 @@ use std::time::Duration;
 use crate::binary::{self, Binary, BinaryError};
 use crate::disk::{self, DiskError};
 use crate::os::{GUEST_PASSWORD, GUEST_USER, Os};
+use crate::packages::{self, PackageError};
 use crate::release;
 use crate::ssh::{Guest, SshError};
 use crate::start::{self, Disk, Options, ReadyError, StartError};
@@ -62,6 +64,8 @@ pub enum StepError {
     Ssh(#[from] SshError),
     #[error(transparent)]
     Binary(#[from] BinaryError),
+    #[error("could not build the InayOS packages: {0}")]
+    Packages(#[from] PackageError),
     #[error("could not write {0}: {1}")]
     Io(PathBuf, io::Error),
 }
@@ -91,7 +95,15 @@ pub fn build(watch: bool, repository: &Path) -> Result<(), UsbError> {
 
     let result = (|| -> Result<(), StepError> {
         start::install_binaries(os, &mut started.vm, &started.guest, &started.binaries)?;
-        build_in_guest(&started.guest, &started.binaries, &overlay, &folder)?;
+        let built =
+            packages::build_repository(repository, &started.binaries, &folder.join("packages"), 1)?;
+        build_in_guest(
+            &started.guest,
+            &started.binaries,
+            &built.folder,
+            &overlay,
+            &folder,
+        )?;
         // The build upgraded the guest from the same mirrors as the image's packages, so
         // its glibc is the one the live system has.
         binary::check_glibc(&started.guest, &started.binaries)?;
@@ -126,15 +138,18 @@ pub fn build(watch: bool, repository: &Path) -> Result<(), UsbError> {
     }
 }
 
-/// Copies the overlay and the build script into the guest and runs the script as root.
+/// Copies the overlay, the local InayOS repository and the build script into the guest and
+/// runs the script as root.
 fn build_in_guest(
     guest: &Guest,
     binaries: &[Binary],
+    repository: &Path,
     overlay: &Path,
     folder: &Path,
 ) -> Result<(), StepError> {
-    println!("vm: copying the profile overlay into the guest");
+    println!("vm: copying the profile overlay and the InayOS repository into the guest");
     guest.copy_dir_to(overlay, "usb-profile")?;
+    guest.copy_dir_to(repository, "inayos-repo")?;
     let script = folder.join("build-iso.sh");
     fs::write(&script, SCRIPT).map_err(|error| StepError::Io(script.clone(), error))?;
     guest.copy_to(&script, "build-iso.sh")?;
@@ -145,15 +160,14 @@ fn build_in_guest(
         let binary = binaries
             .iter()
             .find(|binary| binary.executable == executable)
-            .expect("the Arch guest receives the installer, the desktop installer and the guard");
+            .expect("the Arch guest receives the installer and the desktop installer");
         format!("{home}/{}", binary.guest_path)
     };
     let command = format!(
         "printf '%s\\n' '{GUEST_PASSWORD}' | sudo -S -p '' bash {home}/build-iso.sh \
-         {home}/usb-profile {} {} {} '{OSK_URL}' {GUEST_ISO}",
+         {home}/usb-profile {} {} {home}/inayos-repo '{OSK_URL}' {GUEST_ISO}",
         binary("inayos-installer"),
         binary("inayos-arch-desktop"),
-        binary("inayos-guard"),
     );
     guest.run_logged(&command, &folder.join("logs/build-iso.log"))?;
     Ok(())

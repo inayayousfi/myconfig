@@ -30,6 +30,8 @@ The top-level areas have different jobs:
 
 - `crates/` contains the shared Rust crates. `MODULES-DESIGN.md` at the repository root describes their structure. See "Rust installers" below.
 
+- `packaging/` contains the PKGBUILDs of the InayOS pacman repository, which build from the working tree. `docs/repository.md` describes them.
+
 - `docs/` contains documents that each describe one module or package. Read the document for a module before changing it.
 
 - `test/` contains the Python and shell tests for files in `dotfiles/`. Rust tests live next to the code they test, and `crates/repository-tests` tests repository files that are not Rust code.

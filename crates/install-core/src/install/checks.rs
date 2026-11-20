@@ -5,7 +5,7 @@
 //! write to its disk.
 use std::path::Path;
 
-use super::{Machine, Settings, TARGET};
+use super::{Machine, Settings, TARGET, system::REPOSITORY_DATABASE};
 use crate::{
     Answers, Disk, Error,
     disk_names::partition_number,
@@ -100,9 +100,9 @@ pub(crate) fn check(m: &Machine, answers: &Answers, settings: &Settings) -> Resu
             path: settings.system_binary.clone(),
         });
     }
-    if !m.exists(&settings.guard_binary) || m.is_dir(&settings.guard_binary) {
-        return Err(Error::NoGuardBinary {
-            path: settings.guard_binary.clone(),
+    if !m.exists(&settings.repository.join(REPOSITORY_DATABASE)) {
+        return Err(Error::NoRepository {
+            path: settings.repository.clone(),
         });
     }
     let modules = kept_modules(m, answers, settings)?;

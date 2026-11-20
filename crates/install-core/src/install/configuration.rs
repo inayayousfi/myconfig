@@ -3,14 +3,13 @@
 //! install has passed.
 use std::path::Path;
 
-use super::{Machine, Settings, TARGET, user::NewUser};
+use super::{Machine, TARGET, user::NewUser};
 use crate::{Answers, Error, host::Command, inventory, modules::SECURE_BOOT_MODULE};
 
-/// Where the new system keeps the InayOS binary.
-pub(crate) const SYSTEM_BINARY: &str = "/usr/local/bin/inayos";
-/// Where the new system keeps the boot guard, which the boot-guard module and its pacman
-/// hook run.
-pub(crate) const GUARD_BINARY: &str = "/usr/local/bin/inayos-guard";
+/// Where the `inayos` package puts the InayOS binary in the new system.
+pub(crate) const SYSTEM_BINARY: &str = "/usr/bin/inayos";
+/// Where the `inayos` package puts the boot guard in the new system.
+pub(crate) const GUARD_BINARY: &str = "/usr/bin/inayos-guard";
 /// Where the questions' answers wait for `inayos install`, inside the new system.
 /// `arch-chroot -S` mounts an empty `/tmp`, so the file lives in `/var/tmp`.
 pub(crate) const QUESTIONS: &str = "/var/tmp/inayos-answers.json";
@@ -18,19 +17,9 @@ pub(crate) const QUESTIONS: &str = "/var/tmp/inayos-answers.json";
 pub(crate) fn run(
     m: &Machine,
     answers: &Answers,
-    settings: &Settings,
     user: &NewUser,
     modules: Option<&[String]>,
 ) -> Result<(), Error> {
-    m.sink.step("Copying InayOS into the new system");
-    let binary = in_target(SYSTEM_BINARY);
-    m.create_dir(
-        binary.parent().expect("the binary path has a folder"),
-        0o755,
-    )?;
-    m.copy(&settings.system_binary, &binary, 0o755)?;
-    m.copy(&settings.guard_binary, &in_target(GUARD_BINARY), 0o755)?;
-
     let questions = in_target(QUESTIONS);
     let json = serde_json::to_string_pretty(&answers.questions)
         .expect("a map of strings to booleans always serializes");

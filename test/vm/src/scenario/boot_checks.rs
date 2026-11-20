@@ -282,6 +282,12 @@ pub struct Snapshot {
     pub number: u32,
     pub kind: String,
     pub description: String,
+    /// The cleanup algorithm that may delete the snapshot, such as `number`, or empty.
+    pub cleanup: String,
+    /// Whether its userdata marks it important, which snapper's number cleanup counts apart.
+    pub important: bool,
+    /// The pre snapshot of a post snapshot.
+    pub pre_number: Option<u32>,
 }
 
 /// Reads `snapper --jsonout -c root list`: an object with one list of snapshots under the
@@ -311,6 +317,17 @@ pub fn snapshots(json: &str) -> Result<Vec<Snapshot>, String> {
                 number,
                 kind: text("type"),
                 description: text("description"),
+                cleanup: text("cleanup"),
+                important: snapshot
+                    .get("userdata")
+                    .and_then(|userdata| userdata.get("important"))
+                    .and_then(Value::as_str)
+                    == Some("yes"),
+                pre_number: snapshot
+                    .get("pre-number")
+                    .and_then(Value::as_u64)
+                    .and_then(|number| u32::try_from(number).ok())
+                    .filter(|number| *number != 0),
             })
         })
         .collect()
@@ -405,6 +422,9 @@ menuentry "Previous system" {
             number,
             kind: kind.to_owned(),
             description: String::new(),
+            cleanup: "number".to_owned(),
+            important: false,
+            pre_number: None,
         };
         let listed = [
             snapshot(12, "pre"),

@@ -80,6 +80,16 @@ fn find_missing(os: Os, boot: Boot) -> Vec<Missing> {
     if binary::needs_readelf(os) {
         commands.push(("readelf", Fix::Pacman("binutils")));
     }
+    if os == Os::Arch {
+        // The InayOS packages are built and indexed on the host, with a test key while the
+        // committed keyring is a placeholder.
+        commands.extend([
+            ("makepkg", Fix::Pacman("pacman")),
+            ("repo-add", Fix::Pacman("pacman")),
+            ("fakeroot", Fix::Pacman("fakeroot")),
+            ("gpg", Fix::Pacman("gnupg")),
+        ]);
+    }
     if binary::needs_xwin(os) {
         // cargo-xwin compiles C code with clang-cl and links with lld-link and llvm-lib.
         commands.extend([
@@ -136,6 +146,24 @@ fn find_missing(os: Os, boot: Boot) -> Vec<Missing> {
         });
     }
     missing
+}
+
+/// Returns `Ok` when every command of `commands` is on the host's path, or the missing ones
+/// with the fix of each.
+pub fn check_commands(commands: &[(&'static str, Fix)]) -> Result<(), HostError> {
+    let missing: Vec<Missing> = commands
+        .iter()
+        .filter(|(command, _)| !on_path(command))
+        .map(|&(command, fix)| Missing {
+            item: format!("the {command} command"),
+            fix,
+        })
+        .collect();
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(HostError::Missing(missing))
+    }
 }
 
 fn on_path(command: &str) -> bool {

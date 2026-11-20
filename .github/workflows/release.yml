@@ -109,8 +109,65 @@ jobs:
           name: windows-installer
           path: release-assets/
 
+  # The InayOS pacman repository: the inayos and inayos-keyring packages, signed with the
+  # InayOS key, and the repository database. docs/repository.md describes it.
+  build-packages:
+    runs-on: ubuntu-26.04
+    container: archlinux:latest
+    steps:
+      - name: Install the build tools
+        run: pacman -Syu --noconfirm --needed base-devel git rust rust-musl musl
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # makepkg refuses to run as root.
+      - name: Build the packages
+        run: |
+          useradd --create-home builder
+          mkdir -p repository
+          chown -R builder .
+          for package in inayos inayos-keyring; do
+            (cd "packaging/$package" && sudo -u builder env \
+              PKGDEST="$GITHUB_WORKSPACE/repository" BUILDDIR=/tmp/makepkg \
+              PKGEXT=.pkg.tar.zst CARCH=x86_64 makepkg --noconfirm)
+          done
+
+      - name: Sign the packages and the repository database
+        env:
+          INAYOS_PACKAGE_SIGNING_KEY: ${{ secrets.INAYOS_PACKAGE_SIGNING_KEY }}
+        run: |
+          export GNUPGHOME="$(mktemp -d)"
+          printenv INAYOS_PACKAGE_SIGNING_KEY | gpg --batch --import
+          fingerprint=$(gpg --batch --with-colons --list-secret-keys |
+            awk -F: '$1 == "fpr" { print $10; exit }')
+          trusted=$(cut -d: -f1 packaging/inayos-keyring/inayos-trusted)
+          if [ -z "$fingerprint" ] || [ "$fingerprint" != "$trusted" ]; then
+            echo "error: the signing key is not the key that packaging/inayos-keyring/inayos-trusted names" >&2
+            exit 1
+          fi
+          cd repository
+          for package in *.pkg.tar.zst; do
+            gpg --batch --local-user "$fingerprint" --detach-sign --no-armor "$package"
+          done
+          repo-add --sign --key "$fingerprint" inayos.db.tar.zst *.pkg.tar.zst
+          # A release asset cannot be a link, so the names pacman reads become copies.
+          for name in inayos.db inayos.files; do
+            rm -f "$name" "$name.sig"
+            cp "$name.tar.zst" "$name"
+            cp "$name.tar.zst.sig" "$name.sig"
+          done
+          gpgconf --kill all
+          rm -rf "$GNUPGHOME"
+
+      - name: Upload the repository
+        uses: actions/upload-artifact@v4
+        with:
+          name: inayos-repository
+          path: repository/
+
   release:
-    needs: [build-linux, build-windows]
+    needs: [build-linux, build-windows, build-packages]
     runs-on: ubuntu-26.04
     permissions:
       contents: write
@@ -136,6 +193,12 @@ jobs:
           pattern: "*-installer*"
           path: release-assets
           merge-multiple: true
+
+      - name: Download the InayOS repository
+        uses: actions/download-artifact@v4
+        with:
+          name: inayos-repository
+          path: release-assets
 
       - name: Create Release
         uses: softprops/action-gh-release@v1

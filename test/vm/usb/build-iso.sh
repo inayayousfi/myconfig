@@ -1,8 +1,12 @@
 #!/bin/bash
 # Builds the InayOS USB stick image inside the Arch build guest. It runs as root.
 #
-#   build-iso.sh <overlay> <installer> <system-binary> <guard-binary> <osk-url> <iso>
+#   build-iso.sh <overlay> <installer> <system-binary> <repository> <osk-url> <iso>
 #
+# <repository> is the local InayOS pacman repository that the xtask built on the host, from
+# which the installer installs the inayos and inayos-keyring packages into the new system.
+# <system-binary> is the inayos binary those packages hold, with which the installer lists
+# the modules of the profile.
 # The profile is archiso's releng profile with the overlay copied over it: every overlay file
 # replaces or adds the file at the same path, except packages.x86_64, whose lines are appended
 # to releng's list. The finished image is written to <iso>.
@@ -11,7 +15,7 @@ set -euo pipefail
 overlay=$1
 installer=$2
 system_binary=$3
-guard_binary=$4
+repository=$4
 osk_url=$5
 iso=$6
 
@@ -34,10 +38,15 @@ if [[ -f $overlay/packages.x86_64 ]]; then
     cat "$build/releng-packages.x86_64" "$overlay/packages.x86_64" >"$profile/packages.x86_64"
 fi
 
-echo "==> Placing the installer binaries"
+echo "==> Placing the installer binaries and the InayOS repository"
 install -D -m 755 "$installer" "$profile/airootfs/usr/local/bin/inayos-installer"
 install -D -m 755 "$system_binary" "$profile/airootfs/usr/local/lib/inayos/inayos"
-install -D -m 755 "$guard_binary" "$profile/airootfs/usr/local/lib/inayos/inayos-guard"
+if [[ ! -f $repository/inayos.db ]]; then
+    echo "error: $repository holds no inayos.db" >&2
+    exit 1
+fi
+mkdir -p "$profile/airootfs/usr/local/lib/inayos/repo"
+cp --dereference "$repository"/* "$profile/airootfs/usr/local/lib/inayos/repo/"
 
 echo "==> Adding Axidev OSK from $osk_url"
 curl --fail --location --show-error --silent --proto '=https' --output "$build/axidev-osk.tar.gz" "$osk_url"

@@ -1,0 +1,20 @@
+#!/bin/sh
+# InayOS maintenance: names the .pacnew files to merge in a notification. Its "Merge"
+# button opens pacdiff in a terminal with Kompare as the diff program, then looks for
+# .pacnew files again. The service stays active while the list exists, so the path unit
+# does not start it again in a loop. When a later search lists other files, it notifies
+# again; when the list goes, it ends.
+list=/var/lib/inayos-pacnew/list
+shown=$(cat "$list" 2>/dev/null) || exit 0
+[ -n "$shown" ] || exit 0
+answer=$(notify-send --app-name="InayOS" --icon=document-edit \
+  --wait --action=merge="Merge" \
+  "Configuration files to merge" "$shown")
+if [ "$answer" = merge ]; then
+  ghostty --title="Merge .pacnew files" -e sh -c \
+    'DIFFPROG=kompare pacdiff --sudo; sudo systemctl start inayos-pacnew.service; printf "\nPress Enter to close. "; read -r _'
+fi
+while current=$(cat "$list" 2>/dev/null); do
+  [ "$current" = "$shown" ] || exec "$0"
+  sleep 60
+done

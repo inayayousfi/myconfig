@@ -4,6 +4,8 @@ This document describes the `snapshots` module of the InayOS desktop profile, `c
 
 The module makes snapper snapshot the Btrfs system before and after every pacman transaction, keeps a fixed number of those snapshots, and lets the initramfs start a read-only snapshot. The boot guard's "Previous system" entry starts the newest pre-transaction snapshot that way, as `docs/boot-guard.md` describes.
 
+The rollback from the USB stick's repair workspace puts the system back to one of these snapshots, as `docs/rollback.md` describes.
+
 ## Layout
 
 The installer creates the Btrfs subvolumes `@` for the system and `@snapshots` for the snapshots, and mounts `@snapshots` at `/.snapshots`. `/boot` lives inside `@`, so every snapshot holds the kernel and initramfs that match its modules. `@var_cache`, `@var_log` and `@var_lib_docker` are separate subvolumes, so snapshots leave them out.

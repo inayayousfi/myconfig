@@ -28,6 +28,8 @@ mount "$system" "$root"
 mount --mkdir "$efi" "$root/boot"
 
 echo "==> Installing an Arch base system"
+# The live system fills pacman's keyring at boot; starting the unit waits until it has.
+systemctl start pacman-init.service
 pacman -Sy --noconfirm
 pacstrap -K "$root" base linux intel-ucode
 genfstab -U "$root" >>"$root/etc/fstab"

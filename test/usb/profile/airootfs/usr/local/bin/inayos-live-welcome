@@ -12,6 +12,7 @@ repair)
     '  Disks: testdisk, photorec, ddrescue, smartctl' \
     '  Boot: efibootmgr, sbctl, refind-install, arch-chroot then mkinitcpio' \
     '  Snapshots: snapper' \
+    '  Roll back to a snapshot, kernel included: sudo inayos-installer rollback' \
     '  Arch wiki: Super+B, or epiphany https://wiki.archlinux.org' \
     '  Network: nmtui for Wi-Fi' \
     '  Installer screens closed: Super+I starts them again on workspace 1' \

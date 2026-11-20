@@ -123,8 +123,8 @@ pub enum Error {
     },
     #[error("the system binary {path} is missing")]
     NoSystemBinary { path: PathBuf },
-    #[error("the boot guard program {path} is missing")]
-    NoGuardBinary { path: PathBuf },
+    #[error("the InayOS package repository {path} is missing or has no inayos.db")]
+    NoRepository { path: PathBuf },
     #[error(
         "Secure Boot needs the firmware in Setup Mode, and it is not: turn on Setup Mode in the \
          firmware settings, or install without Secure Boot"

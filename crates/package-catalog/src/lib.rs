@@ -190,6 +190,11 @@ pub enum Package {
     Libnotify,
     SystemdUkify,
     Tpm2Tss,
+    PacmanContrib,
+    Reflector,
+    Kompare,
+    Inayos,
+    InayosKeyring,
 }
 
 /// A vendor APT repository, for packages that Ubuntu does not carry or carries only in
@@ -592,6 +597,11 @@ pub const PACKAGE_NAMES: &[((Package, Platform), &str)] = &[
     ((Package::Libnotify, Platform::Pacman), "libnotify"),
     ((Package::SystemdUkify, Platform::Pacman), "systemd-ukify"),
     ((Package::Tpm2Tss, Platform::Pacman), "tpm2-tss"),
+    ((Package::PacmanContrib, Platform::Pacman), "pacman-contrib"),
+    ((Package::Reflector, Platform::Pacman), "reflector"),
+    ((Package::Kompare, Platform::Pacman), "kompare"),
+    ((Package::Inayos, Platform::Pacman), "inayos"),
+    ((Package::InayosKeyring, Platform::Pacman), "inayos-keyring"),
     ((Package::Sudo, Platform::Apt), "sudo"),
     ((Package::Wget, Platform::Apt), "wget"),
     ((Package::Tar, Platform::Apt), "tar"),

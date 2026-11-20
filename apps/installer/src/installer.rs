@@ -1,8 +1,9 @@
 //! The command line: no subcommand opens the screens, `install` installs from an answers
-//! file without them, and `gui --save-answers` runs the screens and writes the answers file.
+//! file without them, `gui --save-answers` runs the screens and writes the answers file, and
+//! `rollback` puts an installed system back to a snapshot.
 use std::{path::PathBuf, process::ExitCode, sync::Arc};
 
-use crate::{app, console};
+use crate::{app, console, rollback};
 use clap::{Args, Parser, Subcommand};
 use inayos_install_core::{Answers, RealHost, Settings, install};
 
@@ -33,6 +34,10 @@ enum Command {
         #[command(flatten)]
         paths: Paths,
     },
+    /// Puts the InayOS system on the disk back to one of its snapshots, kernel included.
+    /// The current system stays on the disk as @rollback-<time>. Without --snapshot, lists
+    /// the snapshots and asks which one.
+    Rollback(rollback::Options),
 }
 
 #[derive(Args)]
@@ -40,12 +45,12 @@ struct Paths {
     /// The install log, also copied into the new system.
     #[arg(long, default_value = "/var/log/inayos-installer.log")]
     log: PathBuf,
-    /// The InayOS binary that the new system runs.
+    /// The InayOS binary that lists the modules of the profile.
     #[arg(long, default_value = Settings::SYSTEM_BINARY)]
     system_binary: PathBuf,
-    /// The boot guard program that the new system runs.
-    #[arg(long, default_value = Settings::GUARD_BINARY)]
-    guard_binary: PathBuf,
+    /// The local pacman repository of the InayOS packages that the new system installs.
+    #[arg(long, default_value = Settings::REPOSITORY)]
+    repository: PathBuf,
 }
 
 impl Default for Paths {
@@ -53,7 +58,7 @@ impl Default for Paths {
         Paths {
             log: PathBuf::from("/var/log/inayos-installer.log"),
             system_binary: PathBuf::from(Settings::SYSTEM_BINARY),
-            guard_binary: PathBuf::from(Settings::GUARD_BINARY),
+            repository: PathBuf::from(Settings::REPOSITORY),
         }
     }
 }
@@ -65,6 +70,7 @@ pub fn main() -> ExitCode {
             save_answers,
             paths,
         }) => screens(save_answers, paths),
+        Some(Command::Rollback(options)) => rollback::run(options),
         None => screens(None, Paths::default()),
     }
 }
@@ -73,7 +79,7 @@ fn screens(save_answers: Option<PathBuf>, paths: Paths) -> ExitCode {
     let options = app::Options {
         save_answers,
         system_binary: paths.system_binary,
-        guard_binary: paths.guard_binary,
+        repository: paths.repository,
         log: paths.log,
         root: PathBuf::from("/"),
         in_sway: std::env::var_os("SWAYSOCK").is_some(),
@@ -91,7 +97,7 @@ fn install_from_file(answers: PathBuf, paths: Paths) -> ExitCode {
     let Paths {
         log,
         system_binary,
-        guard_binary,
+        repository,
     } = paths;
     let console = match console::Console::open(&log) {
         Ok(console) => console,
@@ -109,7 +115,7 @@ fn install_from_file(answers: PathBuf, paths: Paths) -> ExitCode {
     };
     let settings = Settings {
         system_binary,
-        guard_binary,
+        repository,
         log_file: Some(log),
     };
     // The install reported where the recovery key file is; the key itself stays off the

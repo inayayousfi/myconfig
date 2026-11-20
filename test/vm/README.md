@@ -2,7 +2,7 @@
 
 This document describes the VM xtask in `test/vm/`, the `inayos-xtask` crate. It builds the installers from the working tree and tests them in throwaway QEMU virtual machines of Ubuntu 26.04 LTS and Windows 11. It also builds the InayOS USB stick image in an Arch Linux virtual machine, and runs the InayOS installer from that image in scenarios. A commit or a release is not needed. It runs on a Linux host and only by hand.
 
-The Ubuntu cycle has passed on a real guest, image build included. Nothing has run on Windows: not the image build, the cycle, the Arch WSL checks or the Windows scenarios. The Arch image build with its glibc check, the USB stick build, the three Basics scenarios and the `gui-install` scenario have passed on a real guest, with the `last-pass` copy of screenshots, and so have the kept installed disk and kept encrypted disk and every other scenario.
+The Ubuntu cycle has passed on a real guest, image build included. Nothing has run on Windows: not the image build, the cycle, the Arch WSL checks or the Windows scenarios. The Arch image build with its glibc check, the USB stick build, the three Basics scenarios and the `gui-install` scenario have passed on a real guest, with the `last-pass` copy of screenshots, and so have the kept installed disk and kept encrypted disk and every other Arch scenario.
 
 ## Commands
 
@@ -24,7 +24,7 @@ Only one command that starts a VM runs at a time. A lock file in the state folde
 
 ## Host
 
-Each command first checks that the host has what the chosen system needs. Every system needs the Arch packages `qemu-desktop`, `edk2-ovmf`, `virt-viewer`, `openssh`, `curl` and `libisoburn`, the Rust target `x86_64-unknown-linux-musl`, and read and write access to `/dev/kvm`. Arch also needs the Rust target `x86_64-unknown-linux-gnu` and `readelf` from `binutils`. Windows also needs `swtpm`, the `cargo-xwin` command with the `clang`, `lld` and `llvm` packages, the Rust target `x86_64-pc-windows-msvc`, and nested virtualization in the `kvm_amd` or `kvm_intel` module. When something is missing, the command lists it with the commands that install it, and stops. It never installs anything.
+Each command first checks that the host has what the chosen system needs. Every system needs the Arch packages `qemu-desktop`, `edk2-ovmf`, `virt-viewer`, `openssh`, `curl` and `libisoburn`, the Rust target `x86_64-unknown-linux-musl`, and read and write access to `/dev/kvm`. Arch also needs the Rust target `x86_64-unknown-linux-gnu`, `readelf` from `binutils`, and `makepkg`, `repo-add`, `fakeroot` and `gpg`, which build the local InayOS repository on the host. The scenarios that build packages also need `makepkg` from `pacman`, and those with a test repository also need `repo-add` from `pacman` and `gpg` from `gnupg`. Windows also needs `swtpm`, the `cargo-xwin` command with the `clang`, `lld` and `llvm` packages, the Rust target `x86_64-pc-windows-msvc`, and nested virtualization in the `kvm_amd` or `kvm_intel` module. When something is missing, the command lists it with the commands that install it, and stops. It never installs anything.
 
 `cargo xwin` downloads the Microsoft C runtime and Windows SDK into its own cache folder under `~/.cache` the first time it builds, which is about 1 GB.
 
@@ -92,13 +92,17 @@ A passed cycle deletes its layer. A failed cycle saves the guest screen, shuts t
 
 ## USB stick
 
-`usb build` boots a throwaway layer over the clean Arch image and builds `inayos-installer` for `x86_64-unknown-linux-gnu`, and `inayos-arch-desktop` and the `inayos-guard` binary of the `inayos-guard-app` package for `x86_64-unknown-linux-musl`, from the working tree. The installer links to the system C library, because winit, under its Iced screens, loads the Wayland libraries at run time, which a static binary cannot do. It copies them into the guest with the profile overlay in `test/usb/profile/` and the script `usb/build-iso.sh`, which runs as root:
+`usb build` boots a throwaway layer over the clean Arch image and builds `inayos-installer` for `x86_64-unknown-linux-gnu`, and `inayos-arch-desktop`, the `inayos-guard` binary of the `inayos-guard-app` package and the `inayos-news` binary of the `inayos-news-app` package for `x86_64-unknown-linux-musl`, from the working tree. The installer links to the system C library, because winit, under its Iced screens, loads the Wayland libraries at run time, which a static binary cannot do.
+
+On the host, `test/vm/src/packages.rs` then builds the local InayOS repository: `makepkg` packages `packaging/inayos` with the three musl binaries, through `INAYOS_BINARY_DIR`, and `packaging/inayos-keyring`, and `repo-add` indexes both, unsigned, in `packages/repo` of the layer. While the committed keyring is the placeholder, a throwaway key made with `gpg` in the layer takes its place, through `INAYOS_KEYRING_DIR`, so the installed system trusts that key. The packages build with `CARCH=x86_64` and makepkg's folders in the layer, so the host's `makepkg.conf` and the working tree stay out of it. `docs/repository.md` describes the packages.
+
+The xtask copies the installer, the InayOS desktop installer and the repository into the guest with the profile overlay in `test/usb/profile/` and the script `usb/build-iso.sh`, which runs as root:
 
 1. It upgrades the guest and installs `archiso`.
 
 2. It copies archiso's `releng` profile from `/usr/share/archiso/configs/releng`, then copies the overlay over it. Every overlay file replaces or adds the file at the same path, except `packages.x86_64`, whose lines are appended to releng's list.
 
-3. It places the installer at `airootfs/usr/local/bin/inayos-installer`, the InayOS desktop installer at `airootfs/usr/local/lib/inayos/inayos` and the boot guard at `airootfs/usr/local/lib/inayos/inayos-guard`, with mode 755. The installer copies the last two into the new system.
+3. It places the installer at `airootfs/usr/local/bin/inayos-installer` and the InayOS desktop installer at `airootfs/usr/local/lib/inayos/inayos`, with mode 755, and the repository at `airootfs/usr/local/lib/inayos/repo`. The installer lists the profile's modules with the desktop installer and installs the new system's InayOS packages from the repository.
 
 4. It extracts the latest Axidev OSK release into `airootfs/opt/`, which gives `/opt/axidev-osk/bin/axidev-osk`.
 
@@ -112,7 +116,7 @@ The xtask copies the image to `usb/inayos.iso.part` in the state folder and rena
 
 `scenario <name>` installs InayOS from the USB stick image. Its guest has 8 GiB of memory, UEFI without Secure Boot and without a TPM unless the scenario says otherwise, a new blank 80 GB qcow2 target disk and fresh UEFI variables in the scenario's layer. The image is a CD drive that the firmware starts first. A NoCloud seed disc labeled `CIDATA` gives root on the live system the xtask's SSH key.
 
-The xtask builds `inayos-installer`, `inayos-arch-desktop` and `inayos-guard` from the working tree, checks the installer against the live system's glibc as `usb build` does, and puts them in place of the copies on the image, so a scenario tests the working tree without a new image. Each binary goes to a file next to its place and a rename replaces the old one, because the Sway session of the stick runs the installer's screens from that place and Linux refuses a write to a running program. It drives the live system over SSH as root. The Basics scenarios write the answers file in `src/scenario/answers_file.rs`, copies it in, and runs `inayos-installer install --answers` with it. The answers file creates the `tester` account with the password from `src/os.rs` and the xtask's key in `authorized_keys`. It answers yes to the SSH server question and no to the GitHub and Tailscale login questions, as the answer table of the cycle does. The installer's output and its own log go to the `logs` folder of the layer.
+The xtask builds `inayos-installer`, `inayos-arch-desktop`, `inayos-guard` and `inayos-news` from the working tree, checks the installer against the live system's glibc as `usb build` does, and puts the installer and `inayos-arch-desktop` in place of the copies on the image. It builds the local InayOS repository from the same binaries as `usb build` does, in `packages/repo` of the layer, and replaces `/usr/local/lib/inayos/repo` of the live system with it, so a scenario tests the working tree without a new image. Each binary goes to a file next to its place and a rename replaces the old one, because the Sway session of the stick runs the installer's screens from that place and Linux refuses a write to a running program. It drives the live system over SSH as root. The Basics scenarios write the answers file in `src/scenario/answers_file.rs`, copies it in, and runs `inayos-installer install --answers` with it. The answers file creates the `tester` account with the password from `src/os.rs` and the xtask's key in `authorized_keys`. It answers yes to the SSH server question and no to the GitHub and Tailscale login questions, as the answer table of the cycle does. The installer's output and its own log go to the `logs` folder of the layer.
 
 After the install, the xtask powers the guest off and boots the target disk without the image. It checks the installed system over SSH as `tester`, which works through the SSH server that the ssh module turns on. It takes QMP screenshots.
 
@@ -134,7 +138,7 @@ The scenarios are:
 
 - `shrink-ext4` builds a disk like the laptop's on the live system with `scenario/laptop-disk.sh`: a 2 GiB EFI partition mounted at `/boot` that holds the kernel and the Intel microcode, and one ext4 partition with an Arch base system and test files in `/home/tester`, whose checksums it saves. That `tester` has uid and gid 1234, which a new system never picks by itself. It installs with the shrink choice and a 30 GiB system. It checks:
   - the files, and that they and the new `tester` still have uid and gid 1234;
-  - that the top level of the home partition holds only `lost+found` and `tester`;
+  - that the top level of the home partition holds only `lost+found`, the hibernation `swapfile` and `tester`;
   - that the partitions on the disk are the EFI partition, then the ext4 home, then the Btrfs system;
   - that the EFI partition keeps its filesystem UUID, so it was not formatted, and that the old kernel, initramfs and microcode files are gone from it.
 
@@ -147,6 +151,8 @@ The scenarios are:
 - `encrypted`, `tpm-wiped`, `hibernate`, `hibernate-encrypted`, `hibernated-disk` and `firmware-db-update` test encryption, hibernation and the hibernation lock. They are described below.
 
 - `beside-windows`, `bitlocker-on` and `fast-startup-on` test the install beside Windows. They are described below.
+
+- `pacman-update`, `arch-news`, `snapshot-cleanup`, `rollback` and `rollback-encrypted` test the updates, the maintenance chores and the rollback. They are described below.
 
 The layer keeps the answers files, logs, serial logs of each boot and screenshots. A passed scenario copies the PNG screenshots of its layer to its `last-pass` folder, replacing the previous ones, and deletes its layer. A failed scenario saves the last screen and keeps the layer as that scenario's `failed` layer until its next run.
 
@@ -181,7 +187,7 @@ Then it runs the desktop checks.
 
 `broken-kernel` starts from a throwaway layer over `scenario/installed`, with UEFI without Secure Boot, and installs nothing. When no installed disk is kept, it stops and says to run `blank-disk` first. A change to the installer or the modules reaches it only through a new `blank-disk` pass. A new pass replaces the kept disk, and the failed layers made over the old one can no longer boot. The scenario works over SSH as `tester`, with `sudo` reading the guest password from its input:
 
-1. It puts the guard built from the working tree at `/usr/local/bin/inayos-guard`, runs `inayos-guard check-update`, and checks that the result passed.
+1. It puts the guard built from the working tree at `/usr/bin/inayos-guard`, runs `inayos-guard check-update`, and checks that the result passed.
 2. It runs `scenario/break-boot.sh`. The script writes the mkinitcpio drop-in `/etc/mkinitcpio.conf.d/zz-test-break.conf`, with `HOOKS=(base)` and no modules, so mkinitcpio builds an initramfs without kernel modules and still succeeds. Then it reinstalls the installed `linux` package from the pacman cache, or from the mirror when the cache lacks it.
 3. It checks that snapper lists a new pre snapshot whose description names `linux`, that the guard's result failed with failures, that `/var/lib/inayos-guard/failed` exists, and that `inayos-guard.conf` makes "Previous system" the default and boots that snapshot.
 4. It powers off and boots the installed disk again. It saves a screenshot every 3 seconds for the first 24 seconds, named `refind-<number>.png`, which covers rEFInd's menu and its 20-second wait.
@@ -252,6 +258,29 @@ Each time Windows must answer SSH, and `scenario/windows/boot-current.ps1` must 
 Both then boot the stick, wait until the stick's installer shows its keyboard screen, save the checksums of the disk's heads with `disk-heads.sh` as `hibernated-disk` does, and run the installer with the `beside-windows` answers. The installer must fail in its checks stage with a line that holds "Turn off BitLocker in Windows" or "Turn off Fast Startup in Windows" and "the disk is unchanged". The checks of `hibernated-disk` follow: no command in the installer's log writes to the disk, the checksums are unchanged and nothing of the disk is mounted. The installer's log counts `ntfsresize` without `--info` or `--no-action`, `ntfsfix` without `--no-action`, and the filesystem relabeling commands as writes. Then the scenario starts the installer built from the working tree in the Sway session, as `gui-install` does, presses Enter on the keyboard screen, and saves the disk screen, which gives the reason, as `bitlocker-disk-screen.png` or `fast-startup-disk-screen.png`, with the single-color check. The disk checks run once more after the screens read the disk.
 
 The stick's installer reads the disks when it starts and mounts a Windows EFI system partition read-only for a moment. Waiting for its keyboard screen before the command-line install keeps that mount from meeting the install's checks, which refuse a mounted disk.
+
+### The maintenance and rollback scenarios
+
+These scenarios start from a kept disk, as `broken-kernel` does, and work over SSH as `tester`. `rollback-encrypted` starts from the kept encrypted disk and the others from the plain kept disk.
+
+The xtask builds packages on the host with `makepkg`, in folders of the layer, so the working tree keeps no build output. makepkg skips its dependency checks, which read the host's packages. The `inayos` package comes from `test/vm/src/packages.rs`, which packages the binaries the xtask built, the same way as the stick's repository, with the pkgrel in `INAYOS_PKGREL` and each pkgrel in its own `inayos-<pkgrel>` folder. The marker package `inayos-test-marker`, whose PKGBUILD is in `src/scenario/test_repository.rs`, holds one file and gives a pacman transaction that needs no Arch mirror. The guest installs it with `pacman -U`.
+
+`pacman-update` and `arch-news` use a test copy of the InayOS repository in the layer's `repository` folder. Each run makes a throwaway GPG key in the layer's `gnupg` folder. That key signs each package with a detached signature and signs the database through `repo-add --sign`. A small HTTP server thread in the xtask serves the folder on a free port of the host's loopback address, which the guest reaches at `10.0.2.2` through QEMU's user network. The scenario adds the public key to the guest's pacman keyring and signs it locally. It then replaces `/etc/pacman.d/inayos.conf` with an `[inayos]` section whose `Server` is that address. When `/etc/pacman.conf` of the kept disk does not include that file, the scenario stops and says to run `blank-disk` again.
+
+`pacman-update` builds `inayos` with pkgrel 1000, installs it with `pacman -Sy`, and checks that `pacman -Q inayos` shows that version. It checks that the installed guard hook, `/usr/share/libalpm/hooks/zzz-inayos-guard.hook`, has a path trigger on `usr/bin/inayos-guard`, so that the update runs it whatever the Arch mirrors bring that day. It builds pkgrel 1001 into the repository, notes the modification time of `/var/lib/inayos-guard/status.json`, installs the newest `archlinux-keyring`, and runs `pacman -Syu --noconfirm`. `pacman -Q inayos` must then show pkgrel 1001, and the status file must have a new modification time, which shows that the guard's pacman hook ran. Last, it boots again and checks the version and that `inayos-guard-boot.service` ran and exited with status 0.
+
+`arch-news` builds `inayos` into the repository and serves `news.xml` next to it: an RSS feed shaped like Arch's, with an item whose title says the update "requires manual intervention" and an item that announces nothing to do. Both carry the time of the run, so they are newer than anything the system read. The scenario writes `url=` with the feed's address to `/etc/inayos-news.conf` and installs `inayos` from the repository. Reinstalling `inayos` is an upgrade transaction, which runs the maintenance module's news hook. The first reinstall must print the manual-step item with its link and leave the other item out. `sudo inayos-news` must print the item, and it marks the news read. A second reinstall must print neither item.
+
+`snapshot-cleanup` reads `NUMBER_LIMIT` and `NUMBER_LIMIT_IMPORTANT` from `/etc/snapper/configs/root`. It runs enough `pacman -U` transactions of the marker package that their pre and post snapshots pass both limits, and checks that snapper then lists more number snapshots than `NUMBER_LIMIT`. The number cleanup leaves snapshots younger than `NUMBER_MIN_AGE`, so the scenario turns NTP off in the guest and moves its clock two hours ahead. It then runs `systemctl start snapper-cleanup.service`. Snapper's cleanup keeps the `NUMBER_LIMIT` newest number snapshots, the `NUMBER_LIMIT_IMPORTANT` newest of those marked important, such as the guard's "Previous system" snapshot, and the pre or post partner of each kept snapshot. Every listed number snapshot must be kept by that rule. The cleanup must also have deleted some snapshots and kept the newest one. The layer keeps snapper's lists before and after the cleanup.
+
+`rollback` and `rollback-encrypted` boot the installed disk. The encrypted one first checks the TPM unlock and waits for the guard's boot check. The scenario takes a snapper snapshot of the system and notes its number. Then it writes `/inayos-rollback-marker` and `~/inayos-rollback-home`, and installs the marker package. It boots the USB stick on the same layer and puts the binaries built from the working tree in place. Then it runs `inayos-installer rollback --snapshot <n> --yes`. The Secure Boot keys of the encrypted disk refuse the unsigned stick, so for `rollback-encrypted` the stick boots with an empty variable store in Setup Mode, and the installed system's variables wait in the layer as `installed-vars.fd`. The stick then measures another PCR 7 than the one the TPM sealed the keys to. The scenario copies the kept recovery key into the live system and adds `--recovery-key-file` with it. After the rollback, the installed variables go back and the installed disk boots, unlocked by the TPM again for the encrypted disk. The checks are:
+
+1. `/inayos-rollback-marker` is gone and `pacman -Q inayos-test-marker` fails.
+2. `~/inayos-rollback-home` kept its text, since `/home` is not in the snapshot.
+3. `/` is mounted from the `@` subvolume.
+4. `btrfs subvolume list /` has one top-level `@rollback-<date>` subvolume, which holds the replaced system. The subvolumes nested in it, such as `var/lib/machines`, are not counted.
+
+The layer keeps the output of the rollback and the installer's log as `logs/rollback.log` and `logs/rollback-file.log`.
 
 ## State lists
 

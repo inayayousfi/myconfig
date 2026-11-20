@@ -75,7 +75,7 @@ struct Target {
 /// The volumes of an encrypted system, which the InayOS installer writes.
 const CRYPTTAB: &str = "/etc/crypttab.initramfs";
 /// The boot guard, which adds the TPM slot that survives a change of the keys.
-const GUARD: &str = "/usr/local/bin/inayos-guard";
+const GUARD: &str = crate::boot_guard::GUARD;
 
 /// The firmware's built-in signature database. Some firmware, OVMF among them, has none, and
 /// `sbctl enroll-keys --firmware-builtin` then fails.

@@ -9,6 +9,11 @@ use std::time::Duration;
 use serde_json::{Value, json};
 
 const REPLY_TIMEOUT: Duration = Duration::from_secs(60);
+/// The largest absolute position that QEMU's input events carry on each axis.
+const ABSOLUTE_MAX: usize = 0x7fff;
+/// How long a click holds the button: longer than the polling interval of rEFInd and of the
+/// firmware's USB pointer driver.
+const CLICK_HOLD: Duration = Duration::from_millis(300);
 
 #[derive(Debug, thiserror::Error)]
 pub enum QmpError {
@@ -97,6 +102,16 @@ impl Qmp {
         Ok(())
     }
 
+    /// Saves the current screen of the guest as a binary PPM file on the host, the format
+    /// that `crate::ppm` reads.
+    pub fn screendump_ppm(&mut self, file: &Path) -> Result<(), QmpError> {
+        let file = file
+            .to_str()
+            .ok_or_else(|| QmpError::Protocol(format!("{} is not UTF-8", file.display())))?;
+        self.execute("screendump", json!({ "filename": file, "format": "ppm" }))?;
+        Ok(())
+    }
+
     /// Presses the keys together, then releases them. Keys are QEMU key codes, such as
     /// `alt`, `y`, `ret` or `shift`.
     pub fn send_keys(&mut self, keys: &[&str]) -> Result<(), QmpError> {
@@ -123,6 +138,48 @@ impl Qmp {
         Ok(())
     }
 
+    /// Moves the pointer of the USB tablet to the pixel `x`, `y` of a screen of `width` by
+    /// `height` pixels. The tablet reports absolute positions from 0 to `ABSOLUTE_MAX` on
+    /// each axis, which the guest scales to its screen.
+    pub fn move_pointer(
+        &mut self,
+        x: usize,
+        y: usize,
+        width: usize,
+        height: usize,
+    ) -> Result<(), QmpError> {
+        let scale = |position: usize, size: usize| {
+            (position.min(size.saturating_sub(1)) * ABSOLUTE_MAX) / size.saturating_sub(1).max(1)
+        };
+        self.execute(
+            "input-send-event",
+            json!({ "events": [
+                { "type": "abs", "data": { "axis": "x", "value": scale(x, width) } },
+                { "type": "abs", "data": { "axis": "y", "value": scale(y, height) } },
+            ] }),
+        )?;
+        Ok(())
+    }
+
+    /// Presses the left button of the USB tablet where the pointer is, holds it for
+    /// `CLICK_HOLD`, and releases it. A program that polls the pointer, such as rEFInd, counts
+    /// a click only when one poll sees the button held and a later one sees it released, and
+    /// the firmware's pointer driver keeps only the last state between two polls.
+    pub fn click(&mut self) -> Result<(), QmpError> {
+        for down in [true, false] {
+            self.execute(
+                "input-send-event",
+                json!({ "events": [
+                    { "type": "btn", "data": { "down": down, "button": "left" } },
+                ] }),
+            )?;
+            if down {
+                std::thread::sleep(CLICK_HOLD);
+            }
+        }
+        Ok(())
+    }
+
     /// Asks the guest to shut down, as a press of the power button does.
     pub fn powerdown(&mut self) -> Result<(), QmpError> {
         self.execute("system_powerdown", json!({}))?;
@@ -139,7 +196,7 @@ impl Qmp {
 }
 
 /// The QEMU key code for a character on the US layout, and whether it needs Shift.
-fn key_for(character: char) -> Option<(&'static str, bool)> {
+pub(crate) fn key_for(character: char) -> Option<(&'static str, bool)> {
     const LETTERS: [&str; 26] = [
         "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r",
         "s", "t", "u", "v", "w", "x", "y", "z",
@@ -183,4 +240,33 @@ fn key_for(character: char) -> Option<(&'static str, bool)> {
             .then_some((code, false))
             .or((character == shifted).then_some((code, true)))
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::key_for;
+
+    #[test]
+    fn letters_digits_and_space_need_no_shift_and_capitals_do() {
+        assert_eq!(key_for('t'), Some(("t", false)));
+        assert_eq!(key_for('T'), Some(("t", true)));
+        assert_eq!(key_for('0'), Some(("0", false)));
+        assert_eq!(key_for(' '), Some(("spc", false)));
+        assert_eq!(key_for('\n'), Some(("ret", false)));
+    }
+
+    #[test]
+    fn symbols_use_the_key_of_the_us_layout_with_shift_for_the_upper_one() {
+        assert_eq!(key_for('!'), Some(("1", true)));
+        assert_eq!(key_for(')'), Some(("0", true)));
+        assert_eq!(key_for('-'), Some(("minus", false)));
+        assert_eq!(key_for('_'), Some(("minus", true)));
+        assert_eq!(key_for('"'), Some(("apostrophe", true)));
+        assert_eq!(key_for('?'), Some(("slash", true)));
+    }
+
+    #[test]
+    fn characters_without_a_us_key_are_refused() {
+        assert_eq!(key_for('é'), None);
+    }
 }

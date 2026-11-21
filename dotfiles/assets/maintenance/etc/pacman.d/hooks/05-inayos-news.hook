@@ -1,0 +1,12 @@
+# InayOS maintenance: before every upgrade, prints the unread Arch news that announces a
+# manual step. inayos-news always exits 0, and the hook has no AbortOnFail, so the news
+# never stops a transaction. `inayos-news` marks the news read.
+[Trigger]
+Operation = Upgrade
+Type = Package
+Target = *
+
+[Action]
+Description = Checking the Arch news for manual steps...
+When = PreTransaction
+Exec = /usr/bin/inayos-news --pacman

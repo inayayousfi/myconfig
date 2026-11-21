@@ -10,7 +10,7 @@ Every module implements one shared `Module` trait, and there are no per-module t
 
 - `crates/interface` contains the command line (Clap) and the interactive screen (Ratatui). It depends on `crates/modules`.
 
-- `apps/<platform>` contains only the profile list, its platform check, and one call to `myconfig_interface::main`.
+- `apps/<platform>` contains only the profile list, its platform check, and one call to `inayos_interface::main`.
 
 ## The `Module` trait
 
@@ -54,13 +54,13 @@ That check cannot see a misspelled soft need, because a soft need may name a mod
 
 `EveryEarlier` is a soft need on every module that comes earlier in the profile. The environment inventory uses it, because it describes what the earlier modules installed.
 
-A check that must pass before anything changes the machine is a module that `base` needs. Every other module of that profile needs `base` or the check, directly or through other needs, so none of them runs when the check fails. The CachyOS profile checks the KDE Plasma version this way, and its tests check that every module waits for it.
+A check that must pass before anything changes the machine is a module that `base` needs. Every other module of that profile needs `base` or the check, directly or through other needs, so none of them runs when the check fails. The InayOS desktop profile checks the KDE Plasma version this way, and its tests check that every module waits for it.
 
 Every package in a module's footprint needs a name in the package catalog on the package system of each profile that holds the module. Each app's tests check this with `unnamed_packages`.
 
 ## `Context`
 
-`Context` has no `profile` field. A module is only in a profile when it belongs there, so there are no run-time "requires CachyOS" checks.
+`Context` has no `profile` field. A module is only in a profile when it belongs there, so there are no run-time "requires Arch" checks.
 
 Modules never read stdin, open `/dev/tty`, or call xshell's `.run()`, `.read()` or `.output()` directly. They go through `Context`, so the same module works under the screen and under the plain command line, and every change is recorded:
 
@@ -94,14 +94,32 @@ impl Context<'_> {
     pub fn delete_system_file(&self, path: &Path) -> ModuleResult;
     pub fn enable_service(&self, unit: &str, scope: ServiceScope) -> ModuleResult;
     pub fn disable_service(&self, unit: &str, scope: ServiceScope) -> ModuleResult;
-    pub fn service_state(&self, unit: &str, scope: ServiceScope) -> ModuleResult<ServiceState>;
     pub fn deploy_config(&self, package: &str) -> ModuleResult;
+
+    // The running system. In installer mode these report a deferred or inactive result.
+    pub fn service_state(&self, unit: &str, scope: ServiceScope) -> ModuleResult<ServiceState>;
+    pub fn service_active(&self, unit: &str, scope: ServiceScope) -> ModuleResult<bool>;
+    pub fn require_active(&self, unit: &str, scope: ServiceScope) -> ModuleResult<Applied>;
+    pub fn start_service(&self, unit: &str, scope: ServiceScope) -> ModuleResult<Applied>;
+    pub fn restart_service(&self, unit: &str, scope: ServiceScope) -> ModuleResult<Applied>;
+    pub fn stop_service(&self, unit: &str, scope: ServiceScope) -> ModuleResult;
+    pub fn reload_user_manager(&self) -> ModuleResult;
+    pub fn user_manager_has_group(&self, group: &str) -> ModuleResult<bool>;
+    pub fn graphical_session(&self) -> ModuleResult<bool>;
+    pub fn lingering(&self, user: &str) -> ModuleResult<bool>;
+    pub fn systemd_manages_services(&self) -> bool;
+    pub fn on_running_system(&self, step: &str, action: impl FnOnce() -> ModuleResult) -> ModuleResult<Applied>;
+    pub fn on_new_system(&self, action: impl FnOnce() -> ModuleResult) -> ModuleResult;
+    pub fn missing_part(&self, missing: &str, skipped: &str) -> ModuleResult;
+    pub fn run_with_session_bus(&self, cmd: xshell::Cmd) -> ModuleResult;
 
     // Changes that a program makes by itself, recorded around the call.
     pub fn record_path(&self, path: &Path) -> ModuleResult;
+    pub fn record_system_path(&self, path: &Path) -> ModuleResult;
     pub fn record_setting(&self, setting: Setting) -> ModuleResult;
     pub fn record_setting_previous(&self, setting: Setting, previous: Option<String>) -> ModuleResult;
     pub fn created(&self, path: &Path, system: bool) -> ModuleResult;
+    pub fn created_directory(&self, path: &Path, system: bool) -> ModuleResult;
     pub fn created_user_data(&self, path: &Path) -> ModuleResult;
     pub fn record_service(&self, unit: &str, scope: ServiceScope) -> ModuleResult<bool>;
     pub fn record_undo_command(&self, program: &Path, args: &[&str]) -> ModuleResult;
@@ -114,7 +132,7 @@ impl Context<'_> {
 }
 ```
 
-`Interaction` is implemented twice, once by the screen and once by the command line, both in `crates/interface`.
+`Interaction` is implemented in `crates/interface` by the screen and by the command line. Installer mode has a third implementation, which prints like the command line and answers questions from a file.
 
 `with_terminal` is for programs that talk to the terminal directly, such as the GitHub CLI and Tailscale logins. Everything else uses `run` or `confirm`.
 
@@ -122,7 +140,31 @@ A module that asks before installing calls `confirm` at the start of `install`. 
 
 When nobody can answer, `confirm` returns the `Unanswered` error. The runner skips a module whose install returns that error unchanged. A module whose install fails for another reason after an unanswered question is reported as failed, with its error. A module that knows before asking that nobody can answer, such as one that needs a terminal, returns `Unanswered` itself, and the runner skips it too. A question after the install itself, whose missing answer the module takes as a no, goes through `confirm_optional`, and the runner never skips a module for it.
 
-A test checks that no module calls `.run()`, `.read()` or `.output()` on a command, reads stdin, or opens `/dev/tty`.
+A test checks that no module calls `.run()`, `.read()` or `.output()` on a command, reads stdin, or opens `/dev/tty`. Another test checks that no module runs a `systemctl` command that acts on the running service manager, such as `start`, `restart`, `daemon-reload`, `is-active` or `show`, or any `loginctl` command. Those go through the methods for the running system.
+
+## Run modes
+
+A run has one of two modes, which the interface sets with `Context::with_run_mode`. Like a profile difference, the mode is not something a module tests: the `Context` methods for the running system answer for it.
+
+- **Live** is the default. Changes take effect on the running system: services start, and the running desktop reloads its settings.
+
+- **Installer** runs inside a never-booted system, as the new user, through `arch-chroot -S -u <user> /mnt env SYSTEMD_OFFLINE=1 inayos install --installer-mode`. That system has no service manager, login manager or session bus of its own, and the system around the chroot is the installer's. Installer mode therefore only installs packages, writes files and enables services, and the installed system starts everything when it boots. The installer verifies in the same mode with `inayos verify --installer-mode`.
+
+In installer mode:
+
+- Every command gets `SYSTEMD_OFFLINE=1`, so `systemctl enable`, `disable` and `is-enabled` work on the unit files without a running manager.
+- A `sudo` command also gets `--preserve-env=SYSTEMD_OFFLINE`, because sudo resets the environment. sudo accepts it only when the sudoers rule allows every command or carries the `SETENV` tag.
+- `enable_service` enables without starting, as it does in both modes, and `disable_service` disables without stopping.
+- `start_service` and `restart_service` only check that the service is enabled, and return `Applied::Deferred`. `stop_service` and `reload_user_manager` do nothing.
+- `service_active` and `graphical_session` report that nothing runs. `user_manager_has_group` reports yes, because the user manager starts at the first login, after the run added the groups. `lingering` reads the login manager's file instead of asking it.
+- `require_active`, which `verify` uses, checks that the service is enabled instead of running. A module whose further checks need the running service skips them when it returns `Applied::Deferred`.
+- `systemd_manages_services` is true, because the installed system boots with systemd.
+- `on_running_system` skips steps that act on the running system, such as loading a kernel module or reconfiguring the running KWin, and returns `Applied::Deferred`. The installed system does the same from its files when it starts.
+- `on_new_system` runs steps that only the system being built needs, because a running system got that part from its own installer, such as installing rEFInd onto the EFI system partition. In live mode these steps do not run.
+- `missing_part`, which a module calls when a part of the system it builds on is missing, such as `/boot/refind_linux.conf`, fails. In live mode it notes the step that the module skips, and the module goes on.
+- `run_with_session_bus` runs the command under its own `dbus-run-session`, with the user's configuration folder, because `gsettings set` saves nothing without a session bus.
+- Questions are answered from the installer's answers file, and nobody can answer the others. sudo must work without a password and keep `SYSTEMD_OFFLINE`, and the run checks both before it starts.
+- The interface reads the user name and home folder from the passwd entry of the running user id, and sets `HOME`, `USER` and `LOGNAME` from it for every command, because `arch-chroot -u` clears the environment.
 
 ## Settings
 
@@ -142,12 +184,12 @@ A kind whose program changes more KDE keys than its value, such as a KDE theme t
 
 Before changing anything, a module records what was there. The state lives in one JSON file, written with serde:
 
-- Linux: `$XDG_STATE_HOME/myconfig/state.json`, which defaults to `~/.local/state/myconfig/state.json`.
-- Windows: `%LOCALAPPDATA%\myconfig\state\state.json`.
+- Linux: `$XDG_STATE_HOME/inayos/state.json`, which defaults to `~/.local/state/inayos/state.json`.
+- Windows: `%LOCALAPPDATA%\inayos\state\state.json`.
 
 ```json
 {
-  "format": 1,
+  "format": 3,
   "written_by": "0.1.0",
   "snapshots": [
     {
@@ -169,13 +211,17 @@ Before changing anything, a module records what was there. The state lives in on
 }
 ```
 
-- **Versions.** `format` is the state format number and `written_by` is the myconfig version that wrote the file. A newer myconfig migrates an older format. An older myconfig refuses a newer format instead of guessing.
+- **Versions.** `format` is the state format number and `written_by` is the InayOS version that wrote the file. A newer InayOS migrates an older format. An older InayOS refuses a newer format instead of guessing.
+
+- **Earlier name.** myconfig, the earlier name of InayOS, kept the state in a `myconfig` folder in the same place, in format 1. When only that folder holds a `state.json`, InayOS moves its entries into the `inayos` folder before reading them, and the migration to format 2 points the paths recorded inside it to the new folder.
+
+- **Leftovers of the earlier name.** myconfig installed units, scripts, system files, KDE keys and shortcuts under names that contain `myconfig`, and InayOS installs the same things under its own names. The migration to format 3 moves every pending record that installed something under such a name into the `myconfig-leftovers` group, which no module owns. It adds one snapshot of action `migrate`, which marks each moved record undone under its module and lists the moved records under the group. `crates/modules/src/leftovers.rs` holds the rule: a recorded path, unit or setting identity counts when one of its parts joins `myconfig` to other text with `-` or `.`, and a repository address does not count. `leftovers::companions` adds the records for earlier names that no record names itself: the links that Stow made under the earlier names in each stowed config package, the block that myconfig marked in `refind.conf`, and the entry of each earlier KWin rule in KWin's rule list.
 
 - **One snapshot per run.** Each install or remove run adds a snapshot listing what it changed. A module's change to a setting or file is recorded only the first time that module touches it in a run, so each module's record holds the value from before its own change.
 
 - **File copies.** When `write_file` replaces a file, the previous contents go into the snapshot, encoded in base64. No backup file is left next to the replaced file.
 
-- **Paru.** The first AUR package needs paru. When a configured repository has it, as CachyOS does, it is installed with pacman. Otherwise it comes from the AUR's `paru-bin`, which packages paru's official release binary instead of compiling it. Either way it is recorded under the module that needed it, so removing that module uninstalls paru too.
+- **Paru.** The first AUR package needs paru. paru cannot install itself, so makepkg builds the AUR's `paru-bin`, which packages paru's official release binary instead of compiling it, and pacman installs the result. It is recorded under the module that needed it, so removing that module uninstalls paru too.
 
 - **APT repositories.** The package catalog names the vendor APT repository of a package that Ubuntu does not carry, or carries only in old versions. `install_packages` adds that repository's key and source file with recorded writes for every requested package that names one, even when the package is already installed. APT then installs the package, which moves a copy from Ubuntu's archive to the vendor version. `remove` deletes the repository, but it does not move the package back.
 
@@ -257,7 +303,7 @@ There is no central Dotfiles module. Each module deploys and removes its own con
 
 ## Profiles are lists
 
-Each app's `main.rs` holds the profile: a static list of modules in run order, each built with its options. After its platform check, it passes that list to `myconfig_interface::main` with the profile title and the package system.
+Each app's `main.rs` holds the profile: a static list of modules in run order, each built with its options. After its platform check, it passes that list to `inayos_interface::main` with the profile title and the package system.
 
 On Windows, each Winget package group is its own module, so you choose groups on the screen. A module that relies on one of those groups names it as a need.
 
@@ -273,6 +319,8 @@ The runner is shared code in `crates/modules`. It is the only code that loops ov
 
 - `remove(ctx, profile, modules, force)` removes the given modules, as described below.
 
+- `remove_with_leftovers(ctx, profile, modules, force)` removes the given modules, then undoes the `myconfig-leftovers` group in the same way. The group has no module, so it has no steps of its own.
+
 ## Command line
 
 Clap parses the arguments. Every app has the same commands:
@@ -282,10 +330,14 @@ Clap parses the arguments. Every app has the same commands:
 <app> install [module...]  installs all modules, or only the named ones, then verifies each
 <app> verify [module...]   verifies all modules, or only the named ones
 <app> remove <module...>   removes the named modules
+<app> remove myconfig-leftovers
+                           undoes what myconfig installed under its own names
 <app> remove --force <module...>
                            also removes packages and settings that are still needed elsewhere
 <app> list                 prints the module names in profile order
 ```
+
+`<app> install --installer-mode [--answers <file>]` runs the install in installer mode, and `<app> verify --installer-mode` verifies in that mode. These options are hidden from `--help`, because only the InayOS installer passes them. The answers file is a JSON object that maps each question's exact text to `true` or `false`.
 
 Steps that the installer starts by itself are hidden from `--help` under `<app> internal`:
 
@@ -300,7 +352,7 @@ Steps that the installer starts by itself are hidden from `--help` under `<app> 
 Ratatui draws one screen. All four apps use it, and running an app with no arguments opens it.
 
 ```
-┌ myconfig: CachyOS ───────────────┐
+┌ InayOS: InayOS desktop ──────────┐
 │ [x] base            installed    │
 │ [x] zsh             installed    │
 │ [ ] ghostty         missing      │
@@ -349,6 +401,8 @@ Undoing each kind of change:
 - **A disabled service** is enabled and started again when it was enabled or active before.
 - **A decline** has nothing to undo.
 - **A recorded undo command** runs, without a check of the current state. It undoes a change that a program made by itself and that only another command can undo.
+- **The earlier-name links of a config package** that point into `~/dotfiles/<package>` at a missing file are deleted. Files, live links and links that point elsewhere stay.
+- **A marked block** in a root-owned file loses the lines from its first marker to its last, and the empty line before them. The rest of the file stays byte for byte, and a file without the block is not written.
 - **A deployed config package** is unstowed on Linux. Its deployed folder is deleted, or moved into a backup folder when it differs from the embedded package.
 - **A package that install added** is uninstalled after the check below.
 - **A package that install uninstalled** is reinstalled after a confirmation.

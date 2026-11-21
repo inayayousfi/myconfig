@@ -1,0 +1,4 @@
+# What makepkg leaves next to a PKGBUILD when it runs without BUILDDIR and PKGDEST.
+src/
+pkg/
+*.pkg.tar.*

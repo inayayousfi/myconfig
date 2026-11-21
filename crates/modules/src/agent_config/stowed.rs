@@ -4,11 +4,11 @@ use std::{fs, path::Path};
 use xshell::cmd;
 
 use crate::{
-    Context, Footprint, Module, ModuleResult, Need, Package, ServiceScope,
+    Applied, Context, Footprint, Module, ModuleResult, Need, Package, ServiceScope,
     deploy::verify_package,
     support::{
-        active_group, agent_tool_path, configure_input_access, input_access_settings,
-        require_executable, require_programs, user_runtime_directory, verify_input_access,
+        agent_tool_path, configure_input_access, input_access_settings, require_executable,
+        require_programs, user_runtime_directory, verify_input_access,
     },
 };
 
@@ -133,15 +133,12 @@ impl Module for AgentConfigStowed {
         if self.ydotool {
             require_programs(ctx, &["ydotool", "systemctl"])?;
             configure_input_access(ctx, "ydotool")?;
-            ctx.run(cmd!(sh, "systemctl --user daemon-reload"))?;
+            ctx.reload_user_manager()?;
             ctx.enable_service("ydotool.service", ServiceScope::User)?;
-            if active_group(ctx, "input")? && active_group(ctx, "uinput")? {
-                ctx.run(cmd!(sh, "systemctl --user restart ydotool.service"))?;
-                ctx.run(cmd!(
-                    sh,
-                    "systemctl --user --quiet is-active ydotool.service"
-                ))?;
-                wait_for_ydotool_socket(ctx)?;
+            if ctx.user_manager_has_group("input")? && ctx.user_manager_has_group("uinput")? {
+                if ctx.restart_service("ydotool.service", ServiceScope::User)? == Applied::Now {
+                    wait_for_ydotool_socket(ctx)?;
+                }
             } else {
                 ctx.note("Log out and back in before ydotool can access uinput");
             }

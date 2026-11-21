@@ -1,7 +1,7 @@
 //! Moves the items on the shared Public and Default desktops onto your own desktop.
 //!
 //! Writing to the shared desktops needs administrator rights, so a non-elevated run
-//! starts this program again elevated as `myconfig internal shared-desktop ...`. The
+//! starts this program again elevated as `inayos internal shared-desktop ...`. The
 //! questions are asked before that step, so they go through `ctx.confirm` either way.
 use std::{
     fs, io,
@@ -25,7 +25,7 @@ fn is_administrator(ctx: &Context) -> ModuleResult<bool> {
     Ok(powershell(ctx, command)?.trim() == "True")
 }
 
-/// Runs `myconfig internal shared-desktop <step>` elevated with `paths`, and waits.
+/// Runs `inayos internal shared-desktop <step>` elevated with `paths`, and waits.
 fn run_elevated(ctx: &Context, step: &str, paths: &[&Path]) -> ModuleResult {
     let mut script = format!(
         "& {} 'internal' 'shared-desktop' {}",
@@ -77,7 +77,7 @@ fn copy_item(source: &Path, target: &Path) -> ModuleResult {
 fn move_item(source: &Path, target: &Path, replace: bool) -> ModuleResult {
     let pending = if replace {
         let mut path = PathBuf::from(format!(
-            "{}.myconfig-pending-{}",
+            "{}.inayos-pending-{}",
             target.display(),
             std::process::id()
         ));

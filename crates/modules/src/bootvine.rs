@@ -8,8 +8,8 @@ use xshell::cmd;
 use crate::{
     Context, Footprint, Module, ModuleResult, Need, Package, ServiceScope,
     boot_config::{
-        MKINITCPIO_CONFIG, REFIND_LINUX_CONFIG, add_initramfs_hook, has_hook, with_console_colors,
-        with_quiet_default,
+        KERNEL_CMDLINE, MKINITCPIO_CONFIG, REFIND_LINUX_CONFIG, add_initramfs_hook, cmdline_with,
+        has_hook, with_console_colors, with_quiet_default,
     },
     support::{edit_system_file, read_system_bytes, read_system_file, verify_packages},
 };
@@ -52,8 +52,10 @@ impl Module for Bootvine {
         "bootvine"
     }
 
+    /// The kernel options go into the boot entries that the refind module writes on the
+    /// system an installer-mode run builds.
     fn needs(&self) -> &'static [Need] {
-        &[Need::Hard("base")]
+        &[Need::Hard("base"), Need::Soft(crate::Refind::NAME)]
     }
 
     fn footprint(&self, _ctx: &Context) -> Footprint {
@@ -70,6 +72,10 @@ impl Module for Bootvine {
         if !has_hook(&config, "systemd") {
             return Err(format!("bootvine needs the systemd hook in {MKINITCPIO_CONFIG}").into());
         }
+        let entries = read_system_file(ctx, REFIND_LINUX_CONFIG)?.is_some();
+        if !entries {
+            ctx.missing_part(REFIND_LINUX_CONFIG, "the kernel options")?;
+        }
         // The package goes in before HOOKS names its hook, so a failed install never
         // leaves an initramfs configuration that the next kernel update cannot build.
         // Recorded first, so remove takes the hook out before the package.
@@ -82,22 +88,27 @@ impl Module for Bootvine {
                 "0644",
             )?;
         }
+        // bootvine silences the console only once it runs, so quiet hides the kernel
+        // messages before it.
+        let colors = console_colors();
+        // On an encrypted system the unified kernel image holds the kernel options of
+        // /etc/kernel/cmdline, so the rebuild below takes them in.
+        let mut options = vec!["quiet".to_owned()];
+        options.extend(colors.iter().cloned());
+        let cmdline_changed =
+            edit_system_file(ctx, KERNEL_CMDLINE, |line| cmdline_with(line, &options))?
+                == Some(true);
         // The initramfs holds a copy of the colors file, so it is rebuilt for either change.
         let hook_changed = add_initramfs_hook(ctx, "sd-bootvine", "systemd")?;
-        if hook_changed || config_changed {
+        if hook_changed || config_changed || cmdline_changed {
             ctx.run(cmd!(sh, "sudo mkinitcpio -P"))?;
         }
         for service in SERVICES {
             ctx.enable_service(service, ServiceScope::System)?;
         }
-        // bootvine silences the console only once it runs, so quiet hides the kernel
-        // messages before it.
-        let colors = console_colors();
         let edit = |config: &str| with_console_colors(&with_quiet_default(config), &colors);
-        if edit_system_file(ctx, REFIND_LINUX_CONFIG, edit)?.is_none() {
-            ctx.note(&format!(
-                "Skipping the kernel options because {REFIND_LINUX_CONFIG} was not found"
-            ));
+        if entries {
+            edit_system_file(ctx, REFIND_LINUX_CONFIG, edit)?;
         }
         Ok(())
     }
@@ -117,6 +128,14 @@ impl Module for Bootvine {
             if !ctx.succeeds(cmd!(sh, "systemctl --quiet is-enabled {service}"))? {
                 return Err(format!("{service} is not enabled").into());
             }
+        }
+        if read_system_file(ctx, REFIND_LINUX_CONFIG)?.is_none() {
+            ctx.missing_part(REFIND_LINUX_CONFIG, "the kernel options check")?;
+        }
+        if let Some(cmdline) = read_system_file(ctx, KERNEL_CMDLINE)?
+            && !cmdline.split_whitespace().any(|option| option == "quiet")
+        {
+            return Err(format!("{KERNEL_CMDLINE} lacks the quiet option").into());
         }
         Ok(())
     }

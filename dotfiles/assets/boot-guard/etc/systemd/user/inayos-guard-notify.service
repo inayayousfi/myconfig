@@ -1,0 +1,11 @@
+[Unit]
+Description=Desktop notification of a failed InayOS boot guard check
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+# The service stays active while the failure stands, so the path unit does not start it
+# again in a loop. It ends once a passing check removes the file, and the next failure
+# notifies again.
+ExecStart=/bin/sh -c 'notify-send --app-name="InayOS boot guard" --urgency=critical --icon=dialog-warning "A boot check failed" "$$(/usr/bin/inayos-guard status)"; while [ -e /var/lib/inayos-guard/failed ]; do sleep 60; done'

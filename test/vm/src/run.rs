@@ -19,6 +19,10 @@ pub struct RunOptions {
 
 #[derive(Debug, thiserror::Error)]
 pub enum RunError {
+    #[error(
+        "run does not boot {0}; its image builds the USB stick, and the InayOS installer runs in: cargo xtask vm scenario <name>"
+    )]
+    NoRun(Os),
     #[error(transparent)]
     Start(#[from] StartError),
     #[error(transparent)]
@@ -37,6 +41,9 @@ pub fn run(options: RunOptions, repository: &Path) -> Result<(), RunError> {
         displays,
         watch,
     } = options;
+    if !os.tests_installer() {
+        return Err(RunError::NoRun(os));
+    }
     let mut started = start::start(
         Options {
             os,

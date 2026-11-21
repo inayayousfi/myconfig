@@ -1,7 +1,7 @@
 //! Ubuntu: APT, with the vendor repositories that the package catalog names.
 use std::collections::BTreeSet;
 
-use myconfig_utils::{PackageSpec, PackageTool};
+use inayos_utils::{PackageSpec, PackageTool};
 use xshell::cmd;
 
 use super::{PackageManager, names};

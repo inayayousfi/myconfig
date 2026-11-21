@@ -15,7 +15,7 @@ const WINDOWS_SCRIPT: &str = include_str!("../lists/windows.ps1");
 const ARCH_WSL_HOOK_SCRIPT: &str = include_str!("../lists/arch-wsl-hook.sh");
 
 /// Where the Linux script goes in the guest: outside every folder the lists cover.
-const LINUX_GUEST_PATH: &str = "/tmp/myconfig-vm-lists.sh";
+const LINUX_GUEST_PATH: &str = "/tmp/inayos-vm-lists.sh";
 
 #[derive(Debug, thiserror::Error)]
 pub enum CollectError {
@@ -41,13 +41,13 @@ pub fn collect(
 ) -> Result<Snapshot, CollectError> {
     let windows_path = format!(r"{WINDOWS_TOOL_DIR}\lists.ps1");
     let (script, guest_path) = match os {
-        Os::Cachyos | Os::Ubuntu => (LINUX_SCRIPT, LINUX_GUEST_PATH.to_owned()),
+        Os::Ubuntu | Os::Arch => (LINUX_SCRIPT, LINUX_GUEST_PATH.to_owned()),
         // scp takes `/` between the folders of a Windows path.
         Os::Windows => (WINDOWS_SCRIPT, windows_path.replace('\\', "/")),
     };
     let local = scratch.join(match os {
         Os::Windows => "lists.ps1",
-        Os::Cachyos | Os::Ubuntu => "lists.sh",
+        Os::Ubuntu | Os::Arch => "lists.sh",
     });
     fs::create_dir_all(scratch).map_err(|error| CollectError::Io(scratch.to_owned(), error))?;
     fs::write(&local, script).map_err(|error| CollectError::Io(local.clone(), error))?;
@@ -60,8 +60,8 @@ pub fn collect(
 
     let mut snapshot = Snapshot::default();
     match os {
-        Os::Cachyos | Os::Ubuntu => {
-            let tool = if os == Os::Cachyos { "pacman" } else { "dpkg" };
+        Os::Ubuntu | Os::Arch => {
+            let tool = if os == Os::Arch { "pacman" } else { "dpkg" };
             snapshot.read(&guest.run(&format!("bash {LINUX_GUEST_PATH} user"))?)?;
             // The system lists read files that only root can read.
             snapshot.read(&guest.run(&format!(
@@ -78,7 +78,7 @@ pub fn collect(
 }
 
 /// The Arch WSL installer hook in the Windows guest. The cycle names it in
-/// `MYCONFIG_ARCH_WSL_BINARY`, so the arch-wsl module runs it instead of a release.
+/// `INAYOS_ARCH_WSL_BINARY`, so the arch-wsl module runs it instead of a release.
 pub fn arch_wsl_hook() -> String {
     format!(r"{WINDOWS_TOOL_DIR}\arch-wsl-hook.sh")
 }

@@ -5,17 +5,17 @@ use crate::{
     Context, Footprint, Module, ModuleResult, Need, Package, ServiceScope,
     deploy::verify_package,
     support::{
-        active_group, configure_input_access, input_access_settings, require_file,
-        require_programs, verify_input_access, verify_packages,
+        configure_input_access, input_access_settings, require_file, require_programs,
+        verify_input_access, verify_packages,
     },
 };
 
 pub struct Kanata {
-    /// Starts Kanata at login. CachyOS turns this off because the Kanata KDE tray starts it.
+    /// Starts Kanata at login. The desktop profile turns this off because the Kanata KDE tray starts it.
     pub start_at_login: bool,
 }
 
-const SERVICE: &str = "myconfig-kanata.service";
+const SERVICE: &str = "inayos-kanata.service";
 
 impl Module for Kanata {
     fn name(&self) -> &'static str {
@@ -41,14 +41,13 @@ impl Module for Kanata {
         let config = ctx.home.join(".config/kanata/config.kbd");
         ctx.run(cmd!(sh, "kanata --check --cfg {config}"))?;
         configure_input_access(ctx, "kanata")?;
-        ctx.run(cmd!(sh, "systemctl --user daemon-reload"))?;
+        ctx.reload_user_manager()?;
         if !self.start_at_login {
             return Ok(());
         }
         ctx.enable_service(SERVICE, ServiceScope::User)?;
-        if active_group(ctx, "input")? && active_group(ctx, "uinput")? {
-            ctx.run(cmd!(sh, "systemctl --user restart {SERVICE}"))?;
-            ctx.run(cmd!(sh, "systemctl --user --quiet is-active {SERVICE}"))?;
+        if ctx.user_manager_has_group("input")? && ctx.user_manager_has_group("uinput")? {
+            let _ = ctx.restart_service(SERVICE, ServiceScope::User)?;
         } else {
             ctx.note("Log out and back in before Kanata can access input devices");
         }

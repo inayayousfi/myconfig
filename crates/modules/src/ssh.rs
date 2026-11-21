@@ -18,7 +18,7 @@ pub struct Ssh {
 /// that is off. It comes late in a profile, so its question waits until the rest is done.
 pub struct SshServer;
 
-const CONFIG: &str = "/etc/ssh/sshd_config.d/10-myconfig.conf";
+const CONFIG: &str = "/etc/ssh/sshd_config.d/10-inayos.conf";
 const SERVICE: &str = "sshd.service";
 const START_COMMAND: &str = "sudo systemctl enable --now sshd.service";
 
@@ -57,7 +57,7 @@ impl Module for Ssh {
     }
 
     fn install(&self, ctx: &Context) -> ModuleResult {
-        if !Path::new("/run/systemd/system").is_dir() {
+        if !ctx.systemd_manages_services() {
             return Err("systemd is not running".into());
         }
         let sh = ctx.shell;
@@ -73,7 +73,7 @@ impl Module for Ssh {
             }
         }
         with_temporary_directory("sshd", |directory| {
-            let proposed = directory.join("10-myconfig.conf");
+            let proposed = directory.join("10-inayos.conf");
             std::fs::write(&proposed, &contents)?;
             ctx.run(cmd!(sh, "sudo sshd -t -f {proposed}"))
         })?;
@@ -136,15 +136,11 @@ impl Module for SshServer {
     }
 
     fn install(&self, ctx: &Context) -> ModuleResult {
-        let sh = ctx.shell;
         // Another program on port 22, such as a second WSL distribution sharing the same
         // network, must not stop the rest of the install, so a failed start only warns.
-        if ctx.succeeds(cmd!(sh, "systemctl is-active --quiet {SERVICE}"))? {
+        if ctx.service_active(SERVICE, ServiceScope::System)? {
             ctx.note("Restarting the OpenSSH server with its new configuration");
-            if ctx
-                .run(cmd!(sh, "sudo systemctl restart {SERVICE}"))
-                .is_err()
-            {
+            if ctx.restart_service(SERVICE, ServiceScope::System).is_err() {
                 ctx.note(
                     "WARNING: the OpenSSH server did not restart. See: journalctl -u sshd.service",
                 );
@@ -156,7 +152,7 @@ impl Module for SshServer {
             return Ok(());
         }
         ctx.enable_service(SERVICE, ServiceScope::System)?;
-        if ctx.run(cmd!(sh, "sudo systemctl start {SERVICE}")).is_err() {
+        if ctx.start_service(SERVICE, ServiceScope::System).is_err() {
             ctx.note("WARNING: the OpenSSH server did not start. See: journalctl -u sshd.service");
             ctx.note(&format!("Retry with: {START_COMMAND}"));
         }

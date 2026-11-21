@@ -14,7 +14,7 @@ body:
       label: Platform
       description: Which platform are you installing on?
       options:
-        - CachyOS
+        - InayOS desktop (Arch)
         - Arch WSL
         - Ubuntu Devbox
         - Windows
@@ -30,7 +30,7 @@ body:
       description: How did you run the installation?
       options:
         - Install script (one-command)
-        - Installed myconfig command (install, verify or remove)
+        - Installed inayos command (install, verify or remove)
         - Built from a cloned repo
     validations:
       required: true

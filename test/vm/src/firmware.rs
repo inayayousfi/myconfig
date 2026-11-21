@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use crate::os::Boot;
 
 /// Overrides the folder that holds the edk2-ovmf files.
-pub const FIRMWARE_VARIABLE: &str = "MYCONFIG_VM_FIRMWARE_DIR";
+pub const FIRMWARE_VARIABLE: &str = "INAYOS_VM_FIRMWARE_DIR";
 const DEFAULT_DIR: &str = "/usr/share/edk2/x64";
 
 /// The read-only firmware code and the empty variable store that each new image copies.

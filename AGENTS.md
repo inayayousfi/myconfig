@@ -2,9 +2,9 @@
 
 ## Purpose
 
-This repository builds configuration environments for CachyOS, Arch WSL, Ubuntu Devbox, and Windows Workstation. The repository is the source of truth. Inspect the source here before changing a deployed configuration.
+This repository builds configuration environments for the InayOS desktop on Arch Linux, Arch WSL, Ubuntu Devbox, and Windows Workstation. The repository is the source of truth. Inspect the source here before changing a deployed configuration.
 
-`README.md` gives the supported entry points and install commands. The root `install.sh` and `install.ps1` download the released binary for the platform, keep it as `myconfig`, and run it. The release workflow publishes those binaries under fixed names.
+`README.md` gives the supported entry points and install commands. The root `install.sh` and `install.ps1` download the released binary for the platform, keep it as `inayos`, and run it. The release workflow publishes those binaries under fixed names.
 
 The project is moving away from shell scripts. Write new installer logic, tooling and tests in Rust. `install.sh` and `install.ps1` stay scripts because `curl | bash` and `irm | iex` run them before any binary exists.
 
@@ -18,7 +18,7 @@ The deployed package tree is `~/dotfiles`, not `~/.files`. If a task mentions a 
 
 Some home paths point into `~/dotfiles`. A change or deletion inside the deployed tree can therefore change the live configuration even when the visible path is under `~/.config` or `~`. Check both the visible target and its resolved path with `readlink -f`.
 
-The installers record what they change in `~/.local/state/myconfig/state.json` (`%LOCALAPPDATA%\myconfig\state\state.json` on Windows). `myconfig remove` undoes from that record. Do not edit it by hand.
+The installers record what they change in `~/.local/state/inayos/state.json` (`%LOCALAPPDATA%\inayos\state\state.json` on Windows). `inayos remove` undoes from that record. Do not edit it by hand.
 
 ## Repository layout
 
@@ -26,9 +26,11 @@ The top-level areas have different jobs:
 
 - `dotfiles/` contains packages whose paths mirror their destination under the home directory. The binaries embed only the packages and asset folders that `crates/embedded-dotfiles` lists. `dotfiles/old/` contains retired packages that no profile installs, and `dotfiles/assets/` contains files that modules install somewhere other than the home directory.
 
-- `apps/` contains one installer per platform: `cachyos`, `arch-wsl`, `ubuntu-devbox`, and `windows`. Each `main.rs` holds that profile's module list, which is the execution plan. Inspect it before assuming that a module runs on a platform.
+- `apps/` contains one installer per platform: `arch-desktop`, `arch-wsl`, `ubuntu-devbox`, and `windows`. Each `main.rs` holds that profile's module list, which is the execution plan. Inspect it before assuming that a module runs on a platform.
 
 - `crates/` contains the shared Rust crates. `MODULES-DESIGN.md` at the repository root describes their structure. See "Rust installers" below.
+
+- `packaging/` contains the PKGBUILDs of the InayOS pacman repository, which build from the working tree. `docs/repository.md` describes them.
 
 - `docs/` contains documents that each describe one module or package. Read the document for a module before changing it.
 
@@ -92,7 +94,7 @@ The design has these rules:
 
 - Each module owns its config package from `dotfiles/<package>/`. Linux implementations stow it, and Windows implementations copy it. There is no central Dotfiles module.
 
-- A module changes the machine only through the recording functions on `Context`: `install_packages`, `uninstall_packages`, `set`, `add`, `unset`, `write_file`, `write_system_file`, `link`, `delete`, `delete_system_file`, `enable_service`, `disable_service`, and `deploy_config`. When a program makes a change by itself, record it around the call with `record_path`, `record_setting`, `record_setting_previous`, `record_service`, `disable_service_previous`, `created`, or `created_user_data`. When only another command can undo that change, record the command with `record_undo_command`. `remove` runs that command without checking the current state, so it must succeed when the change is already undone; otherwise add a `Setting` kind, whose undo reads the current state first. Each one records the previous state in `state.json` before acting, and `remove` undoes from that record. The one exception is a `Setting` kind that names the KDE files its tool writes: `set` records the keys the tool changed right after it runs, because only then are they known. A setting that only exists or not goes through `add`, because `set` refuses it. A change made any other way cannot be removed. When a module needs a new kind of change, add a recording function or a `Setting` kind for it.
+- A module changes the machine only through the recording functions on `Context`: `install_packages`, `uninstall_packages`, `set`, `add`, `unset`, `write_file`, `write_system_file`, `link`, `delete`, `delete_system_file`, `enable_service`, `disable_service`, and `deploy_config`. When a program makes a change by itself, record it around the call with `record_path`, `record_system_path`, `record_setting`, `record_setting_previous`, `record_service`, `disable_service_previous`, `created`, `created_directory`, or `created_user_data`. When only another command can undo that change, record the command with `record_undo_command`. `remove` runs that command without checking the current state, so it must succeed when the change is already undone; otherwise add a `Setting` kind, whose undo reads the current state first. Each one records the previous state in `state.json` before acting, and `remove` undoes from that record. The one exception is a `Setting` kind that names the KDE files its tool writes: `set` records the keys the tool changed right after it runs, because only then are they known. A setting that only exists or not goes through `add`, because `set` refuses it. A change made any other way cannot be removed. When a module needs a new kind of change, add a recording function or a `Setting` kind for it.
 
 - `footprint` lists the packages and settings the module needs. The "still needed?" check in `remove` reads it, so a module that needs a package installed by another module must list it too.
 
@@ -100,11 +102,15 @@ The design has these rules:
 
 - Modules never read stdin, open `/dev/tty`, or call xshell's `.run()`, `.read()` or `.output()` directly. They use `ctx.run`, `ctx.read` and `ctx.succeeds` for commands, `ctx.confirm` for yes or no questions, and `ctx.with_terminal` for programs that need the whole terminal, such as the GitHub CLI login. A question asked after the install itself, whose missing answer the module takes as a no, goes through `ctx.confirm_optional`.
 
-- `state.json` carries a `format` number and the `written_by` myconfig version. When you change the state format, increase `format` and add a migration from the previous one.
+- Modules never run `loginctl`, or a `systemctl` command that acts on the running service manager, such as `start`, `restart`, `daemon-reload`, `is-active` or `show`. They use the `Context` methods for the running system, such as `ctx.start_service`, `ctx.service_active`, `ctx.require_active` and `ctx.reload_user_manager`. A step that acts on the running system in another way, such as `modprobe` or a D-Bus call to the running desktop, goes through `ctx.on_running_system`.
 
-- `crates/interface` holds the command line (Clap) and the interactive screen (Ratatui). `crates/modules` must not depend on either. Steps that the installer starts by itself, such as an elevated child process, are hidden subcommands under `myconfig internal`.
+- Installer mode is a run mode of `Context`, which the interface sets: a module never tests it. In that mode these methods defer or report nothing running, as `MODULES-DESIGN.md` describes. When a module's step needs the running system, make it go through one of them. A step that only the system being built needs, such as installing its boot manager, goes through `ctx.on_new_system`. A part of the system that a module adapts to and may be missing on a running system goes through `ctx.missing_part`, which fails in installer mode. `verify` checks a service with `ctx.require_active`, which in installer mode checks that the installed system will start it.
 
-- Each app's `main.rs` contains only the profile list, its platform check, and one call to `myconfig_interface::main`.
+- `state.json` carries a `format` number and the `written_by` InayOS version. When you change the state format, increase `format` and add a migration from the previous one.
+
+- `crates/interface` holds the command line (Clap) and the interactive screen (Ratatui). `crates/modules` must not depend on either. Steps that the installer starts by itself, such as an elevated child process, are hidden subcommands under `inayos internal`.
+
+- Each app's `main.rs` contains only the profile list, its platform check, and one call to `inayos_interface::main`.
 
 - The workspace version in the root `Cargo.toml` is the version of every crate.
 

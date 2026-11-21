@@ -1,0 +1,6 @@
+InayOS live system.
+
+The installer's screens run on workspace 1 of the session. Super+I starts them again
+when they closed.
+Install without the screens, as root: inayos-installer install --answers FILE
+Network: nmcli, or nmtui for Wi-Fi.

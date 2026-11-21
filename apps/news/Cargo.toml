@@ -1,0 +1,11 @@
+[package]
+name = "inayos-news-app"
+version.workspace = true
+edition = "2024"
+
+[[bin]]
+name = "inayos-news"
+path = "src/main.rs"
+
+[dependencies]
+roxmltree = "0.20.0"

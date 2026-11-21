@@ -1,7 +1,7 @@
 use std::process::ExitCode;
 
-use myconfig_interface::Profile;
-use myconfig_modules::*;
+use inayos_interface::Profile;
+use inayos_modules::*;
 
 fn running_in_wsl() -> bool {
     let kernel = std::fs::read_to_string("/proc/sys/kernel/osrelease")
@@ -47,7 +47,7 @@ fn main() -> ExitCode {
         eprintln!("error: the Arch WSL installer requires Linux inside WSL");
         return ExitCode::FAILURE;
     }
-    myconfig_interface::main(Profile {
+    inayos_interface::main(Profile {
         title: "Arch WSL",
         package_system: PACKAGE_SYSTEM,
         modules: MODULES,
@@ -56,7 +56,7 @@ fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
-    use myconfig_modules::{EnvironmentInventory, runner::need_problems, unnamed_packages};
+    use inayos_modules::{EnvironmentInventory, runner::need_problems, unnamed_packages};
 
     use super::{MODULES, PACKAGE_SYSTEM};
 

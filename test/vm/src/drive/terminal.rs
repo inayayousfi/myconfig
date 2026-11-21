@@ -195,7 +195,7 @@ mod tests {
         let log = PathBuf::from("install.log");
         let conversation = Conversation {
             answers: &answers,
-            command: "~/.local/bin/myconfig install",
+            command: "~/.local/bin/inayos install",
             log: &log,
         };
         let (sender, receiver) = mpsc::channel();

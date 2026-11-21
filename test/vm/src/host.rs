@@ -48,7 +48,13 @@ pub enum HostError {
 
 /// Returns `Ok` when the host has everything that `os` needs, or the full list of missing items.
 pub fn check(os: Os) -> Result<(), HostError> {
-    let missing = find_missing(os);
+    check_boot(os, os.boot())
+}
+
+/// Like `check`, for a guest of `os` that starts with the firmware and TPM of `boot` instead
+/// of its own.
+pub fn check_boot(os: Os, boot: Boot) -> Result<(), HostError> {
+    let missing = find_missing(os, boot);
     if missing.is_empty() {
         Ok(())
     } else {
@@ -56,7 +62,7 @@ pub fn check(os: Os) -> Result<(), HostError> {
     }
 }
 
-fn find_missing(os: Os) -> Vec<Missing> {
+fn find_missing(os: Os, boot: Boot) -> Vec<Missing> {
     let mut missing = Vec::new();
     let mut commands = vec![
         ("qemu-system-x86_64", Fix::Pacman("qemu-desktop")),
@@ -68,8 +74,21 @@ fn find_missing(os: Os) -> Vec<Missing> {
         ("curl", Fix::Pacman("curl")),
         ("xorriso", Fix::Pacman("libisoburn")),
     ];
-    if os.boot() == Boot::SecureUefiWithTpm {
+    if boot.has_tpm() {
         commands.push(("swtpm", Fix::Pacman("swtpm")));
+    }
+    if binary::needs_readelf(os) {
+        commands.push(("readelf", Fix::Pacman("binutils")));
+    }
+    if os == Os::Arch {
+        // The InayOS packages are built and indexed on the host, with a test key while the
+        // committed keyring is a placeholder.
+        commands.extend([
+            ("makepkg", Fix::Pacman("pacman")),
+            ("repo-add", Fix::Pacman("pacman")),
+            ("fakeroot", Fix::Pacman("fakeroot")),
+            ("gpg", Fix::Pacman("gnupg")),
+        ]);
     }
     if binary::needs_xwin(os) {
         // cargo-xwin compiles C code with clang-cl and links with lld-link and llvm-lib.
@@ -89,7 +108,7 @@ fn find_missing(os: Os) -> Vec<Missing> {
         }
     }
 
-    let firmware = Firmware::for_boot(os.boot());
+    let firmware = Firmware::for_boot(boot);
     for file in [firmware.code, firmware.vars_template] {
         if !file.is_file() {
             missing.push(Missing {
@@ -127,6 +146,24 @@ fn find_missing(os: Os) -> Vec<Missing> {
         });
     }
     missing
+}
+
+/// Returns `Ok` when every command of `commands` is on the host's path, or the missing ones
+/// with the fix of each.
+pub fn check_commands(commands: &[(&'static str, Fix)]) -> Result<(), HostError> {
+    let missing: Vec<Missing> = commands
+        .iter()
+        .filter(|(command, _)| !on_path(command))
+        .map(|&(command, fix)| Missing {
+            item: format!("the {command} command"),
+            fix,
+        })
+        .collect();
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(HostError::Missing(missing))
+    }
 }
 
 fn on_path(command: &str) -> bool {

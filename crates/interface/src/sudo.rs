@@ -7,7 +7,7 @@ use std::{
     time::Duration,
 };
 
-use myconfig_modules::{ModuleResult, PackageSystem};
+use inayos_modules::{ModuleResult, PackageSystem};
 
 /// Refreshes the sudo timestamp every 60 seconds until dropped.
 pub struct Session {
@@ -68,6 +68,18 @@ impl Session {
         !Self::needed(system)
             || Command::new("sudo")
                 .args(["-n", "true"])
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .is_ok_and(|status| status.success())
+    }
+
+    /// Whether sudo keeps `SYSTEMD_OFFLINE` for a command, as installer mode asks it to.
+    pub fn preserves_offline(system: PackageSystem) -> bool {
+        !Self::needed(system)
+            || Command::new("sudo")
+                .args(["-n", "--preserve-env=SYSTEMD_OFFLINE", "true"])
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())

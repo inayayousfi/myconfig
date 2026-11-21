@@ -4,7 +4,7 @@ mod apt;
 mod pacman;
 mod winget;
 
-use myconfig_utils::{PackageSpec, PackageSystem};
+use inayos_utils::{PackageSpec, PackageSystem};
 
 use crate::{Context, Error, ModuleResult};
 
@@ -63,7 +63,7 @@ pub(crate) fn for_system(system: PackageSystem) -> &'static dyn PackageManager {
 }
 
 /// The names of `specs`, which must all come from `tool`.
-fn names(specs: &[PackageSpec], tool: myconfig_utils::PackageTool) -> ModuleResult<Vec<&str>> {
+fn names(specs: &[PackageSpec], tool: inayos_utils::PackageTool) -> ModuleResult<Vec<&str>> {
     specs
         .iter()
         .map(|spec| {

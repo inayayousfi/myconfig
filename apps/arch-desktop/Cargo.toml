@@ -1,0 +1,8 @@
+[package]
+name = "inayos-arch-desktop"
+version.workspace = true
+edition = "2024"
+
+[dependencies]
+inayos-interface = { path = "../../crates/interface" }
+inayos-modules = { path = "../../crates/modules" }

@@ -11,6 +11,26 @@ pub(crate) use kde_key::Entries as KdeEntries;
 /// The value of a setting that only exists or not, such as a group membership.
 pub(crate) const PRESENT: &str = "present";
 
+/// The `XDG_CONFIG_DIRS` for the `plasma-apply-*` tools, with the user's `kdedefaults`
+/// folder first. A Plasma session puts it there, and it holds the global theme's defaults:
+/// without it, `plasma-apply-colorscheme --accent-color` rebuilds light Breeze colors.
+fn kde_config_dirs(ctx: &Context) -> std::ffi::OsString {
+    let defaults = config_home(ctx).join("kdedefaults");
+    let current = ctx
+        .shell
+        .var("XDG_CONFIG_DIRS")
+        .ok()
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "/etc/xdg".to_owned());
+    if std::env::split_paths(&current).any(|directory| directory == defaults) {
+        return current.into();
+    }
+    let mut dirs = defaults.into_os_string();
+    dirs.push(":");
+    dirs.push(current);
+    dirs
+}
+
 mod accent_color;
 mod claude_mcp_server;
 mod controlled_folder_access_app;
@@ -24,6 +44,7 @@ mod group_member;
 mod gsettings;
 mod initramfs_hook;
 mod kde_key;
+mod kwin_rule;
 mod login_shell;
 mod look_and_feel;
 mod machine_path_entry;
@@ -113,6 +134,10 @@ pub enum Setting {
     ControlledFolderAccessApp {
         path: String,
     },
+    /// A window rule named in KWin's rule list, which only exists or not.
+    KwinRule {
+        name: String,
+    },
 }
 
 /// The editor of a recorded extension that names none.
@@ -197,6 +222,7 @@ impl Setting {
             Self::ControlledFolderAccessApp { path } => {
                 Box::new(controlled_folder_access_app::ControlledFolderAccessApp { path })
             }
+            Self::KwinRule { name } => Box::new(kwin_rule::KwinRule { name }),
         }
     }
 

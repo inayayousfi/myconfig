@@ -1,7 +1,7 @@
 //! Windows: Winget.
 use std::fs;
 
-use myconfig_utils::{PackageSpec, PackageTool};
+use inayos_utils::{PackageSpec, PackageTool};
 use xshell::cmd;
 
 use super::{PackageManager, names};

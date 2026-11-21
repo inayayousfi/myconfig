@@ -1,0 +1,9 @@
+[Unit]
+Description=Watch for a failed InayOS boot guard check
+
+[Path]
+PathExists=/var/lib/inayos-guard/failed
+Unit=inayos-guard-notify.service
+
+[Install]
+WantedBy=graphical-session.target

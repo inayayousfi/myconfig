@@ -6,7 +6,7 @@ use xshell::cmd;
 use super::Kind;
 use crate::{Context, ModuleResult, support::config_home};
 
-const MISSING: &str = "__myconfig_missing__";
+const MISSING: &str = "__inayos_missing__";
 
 pub(super) struct KdeKey<'a> {
     pub file: &'a str,

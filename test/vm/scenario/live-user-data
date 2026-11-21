@@ -1,0 +1,8 @@
+#cloud-config
+# cloud-init on the live USB system reads this file from the NoCloud seed disc and lets root
+# log in over SSH with the xtask's key. disable_root off keeps the key usable for root.
+disable_root: false
+users:
+  - name: root
+    ssh_authorized_keys:
+      - @KEY@

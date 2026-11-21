@@ -5,7 +5,7 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use myconfig_utils::{PackageSystem, resolve_package};
+use inayos_utils::{PackageSystem, resolve_package};
 use xshell::Shell;
 
 use crate::{Context, Event, Interaction, Module, Package, Unanswered, state::StateStore};
@@ -41,7 +41,7 @@ pub fn unnamed_packages(
 ) -> Vec<(&'static str, Package)> {
     static RUNS: AtomicUsize = AtomicUsize::new(0);
     let home = std::env::temp_dir().join(format!(
-        "myconfig-unnamed-packages-{}-{}",
+        "inayos-unnamed-packages-{}-{}",
         std::process::id(),
         RUNS.fetch_add(1, Ordering::Relaxed)
     ));

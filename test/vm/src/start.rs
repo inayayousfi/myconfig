@@ -137,6 +137,7 @@ pub fn start(options: Options, repository: &Path) -> Result<Started, StartError>
     let spice = sockets.spice.clone();
     let machine = Machine {
         os,
+        boot: os.boot(),
         layer: layer.clone(),
         sockets,
         media: Media::default(),

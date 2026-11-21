@@ -1,0 +1,11 @@
+# Adds and trusts the InayOS key in pacman's keyring when that keyring exists, as Arch's own
+# keyring package does, and applies a new key or a revocation on each upgrade.
+post_upgrade() {
+    if usr/bin/pacman-key -l >/dev/null 2>&1; then
+        usr/bin/pacman-key --populate inayos
+    fi
+}
+
+post_install() {
+    post_upgrade
+}

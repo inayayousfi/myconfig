@@ -28,6 +28,10 @@ const PACKAGES: &[Package] = &[
 const LIFECYCLE: &str = "/usr/local/sbin/axidev-osk-install";
 const APP: &str = "/usr/local/bin/axidev-osk";
 const PAYLOAD: &str = "/opt/axidev-osk";
+/// The first Axidev release whose setup commands prepare a system that has not booted:
+/// they skip `modprobe` and `udevadm` and find the login manager from its unit file. An
+/// earlier release would leave the installed system without the login-screen keyboard.
+const OFFLINE_SETUP_VERSION: &str = "0.19.0";
 const LATEST_RELEASE: &str = "https://github.com/axide-dev/axidev-osk/releases/latest";
 const INSTALLER_URL: &str =
     "https://github.com/axide-dev/axidev-osk/releases/latest/download/axidev-osk-install";
@@ -75,6 +79,37 @@ fn installed_version(payload: &Path) -> ModuleResult<Option<String>> {
     Ok(None)
 }
 
+/// The numeric parts of a version such as `0.19.0`, for comparing two versions.
+fn version_parts(version: &str) -> ModuleResult<Vec<u64>> {
+    version
+        .split('.')
+        .map(|part| {
+            part.parse()
+                .map_err(|_| format!("Axidev version {version} is not numeric").into())
+        })
+        .collect()
+}
+
+/// Fails unless `version` is `OFFLINE_SETUP_VERSION` or later. `found` says where the
+/// version comes from.
+fn require_offline_setup(version: &str, found: &str) -> ModuleResult {
+    if version_parts(version)? < version_parts(OFFLINE_SETUP_VERSION)? {
+        return Err(format!(
+            "{found} is Axidev {version}, older than {OFFLINE_SETUP_VERSION}, the first release that sets up a system that has not booted"
+        )
+        .into());
+    }
+    Ok(())
+}
+
+/// Fails unless the payload in `payload` names a release that sets up a system that has
+/// not booted.
+fn require_installed_offline_setup(payload: &Path) -> ModuleResult {
+    let version = installed_version(payload)?
+        .ok_or_else(|| format!("{} holds no Axidev version", payload.display()))?;
+    require_offline_setup(&version, "the installed payload")
+}
+
 /// The version of the latest Axidev release. GitHub redirects the latest release page to
 /// the page of its tag, `.../releases/tag/v<version>`.
 fn latest_version(ctx: &Context) -> ModuleResult<String> {
@@ -96,6 +131,9 @@ fn latest_version(ctx: &Context) -> ModuleResult<String> {
 /// A fresh install records Axidev's uninstall, which covers its permissions, its autostart
 /// entry and the login-screen setup. Before it, the install records the uinput group and
 /// memberships that are still missing, so undo removes them after Axidev's uninstall.
+///
+/// It fails before any change when the latest release is older than
+/// `OFFLINE_SETUP_VERSION`, and before the setup when the installed payload still is.
 pub(crate) fn configure(
     ctx: &Context,
     lifecycle: &Path,
@@ -103,11 +141,13 @@ pub(crate) fn configure(
     payload: &Path,
 ) -> ModuleResult {
     let sh = ctx.shell;
-    ctx.install_packages(PACKAGES)?;
     require_programs(ctx, &["curl", "sudo"])?;
+    let latest = latest_version(ctx)?;
+    require_offline_setup(&latest, "the latest release")?;
+    ctx.install_packages(PACKAGES)?;
     let user = current_user(ctx)?;
     if require_executable(lifecycle).is_ok() {
-        if installed_version(payload)? != Some(latest_version(ctx)?) {
+        if installed_version(payload)? != Some(latest) {
             ctx.run(cmd!(sh, "sudo {lifecycle} upgrade --user {user}"))?;
         }
     } else {
@@ -132,9 +172,10 @@ pub(crate) fn configure(
         })?;
     }
     require_executable(app)?;
+    require_installed_offline_setup(payload)?;
     ctx.run(cmd!(sh, "sudo {app} linux setup-permissions --user {user}"))?;
     ctx.run(cmd!(sh, "{app} linux setup-autostart --user {user}"))?;
-    // The CachyOS profile runs Plasma Login Manager. Naming it skips the greeter setup's
+    // The desktop profile runs Plasma Login Manager. Naming it skips the greeter setup's
     // menu, its only question.
     ctx.run(cmd!(
         sh,
@@ -147,8 +188,9 @@ impl Module for AxidevOsk {
         "axidev-osk"
     }
 
+    /// The login-screen setup configures Plasma Login Manager, which kde-plasma installs.
     fn needs(&self) -> &'static [Need] {
-        &[Need::Hard("base")]
+        &[Need::Hard("base"), Need::Hard("kde-plasma")]
     }
 
     fn footprint(&self, ctx: &Context) -> Footprint {
@@ -172,6 +214,7 @@ impl Module for AxidevOsk {
         let sh = ctx.shell;
         verify_packages(ctx, PACKAGES)?;
         require_executable(Path::new(APP))?;
+        require_installed_offline_setup(Path::new(PAYLOAD))?;
         let user = current_user(ctx)?;
         ctx.run(cmd!(
             sh,

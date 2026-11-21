@@ -44,9 +44,9 @@ fn contents() -> &'static [u8] {
 fn allow_through_controlled_folder_access(ctx: &Context) -> ModuleResult {
     let pwsh = powershell_7(ctx)?;
     let writer = std::env::current_exe()?;
-    let check = "$p = Get-MpPreference -ErrorAction SilentlyContinue; if (-not $p -or $p.EnableControlledFolderAccess -ne 1) { 'off' } elseif ($p.ControlledFolderAccessAllowedApplications -contains $env:MYCONFIG_APP) { 'allowed' } else { 'blocked' }";
-    let state = ctx
-        .read(cmd!(ctx.shell, "{pwsh} -NoProfile -Command {check}").env("MYCONFIG_APP", &writer))?;
+    let check = "$p = Get-MpPreference -ErrorAction SilentlyContinue; if (-not $p -or $p.EnableControlledFolderAccess -ne 1) { 'off' } elseif ($p.ControlledFolderAccessAllowedApplications -contains $env:INAYOS_APP) { 'allowed' } else { 'blocked' }";
+    let state =
+        ctx.read(cmd!(ctx.shell, "{pwsh} -NoProfile -Command {check}").env("INAYOS_APP", &writer))?;
     if state != "blocked" {
         return Ok(());
     }

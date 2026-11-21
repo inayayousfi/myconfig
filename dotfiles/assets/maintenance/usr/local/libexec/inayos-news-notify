@@ -1,0 +1,19 @@
+#!/bin/sh
+# InayOS maintenance: shows a notification when unread Arch news announces a manual step.
+# The network often comes up after login, so it tries again every 30 seconds for up to 10
+# minutes while the feed cannot be read. Its "Read" button opens the news in a terminal,
+# which marks it read.
+tries=0
+until titles=$(/usr/bin/inayos-news --unread-manual); do
+  tries=$((tries + 1))
+  [ "$tries" -lt 20 ] || exit 0
+  sleep 30
+done
+[ -n "$titles" ] || exit 0
+answer=$(notify-send --app-name="InayOS" --urgency=critical --icon=dialog-warning \
+  --wait --action=read="Read" \
+  "Arch news announces a manual step" "$titles")
+if [ "$answer" = read ]; then
+  exec ghostty --title="Arch news" -e sh -c \
+    'inayos-news; printf "\nPress Enter to close. "; read -r _'
+fi

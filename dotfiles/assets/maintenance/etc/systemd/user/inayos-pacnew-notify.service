@@ -1,0 +1,9 @@
+# InayOS maintenance: a notification names the .pacnew files and offers to merge them.
+[Unit]
+Description=Notification of .pacnew files to merge
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/libexec/inayos-pacnew-notify

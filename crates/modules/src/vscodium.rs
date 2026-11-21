@@ -19,7 +19,8 @@ use crate::{
 pub struct Vscodium;
 
 const PACKAGES: &[Package] = &[Package::Vscodium, Package::Bsdtar];
-const ENTRY: &str = "vscodium.desktop";
+/// The entry that the AUR package `vscodium-bin` installs.
+const ENTRY: &str = "codium.desktop";
 const TEXT_TYPES: [&str; 6] = [
     "text/plain",
     "text/markdown",

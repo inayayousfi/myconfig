@@ -1,0 +1,10 @@
+[Unit]
+Description=InayOS boot guard check of this boot
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/inayos-guard check-boot
+
+[Install]
+WantedBy=multi-user.target

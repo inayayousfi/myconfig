@@ -4,6 +4,7 @@
 mod chrome;
 mod context;
 mod deploy;
+pub mod leftovers;
 mod package_manager;
 pub mod runner;
 mod setting;
@@ -13,8 +14,10 @@ mod support;
 mod tests;
 
 pub use chrome::Chrome;
-pub use context::{Context, Event, Interaction, ServiceScope, ServiceState, Step, Unanswered};
-pub use myconfig_utils::PackageSystem;
+pub use context::{
+    Applied, Context, Event, Interaction, RunMode, ServiceScope, ServiceState, Step, Unanswered,
+};
+pub use inayos_utils::PackageSystem;
 pub use package_catalog::Package;
 pub use setting::Setting;
 
@@ -28,20 +31,24 @@ mod autohotkey;
 mod axidev_osk;
 mod base;
 mod boot_config;
+mod boot_guard;
 mod bootvine;
-mod cachyos_setup;
 mod cli;
 mod docker;
+mod encryption;
 mod environment_inventory;
 mod flatpak;
 mod ghostty;
 mod git_config;
 mod handy;
+mod hibernation;
+mod inayos_repository;
 mod kanata;
 mod kanata_kde;
 mod kde_plasma;
 mod llvm_path;
 mod login;
+mod maintenance;
 mod math;
 mod media;
 mod oh_my_posh;
@@ -56,9 +63,12 @@ mod profile_packages;
 mod refind;
 mod registry_tweaks;
 mod runtimes;
+mod secure_boot;
 mod shared_desktop;
+mod snapshots;
 mod ssh;
 mod system_monitor;
+mod system_tuning;
 mod t3code;
 mod tailscale;
 mod taskbar_auto_hide;
@@ -77,20 +87,24 @@ pub use arch_wsl::ArchWsl;
 pub use autohotkey::AutoHotkey;
 pub use axidev_osk::AxidevOsk;
 pub use base::Base;
+pub use boot_guard::BootGuard;
 pub use bootvine::Bootvine;
-pub use cachyos_setup::CachyosSetup;
 pub use cli::Cli;
 pub use docker::Docker;
+pub use encryption::Encryption;
 pub use environment_inventory::EnvironmentInventory;
 pub use flatpak::Flatpak;
 pub use ghostty::Ghostty;
 pub use git_config::GitConfig;
 pub use handy::Handy;
+pub use hibernation::Hibernation;
+pub use inayos_repository::InayosRepository;
 pub use kanata::Kanata;
 pub use kanata_kde::KanataKde;
 pub use kde_plasma::KdePlasma;
 pub use llvm_path::LlvmPath;
 pub use login::Login;
+pub use maintenance::Maintenance;
 pub use math::Math;
 pub use media::Media;
 pub use oh_my_posh::OhMyPosh;
@@ -105,14 +119,17 @@ pub use profile_packages::unnamed_packages;
 pub use refind::Refind;
 pub use registry_tweaks::RegistryTweaks;
 pub use runtimes::Runtimes;
+pub use secure_boot::SecureBoot;
 pub use shared_desktop::SharedDesktop;
+pub use snapshots::Snapshots;
 
-/// Steps that `myconfig internal` runs on behalf of a module, such as an elevated child.
+/// Steps that `inayos internal` runs on behalf of a module, such as an elevated child.
 pub mod internal {
     pub use crate::shared_desktop::{elevated_move, elevated_move_back};
 }
 pub use ssh::{Ssh, SshServer};
 pub use system_monitor::SystemMonitor;
+pub use system_tuning::SystemTuning;
 pub use t3code::{T3Code, T3CodeDesktop};
 pub use tailscale::Tailscale;
 pub use taskbar_auto_hide::TaskbarAutoHide;

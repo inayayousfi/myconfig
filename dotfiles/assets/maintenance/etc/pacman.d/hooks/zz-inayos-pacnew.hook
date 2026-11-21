@@ -1,0 +1,13 @@
+# InayOS maintenance: after every transaction that installs or upgrades a package, looks
+# for .pacnew files again, so the notification comes right after the update. The search
+# runs in its service; --no-block lets the transaction end without waiting for it.
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = *
+
+[Action]
+Description = Looking for .pacnew files...
+When = PostTransaction
+Exec = /usr/bin/systemctl --no-block start inayos-pacnew.service

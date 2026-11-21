@@ -33,6 +33,10 @@ const SHOWN_DIFFERENCES: usize = 40;
 /// `NotKept` name where the failed layer is.
 #[derive(Debug, thiserror::Error)]
 pub enum CycleError {
+    #[error(
+        "no installer cycle runs on {0}; its image builds the USB stick, and the InayOS installer is tested with: cargo xtask vm usb build, then cargo xtask vm scenario <name>"
+    )]
+    NoCycle(Os),
     #[error("allowed-changes/{name}.txt is not valid: {error}")]
     Allowed {
         name: &'static str,
@@ -91,10 +95,13 @@ pub enum StepError {
 pub fn cycle(os: Os, watch: bool, repository: &Path) -> Result<(), CycleError> {
     let parse =
         |name, text| Allowed::parse(text).map_err(|error| CycleError::Allowed { name, error });
-    let allowed = parse(os.name(), compare::allowed_changes(os))?;
+    let Some(allowed) = compare::allowed_changes(os) else {
+        return Err(CycleError::NoCycle(os));
+    };
+    let allowed = parse(os.name(), allowed)?;
     let arch_wsl_allowed = match os {
         Os::Windows => Some(parse("arch-wsl", compare::ARCH_WSL_ALLOWED_CHANGES)?),
-        Os::Cachyos | Os::Ubuntu => None,
+        Os::Ubuntu | Os::Arch => None,
     };
     let mut started = start::start(
         Options {
@@ -176,7 +183,7 @@ impl Steps<'_> {
 
         let answers = Answers::new();
         let mut driver: Box<dyn Driver> = match self.os {
-            Os::Cachyos | Os::Ubuntu => Box::new(Terminal::new(self.guest, &answers)),
+            Os::Ubuntu | Os::Arch => Box::new(Terminal::new(self.guest, &answers)),
             Os::Windows => Box::new(Desktop::new(
                 self.guest,
                 &answers,

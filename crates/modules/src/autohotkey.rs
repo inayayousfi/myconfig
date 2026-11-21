@@ -14,7 +14,7 @@ use crate::{
 pub struct AutoHotkey;
 
 const SOURCE: &str = "dotfiles/AutoHotkey";
-const SHORTCUT: &str = "myconfig-autohotkey.lnk";
+const SHORTCUT: &str = "inayos-autohotkey.lnk";
 
 impl Module for AutoHotkey {
     fn name(&self) -> &'static str {
@@ -35,7 +35,7 @@ impl Module for AutoHotkey {
         if copy_embedded(ctx, files, Path::new(SOURCE), &destination)? == 0 {
             return Err("AutoHotkey resources are missing from the binary".into());
         }
-        let executable = destination.join("myconfig.exe");
+        let executable = destination.join("inayos.exe");
         if !executable.is_file() {
             return Ok(());
         }
@@ -59,7 +59,7 @@ impl Module for AutoHotkey {
             Path::new(SOURCE),
             &destination,
         )?;
-        if destination.join("myconfig.exe").is_file()
+        if destination.join("inayos.exe").is_file()
             && !startup_directory(ctx)?.join(SHORTCUT).is_file()
         {
             return Err("the AutoHotkey startup shortcut is missing".into());

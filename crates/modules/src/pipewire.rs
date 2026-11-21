@@ -4,13 +4,13 @@ use xshell::cmd;
 use crate::{
     Context, Footprint, Module, ModuleResult, Need, Package, ServiceScope,
     deploy::verify_package,
-    support::{graphical_session, require_executable, require_programs, verify_packages},
+    support::{require_executable, require_programs, verify_packages},
 };
 
 pub struct Pipewire;
 
 const PACKAGES: &[Package] = &[Package::Python, Package::Pyside6];
-const SERVICE: &str = "myconfig-pipewire-tray.service";
+const SERVICE: &str = "inayos-pipewire-tray.service";
 
 impl Module for Pipewire {
     fn name(&self) -> &'static str {
@@ -33,16 +33,15 @@ impl Module for Pipewire {
         ctx.install_packages(PACKAGES)?;
         require_programs(ctx, &["python", "systemctl", "pactl"])?;
         ctx.deploy_config("pipewire")?;
-        let tray = ctx.home.join(".local/bin/myconfig-pipewire-tray");
+        let tray = ctx.home.join(".local/bin/inayos-pipewire-tray");
         require_executable(&tray)?;
         ctx.run(cmd!(sh, "python -m py_compile {tray}"))?;
         ctx.enable_service(SERVICE, ServiceScope::User)?;
-        ctx.run(cmd!(sh, "systemctl --user daemon-reload"))?;
-        if graphical_session(ctx)? {
-            ctx.run(cmd!(sh, "systemctl --user restart {SERVICE}"))?;
-            ctx.run(cmd!(sh, "systemctl --user --quiet is-active {SERVICE}"))
+        ctx.reload_user_manager()?;
+        if ctx.graphical_session()? {
+            ctx.restart_service(SERVICE, ServiceScope::User).map(drop)
         } else {
-            ctx.run(cmd!(sh, "systemctl --user stop {SERVICE}"))
+            ctx.stop_service(SERVICE, ServiceScope::User)
         }
     }
 
@@ -50,7 +49,7 @@ impl Module for Pipewire {
         let sh = ctx.shell;
         verify_packages(ctx, PACKAGES)?;
         verify_package(ctx, "pipewire")?;
-        let tray = ctx.home.join(".local/bin/myconfig-pipewire-tray");
+        let tray = ctx.home.join(".local/bin/inayos-pipewire-tray");
         require_executable(&tray)?;
         ctx.run(cmd!(sh, "python -m py_compile {tray}"))?;
         ctx.run(cmd!(sh, "systemctl --user --quiet is-enabled {SERVICE}"))

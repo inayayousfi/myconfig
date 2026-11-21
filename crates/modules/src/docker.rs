@@ -2,7 +2,7 @@
 use xshell::cmd;
 
 use crate::{
-    Context, Footprint, Module, ModuleResult, Need, Package, ServiceScope, Setting,
+    Applied, Context, Footprint, Module, ModuleResult, Need, Package, ServiceScope, Setting,
     support::{current_user, verify_packages},
 };
 
@@ -21,6 +21,7 @@ const PACKAGES: &[Package] = &[
     Package::Uidmap,
 ];
 const CONTEXT: &str = "rootless";
+const SERVICE: &str = "docker.service";
 
 fn context() -> Setting {
     Setting::DockerContext {
@@ -103,13 +104,12 @@ impl Module for Docker {
         if self.setup_tool {
             create_user_unit(ctx)?;
         }
-        ctx.run(cmd!(sh, "systemctl --user daemon-reload"))?;
-        ctx.enable_service("docker.service", ServiceScope::User)?;
-        ctx.run(cmd!(sh, "systemctl --user start docker.service"))?;
-        let status = ctx.read(cmd!(sh, "systemctl --user is-active docker.service"))?;
-        if status != "active" {
-            return Err("the rootless docker.service user unit is not active".into());
-        }
+        ctx.reload_user_manager()?;
+        ctx.enable_service(SERVICE, ServiceScope::User)?;
+        let _ = ctx
+            .start_service(SERVICE, ServiceScope::User)
+            .map_err(|error| format!("the rootless Docker user service did not start: {error}"))?;
+        // The contexts live in the Docker client's own files, so they need no daemon.
         let uid = ctx.read(cmd!(sh, "id -u"))?;
         ctx.set(context(), &format!("unix:///run/user/{uid}/docker.sock"))?;
         ctx.set(Setting::DockerCurrentContext, CONTEXT)?;
@@ -118,6 +118,10 @@ impl Module for Docker {
 
     fn verify(&self, ctx: &Context) -> ModuleResult {
         verify_packages(ctx, PACKAGES)?;
+        // Before the installed system starts, no daemon answers `docker info`.
+        if ctx.require_active(SERVICE, ServiceScope::User)? == Applied::Deferred {
+            return Ok(());
+        }
         let format = "{{.SecurityOptions}}";
         let options = ctx.read(cmd!(ctx.shell, "docker info --format {format}"))?;
         if !options.contains("name=rootless") {

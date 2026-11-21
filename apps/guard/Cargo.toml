@@ -1,0 +1,11 @@
+[package]
+name = "inayos-guard-app"
+version.workspace = true
+edition = "2024"
+
+[[bin]]
+name = "inayos-guard"
+path = "src/main.rs"
+
+[dependencies]
+inayos-guard = { path = "../../crates/guard" }

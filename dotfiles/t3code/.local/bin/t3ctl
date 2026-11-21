@@ -17,7 +17,7 @@ ANY_HOST=0.0.0.0
 LOCAL_PORT=3773
 TAILSCALE_PORT=10000
 LAN_SUBNETS=(10.0.0.0/8 172.16.0.0/12 192.168.0.0/16)
-LAN_RULE_COMMENT='myconfig T3 Code LAN'
+LAN_RULE_COMMENT='inayos T3 Code LAN'
 
 if [[ -t 1 ]]; then
     BOLD=$'\e[1m'; RED=$'\e[31m'; GREEN=$'\e[32m'; YELLOW=$'\e[33m'; BLUE=$'\e[34m'; RESET=$'\e[0m'

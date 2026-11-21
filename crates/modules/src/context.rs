@@ -8,7 +8,7 @@ use std::{
     sync::mpsc,
 };
 
-use myconfig_utils::{PackageSpec, PackageSystem, find_program, resolve_package};
+use inayos_utils::{PackageSpec, PackageSystem, find_program, resolve_package};
 use package_catalog::Package;
 use serde::{Deserialize, Serialize};
 use xshell::{Cmd, Shell, cmd};
@@ -92,6 +92,28 @@ pub enum ServiceScope {
     User,
 }
 
+/// Where a run's changes take effect. The interface chooses it; modules never test it,
+/// and the `Context` methods that touch the running system answer for it.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum RunMode {
+    /// On the running system: services start now and the desktop session sees changes.
+    #[default]
+    Live,
+    /// Inside a never-booted system, run by the InayOS installer as the new user. Every
+    /// command gets `SYSTEMD_OFFLINE=1`, services are only enabled, and steps that act on
+    /// the running system wait until the installed system starts.
+    Installer,
+}
+
+/// Whether a step that needs the running system happened now, or waits until the installed
+/// system starts because the run is in installer mode.
+#[must_use]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Applied {
+    Now,
+    Deferred,
+}
+
 enum Mode {
     /// Output goes to the person.
     Stream,
@@ -107,6 +129,32 @@ struct Finished {
     stderr: Vec<u8>,
 }
 
+/// `command` with `SYSTEMD_OFFLINE=1`, which tells systemctl and Axidev that the system
+/// has not booted. sudo resets the environment, so a `sudo` command also asks it to keep
+/// the variable. sudo refuses that request unless the sudoers rule allows every command
+/// or carries the `SETENV` tag.
+fn offline(command: Command) -> Command {
+    let mut command = if Path::new(command.get_program()).file_name() == Some("sudo".as_ref()) {
+        let mut kept = Command::new(command.get_program());
+        kept.arg("--preserve-env=SYSTEMD_OFFLINE")
+            .args(command.get_args());
+        for (key, value) in command.get_envs() {
+            match value {
+                Some(value) => kept.env(key, value),
+                None => kept.env_remove(key),
+            };
+        }
+        if let Some(directory) = command.get_current_dir() {
+            kept.current_dir(directory);
+        }
+        kept
+    } else {
+        command
+    };
+    command.env("SYSTEMD_OFFLINE", "1");
+    command
+}
+
 pub struct Context<'a> {
     pub package_system: PackageSystem,
     pub shell: &'a Shell,
@@ -114,6 +162,7 @@ pub struct Context<'a> {
     io: &'a dyn Interaction,
     state: &'a RefCell<StateStore>,
     module: Cell<&'static str>,
+    run_mode: RunMode,
 }
 
 impl<'a> Context<'a> {
@@ -131,7 +180,26 @@ impl<'a> Context<'a> {
             io,
             state,
             module: Cell::new(""),
+            run_mode: RunMode::Live,
         }
+    }
+
+    /// The same context for a run in `mode`.
+    #[must_use]
+    pub fn with_run_mode(mut self, mode: RunMode) -> Self {
+        self.run_mode = mode;
+        self
+    }
+
+    fn installer_mode(&self) -> bool {
+        self.run_mode == RunMode::Installer
+    }
+
+    /// Shows a step that installer mode leaves for the installed system's first start.
+    fn deferred(&self, step: &str) {
+        self.io.output(&format!(
+            "Deferred until the installed system starts: {step}"
+        ));
     }
 
     pub(crate) fn set_module(&self, module: &'static str) {
@@ -155,10 +223,22 @@ impl<'a> Context<'a> {
 
     fn execute(&self, cmd: Cmd<'_>, input: Option<&[u8]>, mode: Mode) -> ModuleResult<Finished> {
         let display = cmd.to_string();
+        self.execute_command(Command::from(cmd), &display, input, mode)
+    }
+
+    fn execute_command(
+        &self,
+        mut command: Command,
+        display: &str,
+        input: Option<&[u8]>,
+        mode: Mode,
+    ) -> ModuleResult<Finished> {
         if matches!(mode, Mode::Stream) {
             self.io.output(&format!("$ {display}"));
         }
-        let mut command = Command::from(cmd);
+        if self.installer_mode() {
+            command = offline(command);
+        }
         command.stdin(if input.is_some() {
             Stdio::piped()
         } else {
@@ -215,7 +295,17 @@ impl<'a> Context<'a> {
 
     fn checked(&self, cmd: Cmd<'_>, input: Option<&[u8]>, mode: Mode) -> ModuleResult<Vec<u8>> {
         let display = cmd.to_string();
-        let finished = self.execute(cmd, input, mode)?;
+        self.checked_command(Command::from(cmd), &display, input, mode)
+    }
+
+    fn checked_command(
+        &self,
+        command: Command,
+        display: &str,
+        input: Option<&[u8]>,
+        mode: Mode,
+    ) -> ModuleResult<Vec<u8>> {
+        let finished = self.execute_command(command, display, input, mode)?;
         if !finished.status.success() {
             let detail = String::from_utf8_lossy(&finished.stderr);
             let detail = detail.trim();
@@ -272,8 +362,47 @@ impl<'a> Context<'a> {
         Ok(self.execute(cmd, None, Mode::Quiet)?.status.success())
     }
 
+    /// Runs a command that saves through the user's D-Bus session, such as `gsettings set`,
+    /// which saves nothing and still succeeds without one. Installer mode has no session
+    /// bus, so the command runs under its own `dbus-run-session`, with the user's
+    /// configuration folder.
+    pub fn run_with_session_bus(&self, cmd: Cmd<'_>) -> ModuleResult {
+        let display = cmd.to_string();
+        let command = Command::from(cmd);
+        if !self.installer_mode() {
+            return self
+                .checked_command(command, &display, None, Mode::Stream)
+                .map(drop);
+        }
+        let mut wrapped = Command::new("dbus-run-session");
+        wrapped
+            .arg("--")
+            .arg(command.get_program())
+            .args(command.get_args());
+        for (key, value) in command.get_envs() {
+            match value {
+                Some(value) => wrapped.env(key, value),
+                None => wrapped.env_remove(key),
+            };
+        }
+        if let Some(directory) = command.get_current_dir() {
+            wrapped.current_dir(directory);
+        }
+        wrapped.env("XDG_CONFIG_HOME", crate::support::config_home(self));
+        self.checked_command(
+            wrapped,
+            &format!("dbus-run-session -- {display}"),
+            None,
+            Mode::Stream,
+        )
+        .map(drop)
+    }
+
     /// Runs a program that talks to the terminal directly.
     pub fn with_terminal(&self, mut command: Command) -> ModuleResult {
+        if self.installer_mode() {
+            command = offline(command);
+        }
         let display = format!("{command:?}");
         let status = self
             .io
@@ -612,6 +741,28 @@ impl<'a> Context<'a> {
         crate::support::install_system_file(self, path, contents, mode)
     }
 
+    /// Records a root-owned file or link before a program changes it by itself, so
+    /// `remove` puts it back.
+    pub fn record_system_path(&self, path: &Path) -> ModuleResult {
+        let sh = self.shell;
+        let previous = if self.succeeds(cmd!(sh, "sudo test -L {path}"))? {
+            Previous::Link {
+                target: PathBuf::from(self.read(cmd!(sh, "sudo readlink {path}"))?),
+            }
+        } else if self.succeeds(cmd!(sh, "sudo test -f {path}"))? {
+            Previous::file(&self.read_bytes(cmd!(sh, "sudo cat {path}"))?, false)
+        } else if self.succeeds(cmd!(sh, "sudo test -e {path}"))? {
+            return Err(format!("expected a file or a link: {}", path.display()).into());
+        } else {
+            Previous::Missing
+        };
+        self.record(Change::File {
+            path: path.to_path_buf(),
+            system: true,
+            previous,
+        })
+    }
+
     /// Records a user file before a program changes it by itself.
     pub fn record_path(&self, path: &Path) -> ModuleResult {
         let mut missing = Vec::new();
@@ -661,6 +812,15 @@ impl<'a> Context<'a> {
         self.run(cmd!(sh, "sudo rm -f -- {path}"))
     }
 
+    /// Records a folder that a program is about to create, which `remove` deletes only
+    /// when it is empty, so files that others put in it later stay.
+    pub fn created_directory(&self, path: &Path, system: bool) -> ModuleResult {
+        self.record(Change::CreatedDirectory {
+            path: path.to_path_buf(),
+            system,
+        })
+    }
+
     /// Records a path that did not exist before this module created it.
     pub fn created(&self, path: &Path, system: bool) -> ModuleResult {
         self.record(Change::Created {
@@ -688,6 +848,7 @@ impl<'a> Context<'a> {
         })
     }
 
+    /// Enables a service so it starts at boot or login, without starting it.
     pub fn enable_service(&self, unit: &str, scope: ServiceScope) -> ModuleResult {
         if self.record_service(unit, scope)? {
             return Ok(());
@@ -702,10 +863,7 @@ impl<'a> Context<'a> {
     /// Records the enabled state of a service that a program is about to enable by itself.
     /// Returns whether the service is already enabled, which leaves nothing to record.
     pub fn record_service(&self, unit: &str, scope: ServiceScope) -> ModuleResult<bool> {
-        let user = scope_argument(scope);
-        let (_, state) =
-            self.read_unchecked(cmd!(self.shell, "systemctl {user...} is-enabled {unit}"))?;
-        if state == "enabled" {
+        if self.service_enabled(unit, scope)? {
             return Ok(true);
         }
         self.record(Change::Service {
@@ -716,16 +874,191 @@ impl<'a> Context<'a> {
         Ok(false)
     }
 
+    /// Whether a service starts at boot or login. `systemctl is-enabled` reads the unit
+    /// links, so it answers in installer mode too.
+    fn service_enabled(&self, unit: &str, scope: ServiceScope) -> ModuleResult<bool> {
+        let user = scope_argument(scope);
+        let (_, state) =
+            self.read_unchecked(cmd!(self.shell, "systemctl {user...} is-enabled {unit}"))?;
+        Ok(state == "enabled")
+    }
+
+    /// Whether a service runs now. Nothing runs in installer mode.
+    pub fn service_active(&self, unit: &str, scope: ServiceScope) -> ModuleResult<bool> {
+        if self.installer_mode() {
+            return Ok(false);
+        }
+        let user = scope_argument(scope);
+        self.succeeds(cmd!(
+            self.shell,
+            "systemctl {user...} --quiet is-active {unit}"
+        ))
+    }
+
     /// Whether a service is enabled, and whether it is active.
     pub fn service_state(&self, unit: &str, scope: ServiceScope) -> ModuleResult<ServiceState> {
-        let sh = self.shell;
-        let user: &[&str] = &scope_argument(scope);
-        let (_, enabled) =
-            self.read_unchecked(cmd!(sh, "systemctl {user...} is-enabled {unit}"))?;
         Ok(ServiceState {
-            enabled: enabled == "enabled",
-            active: self.succeeds(cmd!(sh, "systemctl {user...} --quiet is-active {unit}"))?,
+            enabled: self.service_enabled(unit, scope)?,
+            active: self.service_active(unit, scope)?,
         })
+    }
+
+    /// Fails unless a service runs now. In installer mode it fails unless the service is
+    /// enabled, so it starts once the installed system does.
+    pub fn require_active(&self, unit: &str, scope: ServiceScope) -> ModuleResult<Applied> {
+        if self.installer_mode() {
+            if !self.service_enabled(unit, scope)? {
+                return Err(format!(
+                    "{unit} is not enabled, so nothing starts it on the installed system"
+                )
+                .into());
+            }
+            return Ok(Applied::Deferred);
+        }
+        if !self.service_active(unit, scope)? {
+            return Err(format!("{unit} is not active").into());
+        }
+        Ok(Applied::Now)
+    }
+
+    /// Starts a service and checks that it runs. Installer mode only checks that the
+    /// service is enabled.
+    pub fn start_service(&self, unit: &str, scope: ServiceScope) -> ModuleResult<Applied> {
+        self.change_running(unit, scope, "start")
+    }
+
+    /// Restarts a service, so it reads its new configuration, and checks that it runs.
+    /// Installer mode only checks that the service is enabled.
+    pub fn restart_service(&self, unit: &str, scope: ServiceScope) -> ModuleResult<Applied> {
+        self.change_running(unit, scope, "restart")
+    }
+
+    fn change_running(
+        &self,
+        unit: &str,
+        scope: ServiceScope,
+        action: &str,
+    ) -> ModuleResult<Applied> {
+        if self.installer_mode() {
+            self.deferred(&format!("{action} {unit}"));
+            return self.require_active(unit, scope);
+        }
+        let sh = self.shell;
+        match scope {
+            ServiceScope::System => self.run(cmd!(sh, "sudo systemctl {action} {unit}"))?,
+            ServiceScope::User => self.run(cmd!(sh, "systemctl --user {action} {unit}"))?,
+        }
+        self.require_active(unit, scope)
+    }
+
+    /// Stops a running service. Nothing runs in installer mode, so there it does nothing.
+    pub fn stop_service(&self, unit: &str, scope: ServiceScope) -> ModuleResult {
+        if self.installer_mode() {
+            return Ok(());
+        }
+        let sh = self.shell;
+        match scope {
+            ServiceScope::System => self.run(cmd!(sh, "sudo systemctl stop {unit}")),
+            ServiceScope::User => self.run(cmd!(sh, "systemctl --user stop {unit}")),
+        }
+    }
+
+    /// Makes the user's systemd manager read changed unit files. Installer mode has no
+    /// running manager: the one that starts at the first login reads them anyway.
+    pub fn reload_user_manager(&self) -> ModuleResult {
+        if self.installer_mode() {
+            self.deferred("systemctl --user daemon-reload");
+            return Ok(());
+        }
+        self.run(cmd!(self.shell, "systemctl --user daemon-reload"))
+    }
+
+    /// Whether the user's systemd manager, which runs the user services, has `group` among
+    /// its groups. A login made after the group was added has it, but a manager that
+    /// started earlier keeps its old groups until every session of the user ends. In
+    /// installer mode the manager starts at the first login, after this run, so it has
+    /// every group the run added.
+    pub fn user_manager_has_group(&self, group: &str) -> ModuleResult<bool> {
+        if self.installer_mode() {
+            return Ok(true);
+        }
+        let sh = self.shell;
+        let manager = format!("user@{}.service", self.read(cmd!(sh, "id -u"))?);
+        let pid = self.read(cmd!(
+            sh,
+            "systemctl show --property=MainPID --value {manager}"
+        ))?;
+        if pid.is_empty() || pid == "0" {
+            return Ok(false);
+        }
+        let groups = self.read(cmd!(sh, "ps -o supgrp= -p {pid}"))?;
+        Ok(groups.split(',').any(|member| member.trim() == group))
+    }
+
+    /// Whether a graphical session of the user runs now. None runs in installer mode.
+    pub fn graphical_session(&self) -> ModuleResult<bool> {
+        self.service_active("graphical-session.target", ServiceScope::User)
+    }
+
+    /// Whether systemd keeps `user`'s services running without a login. Installer mode
+    /// has no running login manager, so it reads the file that the login manager keeps.
+    pub fn lingering(&self, user: &str) -> ModuleResult<bool> {
+        if self.installer_mode() {
+            return Ok(Path::new("/var/lib/systemd/linger").join(user).exists());
+        }
+        let (_, linger) = self.read_unchecked(cmd!(
+            self.shell,
+            "loginctl show-user {user} -p Linger --value"
+        ))?;
+        Ok(linger == "yes")
+    }
+
+    /// Whether systemd runs the services this run enables: the running system's systemd,
+    /// or in installer mode the installed system's, which always boots with it.
+    pub fn systemd_manages_services(&self) -> bool {
+        self.installer_mode() || Path::new("/run/systemd/system").is_dir()
+    }
+
+    /// Runs a step that acts on the running system rather than on files, such as loading
+    /// a kernel module or asking the running desktop to reload. In installer mode the
+    /// running system is the installer's own, so the step does not run: the installed
+    /// system does the same from its files when it starts. `step` names it in the output.
+    pub fn on_running_system(
+        &self,
+        step: &str,
+        action: impl FnOnce() -> ModuleResult,
+    ) -> ModuleResult<Applied> {
+        if self.installer_mode() {
+            self.deferred(step);
+            return Ok(Applied::Deferred);
+        }
+        action()?;
+        Ok(Applied::Now)
+    }
+
+    /// Runs a step that only the system an installer-mode run builds needs, because a
+    /// running system already has that part from whoever installed it, such as its boot
+    /// manager. On a running system the step does not run, and the module works with what
+    /// the system has.
+    pub fn on_new_system(&self, action: impl FnOnce() -> ModuleResult) -> ModuleResult {
+        if self.installer_mode() {
+            return action();
+        }
+        Ok(())
+    }
+
+    /// Reports that `missing`, a part of the system that a module builds on, was not
+    /// found. A running system may lack it, so there the run notes that it skips `skipped`
+    /// and the module goes on without it. The system an installer-mode run builds must
+    /// have it, so there it fails.
+    pub fn missing_part(&self, missing: &str, skipped: &str) -> ModuleResult {
+        if self.installer_mode() {
+            return Err(format!("{missing} was not found, which {skipped} needs").into());
+        }
+        self.note(&format!(
+            "Skipping {skipped} because {missing} was not found"
+        ));
+        Ok(())
     }
 
     /// Disables and stops a service after recording whether it was enabled and active.
@@ -755,10 +1088,16 @@ impl<'a> Context<'a> {
         if !now.enabled && !now.active {
             return Ok(());
         }
+        // Nothing runs in installer mode, so there is nothing to stop.
+        let stop: &[&str] = if self.installer_mode() {
+            &[]
+        } else {
+            &["--now"]
+        };
         let sh = self.shell;
         match scope {
-            ServiceScope::System => self.run(cmd!(sh, "sudo systemctl disable --now {unit}")),
-            ServiceScope::User => self.run(cmd!(sh, "systemctl --user disable --now {unit}")),
+            ServiceScope::System => self.run(cmd!(sh, "sudo systemctl disable {stop...} {unit}")),
+            ServiceScope::User => self.run(cmd!(sh, "systemctl --user disable {stop...} {unit}")),
         }
     }
 
@@ -832,7 +1171,7 @@ pub(crate) fn temporary_path(purpose: &str) -> PathBuf {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |elapsed| elapsed.as_nanos());
-    std::env::temp_dir().join(format!("myconfig-{purpose}-{}-{nanos}", std::process::id()))
+    std::env::temp_dir().join(format!("inayos-{purpose}-{}-{nanos}", std::process::id()))
 }
 
 /// Reads a pipe to the end, sending each line on when the output is streamed.

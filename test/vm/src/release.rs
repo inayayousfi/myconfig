@@ -21,7 +21,7 @@ pub enum ReleaseError {
 }
 
 /// What an image was built from. `release` is the identifier its source publishes: the
-/// CachyOS ISO number, the Ubuntu cloud image build serial, or the Windows version. `build`
+/// Ubuntu cloud image build serial, the Arch cloud image build version or the Windows version. `build`
 /// holds what only the installed guest can tell, which is the Windows build number.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Release {

@@ -5,55 +5,82 @@ use std::fmt;
 /// A guest system. Each one has its own clean image and its own installer profile.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
 pub enum Os {
-    Cachyos,
     Windows,
     Ubuntu,
+    /// Arch Linux. Its clean image hosts the build of the InayOS USB stick, and no installer
+    /// cycle runs on it: the scenarios test the InayOS installer from the stick.
+    Arch,
 }
 
 /// The account that every base image creates. The image builders use these values,
 /// and the runner uses them to log in and to answer `sudo`.
 pub const GUEST_USER: &str = "tester";
-pub const GUEST_PASSWORD: &str = "myconfig";
+pub const GUEST_PASSWORD: &str = "inayos";
 
 /// The Windows guest folder for the xtask's own scripts and logs. It sits outside the user
 /// profile, so the state lists never see it.
-pub const WINDOWS_TOOL_DIR: &str = r"C:\myconfig-vm";
+pub const WINDOWS_TOOL_DIR: &str = r"C:\inayos-vm";
 
 /// How a guest starts its firmware.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Boot {
     /// UEFI without Secure Boot and without a TPM.
     Uefi,
-    /// UEFI with the Secure Boot firmware build and a TPM 2.0 from swtpm, which Windows 11 requires.
+    /// UEFI with the Secure Boot firmware build and a TPM 2.0 from swtpm, which Windows 11
+    /// requires. A layer over another carries its TPM state, which holds what the TPM sealed.
     SecureUefiWithTpm,
+}
+
+impl Boot {
+    /// Whether the guest has a TPM 2.0 from swtpm.
+    pub fn has_tpm(self) -> bool {
+        self != Boot::Uefi
+    }
+
+    /// Whether a layer keeps TPM state that a guest needs and that a layer over it copies.
+    pub fn keeps_tpm_state(self) -> bool {
+        self == Boot::SecureUefiWithTpm
+    }
 }
 
 impl Os {
     pub fn name(self) -> &'static str {
         match self {
-            Os::Cachyos => "cachyos",
             Os::Windows => "windows",
             Os::Ubuntu => "ubuntu",
+            Os::Arch => "arch",
         }
     }
 
     pub fn memory_mib(self) -> u32 {
         match self {
-            Os::Windows => 8192,
-            Os::Cachyos | Os::Ubuntu => 4096,
+            // mkarchiso and the InayOS install both need more than 4 GiB.
+            Os::Windows | Os::Arch => 8192,
+            Os::Ubuntu => 4096,
+        }
+    }
+
+    /// The size of the clean image's disk in the `qemu-img` notation. The qcow2 file grows only
+    /// as the guest writes. The Windows disk leaves room beside Windows for an InayOS install
+    /// with the installer's default 150 GiB system, 20 GiB of home and the swap file.
+    pub fn disk_size(self) -> &'static str {
+        match self {
+            Os::Windows => "256G",
+            Os::Ubuntu | Os::Arch => "100G",
         }
     }
 
     pub fn boot(self) -> Boot {
         match self {
             Os::Windows => Boot::SecureUefiWithTpm,
-            Os::Cachyos | Os::Ubuntu => Boot::Uefi,
+            Os::Ubuntu | Os::Arch => Boot::Uefi,
         }
     }
 
-    /// Whether the guest can show a second display. Only the CachyOS desktop is tested with two.
+    /// Whether the guest can show a second display. Only a desktop guest is tested with two,
+    /// and no current guest is one.
     pub fn supports_second_display(self) -> bool {
-        self == Os::Cachyos
+        false
     }
 
     /// How long the first SSH login may take after the guest starts.
@@ -61,8 +88,13 @@ impl Os {
     pub fn ssh_timeout_secs(self) -> u64 {
         match self {
             Os::Windows => 20 * 60,
-            Os::Cachyos | Os::Ubuntu => 10 * 60,
+            Os::Ubuntu | Os::Arch => 10 * 60,
         }
+    }
+
+    /// Whether `cycle` and `run` test an installer on this system's clean image.
+    pub fn tests_installer(self) -> bool {
+        self != Os::Arch
     }
 }
 

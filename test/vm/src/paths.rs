@@ -6,9 +6,9 @@ use std::path::{Path, PathBuf};
 use crate::os::Os;
 
 /// Overrides the state folder, which holds images, throwaway disks, the SSH key and the lock.
-pub const STATE_VARIABLE: &str = "MYCONFIG_VM_STATE_DIR";
+pub const STATE_VARIABLE: &str = "INAYOS_VM_STATE_DIR";
 /// Overrides the download folder, which holds ISOs and cloud images.
-pub const CACHE_VARIABLE: &str = "MYCONFIG_VM_CACHE_DIR";
+pub const CACHE_VARIABLE: &str = "INAYOS_VM_CACHE_DIR";
 
 #[derive(Debug, thiserror::Error)]
 pub enum PathsError {
@@ -33,13 +33,13 @@ impl Paths {
         let pick = |variable: &'static str, xdg: &str, default: &str| {
             read(variable)
                 .map(PathBuf::from)
-                .or_else(|| read(xdg).map(|base| PathBuf::from(base).join("myconfig/vm")))
+                .or_else(|| read(xdg).map(|base| PathBuf::from(base).join("inayos/vm")))
                 .or_else(|| home.as_ref().map(|home| home.join(default)))
                 .ok_or(PathsError::NoHome(variable))
         };
         Ok(Paths {
-            state: pick(STATE_VARIABLE, "XDG_DATA_HOME", ".local/share/myconfig/vm")?,
-            cache: pick(CACHE_VARIABLE, "XDG_CACHE_HOME", ".cache/myconfig/vm")?,
+            state: pick(STATE_VARIABLE, "XDG_DATA_HOME", ".local/share/inayos/vm")?,
+            cache: pick(CACHE_VARIABLE, "XDG_CACHE_HOME", ".cache/inayos/vm")?,
         })
     }
 
@@ -78,9 +78,44 @@ impl Paths {
         Layer::new(self.state.join(os.name()).join("work"))
     }
 
-    /// The throwaway disk of the last failed cycle, kept until the next cycle of that OS.
+    /// The throwaway disk of the last failed cycle or USB stick build, kept until the next
+    /// one of that OS.
     pub fn failed(&self, os: Os) -> Layer {
         Layer::new(self.state.join(os.name()).join("failed"))
+    }
+
+    /// The InayOS USB stick image that `usb build` makes and the scenarios boot.
+    pub fn usb_iso(&self) -> PathBuf {
+        self.state.join("usb/inayos.iso")
+    }
+
+    /// The layer of the running scenario `name`: its target disk, UEFI variables, logs,
+    /// screenshots and answers files.
+    pub fn scenario_work(&self, name: &str) -> Layer {
+        Layer::new(self.state.join("scenario").join(name).join("work"))
+    }
+
+    /// The screenshots of the last passed run of the scenario `name`, kept until its next pass.
+    pub fn scenario_last_pass(&self, name: &str) -> PathBuf {
+        self.state.join("scenario").join(name).join("last-pass")
+    }
+
+    /// The kept installed disk in the scenario folder `folder`, such as `installed`: the disk,
+    /// UEFI variables and TPM state that the last passed run of the scenario that makes it left
+    /// right after the install, which other scenarios start from.
+    pub fn scenario_installed(&self, folder: &str) -> Layer {
+        Layer::new(self.state.join("scenario").join(folder))
+    }
+
+    /// The copy of the installed disk that a running scenario makes, which replaces
+    /// `scenario_installed(folder)` when the scenario passes.
+    pub fn scenario_installed_copy(&self, folder: &str) -> Layer {
+        Layer::new(self.state.join("scenario").join(format!("{folder}.new")))
+    }
+
+    /// The layer of the last failed run of the scenario `name`, kept until its next run.
+    pub fn scenario_failed(&self, name: &str) -> Layer {
+        Layer::new(self.state.join("scenario").join(name).join("failed"))
     }
 }
 

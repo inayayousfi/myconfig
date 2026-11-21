@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Prints the help line of a live-session terminal and any hibernated InayOS, then leaves
+# the user in a shell.
+set -u
+
+inayos-hibernation-check
+
+case "${1-}" in
+repair)
+  printf '%s\n' \
+    'Repair workspace.' \
+    '  Disks: testdisk, photorec, ddrescue, smartctl' \
+    '  Boot: efibootmgr, sbctl, refind-install, arch-chroot then mkinitcpio' \
+    '  Snapshots: snapper' \
+    '  Roll back to a snapshot, kernel included: sudo inayos-installer rollback' \
+    '  Arch wiki: Super+B, or epiphany https://wiki.archlinux.org' \
+    '  Network: nmtui for Wi-Fi' \
+    '  Installer screens closed: Super+I starts them again on workspace 1' \
+    '  Install without the screens: sudo inayos-installer install --answers FILE' ''
+  ;;
+esac
+
+exec zsh

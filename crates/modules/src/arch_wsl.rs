@@ -25,9 +25,9 @@ impl ArchWsl {
 
 type Value<T> = ModuleResult<T>;
 
-const ARCH_ASSET: &str = "myconfig-arch-wsl-x86_64-unknown-linux-musl";
+const ARCH_ASSET: &str = "inayos-arch-wsl-x86_64-unknown-linux-musl";
 const WSL_CONFIG: &str = "[general]\ninstanceIdleTimeout=-1\n\n[wsl2]\nvmIdleTimeout=-1\n";
-const SHORTCUT: &str = "myconfig-wsl-autostart.lnk";
+const SHORTCUT: &str = "inayos-wsl-autostart.lnk";
 const SHUTDOWN_QUESTION: &str =
     "The setup will shut down all running WSL distributions to apply Arch WSL settings. Continue?";
 
@@ -35,7 +35,7 @@ const SHUTDOWN_QUESTION: &str =
 enum ArchInstaller {
     /// The URL of this release's asset, checked against its published SHA-256.
     Release(String),
-    /// A file already on this computer, as a path inside WSL. `MYCONFIG_ARCH_WSL_BINARY`
+    /// A file already on this computer, as a path inside WSL. `INAYOS_ARCH_WSL_BINARY`
     /// names it, so a test can run an installer built from a working tree.
     Local(String),
 }
@@ -43,7 +43,7 @@ enum ArchInstaller {
 fn arch_installer(ctx: &Context) -> Value<ArchInstaller> {
     let Some(path) = ctx
         .shell
-        .var_os("MYCONFIG_ARCH_WSL_BINARY")
+        .var_os("INAYOS_ARCH_WSL_BINARY")
         .filter(|value| !value.is_empty())
     else {
         return Ok(ArchInstaller::Release(format!(
@@ -54,21 +54,21 @@ fn arch_installer(ctx: &Context) -> Value<ArchInstaller> {
     };
     let path = PathBuf::from(path);
     if !path.is_file() {
-        return Err(format!("MYCONFIG_ARCH_WSL_BINARY names no file: {}", path.display()).into());
+        return Err(format!("INAYOS_ARCH_WSL_BINARY names no file: {}", path.display()).into());
     }
     Ok(ArchInstaller::Local(windows_path_in_wsl(&path)?))
 }
 
 /// Where the releases of this repository publish their assets, one folder per tag.
-/// release.yml embeds it in a published binary, and `MYCONFIG_RELEASE_BASE` replaces it
+/// release.yml embeds it in a published binary, and `INAYOS_RELEASE_BASE` replaces it
 /// at run time.
 fn release_base(ctx: &Context) -> Value<String> {
     let base = ctx
         .shell
-        .var("MYCONFIG_RELEASE_BASE")
+        .var("INAYOS_RELEASE_BASE")
         .ok()
         .filter(|base| !base.is_empty())
-        .or_else(|| option_env!("MYCONFIG_RELEASE_BASE").map(str::to_owned))
+        .or_else(|| option_env!("INAYOS_RELEASE_BASE").map(str::to_owned))
         .ok_or(
             "release location is unavailable; Arch WSL setup needs its matching Linux release",
         )?;
@@ -79,9 +79,9 @@ fn release_base(ctx: &Context) -> Value<String> {
 }
 
 fn release_tag(ctx: &Context) -> Value<String> {
-    let tag = option_env!("MYCONFIG_RELEASE_TAG")
+    let tag = option_env!("INAYOS_RELEASE_TAG")
         .map(str::to_owned)
-        .or_else(|| ctx.shell.var("MYCONFIG_RELEASE_TAG").ok())
+        .or_else(|| ctx.shell.var("INAYOS_RELEASE_TAG").ok())
         .ok_or("release tag is unavailable; Arch WSL setup needs its matching Linux release")?;
     if !tag.starts_with('v')
         || tag.len() < 2
@@ -124,7 +124,7 @@ fn windows_path_in_wsl(path: &Path) -> Value<String> {
 fn distro_name(ctx: &Context) -> Value<String> {
     let distro = match ctx
         .shell
-        .var_os("MYCONFIG_WSL_DISTRO")
+        .var_os("INAYOS_WSL_DISTRO")
         .filter(|value| !value.is_empty())
     {
         Some(value) => value
@@ -322,9 +322,9 @@ fn download_and_run_arch(ctx: &Context, distro: &str, installer: &ArchInstaller)
     let sh = ctx.shell;
     let directory = ctx.read(cmd!(
         sh,
-        "wsl.exe -d {distro} --exec mktemp -d /tmp/myconfig-arch.XXXXXXXX"
+        "wsl.exe -d {distro} --exec mktemp -d /tmp/inayos-arch.XXXXXXXX"
     ))?;
-    if !directory.starts_with("/tmp/myconfig-arch.") || directory.contains(char::is_whitespace) {
+    if !directory.starts_with("/tmp/inayos-arch.") || directory.contains(char::is_whitespace) {
         return Err("WSL returned an unexpected temporary directory".into());
     }
     let result = (|| -> ModuleResult {
@@ -382,7 +382,7 @@ fn run_arch(ctx: &Context, distro: &str, binary: &str) -> ModuleResult {
     } else {
         String::new()
     };
-    let ssh_env = format!("MYCONFIG_WINDOWS_SSH={ssh}");
+    let ssh_env = format!("INAYOS_WINDOWS_SSH={ssh}");
     // With the console attached, the installer inside can ask whether to turn on its SSH
     // server and to log in to the GitHub CLI and Tailscale.
     let mut command = std::process::Command::new(ctx.find_program("wsl.exe")?);
@@ -487,7 +487,7 @@ impl Module for ArchWsl {
                 ))?)
             && (!foreign
                 || ctx.confirm(&format!(
-                    "The WSL distribution {distro} exists, and myconfig did not create it. Unregister it, delete everything inside it, and create a new one? Remove cannot bring it back."
+                    "The WSL distribution {distro} exists, and InayOS did not create it. Unregister it, delete everything inside it, and create a new one? Remove cannot bring it back."
                 ))?);
         if !accepted {
             ctx.note("Arch WSL not set up; the next install asks again");

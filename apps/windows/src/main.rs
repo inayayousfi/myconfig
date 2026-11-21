@@ -1,7 +1,7 @@
 use std::process::ExitCode;
 
-use myconfig_interface::Profile;
-use myconfig_modules::*;
+use inayos_interface::Profile;
+use inayos_modules::*;
 
 static MODULES: &[&dyn Module] = &[
     &PackageGroup::BASE,
@@ -31,7 +31,7 @@ fn main() -> ExitCode {
         eprintln!("error: the Windows Workstation installer requires Windows");
         return ExitCode::FAILURE;
     }
-    myconfig_interface::main(Profile {
+    inayos_interface::main(Profile {
         title: "Windows Workstation",
         package_system: PACKAGE_SYSTEM,
         modules: MODULES,
@@ -40,7 +40,7 @@ fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
-    use myconfig_modules::{runner::need_problems, unnamed_packages};
+    use inayos_modules::{runner::need_problems, unnamed_packages};
 
     use super::{MODULES, PACKAGE_SYSTEM};
 

@@ -1,0 +1,12 @@
+# InayOS hibernation: the swap file on the home partition, as large as the memory, where
+# the system hibernates. Priority 0 keeps zram, at priority 100, the swap that the system
+# uses first.
+[Unit]
+Description=InayOS hibernation swap file
+
+[Swap]
+What=/home/swapfile
+Priority=0
+
+[Install]
+WantedBy=swap.target

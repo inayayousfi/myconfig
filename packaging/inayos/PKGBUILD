@@ -1,0 +1,53 @@
+# The InayOS package: the inayos program of the InayOS desktop profile, the boot guard and
+# its pacman hook, and the Arch news reader. It builds from the repository it sits in, so
+# it has no source to download.
+#
+# Environment:
+#   INAYOS_BINARY_DIR  a folder that already holds the inayos, inayos-guard and inayos-news
+#                      binaries, which are then packaged as they are instead of built
+#   INAYOS_PKGREL      the package release, 1 when unset
+#   CARGO_TARGET_DIR   where cargo builds, the repository's target folder when unset
+
+_root=$(cd "$startdir/../.." && pwd)
+_target=x86_64-unknown-linux-musl
+
+pkgname=inayos
+pkgver=$(sed -n 's/^version = "\(.*\)"$/\1/p' "$_root/Cargo.toml" | head -n 1)
+pkgrel=${INAYOS_PKGREL:-1}
+pkgdesc="InayOS: the desktop profile installer, the boot guard and the Arch news reader"
+arch=('x86_64')
+url="https://github.com/inayayousfi/myconfig"
+depends=()
+makedepends=('cargo' 'rust-musl' 'musl')
+# The binaries are static musl builds: makepkg's debug package and LTO flags do not apply.
+options=('!debug' '!lto')
+
+_binaries() {
+    if [[ -n ${INAYOS_BINARY_DIR:-} ]]; then
+        printf '%s\n' "$INAYOS_BINARY_DIR"
+    else
+        printf '%s\n' "${CARGO_TARGET_DIR:-$_root/target}/$_target/release"
+    fi
+}
+
+build() {
+    if [[ -n ${INAYOS_BINARY_DIR:-} ]]; then
+        return
+    fi
+    export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$_root/target}"
+    cargo build --release --locked --manifest-path "$_root/Cargo.toml" --target "$_target" \
+        -p inayos-arch-desktop -p inayos-guard-app -p inayos-news-app
+    # cargo names the profile binary after its package.
+    install -m 755 "$CARGO_TARGET_DIR/$_target/release/inayos-arch-desktop" \
+        "$CARGO_TARGET_DIR/$_target/release/inayos"
+}
+
+package() {
+    local binaries
+    binaries=$(_binaries)
+    install -D -m 755 "$binaries/inayos" "$pkgdir/usr/bin/inayos"
+    install -D -m 755 "$binaries/inayos-guard" "$pkgdir/usr/bin/inayos-guard"
+    install -D -m 755 "$binaries/inayos-news" "$pkgdir/usr/bin/inayos-news"
+    install -D -m 644 "$startdir/zzz-inayos-guard.hook" \
+        "$pkgdir/usr/share/libalpm/hooks/zzz-inayos-guard.hook"
+}

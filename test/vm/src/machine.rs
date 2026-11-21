@@ -44,10 +44,12 @@ pub struct Media {
 #[derive(Clone, Debug)]
 pub struct Machine {
     pub os: Os,
+    /// The firmware build and TPM. Each system has its own, and a scenario may choose another.
+    pub boot: Boot,
     pub layer: Layer,
     pub sockets: Sockets,
     pub media: Media,
-    /// 1, or 2 for a CachyOS guest tested with a second display.
+    /// 1, or 2 for a guest tested with a second display.
     pub displays: u8,
     /// The host file that receives the guest's first serial port, which image installers
     /// use to report their progress.
@@ -57,12 +59,12 @@ pub struct Machine {
 impl Machine {
     pub fn qemu_args(&self) -> Vec<OsString> {
         let mut args = Args::default();
-        let secure = self.os.boot() == Boot::SecureUefiWithTpm;
+        let secure = self.boot == Boot::SecureUefiWithTpm;
         let windows = self.os == Os::Windows;
 
         // -nodefaults leaves out QEMU's own display, network card and empty CD drive, so the
         // guest has exactly the devices below.
-        args.push(["-nodefaults", "-name", &format!("myconfig-{}", self.os)]);
+        args.push(["-nodefaults", "-name", &format!("inayos-{}", self.os)]);
         if secure {
             args.push(["-machine", "q35,accel=kvm,smm=on"]);
             args.push(["-global", "driver=cfi.pflash01,property=secure,value=on"]);
@@ -75,7 +77,7 @@ impl Machine {
         args.push_path(
             "-drive",
             "if=pflash,format=raw,unit=0,readonly=on,file=",
-            &Firmware::for_boot(self.os.boot()).code,
+            &Firmware::for_boot(self.boot).code,
         );
         args.push_path(
             "-drive",
@@ -157,7 +159,7 @@ impl Machine {
 
         args.push_path_then("-qmp", "unix:", &self.sockets.qmp, ",server=on,wait=off");
 
-        if secure {
+        if self.boot.has_tpm() {
             args.push_path("-chardev", "socket,id=tpm,path=", &self.sockets.tpm);
             args.push([
                 "-tpmdev",
@@ -209,6 +211,7 @@ mod tests {
     fn machine(os: Os, dir: &str) -> Machine {
         Machine {
             os,
+            boot: os.boot(),
             layer: Layer::new(PathBuf::from(dir).join("work")),
             sockets: Sockets::in_dir(Path::new("/state/run")),
             media: Media::default(),
@@ -232,7 +235,7 @@ mod tests {
 
     #[test]
     fn ssh_reaches_the_guest_only_from_the_host_loopback() {
-        for os in [Os::Cachyos, Os::Ubuntu, Os::Windows] {
+        for os in [Os::Ubuntu, Os::Windows] {
             let netdev = values(&machine(os, "/state"), "-netdev");
             assert_eq!(
                 netdev,
@@ -244,13 +247,13 @@ mod tests {
 
     #[test]
     fn a_linux_guest_has_a_spice_display_with_the_agent_channel_and_its_outputs() {
-        let mut cachyos = machine(Os::Cachyos, "/state");
-        cachyos.displays = 2;
+        let mut ubuntu = machine(Os::Ubuntu, "/state");
+        ubuntu.displays = 2;
         assert_eq!(
-            values(&cachyos, "-spice"),
+            values(&ubuntu, "-spice"),
             ["unix=on,disable-ticketing=on,addr=/state/run/spice.sock"]
         );
-        let devices = values(&cachyos, "-device");
+        let devices = values(&ubuntu, "-device");
         assert!(devices.contains(&"qxl-vga,xres=1920,yres=1080,max_outputs=2".to_owned()));
         assert!(
             devices.contains(&"virtserialport,chardev=vdagent,name=com.redhat.spice.0".to_owned())
@@ -274,6 +277,25 @@ mod tests {
             values(&windows, "-tpmdev"),
             ["emulator,id=tpm0,chardev=tpm"]
         );
+    }
+
+    #[test]
+    fn a_linux_guest_can_start_with_secure_firmware_and_a_tpm() {
+        let mut arch = machine(Os::Arch, "/state");
+        arch.boot = Boot::SecureUefiWithTpm;
+        assert!(values(&arch, "-machine")[0].contains("smm=on"));
+        assert!(
+            values(&arch, "-drive")[0].ends_with("/OVMF_CODE.secboot.4m.fd"),
+            "{:?}",
+            values(&arch, "-drive")
+        );
+        let devices = values(&arch, "-device");
+        for device in [
+            "tpm-crb,tpmdev=tpm0",
+            "virtio-blk-pci,drive=disk,bootindex=0",
+        ] {
+            assert!(devices.contains(&device.to_owned()), "{device}");
+        }
     }
 
     #[test]

@@ -5,7 +5,7 @@
 //! An image is built in its own folder and replaces the clean image only when it is complete,
 //! so a failed build leaves the previous image as it was.
 
-mod cachyos;
+mod arch;
 mod ubuntu;
 mod windows;
 
@@ -30,12 +30,10 @@ use crate::seed::{self, SeedError, SeedFile};
 use crate::ssh::{Guest, SshError, SshKey};
 use crate::vm::{Vm, VmError};
 
-/// The size of a new guest disk. The qcow2 file grows only as the guest writes.
-const DISK_SIZE: &str = "100G";
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 const POLL: Duration = Duration::from_secs(5);
 /// An installer script writes this line to the first serial port when it fails.
-const FAILED_MARKER: &str = "myconfig-image: failed";
+const FAILED_MARKER: &str = "inayos-image: failed";
 
 /// The current release at a system's source, and the file to install it from.
 #[derive(Clone, Debug)]
@@ -119,8 +117,6 @@ pub enum ImageError {
     QemuImgSpawn(io::Error),
     #[error("qemu-img could not prepare {0}: {1}")]
     QemuImg(PathBuf, String),
-    #[error("the installation did not start; its serial output is in {serial}")]
-    NotStarted { serial: PathBuf },
     #[error("the installation failed; see {serial} and the last screen in {screen}")]
     InstallFailed { serial: PathBuf, screen: PathBuf },
     #[error(
@@ -146,17 +142,17 @@ pub enum ImageError {
 /// The release the source of `os` lists now.
 pub fn latest_release(os: Os) -> Result<String, SourceError> {
     match os {
-        Os::Cachyos => cachyos::latest_release(),
         Os::Windows => windows::latest_release(),
         Os::Ubuntu => ubuntu::latest_release(),
+        Os::Arch => arch::latest_release(),
     }
 }
 
 fn source(os: Os) -> Result<Source, SourceError> {
     match os {
-        Os::Cachyos => cachyos::source(),
         Os::Windows => windows::source(),
         Os::Ubuntu => ubuntu::source(),
+        Os::Arch => arch::source(),
     }
 }
 
@@ -231,7 +227,7 @@ impl Build {
                 command
                     .args(["create", "-q", "-f", "qcow2"])
                     .arg(&disk)
-                    .arg(DISK_SIZE);
+                    .arg(self.os.disk_size());
             })?,
             SourceKind::Disk => {
                 qemu_img(&disk, |command| {
@@ -241,7 +237,10 @@ impl Build {
                         .arg(&disk);
                 })?;
                 qemu_img(&disk, |command| {
-                    command.args(["resize", "-q"]).arg(&disk).arg(DISK_SIZE);
+                    command
+                        .args(["resize", "-q"])
+                        .arg(&disk)
+                        .arg(self.os.disk_size());
                 })?;
             }
         }
@@ -259,11 +258,6 @@ impl Build {
         public_key: &str,
     ) -> Result<(), ImageError> {
         let (label, files, timeout): (&str, Vec<SeedFile>, Duration) = match self.os {
-            Os::Cachyos => (
-                cachyos::SEED_LABEL,
-                cachyos::seed_files(public_key),
-                cachyos::INSTALL_TIMEOUT,
-            ),
             Os::Windows => (
                 windows::SEED_LABEL,
                 windows::seed_files(public_key),
@@ -273,6 +267,11 @@ impl Build {
                 ubuntu::SEED_LABEL,
                 ubuntu::seed_files(public_key),
                 ubuntu::INSTALL_TIMEOUT,
+            ),
+            Os::Arch => (
+                arch::SEED_LABEL,
+                arch::seed_files(public_key),
+                arch::INSTALL_TIMEOUT,
             ),
         };
         let seed_iso = self.folder.join("seed.iso");
@@ -289,9 +288,8 @@ impl Build {
         );
         let mut vm = Vm::start(&self.machine(media, &serial), &self.runtime, self.watch)?;
         match self.os {
-            Os::Cachyos => cachyos::start_install(&mut vm, &serial)?,
             Os::Windows => windows::start_install(&mut vm)?,
-            Os::Ubuntu => {}
+            Os::Ubuntu | Os::Arch => {}
         }
 
         let deadline = Instant::now() + timeout;
@@ -335,12 +333,12 @@ impl Build {
         guest.wait_until_ready(&mut vm, Duration::from_secs(self.os.ssh_timeout_secs()))?;
         let build = match self.os {
             Os::Windows => Some(windows::build_number(&guest)?),
-            Os::Cachyos | Os::Ubuntu => None,
+            Os::Ubuntu | Os::Arch => None,
         };
 
         let shutdown = match self.os {
             Os::Windows => "shutdown /s /t 0".to_owned(),
-            Os::Cachyos | Os::Ubuntu => {
+            Os::Ubuntu | Os::Arch => {
                 format!("printf '%s\\n' '{GUEST_PASSWORD}' | sudo -S -p '' systemctl poweroff")
             }
         };
@@ -366,6 +364,7 @@ impl Build {
     fn machine(&self, media: Media, serial: &Path) -> Machine {
         Machine {
             os: self.os,
+            boot: self.os.boot(),
             layer: self.layer.clone(),
             sockets: Sockets::in_dir(&self.runtime),
             media,

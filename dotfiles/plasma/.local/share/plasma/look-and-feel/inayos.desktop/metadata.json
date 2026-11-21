@@ -1,0 +1,9 @@
+{
+    "KPackageStructure": "Plasma/LookAndFeel",
+    "KPlugin": {
+        "Description": "Breeze Dark with the InayOS top bar and dock",
+        "Id": "inayos.desktop",
+        "License": "GPLv2+",
+        "Name": "InayOS"
+    }
+}

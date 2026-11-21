@@ -80,7 +80,7 @@ pub fn seed_files(public_key: &str) -> Vec<SeedFile> {
         },
         SeedFile {
             name: "meta-data",
-            content: "instance-id: myconfig-ubuntu\nlocal-hostname: myconfig-ubuntu\n".to_owned(),
+            content: "instance-id: inayos-ubuntu\nlocal-hostname: inayos-ubuntu\n".to_owned(),
             executable: false,
         },
     ]

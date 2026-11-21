@@ -1,0 +1,54 @@
+# These lines are appended to releng's packages.x86_64.
+
+# Networking, for the installer's mirror access and the live Wi-Fi.
+# polkit lets the user of the active local session change connections.
+networkmanager
+polkit
+
+# Live session: Sway, Ghostty, and the software renderer used when no GPU driver loads.
+sway
+swaybg
+ghostty
+mesa
+ttf-dejavu
+
+# Run-time libraries of the installer's screens: winit loads the Wayland client and cursor
+# libraries and libxkbcommon when it starts. Its font is built into the binary.
+wayland
+libxkbcommon
+
+# Axidev OSK runtime, as its Linux release requires it.
+python
+pyside6
+qt6-wayland
+layer-shell-qt
+libinput
+systemd
+libxkbcommon
+
+# Repair workspace. Releng also lists some of these; pacman skips the duplicates.
+testdisk
+ddrescue
+smartmontools
+efibootmgr
+sbctl
+refind
+snapper
+mkinitcpio
+arch-install-scripts
+btrfs-progs
+e2fsprogs
+dosfstools
+gptfdisk
+
+# Installs beside Windows: ntfs-3g.probe and ntfsresize check and shrink the Windows partition.
+# Releng lists it too.
+ntfs-3g
+
+# Encrypted installs: the installer formats and enrolls the LUKS2 volumes, and the TPM
+# libraries let systemd-cryptenroll reach the TPM. Releng lists them too.
+cryptsetup
+tpm2-tss
+
+# Browser for the Arch wiki.
+epiphany

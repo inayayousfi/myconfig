@@ -9,7 +9,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use myconfig_interface::UNANSWERED;
+use inayos_interface::UNANSWERED;
 
 pub use desktop::Desktop;
 pub use terminal::Terminal;

@@ -28,7 +28,8 @@ impl Kind for LookAndFeel {
     fn write(&self, ctx: &Context, value: &str) -> ModuleResult {
         ctx.run(
             cmd!(ctx.shell, "plasma-apply-lookandfeel --apply {value}")
-                .env("QT_QPA_PLATFORM", "offscreen"),
+                .env("QT_QPA_PLATFORM", "offscreen")
+                .env("XDG_CONFIG_DIRS", super::kde_config_dirs(ctx)),
         )
     }
 

@@ -39,6 +39,7 @@ static MODULES: &[&dyn Module] = &[
         start_at_login: false,
     },
     &KdePlasma,
+    &BootRescue,
     &Printing,
     &KanataKde,
     &Handy,

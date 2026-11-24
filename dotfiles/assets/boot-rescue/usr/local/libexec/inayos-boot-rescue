@@ -1,0 +1,223 @@
+#!/bin/bash
+# InayOS boot rescue. inayos-boot-rescue.service runs `watch` from the start of each boot.
+# It ends as soon as a graphical session (the login screen or a desktop) is active on
+# seat0. Until then it restarts plasmalogin when it runs without a session, and opens the
+# rescue console on tty9 when the boot is stuck, in emergency or rescue mode, or when
+# plasmalogin failed RESTARTS times. The console runs Claude Code as the user the module
+# was installed for, who runs sudo without a password, with the boot's context in a
+# prompt, or a shell when Claude cannot run.
+#
+# `rescue REASON` opens the console at once, which tests it on a running system:
+#   sudo systemd-run --unit=inayos-boot-rescue-test /usr/local/libexec/inayos-boot-rescue rescue test
+# runuser opens a logind session for the console, so `sudo pkill -t tty9` closes it.
+set -u
+
+RUN=/run/inayos-boot-rescue
+CONTEXT=$RUN/context.md
+CONFIG=/etc/inayos-boot-rescue.conf
+DISPLAY_MANAGER=plasmalogin.service
+CONSOLE=9
+# Seconds that plasmalogin may run without an active session before a restart.
+SESSION_WAIT=30
+# Seconds after the watcher started, or after its last restart of the login screen, after
+# which a boot that still has jobs and no session is stuck. The watcher starts when the
+# initramfs hands over, so the time spent there, such as typing a recovery key, does not
+# count.
+STUCK_AFTER=120
+RESTARTS=3
+
+attempts=()
+
+say() { printf 'inayos-boot-rescue: %s\n' "$*"; }
+
+uptime_seconds() { cut -d. -f1 /proc/uptime; }
+
+# Succeeds when the active session of seat0 is a graphical greeter or user session.
+graphical_session_active() {
+  local session type
+  session=$(loginctl show-seat seat0 -p ActiveSession --value 2>/dev/null) || return 1
+  [ -n "$session" ] || return 1
+  type=$(loginctl show-session "$session" -p Type --value 2>/dev/null) || return 1
+  [ "$type" = wayland ] || [ "$type" = x11 ]
+}
+
+pending_jobs() { systemctl list-jobs --no-legend --no-pager 2>/dev/null; }
+
+# The user the console runs as, whom the module's sudo rule names.
+rescue_user() {
+  local user
+  user=$(sed -n 's/^RESCUE_USER=//p' "$CONFIG" 2>/dev/null | head -n 1)
+  if [ -n "$user" ] && id -u "$user" >/dev/null 2>&1; then
+    printf '%s' "$user"
+  fi
+}
+
+section() {
+  printf '\n## %s\n\n```\n' "$1"
+  shift
+  "$@" 2>&1 | tail -n 200
+  printf '```\n'
+}
+
+write_context() {
+  local reason=$1
+  mkdir -p "$RUN"
+  {
+    printf '# Boot rescue context\n\n'
+    printf 'Reason: %s\n\n' "$reason"
+    printf 'Seconds since boot: %s\n\n' "$(uptime_seconds)"
+    printf 'What the watcher already did:\n'
+    if [ "${#attempts[@]}" -eq 0 ]; then
+      printf -- '- nothing\n'
+    else
+      printf -- '- %s\n' "${attempts[@]}"
+    fi
+    section 'systemctl is-system-running' systemctl is-system-running
+    section 'Failed units' systemctl --failed --no-pager
+    section 'Pending jobs' systemctl list-jobs --no-pager
+    section 'Sessions' loginctl list-sessions --no-pager
+    section 'plasmalogin and bootvine journal of this boot' \
+      journalctl -b -o short-precise --no-pager -u "$DISPLAY_MANAGER" -u bootvine.service
+    section 'Warnings and errors of this boot' journalctl -b -p warning -o short-precise --no-pager
+    if command -v bootvine >/dev/null; then
+      section 'bootvine health' bootvine health
+    fi
+    section 'Recent package changes' sh -c "grep -E '\\[ALPM\\] (upgraded|installed|removed)' /var/log/pacman.log | tail -n 40"
+    section 'Kernel command line' cat /proc/cmdline
+  } >"$CONTEXT"
+  chmod 0644 "$CONTEXT"
+}
+
+# Succeeds when Anthropic's API answers. In rescue mode it starts NetworkManager without
+# waiting for the start. In emergency mode it leaves NetworkManager alone: starting it
+# pulls in sysinit.target, which ends emergency mode and retries the failed mounts.
+network_ready() {
+  if ! systemctl -q is-active emergency.target; then
+    systemctl start --no-block NetworkManager.service >/dev/null 2>&1
+  fi
+  timeout 70 nm-online -q -t 60 >/dev/null 2>&1
+  curl -s -o /dev/null -m 15 https://api.anthropic.com
+}
+
+prompt_text() {
+  cat <<EOF
+Le démarrage de cet ordinateur n'est pas arrivé jusqu'à un écran de connexion utilisable, et je ne peux pas m'en occuper avec le clavier comme d'habitude. Le gardien inayos-boot-rescue t'a lancé sur la console $CONSOLE.
+
+Raison détectée par le gardien : $1
+
+Lis d'abord $CONTEXT : il contient ce que le gardien a déjà tenté, les services en échec, les tâches en attente, les sessions, les journaux de plasmalogin et de bootvine, les erreurs du démarrage et les derniers paquets changés. Tu as sudo sans mot de passe.
+
+Trouve la cause et dis-moi ce que tu vois. Relancer un service, tu peux le faire sans demander. Avant tout changement durable (paquet, fichier de configuration, initramfs), dis-moi ce que tu proposes et attends ma réponse. Le bureau revient avec sudo systemctl restart $DISPLAY_MANAGER, puis sudo chvt 1.
+EOF
+}
+
+# Runs the console on tty9 for good: Claude when it can run, a login shell otherwise and
+# after Claude ends.
+open_console() {
+  local reason=$1 user home uid workdir claude
+  user=$(rescue_user)
+  write_context "$reason"
+  say "opening the rescue console on tty$CONSOLE: $reason"
+  exec </dev/tty$CONSOLE >/dev/tty$CONSOLE 2>&1
+  # A display server that hangs while it holds its console can refuse the switch.
+  timeout 5 chvt "$CONSOLE"
+  export TERM=linux
+  if [ -z "$user" ]; then
+    while :; do
+      printf 'No user to run the rescue console as. Context: %s\n' "$CONTEXT"
+      setsid --ctty --wait /bin/login
+    done
+  fi
+  home=$(getent passwd "$user" | cut -d: -f6)
+  uid=$(id -u "$user")
+  claude=$home/.local/bin/claude
+  workdir=$home/.local/state/inayos-boot-rescue
+  while :; do
+    clear
+    printf 'InayOS boot rescue: %s\nContext: %s\n\n' "$reason" "$CONTEXT"
+    if [ -x "$claude" ] && network_ready; then
+      runuser -u "$user" -- mkdir -p "$workdir"
+      if [ -x "$home/.local/bin/claude-config-helper" ]; then
+        runuser -u "$user" -- env HOME="$home" "$home/.local/bin/claude-config-helper" trust "$workdir" >/dev/null 2>&1
+      fi
+      setsid --ctty --wait runuser -u "$user" -- env -i --chdir="$workdir" HOME="$home" \
+        USER="$user" LOGNAME="$user" TERM=linux LANG="${LANG:-C.UTF-8}" \
+        SHELL="$(getent passwd "$user" | cut -d: -f7)" XDG_RUNTIME_DIR="/run/user/$uid" \
+        PATH="$home/.local/bin:/usr/local/bin:/usr/bin" \
+        "$claude" --dangerously-skip-permissions "$(prompt_text "$reason")"
+      printf '\nClaude ended. A shell follows; exit it to start Claude again.\n\n'
+    else
+      printf 'Claude Code cannot run here (no network, or %s is missing).\n' "$claude"
+      printf 'The context is in %s. A shell follows, with sudo.\n\n' "$CONTEXT"
+    fi
+    sed -n '1,/^## Pending jobs/p' "$CONTEXT" | head -n 60
+    setsid --ctty --wait runuser -l "$user"
+  done
+}
+
+watch() {
+  local now jobs state last_action display_manager_since="" restarts=0
+  last_action=$(uptime_seconds)
+  mkdir -p "$RUN"
+  while :; do
+    now=$(uptime_seconds)
+    # The jobs are read before the login screen's state, so a login screen that starts
+    # in between is seen as started rather than as missing.
+    jobs=$(pending_jobs)
+    state=$(systemctl show "$DISPLAY_MANAGER" -p ActiveState --value 2>/dev/null)
+    if systemctl -q is-active emergency.target || systemctl -q is-active rescue.target; then
+      open_console "the system is in emergency or rescue mode"
+    fi
+    if graphical_session_active; then
+      say "a graphical session is active on seat0, the boot reached the login screen"
+      exit 0
+    fi
+    if [ "$state" = failed ]; then
+      display_manager_since=""
+      if [ "$restarts" -ge "$RESTARTS" ]; then
+        open_console "$DISPLAY_MANAGER failed $restarts restarts"
+      fi
+      restarts=$((restarts + 1))
+      attempts+=("restart $restarts of $DISPLAY_MANAGER, which had failed, at ${now}s")
+      say "${attempts[-1]}"
+      systemctl reset-failed "$DISPLAY_MANAGER"
+      systemctl restart --no-block "$DISPLAY_MANAGER"
+      last_action=$now
+    elif [ "$state" = active ]; then
+      display_manager_since=${display_manager_since:-$now}
+      if [ $((now - display_manager_since)) -ge "$SESSION_WAIT" ]; then
+        if [ "$restarts" -ge "$RESTARTS" ]; then
+          open_console "$DISPLAY_MANAGER runs, but no login screen came up after $restarts restarts"
+        fi
+        restarts=$((restarts + 1))
+        attempts+=("restart $restarts of $DISPLAY_MANAGER, active ${SESSION_WAIT}s without a session, at ${now}s")
+        say "${attempts[-1]}"
+        display_manager_since=""
+        systemctl restart --no-block "$DISPLAY_MANAGER"
+        last_action=$now
+      fi
+    elif [ "$state" != inactive ]; then
+      # Activating, reloading or deactivating, which a restart goes through: the next
+      # poll sees where it lands.
+      :
+    elif [ -z "$jobs" ]; then
+      # No job is left, so nothing will start the login screen any more.
+      open_console "the boot ended without starting $DISPLAY_MANAGER"
+    elif [ $((now - last_action)) -ge "$STUCK_AFTER" ]; then
+      open_console "the boot is stuck: jobs still wait $((now - last_action))s later and $DISPLAY_MANAGER has not started"
+    fi
+    sleep 2
+  done
+}
+
+# A test sources the program to replace the clock, sleep and the console.
+[ "${BASH_SOURCE[0]}" = "$0" ] || return 0
+
+case ${1:-} in
+watch) watch ;;
+rescue) open_console "${2:-asked by hand}" ;;
+*)
+  printf 'usage: %s watch | rescue [REASON]\n' "$0" >&2
+  exit 2
+  ;;
+esac

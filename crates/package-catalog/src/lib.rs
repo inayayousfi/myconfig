@@ -190,6 +190,7 @@ pub enum Package {
     Iwd,
     Netctl,
     Xl2tpd,
+    Networkmanager,
     NetworkmanagerOpenvpn,
     Xf86VideoAmdgpu,
     BtrfsProgs,
@@ -659,6 +660,10 @@ pub const PACKAGE_NAMES: &[((Package, Platform), &str)] = &[
     ((Package::Iwd, Platform::Pacman), "iwd"),
     ((Package::Netctl, Platform::Pacman), "netctl"),
     ((Package::Xl2tpd, Platform::Pacman), "xl2tpd"),
+    (
+        (Package::Networkmanager, Platform::Pacman),
+        "networkmanager",
+    ),
     (
         (Package::NetworkmanagerOpenvpn, Platform::Pacman),
         "networkmanager-openvpn",

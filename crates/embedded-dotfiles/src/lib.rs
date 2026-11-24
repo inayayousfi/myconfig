@@ -18,6 +18,7 @@ embed_dir!(pub static VSCODIUM = "../../dotfiles/vscodium");
 embed_dir!(pub static YAZI = "../../dotfiles/yazi");
 embed_dir!(pub static ZSH = "../../dotfiles/zsh");
 
+embed_dir!(pub static BOOT_RESCUE_ASSETS = "../../dotfiles/assets/boot-rescue");
 embed_dir!(pub static BOOTVINE_ASSETS = "../../dotfiles/assets/bootvine");
 embed_dir!(pub static KDE_PLASMA_ASSETS = "../../dotfiles/assets/kde-plasma");
 embed_dir!(pub static REFIND_ASSETS = "../../dotfiles/assets/refind");

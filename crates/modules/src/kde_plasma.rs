@@ -149,8 +149,15 @@ pub(crate) fn kde_settings() -> Vec<(Setting, &'static str)> {
         "false",
     );
     add("plasmaparc", &["General"], "RaiseMaximumVolume", "true");
-    // Closing the lid sleeps even while an external display is connected.
-    for state in ["AC", "Battery", "LowBattery"] {
+    // On external power the laptop keeps running with the lid closed. On battery closing
+    // the lid sleeps, also while an external display is connected.
+    add(
+        "powerdevilrc",
+        &["AC", "SuspendAndShutdown"],
+        "LidAction",
+        "0",
+    );
+    for state in ["Battery", "LowBattery"] {
         add(
             "powerdevilrc",
             &[state, "SuspendAndShutdown"],
@@ -222,20 +229,32 @@ fn window_rule_settings() -> Vec<(Setting, &'static str)> {
     .collect()
 }
 
-fn rule_list() -> Setting {
-    Setting::kde("kwinrulesrc", &["General"], "rules")
+/// KWin's list of rules in `[General]`: `Order` in a file that KWin rewrote in its newer
+/// form, else `rules`, which `count` accompanies.
+fn rule_list(ordered: bool) -> Setting {
+    let key = if ordered { "Order" } else { "rules" };
+    Setting::kde("kwinrulesrc", &["General"], key)
+}
+
+/// Whether the rule file lists its rules under `Order`.
+fn rules_ordered(ctx: &Context) -> ModuleResult<bool> {
+    Ok(rule_list(true).read(ctx)?.is_some())
 }
 
 fn configure_window_rules(ctx: &Context) -> ModuleResult {
     for (setting, value) in window_rule_settings() {
         ctx.set(setting, value)?;
     }
-    let current = rule_list().read(ctx)?.unwrap_or_default();
+    let ordered = rules_ordered(ctx)?;
+    let current = rule_list(ordered).read(ctx)?.unwrap_or_default();
     let mut rules: Vec<&str> = current.split(',').filter(|rule| !rule.is_empty()).collect();
     if !rules.contains(&WINDOW_RULE) {
         rules.push(WINDOW_RULE);
     }
-    ctx.set(rule_list(), &rules.join(","))?;
+    ctx.set(rule_list(ordered), &rules.join(","))?;
+    if ordered {
+        return Ok(());
+    }
     ctx.set(
         Setting::kde("kwinrulesrc", &["General"], "count"),
         &rules.len().to_string(),
@@ -442,7 +461,9 @@ impl Module for KdePlasma {
                 return Err(format!("{} is not {value}", setting.describe()).into());
             }
         }
-        let rules = rule_list().read(ctx)?.unwrap_or_default();
+        let rules = rule_list(rules_ordered(ctx)?)
+            .read(ctx)?
+            .unwrap_or_default();
         if !rules.split(',').any(|rule| rule == WINDOW_RULE) {
             return Err(format!("the KWin rule list lacks {WINDOW_RULE}").into());
         }

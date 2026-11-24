@@ -1305,7 +1305,8 @@ fn kde_keys_in_this_module_are_the_approved_values() {
         ),
         ("baloofilerc/Basic Settings/Indexing-Enabled", "false"),
         ("plasmaparc/General/RaiseMaximumVolume", "true"),
-        ("powerdevilrc/AC/SuspendAndShutdown/LidAction", "1"),
+        ("powerdevilrc/AC/SuspendAndShutdown/LidAction", "0"),
+        ("powerdevilrc/Battery/SuspendAndShutdown/LidAction", "1"),
         (
             "powerdevilrc/LowBattery/SuspendAndShutdown/InhibitLidActionWhenExternalMonitorPresent",
             "false",
@@ -1375,6 +1376,30 @@ esac"#,
     let runtime = sandbox.root.join("runtime");
     fs::create_dir_all(&runtime).unwrap();
     sandbox.shell.set_var("XDG_RUNTIME_DIR", runtime);
+}
+
+#[test]
+fn a_rule_file_that_kwin_rewrote_keeps_its_order_list() {
+    let sandbox = Sandbox::new("kde-plasma-order");
+    plasma(&sandbox);
+    let rules = sandbox.root.join("kde/kwinrulesrc/General");
+    fs::create_dir_all(&rules).unwrap();
+    fs::write(rules.join("Order"), "user-rule").unwrap();
+    let modules: [&dyn Module; 1] = [&crate::KdePlasma];
+    let io = Answers::new(None);
+    sandbox
+        .with(&io, |ctx| runner::install(ctx, &modules, &modules))
+        .unwrap();
+    assert_eq!(
+        kde(&sandbox, "kwinrulesrc/General/Order").as_deref(),
+        Some("user-rule,myconfig-picture-in-picture")
+    );
+    assert_eq!(kde(&sandbox, "kwinrulesrc/General/rules"), None);
+    assert_eq!(kde(&sandbox, "kwinrulesrc/General/count"), None);
+    let results = sandbox.with(&io, |ctx| runner::verify(ctx, &modules));
+    for (name, result) in results {
+        assert!(result.is_ok(), "{name}: {result:?}");
+    }
 }
 
 #[test]

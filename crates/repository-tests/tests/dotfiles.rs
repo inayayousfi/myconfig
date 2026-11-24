@@ -530,3 +530,189 @@ case "$*" in *is-active*) [ -z "${T3_TEST_INACTIVE:-}" ] ;; esac"#,
         "repair succeeded without an active service"
     );
 }
+
+/// Runs the boot rescue's `watch` against a fake systemd whose state lives in files under
+/// the scratch folder, on a clock that `sleep` advances. The console is replaced by a
+/// function that prints its reason, and the result is everything the run printed.
+fn boot_rescue_watch(
+    scratch: &Scratch,
+    state: &[&str],
+    jobs: &str,
+    fixed_by_restart: bool,
+) -> String {
+    boot_rescue_watch_from(scratch, 5, state, jobs, fixed_by_restart)
+}
+
+/// `boot_rescue_watch` with the watcher starting `start` seconds after the kernel.
+fn boot_rescue_watch_from(
+    scratch: &Scratch,
+    start: u32,
+    state: &[&str],
+    jobs: &str,
+    fixed_by_restart: bool,
+) -> String {
+    let root = &scratch.0;
+    let bin = root.join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    for file in state {
+        fs::write(root.join(file), "").unwrap();
+    }
+    fs::write(root.join("jobs"), jobs).unwrap();
+    let fix = if fixed_by_restart {
+        r#": > "$STATE/session""#
+    } else {
+        ":"
+    };
+    program(
+        &bin.join("systemctl"),
+        &format!(
+            r#"[ "$1" = -q ] && shift
+case "$1 $2" in
+    "is-active emergency.target") [ -e "$STATE/emergency" ] ;;
+    "is-active rescue.target") [ -e "$STATE/rescue" ] ;;
+    "show plasmalogin.service") if [ -e "$STATE/dm-failed" ]; then echo failed
+        elif [ -e "$STATE/dm-active" ]; then echo active; else echo inactive; fi ;;
+    "list-jobs --no-legend") cat "$STATE/jobs" ;;
+    "reset-failed plasmalogin.service") rm -f "$STATE/dm-failed" ;;
+    "restart --no-block") echo "restarted plasmalogin"; {fix} ;;
+    *) exit 1 ;;
+esac"#
+        ),
+    );
+    program(
+        &bin.join("loginctl"),
+        r#"case "$1" in
+    show-seat) [ -e "$STATE/session" ] && echo 2 ;;
+    show-session) echo wayland ;;
+esac"#,
+    );
+    let harness = r#"
+. "$1"
+clock=$2
+uptime_seconds() { echo "$clock"; }
+sleep() { clock=$((clock + $1)); [ "$clock" -lt 1200 ] || { echo "still watching"; exit 1; }; }
+open_console() { echo "console: $1"; exit 0; }
+watch
+"#;
+    let output = Command::new("bash")
+        .args(["-c", harness, "harness"])
+        .arg(dotfiles().join("assets/boot-rescue/usr/local/libexec/inayos-boot-rescue"))
+        .arg(start.to_string())
+        .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
+        .env("STATE", root)
+        .output()
+        .unwrap();
+    String::from_utf8(output.stdout).unwrap()
+}
+
+#[test]
+fn the_boot_rescue_ends_once_the_login_screen_is_up() {
+    let scratch = Scratch::new("rescue-up");
+    let output = boot_rescue_watch(&scratch, &["dm-active", "session"], "", false);
+    assert!(output.contains("a graphical session is active"), "{output}");
+    assert!(!output.contains("restarted"), "{output}");
+}
+
+#[test]
+fn the_boot_rescue_restarts_a_login_screen_that_runs_without_a_session() {
+    let scratch = Scratch::new("rescue-restart");
+    let output = boot_rescue_watch(&scratch, &["dm-active"], "", true);
+    assert_eq!(
+        output.matches("restarted plasmalogin").count(),
+        1,
+        "{output}"
+    );
+    assert!(output.contains("a graphical session is active"), "{output}");
+}
+
+#[test]
+fn the_boot_rescue_opens_the_console_after_three_failed_restarts() {
+    let scratch = Scratch::new("rescue-console");
+    let output = boot_rescue_watch(&scratch, &["dm-active"], "", false);
+    assert_eq!(
+        output.matches("restarted plasmalogin").count(),
+        3,
+        "{output}"
+    );
+    assert!(
+        output.contains(
+            "console: plasmalogin.service runs, but no login screen came up after 3 restarts"
+        ),
+        "{output}"
+    );
+}
+
+#[test]
+fn the_boot_rescue_opens_the_console_at_once_in_emergency_mode() {
+    let scratch = Scratch::new("rescue-emergency");
+    let output = boot_rescue_watch(
+        &scratch,
+        &["emergency"],
+        "1 local-fs.target start waiting\n",
+        false,
+    );
+    assert_eq!(
+        output.trim(),
+        "console: the system is in emergency or rescue mode"
+    );
+}
+
+#[test]
+fn the_boot_rescue_opens_the_console_when_the_boot_ends_without_a_login_screen() {
+    let scratch = Scratch::new("rescue-no-dm");
+    let output = boot_rescue_watch(&scratch, &[], "", false);
+    assert!(
+        output.contains("console: the boot ended without starting plasmalogin.service"),
+        "{output}"
+    );
+}
+
+#[test]
+fn the_boot_rescue_opens_the_console_when_jobs_still_wait_after_two_minutes() {
+    let scratch = Scratch::new("rescue-stuck");
+    let output = boot_rescue_watch(
+        &scratch,
+        &[],
+        "7 plasmalogin.service start waiting\n",
+        false,
+    );
+    assert!(output.contains("console: the boot is stuck"), "{output}");
+    assert!(!output.contains("restarted"), "{output}");
+}
+
+#[test]
+fn the_boot_rescue_service_is_valid() {
+    let scratch = Scratch::new("rescue-unit");
+    let source =
+        dotfiles().join("assets/boot-rescue/etc/systemd/system/inayos-boot-rescue.service");
+    // The program only exists after install, so systemd checks the rest of the unit.
+    let contents: String = text(&source)
+        .lines()
+        .map(|line| {
+            if line.starts_with("ExecStart=") {
+                "ExecStart=/bin/true\n".to_owned()
+            } else {
+                format!("{line}\n")
+            }
+        })
+        .collect();
+    let copy = scratch.0.join("inayos-boot-rescue.service");
+    fs::write(&copy, contents).unwrap();
+    run(Command::new("systemd-analyze").arg("verify").arg(copy));
+}
+
+#[test]
+fn time_spent_in_the_initramfs_does_not_count_as_a_stuck_boot() {
+    let scratch = Scratch::new("rescue-slow-initramfs");
+    let output = boot_rescue_watch_from(
+        &scratch,
+        300,
+        &[],
+        "7 plasmalogin.service start waiting\n",
+        false,
+    );
+    assert!(
+        output.contains("console: the boot is stuck: jobs still wait 120s later"),
+        "{output}"
+    );
+}

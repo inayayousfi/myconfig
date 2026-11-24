@@ -4601,6 +4601,101 @@ fn an_inayos_package_without_the_guard_fails_before_any_unit_is_written() {
     assert_eq!(program_calls(&sandbox, "inayos-guard check-update"), 0);
 }
 
+const RESCUE_FILES: [&str; 4] = [
+    "/usr/local/libexec/inayos-boot-rescue",
+    "/etc/systemd/system/inayos-boot-rescue.service",
+    "/etc/inayos-boot-rescue.conf",
+    "/etc/sudoers.d/20-inayos-boot-rescue",
+];
+
+/// A system whose fake `visudo` accepts a rule from standard input only when `accepts`.
+fn rescue_system(sandbox: &Sandbox, accepts: bool) {
+    system(sandbox);
+    let status = if accepts { 0 } else { 1 };
+    sandbox.fake(
+        "visudo",
+        &format!(
+            r#"printf 'visudo %s\n' "$*" >> "$INAYOS_TEST_LOG"
+cat > /dev/null
+exit {status}"#
+        ),
+    );
+}
+
+#[test]
+fn the_boot_rescue_watches_each_boot_and_lets_its_user_run_sudo_without_a_password() {
+    let sandbox = Sandbox::new("boot-rescue");
+    rescue_system(&sandbox, true);
+    let modules: [&dyn Module; 1] = [&crate::BootRescue];
+    let io = Answers::new(None);
+    sandbox
+        .with(&io, |ctx| runner::install(ctx, &modules, &modules))
+        .unwrap();
+    for path in RESCUE_FILES {
+        assert!(system_file(&sandbox, path).is_some(), "{path} is missing");
+    }
+    assert!(sandbox.installed("curl"));
+    assert!(sandbox.installed("networkmanager"));
+    assert_eq!(program_calls(&sandbox, "visudo -cqf -"), 1);
+    assert_eq!(
+        system_file(&sandbox, RESCUE_FILES[3]).unwrap(),
+        "tester ALL=(ALL:ALL) NOPASSWD: ALL\n"
+    );
+    assert_eq!(
+        system_file(&sandbox, RESCUE_FILES[2]).unwrap(),
+        "RESCUE_USER=tester\n"
+    );
+    let program = sandbox
+        .root
+        .join("system/usr/local/libexec/inayos-boot-rescue");
+    assert_eq!(
+        fs::metadata(program).unwrap().permissions().mode() & 0o777,
+        0o755
+    );
+    assert!(enabled(
+        &sandbox,
+        ServiceScope::System,
+        "inayos-boot-rescue.service"
+    ));
+    let results = sandbox.with(&io, |ctx| runner::verify(ctx, &modules));
+    for (name, result) in results {
+        assert!(result.is_ok(), "{name}: {result:?}");
+    }
+
+    let report = sandbox
+        .with(&io, |ctx| runner::remove(ctx, &modules, &modules, false))
+        .unwrap();
+    assert!(!report.unanswered);
+    for path in RESCUE_FILES {
+        assert_eq!(system_file(&sandbox, path), None, "{path} is still there");
+    }
+    assert!(!enabled(
+        &sandbox,
+        ServiceScope::System,
+        "inayos-boot-rescue.service"
+    ));
+}
+
+#[test]
+fn a_sudo_rule_that_visudo_refuses_is_never_written() {
+    let sandbox = Sandbox::new("boot-rescue-refused");
+    rescue_system(&sandbox, false);
+    let modules: [&dyn Module; 1] = [&crate::BootRescue];
+    let io = Answers::new(None);
+    let error = sandbox
+        .with(&io, |ctx| runner::install(ctx, &modules, &modules))
+        .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("visudo refused the sudo rule for tester"),
+        "{error}"
+    );
+    for path in RESCUE_FILES {
+        assert_eq!(system_file(&sandbox, path), None, "{path} was written");
+    }
+}
+
 /// The system that the InayOS installer leaves: Arch's `pacman.conf`, and both InayOS
 /// packages installed with a keyring package that trusts `ABCD1234`. The fake `pacman-key`
 /// keeps the keys of pacman's keyring as files under `keys/`.

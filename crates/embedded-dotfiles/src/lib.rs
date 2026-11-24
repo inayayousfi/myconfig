@@ -19,6 +19,7 @@ embed_dir!(pub static YAZI = "../../dotfiles/yazi");
 embed_dir!(pub static ZSH = "../../dotfiles/zsh");
 
 embed_dir!(pub static BOOT_GUARD_ASSETS = "../../dotfiles/assets/boot-guard");
+embed_dir!(pub static BOOT_RESCUE_ASSETS = "../../dotfiles/assets/boot-rescue");
 embed_dir!(pub static BOOTVINE_ASSETS = "../../dotfiles/assets/bootvine");
 embed_dir!(pub static ENCRYPTION_ASSETS = "../../dotfiles/assets/encryption");
 embed_dir!(pub static HIBERNATION_ASSETS = "../../dotfiles/assets/hibernation");

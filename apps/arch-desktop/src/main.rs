@@ -46,6 +46,7 @@ static MODULES: &[&dyn Module] = &[
     &SecureBoot,
     &Bootvine,
     &BootGuard,
+    &BootRescue,
     &Maintenance,
     &Kanata {
         start_at_login: false,

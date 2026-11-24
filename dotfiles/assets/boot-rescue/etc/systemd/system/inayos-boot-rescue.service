@@ -1,0 +1,19 @@
+# InayOS boot rescue: watches each boot until a graphical session is active on seat0, and
+# opens a rescue console on tty9 when the boot does not get there. It starts without the
+# default dependencies, so it also runs when the boot falls into emergency or rescue mode,
+# and it survives the isolation of those targets.
+[Unit]
+Description=Open a rescue console when the boot does not reach a login screen
+DefaultDependencies=no
+IgnoreOnIsolate=yes
+Conflicts=shutdown.target
+Before=shutdown.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/libexec/inayos-boot-rescue watch
+RuntimeDirectory=inayos-boot-rescue
+RuntimeDirectoryPreserve=yes
+
+[Install]
+WantedBy=sysinit.target emergency.target rescue.target

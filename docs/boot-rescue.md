@@ -42,7 +42,7 @@ The program checks the boot every two seconds:
 
 After three restarts of `plasmalogin.service`, the next failure opens the console instead of a fourth restart. The program writes each restart to the journal.
 
-`inayos-boot-rescue rescue [REASON]` opens the console at once. It tests the console on a running system: `sudo systemd-run --unit=inayos-boot-rescue-test /usr/local/libexec/inayos-boot-rescue rescue test`, then `sudo pkill -t tty9` closes it. `runuser` opens a logind session for the console's programs, so stopping the unit leaves them running.
+`inayos-boot-rescue rescue [REASON]` opens the console at once. It tests the console on a running system. With the reason `test`, the prompt forbids Claude to restart or change anything, because the person's desktop is running on another console: `sudo systemd-run --unit=inayos-boot-rescue-test /usr/local/libexec/inayos-boot-rescue rescue test`, then `sudo pkill -t tty9` closes it. `runuser` opens a logind session for the console's programs, so stopping the unit leaves them running.
 
 Once open, the console stays open, also when a login screen comes up later.
 
@@ -55,6 +55,8 @@ It first writes `/run/inayos-boot-rescue/context.md`. The file holds the reason,
 The console runs as `RESCUE_USER` from `/etc/inayos-boot-rescue.conf`, the user the sudo rule names. When that user does not exist, the console runs `login`.
 
 In rescue mode, which does not start NetworkManager, it starts NetworkManager without waiting for the start. In emergency mode it leaves NetworkManager alone, because starting it pulls in `sysinit.target`, which ends emergency mode and retries the failed mounts. It then waits up to 60 seconds for the network. When `~/.local/bin/claude` exists and `https://api.anthropic.com` answers, it starts Claude Code with `--dangerously-skip-permissions` and a prompt that gives the reason and points to the context file. Claude runs in `~/.local/state/inayos-boot-rescue`, which `claude-config-helper trust` marks as trusted when the helper exists, so the person's home stays untrusted.
+
+Claude also runs with `--remote-control "Boot rescue"`, so its session appears under that name in claude.ai/code and in the Claude app. The person answers it from there, because without an on-screen keyboard they cannot type on the console. The prompt asks Claude to send the person a notification when it has a tool for that. Remote Control needs the user's Claude login to be valid.
 
 When Claude cannot run, or after it ends, the console prints the start of the context and opens the user's login shell. In emergency mode the network is usually down, so the console usually opens the shell. When that shell ends, the console tries Claude again.
 

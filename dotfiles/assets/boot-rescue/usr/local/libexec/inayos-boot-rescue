@@ -5,9 +5,12 @@
 # rescue console on tty9 when the boot is stuck, in emergency or rescue mode, or when
 # plasmalogin failed RESTARTS times. The console runs Claude Code as the user the module
 # was installed for, who runs sudo without a password, with the boot's context in a
-# prompt, or a shell when Claude cannot run.
+# prompt, or a shell when Claude cannot run. Claude runs with Remote Control, so the
+# person can answer it from the Claude app on another device: without an on-screen
+# keyboard, they cannot type on this console.
 #
-# `rescue REASON` opens the console at once, which tests it on a running system:
+# `rescue REASON` opens the console at once, which tests it on a running system. With the
+# reason `test`, the prompt forbids Claude to restart or change anything:
 #   sudo systemd-run --unit=inayos-boot-rescue-test /usr/local/libexec/inayos-boot-rescue rescue test
 # runuser opens a logind session for the console, so `sudo pkill -t tty9` closes it.
 set -u
@@ -25,6 +28,8 @@ SESSION_WAIT=30
 # count.
 STUCK_AFTER=120
 RESTARTS=3
+# The name of Claude's session in the Claude app.
+SESSION_NAME="Boot rescue"
 
 attempts=()
 
@@ -101,14 +106,20 @@ network_ready() {
 
 prompt_text() {
   cat <<EOF
-Le démarrage de cet ordinateur n'est pas arrivé jusqu'à un écran de connexion utilisable, et je ne peux pas m'en occuper avec le clavier comme d'habitude. Le gardien inayos-boot-rescue t'a lancé sur la console $CONSOLE.
+This computer's boot did not reach a usable login screen. The inayos-boot-rescue watcher started you on console $CONSOLE with Remote Control. I answer you from the Claude app on another device, in the session named "$SESSION_NAME": without my on-screen keyboard I cannot type on this console. If you have a tool to send me a notification, send one now with the reason below.
 
-Raison détectée par le gardien : $1
+Reason the watcher detected: $1
 
-Lis d'abord $CONTEXT : il contient ce que le gardien a déjà tenté, les services en échec, les tâches en attente, les sessions, les journaux de plasmalogin et de bootvine, les erreurs du démarrage et les derniers paquets changés. Tu as sudo sans mot de passe.
+First read $CONTEXT. It holds what the watcher already tried, the failed units, the pending jobs, the sessions, the plasmalogin and bootvine journals, the boot's errors and the latest package changes. You have sudo without a password.
 
-Trouve la cause et dis-moi ce que tu vois. Relancer un service, tu peux le faire sans demander. Avant tout changement durable (paquet, fichier de configuration, initramfs), dis-moi ce que tu proposes et attends ma réponse. Le bureau revient avec sudo systemctl restart $DISPLAY_MANAGER, puis sudo chvt 1.
+Find the cause and tell me what you see. You may restart a service without asking. Before any lasting change (a package, a configuration file, the initramfs), tell me what you propose and wait for my answer. The desktop comes back with sudo systemctl restart $DISPLAY_MANAGER, then sudo chvt 1.
 EOF
+  if [ "$1" = test ]; then
+    cat <<EOF
+
+This is a test of the watcher on a working system, and my desktop runs on another console. Do not restart any service and do not change anything: read the context and only tell me that you are reachable.
+EOF
+  fi
 }
 
 # Runs the console on tty9 for good: Claude when it can run, a login shell otherwise and
@@ -144,7 +155,8 @@ open_console() {
         USER="$user" LOGNAME="$user" TERM=linux LANG="${LANG:-C.UTF-8}" \
         SHELL="$(getent passwd "$user" | cut -d: -f7)" XDG_RUNTIME_DIR="/run/user/$uid" \
         PATH="$home/.local/bin:/usr/local/bin:/usr/bin" \
-        "$claude" --dangerously-skip-permissions "$(prompt_text "$reason")"
+        "$claude" --dangerously-skip-permissions --remote-control "$SESSION_NAME" \
+        "$(prompt_text "$reason")"
       printf '\nClaude ended. A shell follows; exit it to start Claude again.\n\n'
     else
       printf 'Claude Code cannot run here (no network, or %s is missing).\n' "$claude"

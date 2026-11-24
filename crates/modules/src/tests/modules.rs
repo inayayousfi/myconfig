@@ -116,7 +116,12 @@ mkdir -p "$(dirname "$path/$key")" && printf '%s' "$value" > "$path/$key""#,
         r#"path="$INAYOS_TEST_ROOT/kde"
 while [ "$#" -gt 0 ]; do
     case "$1" in
-        --file) path="$path/${2##*/}"; shift 2 ;;
+        --file)
+            case "$2" in
+                */kdedefaults/*) path="$path/kdedefaults/${2##*/}" ;;
+                *) path="$path/${2##*/}" ;;
+            esac
+            shift 2 ;;
         --group) path="$path/$2"; shift 2 ;;
         --key) key="$2"; shift 2 ;;
         --default) default="$2"; shift 2 ;;
@@ -1214,6 +1219,27 @@ fn a_rule_file_that_kwin_rewrote_keeps_its_order_list() {
     );
     assert_eq!(kde(&sandbox, "kwinrulesrc/General/rules"), None);
     assert_eq!(kde(&sandbox, "kwinrulesrc/General/count"), None);
+    let results = sandbox.with(&io, |ctx| runner::verify(ctx, &modules));
+    for (name, result) in results {
+        assert!(result.is_ok(), "{name}: {result:?}");
+    }
+}
+
+#[test]
+fn a_cursor_theme_that_plasma_keeps_only_in_its_defaults_still_verifies() {
+    let sandbox = Sandbox::new("kde-plasma-cursor-defaults");
+    plasma(&sandbox);
+    let modules: [&dyn Module; 1] = [&crate::KdePlasma];
+    let io = Answers::new(None);
+    sandbox
+        .with(&io, |ctx| runner::install(ctx, &modules, &modules))
+        .unwrap();
+    // A running session drops the user's key because the global theme's defaults hold
+    // the same theme.
+    fs::remove_file(sandbox.root.join("kde/kcminputrc/Mouse/cursorTheme")).unwrap();
+    let defaults = sandbox.root.join("kde/kdedefaults/kcminputrc/Mouse");
+    fs::create_dir_all(&defaults).unwrap();
+    fs::write(defaults.join("cursorTheme"), "breeze_cursors").unwrap();
     let results = sandbox.with(&io, |ctx| runner::verify(ctx, &modules));
     for (name, result) in results {
         assert!(result.is_ok(), "{name}: {result:?}");

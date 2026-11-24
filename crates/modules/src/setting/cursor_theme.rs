@@ -11,8 +11,14 @@ impl Kind for CursorTheme {
         "KDE cursor theme".to_owned()
     }
 
+    /// A running Plasma session drops the user's key when it equals the global theme's
+    /// default in `kdedefaults`, so the theme that applies is read there when the key is
+    /// missing.
     fn read(&self, ctx: &Context) -> ModuleResult<Option<String>> {
-        Setting::kde("kcminputrc", &["Mouse"], "cursorTheme").read(ctx)
+        match Setting::kde("kcminputrc", &["Mouse"], "cursorTheme").read(ctx)? {
+            Some(theme) => Ok(Some(theme)),
+            None => Setting::kde("kdedefaults/kcminputrc", &["Mouse"], "cursorTheme").read(ctx),
+        }
     }
 
     fn write(&self, ctx: &Context, value: &str) -> ModuleResult {

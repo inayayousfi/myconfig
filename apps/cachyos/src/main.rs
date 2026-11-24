@@ -11,6 +11,7 @@ static MODULES: &[&dyn Module] = &[
         needs: &[Need::Hard("plasma-version")],
     },
     &CachyosSetup,
+    &WakeSources,
     &Media,
     &Ssh { keys_only: false },
     &Cli,
@@ -133,6 +134,7 @@ mod tests {
     fn the_profile_is_the_full_desktop() {
         let names: Vec<_> = MODULES.iter().map(|module| module.name()).collect();
         for wanted in [
+            "wake-sources",
             "axidev-osk",
             "ghostty",
             "kde-plasma",

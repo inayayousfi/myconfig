@@ -1,0 +1,110 @@
+#!/bin/bash
+# InayOS wake sources. systemd-sleep runs every program in /usr/lib/systemd/system-sleep/
+# with `pre` before the system sleeps and `post` after it wakes. Before each sleep, this
+# one leaves only keyboards, the power button and the lid able to wake the system:
+#
+# - The built-in keyboard (driver atkbd), the lid and power buttons (acpi-button,
+#   gpio-keys), the USB controllers and the USB root hubs keep their setting.
+# - A USB device may wake the system when one of its inputs is a keyboard and none is a
+#   mouse, as udev's input_id classifies them. Gaming mouse receivers present a keyboard
+#   too, and their mouse excludes them. A hub may wake the system when such a keyboard
+#   sits below it, because the keyboard's wake passes through it.
+# - Every other device loses its wake: mice, touchpads, the charger and USB-C power
+#   events, the battery, the network card, PCIe ports, timers.
+#
+# It runs at every sleep rather than once at boot, so devices plugged in later and drivers
+# that turn wake back on are covered. It names no hardware.
+set -u
+
+# The sysfs root, which the tests replace with a fake tree.
+SYSFS=${INAYOS_WAKE_SYSFS:-/sys}
+
+say() { printf 'inayos-wake-sources: %s\n' "$*"; }
+
+driver() { [ -e "$1/driver" ] && basename "$(readlink "$1/driver")"; }
+
+subsystem() { [ -e "$1/subsystem" ] && basename "$(readlink "$1/subsystem")"; }
+
+# The USB devices plugged below the device $1 match this, and its interfaces do not.
+USB_DEVICE='.*/[0-9]+-[0-9.]+'
+
+# Prints udev's properties of every input device of the USB device $1, without those of
+# the USB devices plugged below it.
+input_properties() {
+  local input
+  find "$1" -mindepth 1 \( -type d -regex "$USB_DEVICE" -prune \) \
+    -o \( -type d -regex '.*/input/input[0-9]+' -print \) 2>/dev/null |
+    while IFS= read -r input; do
+      udevadm info --query=property --path="${input#"$SYSFS"}" 2>/dev/null
+    done
+}
+
+# Succeeds when the USB device $1 has a keyboard input and no mouse input.
+usb_keyboard() {
+  local properties
+  properties=$(input_properties "$1")
+  grep -qx 'ID_INPUT_KEYBOARD=1' <<<"$properties" &&
+    ! grep -qx 'ID_INPUT_MOUSE=1' <<<"$properties"
+}
+
+# Succeeds when a USB keyboard sits anywhere below the USB device $1.
+keyboard_below() {
+  local child
+  while IFS= read -r child; do
+    usb_keyboard "$child" && return 0
+  done < <(find "$1" -mindepth 1 -type d -regex "$USB_DEVICE" 2>/dev/null)
+  return 1
+}
+
+# Prints what the wake setting of device $1 should be: enabled, disabled, or keep.
+wanted() {
+  local dir=$1
+  case $(driver "$dir") in
+    atkbd | acpi-button | button | gpio-keys) echo keep; return ;;
+  esac
+  if [ "$(subsystem "$dir")" = pci ]; then
+    # USB controllers (class 0x0c03) carry the wake of the USB devices below them.
+    case $(cat "$dir/class" 2>/dev/null) in
+      0x0c03*) echo keep ;;
+      *) echo disabled ;;
+    esac
+    return
+  fi
+  if [ -e "$dir/idVendor" ]; then
+    case $(basename "$dir") in
+      # A root hub's own wake is for plugging and unplugging, which stays off.
+      usb*) echo keep ;;
+      *)
+        if usb_keyboard "$dir"; then
+          echo enabled
+        elif [ "$(cat "$dir/bDeviceClass" 2>/dev/null)" = 09 ] && keyboard_below "$dir"; then
+          echo enabled
+        else
+          echo disabled
+        fi
+        ;;
+    esac
+    return
+  fi
+  echo disabled
+}
+
+apply() {
+  local file dir current want
+  while IFS= read -r -d '' file; do
+    dir=${file%/power/wakeup}
+    current=$(cat "$file" 2>/dev/null) || continue
+    # An empty value marks a device that cannot wake the system.
+    [ -n "$current" ] || continue
+    want=$(wanted "$dir")
+    [ "$want" = keep ] || [ "$want" = "$current" ] && continue
+    if echo "$want" >"$file" 2>/dev/null; then
+      say "$want ${dir#"$SYSFS"/devices/} ($(driver "$dir"))"
+    else
+      say "could not set ${dir#"$SYSFS"/devices/} to $want"
+    fi
+  done < <(find "$SYSFS/devices" -path '*/power/wakeup' -print0 2>/dev/null)
+}
+
+[ "${1:-}" = pre ] && apply
+exit 0

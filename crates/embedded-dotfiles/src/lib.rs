@@ -28,6 +28,7 @@ embed_dir!(pub static MAINTENANCE_ASSETS = "../../dotfiles/assets/maintenance");
 embed_dir!(pub static REFIND_ASSETS = "../../dotfiles/assets/refind");
 embed_dir!(pub static SNAPSHOTS_ASSETS = "../../dotfiles/assets/snapshots");
 embed_dir!(pub static SYSTEM_TUNING_ASSETS = "../../dotfiles/assets/system-tuning");
+embed_dir!(pub static WAKE_SOURCES_ASSETS = "../../dotfiles/assets/wake-sources");
 embed_dir!(pub static WINDOWS_ASSETS = "../../dotfiles/assets/windows");
 
 /// The config packages that Linux modules stow, by package name. Paths in each package

@@ -13,6 +13,7 @@ static MODULES: &[&dyn Module] = &[
     // Before the modules that install the inayos package from it.
     &InayosRepository,
     &SystemTuning,
+    &WakeSources,
     &Snapshots,
     // Before refind and bootvine, which find the unified kernel image it builds, and before
     // secure-boot, which signs it. The InayOS installer skips it without encryption.
@@ -156,6 +157,7 @@ mod tests {
         for wanted in [
             "inayos-repository",
             "system-tuning",
+            "wake-sources",
             "axidev-osk",
             "ghostty",
             "kde-plasma",

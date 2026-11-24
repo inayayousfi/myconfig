@@ -716,3 +716,191 @@ fn time_spent_in_the_initramfs_does_not_count_as_a_stuck_boot() {
         "{output}"
     );
 }
+
+/// A fake sysfs for the wake sources hook, under `root/sys`.
+struct FakeSysfs {
+    sys: PathBuf,
+}
+
+impl FakeSysfs {
+    fn new(root: &Path) -> Self {
+        let sys = root.join("sys");
+        fs::create_dir_all(sys.join("devices")).unwrap();
+        Self { sys }
+    }
+
+    /// A device at `devices/<path>` whose wake setting is `wakeup`, with an optional driver
+    /// and subsystem, and extra attribute files.
+    fn device(
+        &self,
+        path: &str,
+        wakeup: Option<&str>,
+        driver: Option<&str>,
+        subsystem: Option<&str>,
+        attributes: &[(&str, &str)],
+    ) {
+        let dir = self.sys.join("devices").join(path);
+        fs::create_dir_all(&dir).unwrap();
+        if let Some(wakeup) = wakeup {
+            fs::create_dir_all(dir.join("power")).unwrap();
+            fs::write(dir.join("power/wakeup"), format!("{wakeup}\n")).unwrap();
+        }
+        if let Some(driver) = driver {
+            let target = self.sys.join("bus/any/drivers").join(driver);
+            fs::create_dir_all(&target).unwrap();
+            std::os::unix::fs::symlink(&target, dir.join("driver")).unwrap();
+        }
+        if let Some(subsystem) = subsystem {
+            let target = self.sys.join("bus").join(subsystem);
+            fs::create_dir_all(&target).unwrap();
+            std::os::unix::fs::symlink(&target, dir.join("subsystem")).unwrap();
+        }
+        for (name, value) in attributes {
+            fs::write(dir.join(name), format!("{value}\n")).unwrap();
+        }
+    }
+
+    /// A USB device with one input device per entry of `inputs`, holding those udev
+    /// properties.
+    fn usb(&self, path: &str, wakeup: &str, class: &str, inputs: &[&str]) {
+        self.device(
+            path,
+            Some(wakeup),
+            Some("usb"),
+            Some("usb"),
+            &[("idVendor", "1234"), ("bDeviceClass", class)],
+        );
+        let name = path.rsplit('/').next().unwrap();
+        for (number, properties) in inputs.iter().enumerate() {
+            let input =
+                format!("{path}/{name}:1.{number}/0003:1234:0001.000{number}/input/input{number}");
+            self.device(&input, None, None, Some("input"), &[("props", properties)]);
+        }
+    }
+
+    fn wakeup(&self, path: &str) -> String {
+        text(self.sys.join("devices").join(path).join("power/wakeup"))
+            .trim()
+            .to_owned()
+    }
+}
+
+#[test]
+fn the_wake_sources_hook_leaves_only_keyboards_the_power_button_and_the_lid() {
+    let scratch = Scratch::new("wake-sources");
+    let sysfs = FakeSysfs::new(&scratch.0);
+    let keyboard = "ID_INPUT=1\nID_INPUT_KEY=1\nID_INPUT_KEYBOARD=1";
+    let mouse = "ID_INPUT=1\nID_INPUT_MOUSE=1";
+    let consumer = "ID_INPUT=1\nID_INPUT_KEY=1";
+    sysfs.device(
+        "platform/i8042/serio0",
+        Some("enabled"),
+        Some("atkbd"),
+        Some("serio"),
+        &[],
+    );
+    sysfs.device(
+        "platform/PNP0C0D:00",
+        Some("enabled"),
+        Some("acpi-button"),
+        Some("platform"),
+        &[],
+    );
+    sysfs.device(
+        "platform/gpio-keys.1",
+        Some("enabled"),
+        Some("gpio-keys"),
+        Some("platform"),
+        &[],
+    );
+    sysfs.device(
+        "platform/PNP0C0A:00",
+        Some("enabled"),
+        Some("acpi-battery"),
+        Some("platform"),
+        &[],
+    );
+    sysfs.device("platform/serial", Some(""), None, Some("platform"), &[]);
+    sysfs.device(
+        "pci/02.2",
+        Some("enabled"),
+        Some("pcieport"),
+        Some("pci"),
+        &[("class", "0x060400")],
+    );
+    sysfs.device(
+        "pci/06.0",
+        Some("enabled"),
+        Some("xhci_hcd"),
+        Some("pci"),
+        &[("class", "0x0c0330")],
+    );
+    sysfs.usb("pci/06.0/usb3", "disabled", "09", &[]);
+    sysfs.usb("pci/06.0/usb3/3-1", "enabled", "00", &[keyboard, mouse]);
+    sysfs.usb("pci/06.0/usb3/3-2", "disabled", "00", &[keyboard, consumer]);
+    sysfs.usb("pci/06.0/usb3/3-3", "disabled", "09", &[]);
+    sysfs.usb("pci/06.0/usb3/3-3/3-3.1", "disabled", "00", &[keyboard]);
+    sysfs.usb("pci/06.0/usb3/3-4", "enabled", "00", &[consumer]);
+    sysfs.usb("pci/06.0/usb3/3-5", "enabled", "09", &[]);
+
+    let bin = scratch.0.join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    program(
+        &bin.join("udevadm"),
+        r#"for argument in "$@"; do
+    case "$argument" in --path=*) path=${argument#--path=} ;; esac
+done
+cat "$INAYOS_WAKE_SYSFS$path/props""#,
+    );
+    let output = run(Command::new("bash")
+        .arg(
+            dotfiles().join("assets/wake-sources/usr/lib/systemd/system-sleep/inayos-wake-sources"),
+        )
+        .args(["pre", "suspend"])
+        .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
+        .env("INAYOS_WAKE_SYSFS", &sysfs.sys));
+    let printed = String::from_utf8(output.stdout).unwrap();
+
+    for (path, wanted) in [
+        ("platform/i8042/serio0", "enabled"),
+        ("platform/PNP0C0D:00", "enabled"),
+        ("platform/gpio-keys.1", "enabled"),
+        ("platform/PNP0C0A:00", "disabled"),
+        ("platform/serial", ""),
+        ("pci/02.2", "disabled"),
+        ("pci/06.0", "enabled"),
+        ("pci/06.0/usb3", "disabled"),
+        ("pci/06.0/usb3/3-1", "disabled"),
+        ("pci/06.0/usb3/3-2", "enabled"),
+        ("pci/06.0/usb3/3-3", "enabled"),
+        ("pci/06.0/usb3/3-3/3-3.1", "enabled"),
+        ("pci/06.0/usb3/3-4", "disabled"),
+        ("pci/06.0/usb3/3-5", "disabled"),
+    ] {
+        assert_eq!(sysfs.wakeup(path), wanted, "{path}\n{printed}");
+    }
+    assert!(
+        printed.contains("inayos-wake-sources: disabled pci/06.0/usb3/3-1 (usb)"),
+        "{printed}"
+    );
+}
+
+#[test]
+fn the_wake_sources_hook_changes_nothing_after_a_sleep() {
+    let scratch = Scratch::new("wake-sources-post");
+    let sysfs = FakeSysfs::new(&scratch.0);
+    sysfs.device(
+        "platform/PNP0C0A:00",
+        Some("enabled"),
+        Some("acpi-battery"),
+        Some("platform"),
+        &[],
+    );
+    run(Command::new("bash")
+        .arg(
+            dotfiles().join("assets/wake-sources/usr/lib/systemd/system-sleep/inayos-wake-sources"),
+        )
+        .args(["post", "suspend"])
+        .env("INAYOS_WAKE_SYSFS", &sysfs.sys));
+    assert_eq!(sysfs.wakeup("platform/PNP0C0A:00"), "enabled");
+}

@@ -4747,6 +4747,44 @@ fn a_sudo_rule_that_visudo_refuses_is_never_written() {
     }
 }
 
+const WAKE_HOOK: &str = "/usr/lib/systemd/system-sleep/inayos-wake-sources";
+
+#[test]
+fn the_wake_sources_hook_runs_before_each_sleep() {
+    let sandbox = Sandbox::new("wake-sources");
+    system(&sandbox);
+    let modules: [&dyn Module; 1] = [&crate::WakeSources];
+    let io = Answers::new(None);
+    sandbox
+        .with(&io, |ctx| runner::install(ctx, &modules, &modules))
+        .unwrap();
+    let hook = sandbox
+        .root
+        .join("system")
+        .join(WAKE_HOOK.trim_start_matches('/'));
+    assert_eq!(
+        fs::metadata(&hook).unwrap().permissions().mode() & 0o777,
+        0o755
+    );
+    let results = sandbox.with(&io, |ctx| runner::verify(ctx, &modules));
+    for (name, result) in results {
+        assert!(result.is_ok(), "{name}: {result:?}");
+    }
+
+    fs::write(&hook, "#!/bin/bash\n").unwrap();
+    let results = sandbox.with(&io, |ctx| runner::verify(ctx, &modules));
+    assert!(
+        results.iter().any(|(_, result)| result.is_err()),
+        "verify accepted a changed hook"
+    );
+
+    let report = sandbox
+        .with(&io, |ctx| runner::remove(ctx, &modules, &modules, false))
+        .unwrap();
+    assert!(!report.unanswered);
+    assert_eq!(system_file(&sandbox, WAKE_HOOK), None);
+}
+
 /// The system that the InayOS installer leaves: Arch's `pacman.conf`, and both InayOS
 /// packages installed with a keyring package that trusts `ABCD1234`. The fake `pacman-key`
 /// keeps the keys of pacman's keyring as files under `keys/`.

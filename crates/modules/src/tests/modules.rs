@@ -538,6 +538,10 @@ fn folders_that_programs_write_into_stay_real_folders() {
         ("herdr", ".config/herdr-app"),
         ("herdr", ".config/herdr-app/layouts"),
         ("herdr", ".config/herdr-app/themes"),
+        ("herdr", ".config/herdr-app/mods"),
+        ("herdr", ".config/herdr-app/mods/blacknpink-buttons"),
+        ("herdr", ".config/herdr-app/mods/blacknpink-drawer"),
+        ("herdr", ".config/herdr-app/mods/blacknpink-tabs"),
         ("ai", ".fx"),
         ("ai", ".config/opencode"),
     ] {

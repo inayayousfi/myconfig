@@ -16,7 +16,7 @@ use crate::{Context, ModuleResult, state::Change};
 /// programs write later would land inside the deployed tree. systemd ignores a linked
 /// drop-in directory, so those stay real directories as well. Each one applies only to a
 /// package that contains it.
-const UNFOLDED: [&str; 13] = [
+const UNFOLDED: [&str; 17] = [
     ".local/bin",
     ".claude",
     ".local/share/applications",
@@ -30,10 +30,15 @@ const UNFOLDED: [&str; 13] = [
     ".config/opencode",
     // Neovim writes its plugin lockfile beside its config.
     ".config/nvim",
-    // Herdr writes its state, its own layouts and its own themes beside its config.
+    // Herdr writes its state, its own layouts, themes and mods beside its config, and
+    // its type files into every mod folder.
     ".config/herdr-app",
     ".config/herdr-app/layouts",
     ".config/herdr-app/themes",
+    ".config/herdr-app/mods",
+    ".config/herdr-app/mods/blacknpink-buttons",
+    ".config/herdr-app/mods/blacknpink-drawer",
+    ".config/herdr-app/mods/blacknpink-tabs",
 ];
 
 /// The embedded files of a config package, with paths relative to the package folder.

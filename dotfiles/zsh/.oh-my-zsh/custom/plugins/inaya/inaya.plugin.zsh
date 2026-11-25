@@ -153,6 +153,12 @@ if has zoxide; then
     alias zeze='zoxide edit'
 fi
 
+# In Herdr, right-clicks go to programs that use the mouse, such as Neovim.
+# Shift+right-click still opens Herdr's menu.
+if [[ -n $HC_TERMINAL_ID ]] && has hc; then
+    hc label "$HC_TERMINAL_ID" herdr.right-click=program >/dev/null 2>&1 &|
+fi
+
 # ============================================================================
 # Functions (Cross-platform)
 # ============================================================================

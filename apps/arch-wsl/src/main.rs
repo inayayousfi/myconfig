@@ -31,6 +31,9 @@ static MODULES: &[&dyn Module] = &[
     &Neovim {
         source: NeovimSource::Package,
     },
+    &HerdrCore {
+        source: HerdrCoreSource::Package,
+    },
     &Tailscale,
     &AgentsPackages {
         extra: &[Package::WslSshAgent],
@@ -100,12 +103,14 @@ mod tests {
             "vscodium",
             "bootvine",
             "t3code-desktop",
+            "herdr",
         ] {
             assert!(!names.contains(&absent), "Arch WSL includes {absent}");
         }
         for wanted in [
             "zsh",
             "neovim",
+            "herdr-core",
             "system-monitor",
             "agent-config",
             "git-config",

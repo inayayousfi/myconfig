@@ -27,6 +27,10 @@ static MODULES: &[&dyn Module] = &[
     &Neovim {
         source: NeovimSource::Package,
     },
+    &HerdrCore {
+        source: HerdrCoreSource::Package,
+    },
+    &Herdr,
     &Ghostty,
     &AxidevOsk,
     &Tailscale,
@@ -156,6 +160,8 @@ mod tests {
             "math",
             "bootvine",
             "t3code-desktop",
+            "herdr-core",
+            "herdr",
             "agent-config",
             "git-config",
             "login",

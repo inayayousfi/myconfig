@@ -18,3 +18,5 @@ The config needs Neovim 0.12, because it installs its plugins with Neovim's buil
 - satellite.nvim draws a scrollbar that also marks diagnostics, Git changes and search matches.
 
 Files save after one second without typing. Formatting runs when a file or the window loses focus and from the Format button, never while typing, because it would move the text under the cursor.
+
+In [Herdr](herdr.md), right-clicks reach Neovim because the Zsh plugin labels every Herdr terminal to send them to the program.

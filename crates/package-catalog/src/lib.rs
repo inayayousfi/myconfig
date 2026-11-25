@@ -162,6 +162,8 @@ pub enum Package {
     Uidmap,
     Qrencode,
     T3codeDesktop,
+    HerdrCore,
+    HerdrApp,
     GoogleChrome,
     Bootvine,
     CachyosKdeSettings,
@@ -613,6 +615,8 @@ pub const PACKAGE_NAMES: &[((Package, Platform), &str)] = &[
     ((Package::Qrencode, Platform::Pacman), "qrencode"),
     ((Package::Qrencode, Platform::Apt), "qrencode"),
     ((Package::T3codeDesktop, Platform::Aur), "t3code-bin"),
+    ((Package::HerdrCore, Platform::Aur), "herdr-core-bin"),
+    ((Package::HerdrApp, Platform::Aur), "herdr-app-bin"),
     ((Package::GoogleChrome, Platform::Aur), "google-chrome"),
     ((Package::Bootvine, Platform::Pacman), "bootvine"),
     (

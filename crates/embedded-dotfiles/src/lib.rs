@@ -7,6 +7,7 @@ use typed_fs_rs::{EmbeddedDirectory, embed_dir};
 embed_dir!(pub static AI = "../../dotfiles/ai");
 embed_dir!(pub static GHOSTTY = "../../dotfiles/ghostty");
 embed_dir!(pub static HANDY = "../../dotfiles/handy");
+embed_dir!(pub static HERDR = "../../dotfiles/herdr");
 embed_dir!(pub static KANATA = "../../dotfiles/kanata");
 embed_dir!(pub static KANATA_KDE = "../../dotfiles/kanata-kde");
 embed_dir!(pub static LAZYGIT = "../../dotfiles/lazygit");
@@ -29,10 +30,11 @@ embed_dir!(pub static WINDOWS_ASSETS = "../../dotfiles/assets/windows");
 
 /// The config packages that Linux modules stow, by package name. Paths in each package
 /// are relative to the package folder.
-pub static CONFIG_PACKAGES: [(&str, &(dyn EmbeddedDirectory + Sync)); 15] = [
+pub static CONFIG_PACKAGES: [(&str, &(dyn EmbeddedDirectory + Sync)); 16] = [
     ("ai", &AI),
     ("ghostty", &GHOSTTY),
     ("handy", &HANDY),
+    ("herdr", &HERDR),
     ("kanata", &KANATA),
     ("kanata-kde", &KANATA_KDE),
     ("lazygit", &LAZYGIT),

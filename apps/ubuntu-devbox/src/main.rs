@@ -20,6 +20,9 @@ static MODULES: &[&dyn Module] = &[
         set_login_shell: true,
     },
     &TerminalTools,
+    &Neovim {
+        source: NeovimSource::Release,
+    },
     &Tailscale,
     &AgentsPackages { extra: &[] },
     &Docker { setup_tool: true },
@@ -88,6 +91,7 @@ mod tests {
                 "runtimes",
                 "zsh",
                 "terminal-tools",
+                "neovim",
                 "tailscale",
                 "agents-packages",
                 "docker",

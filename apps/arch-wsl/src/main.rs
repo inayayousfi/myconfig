@@ -28,6 +28,9 @@ static MODULES: &[&dyn Module] = &[
         set_login_shell: false,
     },
     &TerminalTools,
+    &Neovim {
+        source: NeovimSource::Package,
+    },
     &Tailscale,
     &AgentsPackages {
         extra: &[Package::WslSshAgent],
@@ -102,6 +105,7 @@ mod tests {
         }
         for wanted in [
             "zsh",
+            "neovim",
             "system-monitor",
             "agent-config",
             "git-config",

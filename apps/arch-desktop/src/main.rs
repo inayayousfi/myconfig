@@ -34,6 +34,9 @@ static MODULES: &[&dyn Module] = &[
         set_login_shell: true,
     },
     &TerminalTools,
+    &Neovim {
+        source: NeovimSource::Package,
+    },
     &Ghostty,
     &Tailscale,
     &AgentsPackages {

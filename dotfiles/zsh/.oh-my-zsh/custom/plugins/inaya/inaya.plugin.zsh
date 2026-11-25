@@ -37,24 +37,6 @@ export LC_ALL=en_US.UTF-8
 
 export VI_MODE_SET_CURSOR=true
 
-if $IS_LINUX && [ -z "$WSL_DISTRO_NAME" ] && has codium; then
-    # Programs wait for the editor to close the file before reading it.
-    export EDITOR="codium --wait"
-    export VISUAL="$EDITOR"
-elif [ -n "$WSL_DISTRO_NAME" ] && [ -x "$HOME/.local/bin/windows-codium" ] \
-    && "$HOME/.local/bin/windows-codium" --check; then
-    # Windows VSCodium edits WSL files through \\wsl.localhost paths. The full
-    # path works before PATH gains ~/.local/bin and for programs without it.
-    export EDITOR="$HOME/.local/bin/windows-codium"
-    export VISUAL="$EDITOR"
-elif has vim; then
-    export EDITOR="vim"
-    export VISUAL="vim"
-else
-    export EDITOR="vi"
-    export VISUAL="vi"
-fi
-
 # ============================================================================
 # Platform-specific Environment Variables
 # ============================================================================
@@ -73,6 +55,16 @@ elif $IS_LINUX; then
     # own installer puts bun when no package provides it.
     export PATH="$HOME/.local/bin:$PATH:$(go env GOPATH 2>/dev/null)/bin:$BUN_INSTALL/bin"
 fi
+
+# Neovim can live in ~/.local/bin, so the editor is chosen once PATH has it.
+if has nvim; then
+    export EDITOR="nvim"
+elif has vim; then
+    export EDITOR="vim"
+else
+    export EDITOR="vi"
+fi
+export VISUAL="$EDITOR"
 
 # ============================================================================
 # Aliases (Cross-platform)
@@ -124,6 +116,41 @@ fi
 
 if has systemctl; then
     alias sus='systemctl suspend'
+fi
+
+# Ubuntu names these two programs fdfind and batcat.
+if ! has fd && has fdfind; then
+    alias fd='fdfind'
+fi
+bat_program=bat
+if ! has bat && has batcat; then
+    bat_program=batcat
+    alias bat='batcat'
+fi
+
+if has eza; then
+    alias ls='eza --icons --group-directories-first --git'
+fi
+
+if has lazygit; then
+    alias lg='lazygit'
+fi
+
+if has fzf; then
+    source <(fzf --zsh)
+
+    # Fuzzy file picker: opens the chosen file in the editor.
+    pf() {
+        local file
+        file=$(fzf --preview="$bat_program {} --color=always --style=numbers" \
+            --bind shift-up:preview-page-up,shift-down:preview-page-down)
+        [ -n "$file" ] && ${=EDITOR} "$file"
+    }
+fi
+
+if has zoxide; then
+    eval "$(zoxide init zsh)"
+    alias zeze='zoxide edit'
 fi
 
 # ============================================================================

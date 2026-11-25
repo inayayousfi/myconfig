@@ -6,14 +6,6 @@ gui:
   border: rounded
   showRandomTip: false
   showFileIcons: true
-  authorColors:
-    "*": "#a0aabe"
-  branchColorPatterns:
-    "^main$": "#60a5fa"
-    "^master$": "#60a5fa"
-    "^release/": "#facc15"
-    "^hotfix/": "#f87171"
-    "^(feature|feat|chore|docs|refactor|test)/": "#ff85c8"
   theme:
     activeBorderColor:
       - "#ff4ead"
@@ -41,3 +33,11 @@ gui:
       - "#f87171"
     defaultFgColor:
       - "#d0d6e0"
+    authorColors:
+      "*": "#a0aabe"
+    branchColorPatterns:
+      "^main$": "#60a5fa"
+      "^master$": "#60a5fa"
+      "^release/": "#facc15"
+      "^hotfix/": "#f87171"
+      "^(feature|feat|chore|docs|refactor|test)/": "#ff85c8"

@@ -3187,3 +3187,75 @@ fn the_wake_sources_hook_runs_before_each_sleep() {
     assert!(!report.unanswered);
     assert_eq!(system_file(&sandbox, WAKE_HOOK), None);
 }
+
+#[test]
+fn neovim_from_its_release_needs_the_pinned_checksum_and_remove_takes_it_back() {
+    let sandbox = Sandbox::for_system("neovim-release", PackageSystem::Apt);
+    let io = Answers::new(None);
+    let neovim = crate::Neovim {
+        source: crate::NeovimSource::Release,
+    };
+    let modules: [&dyn Module; 1] = [&neovim];
+    // The fake download is a real archive laid out like Neovim's, and the fake checksum
+    // matches the pinned one only while `good-checksum` exists.
+    let release = sandbox.root.join("release");
+    fs::create_dir_all(release.join("nvim-linux-x86_64/bin")).unwrap();
+    super::program(&release.join("nvim-linux-x86_64/bin/nvim"), "exit 0");
+    let archive = sandbox.root.join("nvim.tar.gz");
+    assert!(
+        std::process::Command::new("tar")
+            .arg("-czf")
+            .arg(&archive)
+            .arg("-C")
+            .arg(&release)
+            .arg("nvim-linux-x86_64")
+            .status()
+            .unwrap()
+            .success()
+    );
+    sandbox.fake("uname", "echo x86_64");
+    sandbox.fake(
+        "curl",
+        &format!(
+            r#"while [ "$1" != --output ]; do shift; done; cp '{}' "$2""#,
+            archive.display()
+        ),
+    );
+    sandbox.fake(
+        "sha256sum",
+        r#"if [ -e "$MYCONFIG_TEST_ROOT/good-checksum" ]; then
+    echo "474430d53e6264f6d6dd18db42d6dc9df3a1b56ca9e88a325bbf860e1a811d87  $1"
+else
+    echo "0000000000000000000000000000000000000000000000000000000000000000  $1"
+fi"#,
+    );
+    let opt = sandbox.home.join(".local/opt");
+    let link = sandbox.home.join(".local/bin/nvim");
+
+    // A download that does not match the pinned checksum leaves nothing behind.
+    let failed = sandbox.with(&io, |ctx| runner::install(ctx, &modules, &modules));
+    assert!(failed.is_err());
+    assert!(!opt.exists());
+    assert!(fs::symlink_metadata(&link).is_err());
+
+    fs::write(sandbox.root.join("good-checksum"), "").unwrap();
+    sandbox
+        .with(&io, |ctx| runner::install(ctx, &modules, &modules))
+        .unwrap();
+    assert_eq!(
+        fs::read_link(&link).unwrap(),
+        opt.join("nvim-0.12.6/bin/nvim")
+    );
+    assert!(sandbox.home.join(".config/nvim/lua/mouse.lua").exists());
+    let results = sandbox.with(&io, |ctx| runner::verify(ctx, &modules));
+    assert!(
+        results.iter().all(|(_, result)| result.is_ok()),
+        "{results:?}"
+    );
+
+    sandbox
+        .with(&io, |ctx| runner::remove(ctx, &modules, &modules, false))
+        .unwrap();
+    assert!(fs::symlink_metadata(&link).is_err());
+    assert!(!opt.exists());
+}

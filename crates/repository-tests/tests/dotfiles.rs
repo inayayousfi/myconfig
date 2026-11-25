@@ -185,15 +185,16 @@ fn the_zsh_files_parse() {
 
 #[test]
 fn zsh_picks_the_installed_editor_without_retired_aliases() {
-    // Command availability is simulated, including retired editors, so no program runs
-    // and the host shell configuration is not read.
+    // Vim and the retired editors are simulated, so the host shell configuration is not
+    // read. Neovim is looked up for real on a PATH that starts empty, because the plugin
+    // must find it in ~/.local/bin, where release installs put it.
     let script = r#"
 command() {
     if [[ "$1" = -v ]]; then
         case "$2" in
-            codium) [[ "$MYCONFIG_EDITOR_CASE" = codium ]] ;;
+            nvim) builtin command -v nvim ;;
             vim) [[ "$MYCONFIG_EDITOR_CASE" = vim ]] ;;
-            emacs|nvim) return 0 ;;
+            emacs|codium) return 0 ;;
             *) return 1 ;;
         esac
     else
@@ -203,32 +204,26 @@ command() {
 uname() { print Linux; }
 go() { print "$HOME/go"; }
 bun() { print "$HOME/.bun/bin"; }
-if [[ "$MYCONFIG_EDITOR_CASE" = codium ]]; then
-    unset WSL_DISTRO_NAME
-else
-    export WSL_DISTRO_NAME=Arch
-fi
+PATH="$MYCONFIG_EMPTY_PATH"
 source "$1" || exit 1
-case "$MYCONFIG_EDITOR_CASE" in
-    codium) expected="codium --wait" ;;
-    windows-codium) expected="$HOME/.local/bin/windows-codium" ;;
-    *) expected="$MYCONFIG_EDITOR_CASE" ;;
-esac
-[[ "$EDITOR" = "$expected" && "$VISUAL" = "$expected" ]] || exit 1
+[[ "$EDITOR" = "$MYCONFIG_EDITOR_CASE" && "$VISUAL" = "$MYCONFIG_EDITOR_CASE" ]] || exit 1
 (( ! $+aliases[vim] && ! $+aliases[vi] && ! $+aliases[v] )) || exit 1
 "#;
     let plugin = dotfiles().join("zsh/.oh-my-zsh/custom/plugins/inaya/inaya.plugin.zsh");
-    for editor in ["codium", "windows-codium", "vim", "vi"] {
+    for editor in ["nvim", "vim", "vi"] {
         let scratch = Scratch::new(&format!("editor-{editor}"));
-        if editor == "windows-codium" {
+        let empty = scratch.0.join("empty");
+        fs::create_dir_all(&empty).unwrap();
+        if editor == "nvim" {
             let bin = scratch.0.join(".local/bin");
             fs::create_dir_all(&bin).unwrap();
-            program(&bin.join("windows-codium"), "[ \"$1\" = --check ]");
+            program(&bin.join("nvim"), "exit 0");
         }
         run(Command::new("zsh")
             .args(["-f", "-c", script, "editor-selection"])
             .arg(&plugin)
             .env("HOME", &scratch.0)
+            .env("MYCONFIG_EMPTY_PATH", &empty)
             .env("MYCONFIG_EDITOR_CASE", editor));
     }
 }

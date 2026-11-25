@@ -1,5 +1,8 @@
-//! Command-line tools.
-use crate::{Context, Footprint, Module, ModuleResult, Need, Package, support::verify_packages};
+//! Command-line tools, with lazygit's config.
+use crate::{
+    Context, Footprint, Module, ModuleResult, Need, Package, deploy::verify_package,
+    support::verify_packages,
+};
 
 pub struct Cli;
 
@@ -9,6 +12,12 @@ const PACKAGES: &[Package] = &[
     Package::Fastfetch,
     Package::Tokei,
     Package::GithubCli,
+    Package::Fd,
+    Package::Fzf,
+    Package::Zoxide,
+    Package::Eza,
+    Package::Bat,
+    Package::Lazygit,
 ];
 
 impl Module for Cli {
@@ -28,11 +37,13 @@ impl Module for Cli {
     }
 
     fn install(&self, ctx: &Context) -> ModuleResult {
-        ctx.install_packages(PACKAGES)
+        ctx.install_packages(PACKAGES)?;
+        ctx.deploy_config("lazygit")
     }
 
     fn verify(&self, ctx: &Context) -> ModuleResult {
-        verify_packages(ctx, PACKAGES)
+        verify_packages(ctx, PACKAGES)?;
+        verify_package(ctx, "lazygit")
     }
 
     fn remove(&self, _ctx: &Context) -> ModuleResult {

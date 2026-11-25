@@ -9,6 +9,8 @@ embed_dir!(pub static GHOSTTY = "../../dotfiles/ghostty");
 embed_dir!(pub static HANDY = "../../dotfiles/handy");
 embed_dir!(pub static KANATA = "../../dotfiles/kanata");
 embed_dir!(pub static KANATA_KDE = "../../dotfiles/kanata-kde");
+embed_dir!(pub static LAZYGIT = "../../dotfiles/lazygit");
+embed_dir!(pub static NVIM = "../../dotfiles/nvim");
 embed_dir!(pub static PHONE = "../../dotfiles/phone");
 embed_dir!(pub static PIPEWIRE = "../../dotfiles/pipewire");
 embed_dir!(pub static PLASMA = "../../dotfiles/plasma");
@@ -27,12 +29,14 @@ embed_dir!(pub static WINDOWS_ASSETS = "../../dotfiles/assets/windows");
 
 /// The config packages that Linux modules stow, by package name. Paths in each package
 /// are relative to the package folder.
-pub static CONFIG_PACKAGES: [(&str, &(dyn EmbeddedDirectory + Sync)); 13] = [
+pub static CONFIG_PACKAGES: [(&str, &(dyn EmbeddedDirectory + Sync)); 15] = [
     ("ai", &AI),
     ("ghostty", &GHOSTTY),
     ("handy", &HANDY),
     ("kanata", &KANATA),
     ("kanata-kde", &KANATA_KDE),
+    ("lazygit", &LAZYGIT),
+    ("nvim", &NVIM),
     ("phone", &PHONE),
     ("pipewire", &PIPEWIRE),
     ("plasma", &PLASMA),

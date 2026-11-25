@@ -54,7 +54,7 @@ jobs:
             dotfiles/zsh/.oh-my-zsh/custom/themes/blacknpink.zsh-theme
 
       - name: Check Lua formatting
-        run: stylua --check dotfiles/old/nvim/.config/nvim/init.lua
+        run: stylua --check dotfiles/nvim/.config/nvim/init.lua dotfiles/nvim/.config/nvim/lua/mouse.lua
 
       - name: Check TOML formatting
         run: |

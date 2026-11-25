@@ -13,17 +13,13 @@ const INVENTORY_RUNTIMES: &str = ".\n\n## Development environment\n\n\
 const INVENTORY_AGENTS: &str = ".\n\
 - **Coding agents**: Claude Code, installed by Anthropic's installer in `~/.local/bin/claude` and updated by itself. Pi, installed globally by Bun in `~/.bun/bin/pi`.\n\
 - **Agent browser tools**: Playwright MCP.\n\
-- **Claude configuration**: `claude-config-helper` trusts projects, marks Claude's first-run setup as finished, lists or clears saved approvals, applies the MCP servers listed in `~/.config/claude-config-helper/mcp-servers.json`, and checks files for tokens, email addresses and home paths.\n\
-- **T3 Code**: ";
+- **Claude configuration**: `claude-config-helper` trusts projects, marks Claude's first-run setup as finished, lists or clears saved approvals, applies the MCP servers listed in `~/.config/claude-config-helper/mcp-servers.json`, and checks files for tokens, email addresses and home paths.\n";
 const INVENTORY_END: &str =
     "\n`inayos verify` checks that the installed modules are still in place.\n";
 
-const T3_CODE_SERVER: &str = "the `t3` server from npm in `~/.local/bin/t3`, run at boot by the user service `t3code.service` on `127.0.0.1:3773`. `t3ctl status`, `remote`, `update` and `repair` manage it; `remote` turns T3 Connect or the Tailscale route (HTTPS port 10000) on or off. Both routes start off.";
-const T3_CODE_DESKTOP: &str = "the desktop app (AUR package `t3code-bin`), which runs its own server on `127.0.0.1:3773` while it is open. Its CLI is `~/.t3/bin/t3`. `~/.t3/userdata/client-settings.json` links into the deployed `t3code-desktop` package.";
-
 const DESKTOP_INVENTORY: &[&str] = &[
     "- **System settings**: zram swap as large as RAM, DNS through systemd-resolved, an open-file limit of 2097152, and the `ntsync` module for Wine and Proton.\n",
-    "- **Editor**: Neovim 0.12 is `EDITOR`, with the Black & Pink config and a mouse-first layer in `~/.config/nvim/lua/mouse.lua`. VSCodium with the Black & Pink theme and Open Remote SSH opens text files from the desktop.\n",
+    "- **Editor**: Neovim 0.12 is `EDITOR`, with the Black & Pink config and a mouse-first layer in `~/.config/nvim/lua/mouse.lua`.\n",
     "- **Terminal workspace**: the Herdr app (AUR `herdr-app-bin`) on herdr-core (`hc`), the background server that keeps terminals and agents running. `hc ls`, `hc attach` and `hc read` list, join and read them; the `herdr` agent skill teaches agents to use it. Its Black & Pink look lives in the `blacknpink` layout and theme under `~/.config/herdr-app`, with telemetry off. Each Herdr shell sends right-clicks to mouse-using programs; Shift+right-click opens Herdr's menu.\n",
     "- **Browser**: Google Chrome from the AUR.\n",
     "- **Math and documents**: LyX with TeX Live, the Qalculate calculator with gnuplot for plots, and Okular as the default PDF viewer.\n",
@@ -52,13 +48,12 @@ const CONTAINERS: &str = "- **Containers**: rootless Docker with Buildx and Comp
 
 /// A phrase of the template for each module that it describes. The template of a profile
 /// holds the phrase exactly when the profile holds the module.
-const CLAIMS: [(&str, &str); 19] = [
+const CLAIMS: [(&str, &str); 16] = [
     ("system-tuning", "zram swap"),
     ("system-monitor", "btop"),
     ("tailscale", "Tailscale service"),
     ("ssh-server", "OpenSSH server"),
     ("docker", "rootless Docker"),
-    ("vscodium", "VSCodium with"),
     ("neovim", "Neovim 0.12"),
     ("herdr-core", "herdr-core (`hc`)"),
     ("herdr", "the Herdr app"),
@@ -70,8 +65,6 @@ const CLAIMS: [(&str, &str); 19] = [
     ("kanata-kde", "KDE tray profile selector"),
     ("kde-plasma", "**KDE Plasma**"),
     ("handy", "Handy"),
-    ("t3code", "`t3code.service`"),
-    ("t3code-desktop", "AUR package `t3code-bin`"),
 ];
 
 pub struct EnvironmentInventory {
@@ -79,8 +72,6 @@ pub struct EnvironmentInventory {
     pub platform: &'static str,
     /// The terminal tools, as a list in a sentence.
     pub terminal_tools: &'static str,
-    /// How T3 Code runs on this profile.
-    pub t3_code: &'static str,
     /// Profile-specific lines added after the shared development environment.
     pub extra: &'static [&'static str],
 }
@@ -89,21 +80,18 @@ impl EnvironmentInventory {
     pub const ARCH_DESKTOP: Self = Self {
         platform: "InayOS desktop, an Arch Linux development workstation",
         terminal_tools: "Yazi, ripgrep, fd, fzf, zoxide, eza, bat, lazygit, jq, fastfetch, and tokei",
-        t3_code: T3_CODE_DESKTOP,
         extra: DESKTOP_INVENTORY,
     };
 
     pub const ARCH_WSL: Self = Self {
         platform: "Arch WSL development environment",
         terminal_tools: "Yazi, ripgrep, fd, fzf, zoxide, eza, bat, lazygit, jq, fastfetch, tokei, and btop",
-        t3_code: T3_CODE_SERVER,
         extra: ARCH_WSL_INVENTORY,
     };
 
     pub const UBUNTU_DEVBOX: Self = Self {
         platform: "Ubuntu development machine for coding and long-running agents",
         terminal_tools: "Yazi, ripgrep, fd, fzf, zoxide, eza, bat, lazygit, jq, fastfetch, tokei, and btop",
-        t3_code: T3_CODE_SERVER,
         extra: UBUNTU_DEVBOX_INVENTORY,
     };
 
@@ -114,8 +102,6 @@ impl EnvironmentInventory {
             INVENTORY_RUNTIMES,
             self.terminal_tools,
             INVENTORY_AGENTS,
-            self.t3_code,
-            "\n",
             &self.extra.concat(),
             INVENTORY_END,
         ]

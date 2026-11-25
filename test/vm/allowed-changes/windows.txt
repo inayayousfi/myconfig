@@ -42,14 +42,7 @@ files C:\Users\tester\AppData\Local\Packages\windows.*
 files C:\Users\tester\AppData\Local\Packages\Microsoft.AAD.BrokerPlugin_*
 files C:\Users\tester\AppData\Local\Packages\Microsoft.DesktopAppInstaller_*\LocalState\*
 
-# Files that a running T3 Code and Claude Code rewrite.
-files C:\Users\tester\.t3\caches\*.json
-files C:\Users\tester\.t3\userdata\logs\*
-files C:\Users\tester\.t3\userdata\server-owner.sqlite-journal
-files C:\Users\tester\.t3\userdata\server-runtime.json
-files C:\Users\tester\.t3\userdata\statev2.sqlite
-files C:\Users\tester\.t3\userdata\statev2.sqlite-shm
-files C:\Users\tester\.t3\userdata\statev2.sqlite-wal
+# Files that a running Claude Code rewrites.
 files C:\Users\tester\.claude\plugins\store\*.json
 
 # The disks of WSL distributions, which WSL keeps in a new folder for each registration. The

@@ -32,7 +32,6 @@ impl PackageGroup {
             Package::VisualStudioBuildTools,
             Package::PythonInstallManager,
             Package::DockerDesktop,
-            Package::Vscodium,
         ],
     };
 

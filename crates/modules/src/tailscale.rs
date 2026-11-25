@@ -49,7 +49,7 @@ impl Module for Tailscale {
             note_operator_pending(ctx, &user);
             return Ok(());
         }
-        // t3ctl publishes T3 Code through Tailscale Serve without sudo.
+        // The user runs tailscale commands, such as Serve, without sudo.
         ctx.set(Setting::TailscaleOperator, &user)
     }
 

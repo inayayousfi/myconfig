@@ -113,6 +113,8 @@ pub enum Package {
     Flatpak,
     Fuse2,
     PythonVenv,
+    // No module installs Vscodium, Bsdtar, Qrencode or T3codeDesktop. Earlier installs
+    // recorded them, and remove reads those records.
     Vscodium,
     Bsdtar,
     DockerRootlessExtras,

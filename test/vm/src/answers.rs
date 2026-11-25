@@ -63,11 +63,6 @@ const ENTRIES: &[Entry] = &[
         pattern: r"Unregister the WSL distribution .+ and delete everything inside it\?",
         yes: true,
     },
-    // windows_t3code.rs
-    Entry {
-        pattern: r"Install the T3 Code server, started at boot, with Tailscale, Node\.js when npm is missing, and t3ctl\?",
-        yes: true,
-    },
     // login.rs: a test machine has no accounts to log in to.
     Entry {
         pattern: r"GitHub CLI is not authenticated\. Log in now\?",

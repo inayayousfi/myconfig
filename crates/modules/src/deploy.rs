@@ -16,7 +16,7 @@ use crate::{Context, ModuleResult, state::Change};
 /// programs write later would land inside the deployed tree. systemd ignores a linked
 /// drop-in directory, so those stay real directories as well. Each one applies only to a
 /// package that contains it.
-const UNFOLDED: [&str; 16] = [
+const UNFOLDED: [&str; 14] = [
     ".local/bin",
     ".claude",
     ".local/share/applications",
@@ -25,10 +25,6 @@ const UNFOLDED: [&str; 16] = [
     ".local/share/plasma/look-and-feel",
     ".config/fontconfig/conf.d",
     ".config/systemd/user/app-com.mitchellh.ghostty.service.d",
-    // VSCodium keeps its history and workspace storage beside its settings.
-    ".config/VSCodium/User",
-    // T3 Code keeps its database and secrets beside its client settings.
-    ".t3/userdata",
     // agent-config writes the fx MCP servers and the instruction links after deploy.
     ".fx",
     // OpenCode writes its own files beside its config.

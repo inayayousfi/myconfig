@@ -14,7 +14,6 @@ static MODULES: &[&dyn Module] = &[
     &WindowsTerminal,
     &AutoHotkey,
     &AgentConfigCopied,
-    &WindowsT3Code,
     &OhMyPoshFont,
     &PlexSerifFont,
     &LlvmPath,

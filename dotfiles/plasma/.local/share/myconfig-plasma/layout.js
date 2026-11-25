@@ -1,20 +1,25 @@
 // Raising this version rebuilds the bars that an older layout made.
-const layoutVersion = "1";
+const layoutVersion = "2";
 // The layout command says whether it has applied this layout before, and
 // whether the installer asks to pin the Overview icon again.
 const firstRun = typeof myconfigFirstRun === "undefined" ? true : myconfigFirstRun;
 const ensureOverview = typeof myconfigEnsureOverview === "undefined" ? false : myconfigEnsureOverview;
 
 const overviewLauncher = "applications:myconfig-overview.desktop";
+const herdrLauncher = "applications:herdr-app.desktop";
+// A rebuilt dock drops these pins and shows Herdr in place of the first one.
+const replacedLaunchers = [
+    "applications:t3code.desktop",
+    "applications:vscodium.desktop",
+    "applications:com.mitchellh.ghostty.desktop",
+];
 // A new dock starts with these pins. The task widget shows a blank icon for a
 // pin whose application is not installed, so each one needs a module that
 // installs it.
 const defaultLaunchers = [
     overviewLauncher,
     "applications:google-chrome.desktop",
-    "applications:t3code.desktop",
-    "applications:vscodium.desktop",
-    "applications:com.mitchellh.ghostty.desktop",
+    herdrLauncher,
     "applications:lyx.desktop",
     "applications:io.github.Qalculate.qalculate-qt.desktop",
 ];
@@ -69,6 +74,16 @@ if (missingWidgetTypes.length > 0) {
 
     function withOverview(launchers) {
         return launchers.includes(overviewLauncher) ? launchers : [overviewLauncher].concat(launchers);
+    }
+
+    function withHerdr(launchers) {
+        const first = launchers.findIndex(launcher => replacedLaunchers.includes(launcher));
+        const kept = launchers.filter(launcher => !replacedLaunchers.includes(launcher));
+        if (first < 0 || kept.includes(herdrLauncher)) {
+            return kept;
+        }
+        const before = launchers.slice(0, first).filter(launcher => !replacedLaunchers.includes(launcher)).length;
+        return kept.slice(0, before).concat([herdrLauncher], kept.slice(before));
     }
 
     function configureTasks(tasks, launchers) {
@@ -167,7 +182,7 @@ if (missingWidgetTypes.length > 0) {
             if (!dock) {
                 dock = new Panel();
                 created.push(dock);
-                tasks = fillDock(dock, oldLaunchers.has(screen) ? withOverview(oldLaunchers.get(screen)) : defaultLaunchers);
+                tasks = fillDock(dock, oldLaunchers.has(screen) ? withOverview(withHerdr(oldLaunchers.get(screen))) : defaultLaunchers);
             } else if (!hasWidgets(dock, dockWidgetTypes)) {
                 tasks = fillDock(dock, launchersOf(dock));
             } else {

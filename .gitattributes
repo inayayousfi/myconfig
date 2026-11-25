@@ -7,12 +7,12 @@ dotfiles/kanata/** text=auto eol=lf
 dotfiles/kanata-kde/** text=auto eol=lf
 dotfiles/old/** text=auto eol=lf
 dotfiles/opencode/** text=auto eol=lf
-dotfiles/vscodium/** text=auto eol=lf
 dotfiles/yazi/** text=auto eol=lf
 dotfiles/zsh/** text=auto eol=lf
 
 # PowerShell files should always use CRLF line endings
 *.ps1 text eol=crlf
+*.cmd text eol=crlf
 
 # Shell scripts should always use LF line endings
 *.sh text eol=lf

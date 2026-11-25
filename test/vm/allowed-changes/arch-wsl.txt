@@ -29,14 +29,7 @@ files /home/tester/.cache/*
 files /home/tester/.bash_history
 files /home/tester/.lesshst
 
-# Files that a running T3 Code and Claude Code rewrite.
-files /home/tester/.t3/caches/*.json
-files /home/tester/.t3/userdata/logs/*
-files /home/tester/.t3/userdata/server-owner.sqlite-journal
-files /home/tester/.t3/userdata/server-runtime.json
-files /home/tester/.t3/userdata/statev2.sqlite
-files /home/tester/.t3/userdata/statev2.sqlite-shm
-files /home/tester/.t3/userdata/statev2.sqlite-wal
+# Files that a running Claude Code rewrites.
 files /home/tester/.claude/plugins/store/*.json
 
 # The installer's own record of what it changed, and the folder that holds it, which the

@@ -63,14 +63,11 @@ mod runtimes;
 mod shared_desktop;
 mod ssh;
 mod system_monitor;
-mod t3code;
 mod tailscale;
 mod taskbar_auto_hide;
 mod terminal_tools;
-mod vscodium;
 mod wake_sources;
 mod windows_editor;
-mod windows_t3code;
 mod windows_terminal;
 mod zsh;
 
@@ -121,14 +118,11 @@ pub mod internal {
 }
 pub use ssh::{Ssh, SshServer};
 pub use system_monitor::SystemMonitor;
-pub use t3code::{T3Code, T3CodeDesktop};
 pub use tailscale::Tailscale;
 pub use taskbar_auto_hide::TaskbarAutoHide;
 pub use terminal_tools::TerminalTools;
-pub use vscodium::Vscodium;
 pub use wake_sources::WakeSources;
 pub use windows_editor::WindowsEditor;
-pub use windows_t3code::WindowsT3Code;
 pub use windows_terminal::WindowsTerminal;
 pub use zsh::Zsh;
 

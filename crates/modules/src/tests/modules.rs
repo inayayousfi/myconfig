@@ -534,8 +534,10 @@ fn folders_that_programs_write_into_stay_real_folders() {
             "ghostty",
             ".config/systemd/user/app-com.mitchellh.ghostty.service.d",
         ),
-        ("vscodium", ".config/VSCodium/User"),
-        ("t3code-desktop", ".t3/userdata"),
+        ("nvim", ".config/nvim"),
+        ("herdr", ".config/herdr-app"),
+        ("herdr", ".config/herdr-app/layouts"),
+        ("herdr", ".config/herdr-app/themes"),
         ("ai", ".fx"),
         ("ai", ".config/opencode"),
     ] {
@@ -1957,142 +1959,6 @@ cat "$MYCONFIG_TEST_ROOT/bun-installer""#,
     assert!(bun.join("bin/bun").is_file());
 }
 
-#[test]
-fn vscodium_installs_its_theme_and_extensions_and_remove_uninstalls_only_those() {
-    let sandbox = Sandbox::new("vscodium");
-    system(&sandbox);
-    // Keeps the installed extensions in a file, and names the packaged theme as VSCodium does.
-    sandbox.fake(
-        "codium",
-        r#"printf 'codium %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
-installed="$MYCONFIG_TEST_ROOT/extensions"
-touch "$installed"
-while [ "$#" -gt 0 ]; do
-    case "$1" in
-        --list-extensions) cat "$installed" ;;
-        --install-extension)
-            case "$2" in *.vsix) id=myconfig.blacknpink-theme ;; *) id="$2" ;; esac
-            grep -Fxq "$id" "$installed" || printf '%s\n' "$id" >> "$installed"; shift ;;
-        --uninstall-extension) grep -Fxq "$2" "$installed" || { echo "Extension '$2' is not installed." >&2; exit 1; }
-            grep -Fxv "$2" "$installed" > "$installed.new"; mv "$installed.new" "$installed"; shift ;;
-    esac
-    shift
-done"#,
-    );
-    // Installed before, so remove keeps it.
-    fs::write(sandbox.root.join("extensions"), "rust-lang.rust-analyzer\n").unwrap();
-    sandbox.fake(
-        "bsdtar",
-        r#"printf 'bsdtar %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
-[ "$3" = -cf ] && : > "$4""#,
-    );
-    let io = Answers::new(None);
-    sandbox
-        .with(&io, |ctx| {
-            runner::install(ctx, &[&crate::Vscodium], &[&crate::Vscodium])
-        })
-        .unwrap();
-    for folder in [".config/VSCodium", ".config/VSCodium/User"] {
-        let metadata = fs::symlink_metadata(sandbox.home.join(folder)).unwrap();
-        assert!(
-            metadata.is_dir() && !metadata.file_type().is_symlink(),
-            "{folder} was folded"
-        );
-    }
-    for kind in ["text/plain", "text/markdown", "application/json"] {
-        assert_eq!(
-            kde(
-                &sandbox,
-                &format!("mimeapps.list/Default Applications/{kind}")
-            )
-            .as_deref(),
-            Some("vscodium.desktop")
-        );
-    }
-    assert_eq!(sandbox.calls("bsdtar --format zip -cf "), 1);
-    assert_eq!(sandbox.calls("codium --force --install-extension "), 1);
-
-    // What VSCodium leaves after installing the theme: its folder with a `__metadata`
-    // block added to package.json, and an entry in extensions.json.
-    let theme = sandbox
-        .home
-        .join("dotfiles/vscodium/.config/VSCodium/blacknpink-theme");
-    let extensions = sandbox.home.join(".vscode-oss/extensions");
-    let installed = extensions.join("myconfig.blacknpink-theme-1.0.0");
-    fs::create_dir_all(installed.join("themes")).unwrap();
-    fs::copy(
-        theme.join("themes/blacknpink-color-theme.json"),
-        installed.join("themes/blacknpink-color-theme.json"),
-    )
-    .unwrap();
-    let mut package: serde_json::Value =
-        serde_json::from_slice(&fs::read(theme.join("package.json")).unwrap()).unwrap();
-    assert_eq!(package["version"], "1.0.0");
-    package["__metadata"] = serde_json::json!({"installedTimestamp": 1792860770308_u64});
-    fs::write(installed.join("package.json"), package.to_string()).unwrap();
-    fs::write(
-        extensions.join("extensions.json"),
-        r#"[{"identifier":{"id":"myconfig.blacknpink-theme"},"version":"1.0.0","relativeLocation":"myconfig.blacknpink-theme-1.0.0","metadata":{"installedTimestamp":1792860770299}}]"#,
-    )
-    .unwrap();
-    let install = || {
-        sandbox
-            .with(&io, |ctx| {
-                runner::install(ctx, &[&crate::Vscodium], &[&crate::Vscodium])
-            })
-            .unwrap()
-    };
-    install();
-    assert_eq!(
-        sandbox.calls("codium --force --install-extension "),
-        1,
-        "a rerun reinstalled the unchanged theme"
-    );
-    fs::write(installed.join("themes/blacknpink-color-theme.json"), "{}").unwrap();
-    install();
-    assert_eq!(
-        sandbox.calls("codium --force --install-extension "),
-        2,
-        "a changed installed theme was not replaced"
-    );
-    let calls = fs::read_to_string(sandbox.root.join("calls")).unwrap();
-    let extensions = calls
-        .lines()
-        .find(|line| line.starts_with("codium --install-extension jeanp413.open-remote-ssh"))
-        .expect("the extensions were not installed");
-    let listed = fs::read_to_string(
-        sandbox
-            .home
-            .join("dotfiles/vscodium/.config/VSCodium/extensions.txt"),
-    )
-    .unwrap();
-    for extension in listed.lines().filter(|line| !line.trim().is_empty()) {
-        assert!(
-            extensions.contains(&format!("--install-extension {}", extension.trim())),
-            "{extension} was not installed"
-        );
-    }
-
-    // An extension that install added and the person uninstalled since has nothing left
-    // to undo.
-    let installed = fs::read_to_string(sandbox.root.join("extensions")).unwrap();
-    fs::write(
-        sandbox.root.join("extensions"),
-        installed.replace("jeanp413.open-remote-ssh\n", ""),
-    )
-    .unwrap();
-    sandbox
-        .with(&io, |ctx| {
-            runner::remove(ctx, &[&crate::Vscodium], &[&crate::Vscodium], false)
-        })
-        .unwrap();
-    assert_eq!(
-        fs::read_to_string(sandbox.root.join("extensions")).unwrap(),
-        "rust-lang.rust-analyzer\n",
-        "remove kept an extension that install added, or removed one that was there"
-    );
-}
-
 /// A boot that bootvine can join.
 fn bootvine_boot(sandbox: &Sandbox) {
     cachyos_boot(sandbox, true);
@@ -2332,95 +2198,6 @@ fi"#,
         1
     );
     assert!(!sandbox.home.join(".local/bin/claude").exists());
-}
-
-#[test]
-fn t3code_repairs_the_server_through_the_deployed_t3ctl_and_remove_undoes_what_it_did() {
-    let sandbox = Sandbox::new("t3code");
-    system(&sandbox);
-    sandbox.fake("npm", "exit 0");
-    let io = Answers::new(None);
-    // The deployed t3ctl runs as itself, so its own commands are faked through PATH.
-    sandbox.fake(
-        "loginctl",
-        r#"printf 'loginctl %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
-linger="$MYCONFIG_TEST_ROOT/linger"
-case "$1" in
-    show-user) if [ -e "$linger" ]; then echo yes; else echo no; fi ;;
-    enable-linger) : > "$linger" ;;
-    disable-linger) rm -f "$linger" ;;
-esac"#,
-    );
-    sandbox.fake("curl", "exit 0");
-    // ~/.t3 is missing before install. The started server writes its runtime file there.
-    let t3_home = sandbox.home.join(".t3");
-    let t3 = sandbox.home.join(".local/bin/t3");
-    fs::create_dir_all(t3.parent().unwrap()).unwrap();
-    super::program(
-        &t3,
-        &format!(
-            r#"printf 't3 %s\n' "$*" >> "$MYCONFIG_TEST_LOG"
-if [ "$*" = "service install" ]; then
-    mkdir -p '{userdata}' && echo '{{}}' > '{userdata}/server-runtime.json'
-fi"#,
-            userdata = t3_home.join("userdata").display()
-        ),
-    );
-    sandbox
-        .with(&io, |ctx| {
-            runner::install(ctx, &[&crate::T3Code], &[&crate::T3Code])
-        })
-        .unwrap();
-    assert!(sandbox.installed("qrencode"));
-    assert_eq!(sandbox.calls("t3 service install"), 1);
-    assert!(sandbox.root.join("linger").exists());
-    assert!(sandbox.home.join(".t3/service.env").exists());
-    let t3ctl = sandbox.home.join(".local/bin/t3ctl");
-    assert_eq!(
-        fs::canonicalize(&t3ctl).unwrap(),
-        fs::canonicalize(sandbox.home.join("dotfiles/t3code/.local/bin/t3ctl")).unwrap()
-    );
-
-    let yes = Answers::new(Some(true));
-    sandbox
-        .with(&yes, |ctx| {
-            runner::remove(ctx, &[&crate::T3Code], &[&crate::T3Code], false)
-        })
-        .unwrap();
-    assert_eq!(sandbox.calls("t3 service uninstall"), 1);
-    // Lingering was off and ~/.t3 was missing before install. Remove asks before
-    // deleting ~/.t3, because the server keeps its data there.
-    assert!(!sandbox.root.join("linger").exists());
-    assert!(
-        yes.questions
-            .borrow()
-            .iter()
-            .any(|question| question.contains(&t3_home.display().to_string()))
-    );
-    assert!(!t3_home.exists());
-    assert!(!sandbox.installed("qrencode"));
-    assert!(fs::symlink_metadata(&t3ctl).is_err());
-}
-
-#[test]
-fn t3code_desktop_installs_the_app_and_links_its_client_settings() {
-    let sandbox = Sandbox::new("t3code-desktop");
-    let io = Answers::new(None);
-    sandbox
-        .with(&io, |ctx| {
-            runner::install(ctx, &[&crate::T3CodeDesktop], &[&crate::T3CodeDesktop])
-        })
-        .unwrap();
-    assert!(sandbox.installed("t3code-bin"));
-    let settings = sandbox.home.join(".t3/userdata/client-settings.json");
-    assert!(
-        fs::symlink_metadata(&settings)
-            .unwrap()
-            .file_type()
-            .is_symlink()
-    );
-    let userdata = fs::symlink_metadata(sandbox.home.join(".t3/userdata")).unwrap();
-    assert!(!userdata.file_type().is_symlink());
 }
 
 #[test]
@@ -2808,9 +2585,9 @@ fn login_asks_only_when_logged_out_and_otherwise_prints_the_command() {
 }
 
 #[test]
-fn a_declined_windows_t3code_verifies_and_is_asked_again() {
-    let sandbox = Sandbox::new("windows-t3code-declined");
-    let modules: [&dyn Module; 1] = [&crate::WindowsT3Code];
+fn a_declined_module_verifies_and_is_asked_again() {
+    let sandbox = Sandbox::new("declined");
+    let modules: [&dyn Module; 1] = [&Asks];
     for _ in 0..2 {
         let io = Answers::new(Some(false));
         sandbox
@@ -2818,7 +2595,6 @@ fn a_declined_windows_t3code_verifies_and_is_asked_again() {
             .unwrap();
         assert_eq!(io.questions.borrow().len(), 1);
     }
-    assert!(!sandbox.home.join(".local/bin/t3ctl.ps1").exists());
     let io = Answers::new(None);
     let verified = sandbox.with(&io, |ctx| runner::verify(ctx, &modules));
     assert!(verified[0].1.is_ok());
@@ -2826,16 +2602,16 @@ fn a_declined_windows_t3code_verifies_and_is_asked_again() {
         io.events
             .borrow()
             .iter()
-            .any(|event| matches!(event, crate::Event::Declined { module } if module == "t3code")),
+            .any(|event| matches!(event, crate::Event::Declined { module } if module == "asks")),
         "the screen would show the declined module as installed"
     );
-    assert!(sandbox.with(&io, |ctx| !runner::installed(ctx, &crate::WindowsT3Code)));
+    assert!(sandbox.with(&io, |ctx| !runner::installed(ctx, &Asks)));
 }
 
 #[test]
-fn an_unanswered_windows_t3code_is_skipped() {
-    let sandbox = Sandbox::new("windows-t3code-unanswered");
-    let modules: [&dyn Module; 1] = [&crate::WindowsT3Code];
+fn an_unanswered_module_is_skipped() {
+    let sandbox = Sandbox::new("unanswered");
+    let modules: [&dyn Module; 1] = [&Asks];
     let report = incomplete(sandbox.with(&Answers::new(None), |ctx| {
         runner::install(ctx, &modules, &modules)
     }));
@@ -2849,7 +2625,6 @@ fn an_unanswered_windows_t3code_is_skipped() {
         report.only_unanswered(),
         "the command line exits with code 3 instead of reporting a failure"
     );
-    assert!(!sandbox.home.join(".local/bin/t3ctl.ps1").exists());
     let verified = sandbox.with(&Answers::new(None), |ctx| runner::verify(ctx, &modules));
     assert!(verified[0].1.is_err(), "nothing records a skip");
 }
@@ -2955,8 +2730,7 @@ fn a_missing_answer_skips_the_module_only_when_it_is_the_only_problem() {
     assert!(report.skipped.is_empty());
 }
 
-/// Asks before installing, the way `WindowsT3Code` does, and verifies that it installed
-/// unless the person declined.
+/// Asks before installing, and verifies that it installed unless the person declined.
 struct Asks;
 
 impl Module for Asks {

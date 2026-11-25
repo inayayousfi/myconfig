@@ -29,7 +29,7 @@ impl Module for Tailscale {
         ctx.install_packages(&[Package::Tailscale])?;
         ctx.enable_service("tailscaled", ServiceScope::System)?;
         ctx.run(cmd!(ctx.shell, "sudo systemctl start tailscaled"))?;
-        // t3ctl publishes T3 Code through Tailscale Serve without sudo.
+        // The user runs tailscale commands, such as Serve, without sudo.
         ctx.set(Setting::TailscaleOperator, &current_user(ctx)?)
     }
 

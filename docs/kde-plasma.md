@@ -16,7 +16,7 @@ The interface uses IBM Plex Sans and the fixed-width font is BlexMono Nerd Font 
 
 ## Panel layout
 
-The `plasma` package owns the panel layout. `myconfig-plasma-layout` sends `~/.local/share/myconfig-plasma/layout.js` to Plasma. The layout gives every display a top bar and a dock. The top bar holds a KDE session menu (the `myconfig.session` widget), the global menu, the tray and the clock. The dock holds a one-click Overview icon and the task icons. A new dock pins Overview, Chrome, T3 Code, VSCodium, Ghostty, LyX and Qalculate, and a rebuilt dock keeps its own pins. The task widget shows a blank icon for a pin whose application is missing, so the CachyOS profile installs each pinned application.
+The `plasma` package owns the panel layout. `myconfig-plasma-layout` sends `~/.local/share/myconfig-plasma/layout.js` to Plasma. The layout gives every display a top bar and a dock. The top bar holds a KDE session menu (the `myconfig.session` widget), the global menu, the tray and the clock. The dock holds a one-click Overview icon and the task icons. A new dock pins Overview, Chrome, Herdr, LyX and Qalculate. A rebuilt dock keeps its own pins, except that the pins of T3 Code, VSCodium and Ghostty make way for one Herdr pin. The task widget shows a blank icon for a pin whose application is missing, so the CachyOS profile installs each pinned application.
 
 The session menu shows a one-color Tux in the bar's text color. The drawing comes from CachyOS's char-white icon theme, which is GPL, so the widget is GPL. Its labels reuse the translations that KDE installs, so the widget stores no text in any language and follows the system language.
 

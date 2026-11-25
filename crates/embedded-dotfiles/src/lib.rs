@@ -15,9 +15,6 @@ embed_dir!(pub static NVIM = "../../dotfiles/nvim");
 embed_dir!(pub static PHONE = "../../dotfiles/phone");
 embed_dir!(pub static PIPEWIRE = "../../dotfiles/pipewire");
 embed_dir!(pub static PLASMA = "../../dotfiles/plasma");
-embed_dir!(pub static T3CODE = "../../dotfiles/t3code");
-embed_dir!(pub static T3CODE_DESKTOP = "../../dotfiles/t3code-desktop");
-embed_dir!(pub static VSCODIUM = "../../dotfiles/vscodium");
 embed_dir!(pub static YAZI = "../../dotfiles/yazi");
 embed_dir!(pub static ZSH = "../../dotfiles/zsh");
 
@@ -30,7 +27,7 @@ embed_dir!(pub static WINDOWS_ASSETS = "../../dotfiles/assets/windows");
 
 /// The config packages that Linux modules stow, by package name. Paths in each package
 /// are relative to the package folder.
-pub static CONFIG_PACKAGES: [(&str, &(dyn EmbeddedDirectory + Sync)); 16] = [
+pub static CONFIG_PACKAGES: [(&str, &(dyn EmbeddedDirectory + Sync)); 13] = [
     ("ai", &AI),
     ("ghostty", &GHOSTTY),
     ("handy", &HANDY),
@@ -42,9 +39,6 @@ pub static CONFIG_PACKAGES: [(&str, &(dyn EmbeddedDirectory + Sync)); 16] = [
     ("phone", &PHONE),
     ("pipewire", &PIPEWIRE),
     ("plasma", &PLASMA),
-    ("t3code", &T3CODE),
-    ("t3code-desktop", &T3CODE_DESKTOP),
-    ("vscodium", &VSCODIUM),
     ("yazi", &YAZI),
     ("zsh", &ZSH),
 ];

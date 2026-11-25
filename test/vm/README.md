@@ -101,7 +101,7 @@ Each system has a file in `allowed-changes/` with the entries that may differ, s
 
 ## Installer input
 
-`src/answers.rs` holds the answer table: a pattern for each question that the modules in `crates/modules` ask, and its answer. A question that is not in the table stops the cycle with its text. The table answers yes to the SSH server question and to the Windows T3 Code question, no to the GitHub and Tailscale login questions, and yes to every removal question.
+`src/answers.rs` holds the answer table: a pattern for each question that the modules in `crates/modules` ask, and its answer. A question that is not in the table stops the cycle with its text. The table answers yes to the SSH server question, no to the GitHub and Tailscale login questions, and yes to every removal question.
 
 On Linux, the installer runs over SSH in a pseudo-terminal of the guest. The xtask types the password at each `sudo` prompt and the answer at each question.
 

@@ -51,7 +51,7 @@ removal files /etc/shells
 # builds it, Flatpak's empty repository, the desktop caches that the desktop database
 # writes, Claude Code's state, npm's cache, rustup's settings, Docker's client settings and
 # rootless storage, the GitHub CLI's device ID, paru's development package list,
-# WirePlumber's state, VSCodium's caches, dconf's database, Plasma's defaults and the KDE
+# WirePlumber's state, dconf's database, Plasma's defaults and the KDE
 # files left empty once removal deletes their last key, the file git keeps after its last
 # key is unset, and the folders that hold them.
 removal files /home/tester/.cargo
@@ -107,10 +107,6 @@ removal files /home/tester/.local/state/gh/device-id
 removal files /home/tester/.local/state/paru
 removal files /home/tester/.local/state/paru/devel.toml
 removal files /home/tester/.local/state/wireplumber
-removal files /home/tester/.config/VSCodium
-removal files /home/tester/.config/VSCodium/CachedExtensionVSIXs
-removal files /home/tester/.config/VSCodium/CachedProfilesData
-removal files /home/tester/.config/VSCodium/CachedProfilesData/*
 removal files /home/tester/.config/dconf
 removal files /home/tester/.config/dconf/user
 removal files /home/tester/.config/kdedefaults
@@ -137,8 +133,6 @@ removal files /home/tester/.local/share
 files /home/tester/.cache
 files /home/tester/.cache/*
 files /home/tester/.bun/install/cache/*
-files /home/tester/.local/state/VSCodium
-files /home/tester/.local/state/VSCodium/*
 files /home/tester/.bash_history
 files /home/tester/.lesshst
 files /home/tester/.local/share/recently-used.xbel
@@ -152,14 +146,7 @@ files /home/tester/.local/share/kactivitymanagerd/*
 files /home/tester/.local/bin/__pycache__
 files /home/tester/.local/bin/__pycache__/*
 
-# Files that a running T3 Code and Claude Code rewrite.
-files /home/tester/.t3/caches/*.json
-files /home/tester/.t3/userdata/logs/*
-files /home/tester/.t3/userdata/server-owner.sqlite-journal
-files /home/tester/.t3/userdata/server-runtime.json
-files /home/tester/.t3/userdata/statev2.sqlite
-files /home/tester/.t3/userdata/statev2.sqlite-shm
-files /home/tester/.t3/userdata/statev2.sqlite-wal
+# Files that a running Claude Code rewrites.
 files /home/tester/.claude/plugins/store/*.json
 
 # The installer's own record of what it changed, and the folder that holds it, which the

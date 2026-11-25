@@ -419,14 +419,3 @@ pub(crate) fn edit_system_file(
     ctx.write_system_file(Path::new(path), edited.as_bytes(), "0644")?;
     Ok(Some(true))
 }
-
-/// Reloads PATH from the stored machine and user values, which a winget install changes
-/// without changing this session's copy.
-pub(crate) fn refresh_windows_path(ctx: &Context) -> ModuleResult {
-    let path = powershell(
-        ctx,
-        "[Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')",
-    )?;
-    ctx.shell.set_var("PATH", path);
-    Ok(())
-}

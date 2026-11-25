@@ -223,12 +223,11 @@ The current profile, run inside a never-booted system, gives:
 
 | Module | Result in installer mode | Fix |
 | --- | --- | --- |
-| plasma-version, base, media, cli, runtimes, flatpak, appimage, zsh, terminal-tools, ghostty, agents-packages, android-phone, vscodium, chrome, math, refind, bootvine, printing, t3code-desktop, git-config, environment-inventory | Works | None |
+| plasma-version, base, media, cli, runtimes, flatpak, appimage, zsh, terminal-tools, ghostty, agents-packages, android-phone, chrome, math, refind, bootvine, printing, git-config, environment-inventory | Works | None |
 | ssh | Refuses because `/run/systemd/system` is missing | Drop that check in installer mode |
 | kanata, handy, agent-config | `modprobe uinput` targets the USB stick's running kernel, and `systemctl --user daemon-reload` fails | Skip `modprobe`, since the boot-time `modules-load.d` file covers it, and use the deferred `Context` calls |
 | kanata-kde, pipewire | User manager calls fail | Deferred `Context` calls |
 | kde-plasma | `systemctl --user daemon-reload` fails, `gsettings` saves nothing without a session bus, and the accent color rebuilds light Breeze colors | Deferred `Context` calls, `gsettings` under `dbus-run-session`, `plasma-apply-*` with the `kdedefaults` folder in `XDG_CONFIG_DIRS`, the KWin reconfigure and layout run skipped, and the panel layout as Plasma's default layout |
-| t3code-desktop, and the T3 Code server module if the InayOS profile takes it | The server module calls `loginctl` and `is-active`; `setting/plasma_panels.rs` calls plasmashell | To check when the InayOS profile list is set |
 | docker | Start, `is-active` and `docker info` need the running daemon | Enable and set the Docker contexts at install; the daemon starts at first boot |
 | tailscale | Setting the operator needs `tailscaled` running | Enable at install; verify reports the operator as waiting for the user's Tailscale login, not as a failure |
 | axidev-osk | Its login-screen setup asks the running systemd whether Plasma Login exists, and its permission setup runs `modprobe uinput` | Fix in the `axidev-osk` repository: check the unit file instead, and rely on the boot-time module file |

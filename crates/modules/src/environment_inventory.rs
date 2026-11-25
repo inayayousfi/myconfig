@@ -24,6 +24,7 @@ const T3_CODE_DESKTOP: &str = "the desktop app (AUR package `t3code-bin`), which
 const DESKTOP_INVENTORY: &[&str] = &[
     "- **System settings**: zram swap as large as RAM, DNS through systemd-resolved, an open-file limit of 2097152, and the `ntsync` module for Wine and Proton.\n",
     "- **Editor**: Neovim 0.12 is `EDITOR`, with the Black & Pink config and a mouse-first layer in `~/.config/nvim/lua/mouse.lua`. VSCodium with the Black & Pink theme and Open Remote SSH opens text files from the desktop.\n",
+    "- **Terminal workspace**: the Herdr app (AUR `herdr-app-bin`) on herdr-core (`hc`), the background server that keeps terminals and agents running. `hc ls`, `hc attach` and `hc read` list, join and read them; the `herdr` agent skill teaches agents to use it. Its Black & Pink look lives in the `blacknpink` layout and theme under `~/.config/herdr-app`, with telemetry off. Each Herdr shell sends right-clicks to mouse-using programs; Shift+right-click opens Herdr's menu.\n",
     "- **Browser**: Google Chrome from the AUR.\n",
     "- **Math and documents**: LyX with TeX Live, the Qalculate calculator with gnuplot for plots, and Okular as the default PDF viewer.\n",
     "- **On-screen keyboard**: Axidev OSK with desktop and login-screen startup.\n",
@@ -37,10 +38,12 @@ const DESKTOP_INVENTORY: &[&str] = &[
 ];
 const ARCH_WSL_INVENTORY: &[&str] = &[
     "- **Editor**: Neovim 0.12 is `EDITOR`, with the Black & Pink config and a mouse-first layer in `~/.config/nvim/lua/mouse.lua`.\n",
+    "- **Terminal workspace**: herdr-core (`hc`), the background server that keeps terminals and agents running. `hc ls`, `hc attach` and `hc read` list, join and read them; the `herdr` agent skill teaches agents to use it. A Herdr app on another machine reaches it over SSH.\n",
     "- **Remote access**: OpenSSH server, which accepts key login only, and Tailscale service.\n",
 ];
 const UBUNTU_DEVBOX_INVENTORY: &[&str] = &[
     "- **Editor**: Neovim 0.12 is `EDITOR`, from its release archive in `~/.local/opt`, with the Black & Pink config and a mouse-first layer in `~/.config/nvim/lua/mouse.lua`.\n",
+    "- **Terminal workspace**: herdr-core (`hc`), the background server that keeps terminals and agents running. `hc ls`, `hc attach` and `hc read` list, join and read them; the `herdr` agent skill teaches agents to use it. It comes from Herdr's release archive in `~/.local/opt`. A Herdr app on another machine reaches it over SSH.\n",
     CONTAINERS,
     "- **Package sources**: Tailscale, GitHub CLI, Yazi and Docker come from their vendors' apt repositories. Bun is in `~/.bun` and updates with `bun upgrade`.\n",
     "- **Remote access**: Tailscale service. This profile leaves SSH as the machine had it.\n",
@@ -49,7 +52,7 @@ const CONTAINERS: &str = "- **Containers**: rootless Docker with Buildx and Comp
 
 /// A phrase of the template for each module that it describes. The template of a profile
 /// holds the phrase exactly when the profile holds the module.
-const CLAIMS: [(&str, &str); 17] = [
+const CLAIMS: [(&str, &str); 19] = [
     ("system-tuning", "zram swap"),
     ("system-monitor", "btop"),
     ("tailscale", "Tailscale service"),
@@ -57,6 +60,8 @@ const CLAIMS: [(&str, &str); 17] = [
     ("docker", "rootless Docker"),
     ("vscodium", "VSCodium with"),
     ("neovim", "Neovim 0.12"),
+    ("herdr-core", "herdr-core (`hc`)"),
+    ("herdr", "the Herdr app"),
     ("chrome", "Google Chrome from the AUR"),
     ("math", "LyX with TeX Live"),
     ("printing", "CUPS print server"),

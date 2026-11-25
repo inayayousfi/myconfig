@@ -5312,3 +5312,44 @@ fi"#,
     assert!(fs::symlink_metadata(&link).is_err());
     assert!(!opt.exists());
 }
+
+#[test]
+fn herdr_shows_its_own_layout_keeps_herdrs_files_out_of_the_package_and_remove_restores_the_layout()
+{
+    let sandbox = Sandbox::new("herdr");
+    let io = Answers::new(None);
+    let core = crate::HerdrCore {
+        source: crate::HerdrCoreSource::Package,
+    };
+    let modules: [&dyn Module; 2] = [&core, &crate::Herdr];
+    let home = sandbox.home.join(".config/herdr-app");
+    fs::create_dir_all(&home).unwrap();
+    let shared = home.join("shared.json");
+    fs::write(&shared, r#"{"layout":"main","sidebar.width":268}"#).unwrap();
+    let read_shared = || {
+        serde_json::from_str::<serde_json::Value>(&fs::read_to_string(&shared).unwrap()).unwrap()
+    };
+
+    sandbox
+        .with(&io, |ctx| runner::install(ctx, &modules, &modules))
+        .unwrap();
+    assert!(sandbox.installed("herdr-core-bin"));
+    assert!(sandbox.installed("herdr-app-bin"));
+    assert_eq!(read_shared()["layout"], "blacknpink");
+    assert_eq!(read_shared()["sidebar.width"], 268);
+    // Herdr writes its shipped layouts beside ours at every start.
+    let layouts = home.join("layouts");
+    assert!(!fs::symlink_metadata(&layouts).unwrap().is_symlink());
+    assert!(
+        fs::symlink_metadata(layouts.join("blacknpink.json"))
+            .unwrap()
+            .is_symlink()
+    );
+
+    sandbox
+        .with(&io, |ctx| runner::remove(ctx, &modules, &modules, false))
+        .unwrap();
+    assert_eq!(read_shared()["layout"], "main");
+    assert_eq!(read_shared()["sidebar.width"], 268);
+    assert!(!sandbox.installed("herdr-app-bin"));
+}

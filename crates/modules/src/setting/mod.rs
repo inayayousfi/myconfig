@@ -43,6 +43,7 @@ mod group_exists;
 mod group_member;
 mod gsettings;
 mod initramfs_hook;
+mod json_key;
 mod kde_key;
 mod kwin_rule;
 mod login_shell;
@@ -131,6 +132,12 @@ pub enum Setting {
         editor: String,
     },
     /// A program that Controlled Folder Access lets write to protected folders.
+    /// One top-level key of a JSON object file, by its path relative to the home
+    /// directory. The value is JSON text.
+    JsonKey {
+        file: String,
+        key: String,
+    },
     ControlledFolderAccessApp {
         path: String,
     },
@@ -219,6 +226,7 @@ impl Setting {
             Self::VscodiumExtension { id, editor } => {
                 Box::new(vscodium_extension::VscodiumExtension { id, editor })
             }
+            Self::JsonKey { file, key } => Box::new(json_key::JsonKey { file, key }),
             Self::ControlledFolderAccessApp { path } => {
                 Box::new(controlled_folder_access_app::ControlledFolderAccessApp { path })
             }

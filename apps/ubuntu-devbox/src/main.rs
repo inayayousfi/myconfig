@@ -23,6 +23,9 @@ static MODULES: &[&dyn Module] = &[
     &Neovim {
         source: NeovimSource::Release,
     },
+    &HerdrCore {
+        source: HerdrCoreSource::Release,
+    },
     &Tailscale,
     &AgentsPackages { extra: &[] },
     &Docker { setup_tool: true },
@@ -92,6 +95,7 @@ mod tests {
                 "zsh",
                 "terminal-tools",
                 "neovim",
+                "herdr-core",
                 "tailscale",
                 "agents-packages",
                 "docker",

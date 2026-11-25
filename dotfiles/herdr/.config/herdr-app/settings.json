@@ -1,0 +1,16 @@
+{
+  "zoom": 1.2,
+  "sounds": {
+    "enabled": true
+  },
+  "font_size": 14,
+  "font_ligatures": false,
+  "terminal_line_height": 1,
+  "terminal_cell_width": 1,
+  "terminal_scroll_speed": 1,
+  "telemetry": false,
+  "minimum_contrast": 1,
+  "appearance": "dark",
+  "theme": "blacknpink",
+  "font": "BlexMono Nerd Font"
+}

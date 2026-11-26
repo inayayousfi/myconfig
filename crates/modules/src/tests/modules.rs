@@ -5076,7 +5076,7 @@ fi"#,
         fs::read_link(&link).unwrap(),
         opt.join("nvim-0.12.6/bin/nvim")
     );
-    assert!(sandbox.home.join(".config/nvim/lua/mouse.lua").exists());
+    assert!(sandbox.home.join(".config/nvim/init.lua").exists());
     let results = sandbox.with(&io, |ctx| runner::verify(ctx, &modules));
     assert!(
         results.iter().all(|(_, result)| result.is_ok()),

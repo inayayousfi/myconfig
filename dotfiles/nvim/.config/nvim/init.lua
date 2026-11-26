@@ -4,7 +4,7 @@ vim.g.loaded_netrwPlugin = 1
 vim.g.mapleader = " "
 vim.g.maplocalleader = "\\"
 vim.opt.number = true
-vim.opt.relativenumber = true
+vim.opt.relativenumber = false
 vim.opt.wrap = false
 vim.opt.tabstop = 2
 vim.opt.shiftwidth = 2
@@ -13,9 +13,8 @@ vim.opt.clipboard = "unnamedplus"
 vim.opt.ttimeout = true
 vim.opt.ttimeoutlen = 10
 vim.opt.timeout = false
-vim.opt.hidden = false
 vim.opt.signcolumn = "yes"
-vim.opt.mouse = "a"
+vim.opt.updatetime = 1000 -- pause length before saving while typing
 vim.opt.shell = "zsh"
 vim.opt.shellcmdflag = "-ic"
 
@@ -76,6 +75,7 @@ vim.pack.add({
   gh("stevearc/conform.nvim", "master"),
   gh("lewis6991/gitsigns.nvim", "main"),
   gh("lewis6991/satellite.nvim", "main"),
+  gh("inayayousfi/normie.nvim", "main"),
 }, { confirm = false })
 
 -- Keymaps
@@ -131,17 +131,6 @@ vim.diagnostic.config({ virtual_text = false })
 require("flash").setup({})
 
 require("nvim-tree").setup({
-  on_attach = function(bufnr)
-    local api = require("nvim-tree.api")
-    api.map.on_attach.default(bufnr)
-
-    vim.keymap.set("n", "<LeftRelease>", function()
-      local node = api.tree.get_node_under_cursor()
-      if node then
-        api.node.open.edit()
-      end
-    end, { buffer = bufnr, noremap = true, silent = true, nowait = true })
-  end,
   view = {
     side = "right",
     width = "20%",
@@ -214,4 +203,7 @@ for _, server_name in ipairs(require("mason-lspconfig").get_installed_servers())
   end
 end
 
-require("mouse")
+require("satellite").setup({ winblend = 0 })
+
+-- Mouse-first editing: Normie mode, clickable bar and tabs, menus at the mouse.
+require("normie").setup({ format_on_leave = true })

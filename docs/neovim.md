@@ -6,16 +6,11 @@ The config needs Neovim 0.12, because it installs its plugins with Neovim's buil
 
 `~/.config/nvim` stays a real directory, because Neovim writes its plugin lockfile `nvim-pack-lock.json` beside the config. Plugins live in `~/.local/share/nvim/site/pack/core/opt` and install on the first start.
 
-## The mouse layer
+## Mouse-first editing
 
-`lua/mouse.lua` makes Neovim usable with the mouse, like a desktop editor:
+The config uses [normie.nvim](https://github.com/inayayousfi/normie.nvim), a separate plugin that makes Neovim usable with the mouse like a desktop editor. Its README and `:help normie` describe it. In short: files stay in insert mode (Normie mode) until F2 or the mode label switches to Vim mode, the top line shows open files as tabs, the bottom bar holds buttons, the right-click menu follows what lies under the mouse, and the scrollbar can be pressed and dragged anywhere.
 
-- File buffers stay in insert mode. A click places the cursor, dragging or Shift with the arrow keys selects, and typing replaces the selection. F2, or the mode label at the left of the bottom bar, switches to Vim's normal mode and back.
-- Ctrl+C, Ctrl+X and Ctrl+V copy, cut and paste with the system clipboard. Ctrl+Z, Ctrl+Y, Ctrl+A and Ctrl+S undo, redo, select everything and save. Escape only closes the completion menu.
-- The bottom bar holds clickable buttons for a command menu, the file tree, the search, the code actions, formatting, undo and redo, then the file name and position.
-- The right-click menu adds code actions, rename, references, formatting and the file tree to Neovim's own entries.
-- Every choice that Neovim asks through `vim.ui.select`, such as a code action, opens as a native popup menu at the mouse.
-- satellite.nvim draws a scrollbar that also marks diagnostics, Git changes and search matches.
+`init.lua` loads it after its supporting plugins, which it uses when they are present: satellite.nvim draws the scrollbar with marks for diagnostics, Git changes and search matches, nvim-tree serves the Files button, fff.nvim the Search button, conform.nvim the Format button, and blink.cmp's menu closes on Escape. The config turns on `format_on_leave`.
 
 Files save after one second without typing. Formatting runs when a file or the window loses focus and from the Format button, never while typing, because it would move the text under the cursor.
 

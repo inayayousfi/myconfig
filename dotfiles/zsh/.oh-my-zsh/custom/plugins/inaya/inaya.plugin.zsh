@@ -59,6 +59,7 @@ fi
 # Neovim can live in ~/.local/bin, so the editor is chosen once PATH has it.
 if has nvim; then
     export EDITOR="nvim"
+    alias v='nvim' vi='nvim' vim='nvim'
 elif has vim; then
     export EDITOR="vim"
 else

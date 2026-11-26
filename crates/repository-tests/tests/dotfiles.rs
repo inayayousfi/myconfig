@@ -184,7 +184,7 @@ fn the_zsh_files_parse() {
 }
 
 #[test]
-fn zsh_picks_the_installed_editor_without_retired_aliases() {
+fn zsh_picks_the_installed_editor_and_points_vim_aliases_at_neovim() {
     // Vim and the retired editors are simulated, so the host shell configuration is not
     // read. Neovim is looked up for real on a PATH that starts empty, because the plugin
     // must find it in ~/.local/bin, where release installs put it.
@@ -207,7 +207,11 @@ bun() { print "$HOME/.bun/bin"; }
 PATH="$MYCONFIG_EMPTY_PATH"
 source "$1" || exit 1
 [[ "$EDITOR" = "$MYCONFIG_EDITOR_CASE" && "$VISUAL" = "$MYCONFIG_EDITOR_CASE" ]] || exit 1
-(( ! $+aliases[vim] && ! $+aliases[vi] && ! $+aliases[v] )) || exit 1
+if [[ "$MYCONFIG_EDITOR_CASE" = nvim ]]; then
+    [[ "$aliases[vim]" = nvim && "$aliases[vi]" = nvim && "$aliases[v]" = nvim ]] || exit 1
+else
+    (( ! $+aliases[vim] && ! $+aliases[vi] && ! $+aliases[v] )) || exit 1
+fi
 "#;
     let plugin = dotfiles().join("zsh/.oh-my-zsh/custom/plugins/inaya/inaya.plugin.zsh");
     for editor in ["nvim", "vim", "vi"] {

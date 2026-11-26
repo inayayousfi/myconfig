@@ -22,6 +22,8 @@ The `plasma` package owns the panel layout, the file `contents/layouts/org.kde.p
 
 The session menu shows a one-color Tux in the bar's text color. The drawing comes from CachyOS's char-white icon theme, which is GPL, so the widget is GPL. Its labels reuse the translations that KDE installs, so the widget stores no text in any language and follows the system language.
 
+The tray keeps every Plasma widget in its popup, so the bar shows only the icons of applications.
+
 The first run replaces every existing panel. Later runs add bars for new displays and reset the managed ones. `inayos-plasma-layout.service` runs the command at each Plasma login.
 
 The install also runs the command, which changes the panels only while Plasma runs. In installer mode the install does not run it.

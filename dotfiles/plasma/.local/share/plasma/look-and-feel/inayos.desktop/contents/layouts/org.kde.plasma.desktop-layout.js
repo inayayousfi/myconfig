@@ -122,6 +122,24 @@ if (missingWidgetTypes.length > 0) {
         tasks.writeConfig("fill", false);
     }
 
+    // The tray keeps every Plasma widget in its popup, so the bar shows only
+    // the icons of applications. A new tray does not know its widgets yet,
+    // so every installed widget type goes in the hidden list: the tray
+    // ignores the ones it does not hold.
+    function configureTray(panel) {
+        const tray = panel.widgets().find(widget => widget.type === "org.kde.plasma.systemtray");
+        if (!tray) {
+            return;
+        }
+        tray.currentConfigGroup = ["General"];
+        const hidden = tray.readConfig("hiddenItems", []);
+        const widgets = knownWidgetTypes
+            .concat(tray.readConfig("knownItems", []), tray.readConfig("extraItems", []))
+            .filter((type, index, all) => all.indexOf(type) === index && !hidden.includes(type));
+        tray.writeConfig("hiddenItems", hidden.concat(widgets));
+        tray.writeConfig("shownItems", tray.readConfig("shownItems", []).filter(item => !widgets.includes(item) && !hidden.includes(item)));
+    }
+
     function fillTop(panel) {
         panel.widgets().slice().forEach(widget => widget.remove());
         topWidgetTypes.forEach(type => panel.addWidget(type));
@@ -203,6 +221,7 @@ if (missingWidgetTypes.length > 0) {
                 fillTop(top);
             }
             configureTop(top, screen);
+            configureTray(top);
 
             let dock = retained.get(`dock:${screen}`);
             let tasks;

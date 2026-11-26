@@ -53,5 +53,16 @@ case "$output" in
         ;;
 esac
 
+# Plasma resets the settings of a tray created during the run when the
+# script ends, so a second run, on the bars that now exist, sets them.
+second="$(qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript "${script/const inayosFirstRun = true;/const inayosFirstRun = false;}")"
+case "$second" in
+    *INAYOS_PLASMA_LAYOUT=ok:*) ;;
+    *)
+        printf 'KDE Plasma did not confirm the second layout update: %s\n' "$second" >&2
+        exit 1
+        ;;
+esac
+
 mkdir -p "$state_dir"
 printf '%s\n' "$layout_version" >"$state_file"

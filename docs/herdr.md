@@ -10,7 +10,7 @@ The `herdr` module installs the app, the AUR package `herdr-app-bin`, on CachyOS
 
 - `settings.json` turns telemetry off and sets the Black & Pink theme and the BlexMono font for every layout that leaves them unset.
 - `themes/blacknpink.json` holds the Ghostty palette and the panel colors.
-- `layouts/blacknpink.json` is the window: the theme, the font, window blur and a see-through background, and the three mods below around Herdr's tab block and its Files and Changes panel. A lone terminal has no pane frame or title line; the tab bar shows its folder.
+- `layouts/blacknpink.json` is the window: the theme, the font, window blur and one see-through background shared by the terminals, the gaps and the bars, and the three mods below around Herdr's tab block and its Files and Changes panel. A lone terminal has no pane frame or title line; the tab bar shows its folder.
 - `mods/blacknpink-drawer` is a drawer floating at the left edge. At rest only its edge column shows: each space's avatar and each agent's program icon with its status. Hovering slides out the space and agent names over the terminals. It spans the window's height.
 - `mods/blacknpink-buttons` is a fixed column of icon buttons beside the drawer: go to, the command palette, new tab, split right and down, the Files and Changes panel, and settings.
 - `mods/blacknpink-tabs` is a copy of Herdr's `tabs` mod without its new-tab, Files and Changes buttons.

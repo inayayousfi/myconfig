@@ -134,10 +134,11 @@
   "theme": "blacknpink",
   "font": "BlexMono Nerd Font",
   "window_blur": true,
+  "terminal_opacity": 0,
   "colors": {
-    "canvas": "#000000cc",
-    "background": "#000000cc",
-    "chrome": "#0a0a0acc"
+    "canvas": "#000000d9",
+    "background": "#00000000",
+    "chrome": "#00000000"
   },
   "floating": [
     {

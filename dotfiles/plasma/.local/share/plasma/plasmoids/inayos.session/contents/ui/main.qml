@@ -42,124 +42,159 @@ PlasmoidItem {
     // text of its own in any language.
     // Drawn like the global menu's entries beside it, which use Plasma's menu
     // bar item background rather than a regular button.
-    fullRepresentation: QQC2.AbstractButton {
-        id: button
+    fullRepresentation: Item {
+        id: area
 
-        readonly property bool menuOpen: menu.status === PlasmaExtras.Menu.Open
+        // The space between this widget and the screen edge, and the bar's
+        // space before the first menu entry. The button covers both, so its
+        // highlight and its pointer area reach the screen edge and touch the
+        // first entry, as the entries touch each other, with Tux in the
+        // middle.
+        readonly property real edgeGap: {
+            void root.x;
+            void width;
+            return Math.max(0, mapToItem(null, 0, 0).x);
+        }
+        readonly property real entryGap: Kirigami.Units.smallSpacing
 
         // The icon keeps the top and bottom margins that the global menu
-        // entries leave around their text, while the highlight fills the bar
-        // height.
+        // entries leave around their text. They come from the resting frame,
+        // so the size stays the same on hover.
         implicitHeight: Kirigami.Units.iconSizes.medium
-        implicitWidth: availableHeight + leftPadding + rightPadding
+        implicitWidth: implicitHeight - metrics.margins.top - metrics.margins.bottom + 2 * Kirigami.Units.smallSpacing
         Layout.fillHeight: true
         Layout.minimumWidth: implicitWidth
         Layout.preferredWidth: implicitWidth
-        hoverEnabled: true
-        topPadding: frame.margins.top
-        bottomPadding: frame.margins.bottom
-        // The bar adds its own space between widgets, so narrower sides than
-        // the menu entries' keep Tux as far from the first entry as the
-        // entries are from each other, and close to the screen edge.
-        leftPadding: Kirigami.Units.smallSpacing
-        rightPadding: Kirigami.Units.smallSpacing
-        Accessible.name: i18nd("libkicker", "Session")
-        Accessible.role: Accessible.ButtonMenu
-        // Like the global menu, the menu opens on press.
-        onPressed: menu.openRelative()
+        Layout.maximumWidth: implicitWidth
 
-        background: KSvg.FrameSvgItem {
-            id: frame
+        KSvg.FrameSvgItem {
+            id: metrics
+            visible: false
             imagePath: "widgets/menubaritem"
-            prefix: button.down || button.menuOpen ? "pressed" : button.hovered ? "hover" : "normal"
+            prefix: "normal"
         }
 
-        contentItem: Kirigami.Icon {
-            implicitWidth: button.availableHeight
-            implicitHeight: button.availableHeight
-            source: Qt.resolvedUrl("../icons/tux.svg")
-            // Painted in the bar's text color, like the global menu beside it.
-            isMask: true
-            color: Kirigami.Theme.textColor
-            active: button.hovered || button.menuOpen
-        }
+        QQC2.AbstractButton {
+            id: button
 
-        PlasmaExtras.Menu {
-            id: menu
+            readonly property bool menuOpen: menu.status === PlasmaExtras.Menu.Open
 
-            visualParent: button
-            placement: PlasmaExtras.Menu.BottomPosedLeftAlignedPopup
+            // The menu takes the pointer before the release reaches the
+            // button, which then stays pressed, so closing the menu ends the
+            // press by turning the button off and on.
+            onMenuOpenChanged: {
+                if (!menuOpen) {
+                    enabled = false;
+                    enabled = true;
+                }
+            }
 
-            PlasmaExtras.MenuItem {
-                text: i18nd("systemsettings", "System Information")
-                icon: "help-about"
-                onClicked: root.launch("org.kde.kinfocenter")
+            x: -area.edgeGap
+            width: area.width + area.edgeGap + area.entryGap
+            height: area.height
+            hoverEnabled: true
+            topPadding: metrics.margins.top
+            bottomPadding: metrics.margins.bottom
+            leftPadding: area.edgeGap + Kirigami.Units.smallSpacing
+            rightPadding: area.entryGap + Kirigami.Units.smallSpacing
+            Accessible.name: i18nd("libkicker", "Session")
+            Accessible.role: Accessible.ButtonMenu
+            // Like the global menu, the menu opens on press.
+            onPressed: menu.openRelative()
+
+            background: KSvg.FrameSvgItem {
+                imagePath: "widgets/menubaritem"
+                prefix: button.down || button.menuOpen ? "pressed" : button.hovered ? "hover" : "normal"
             }
-            PlasmaExtras.MenuItem {
-                separator: true
+
+            contentItem: Kirigami.Icon {
+                source: Qt.resolvedUrl("../icons/tux.svg")
+                // Painted like the global menu's labels beside it: the bar's
+                // text color, switched at once to the highlighted text color
+                // over the highlight, with no other hover effect.
+                isMask: true
+                animated: false
+                color: button.hovered || button.down || button.menuOpen
+                    ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.textColor
             }
-            PlasmaExtras.MenuItem {
-                text: i18nd("systemsettings", "System Settings")
-                icon: "systemsettings"
-                onClicked: root.launch("systemsettings")
-            }
-            PlasmaExtras.MenuItem {
-                text: i18nd("plasma-systemmonitor", "System Monitor")
-                icon: "utilities-system-monitor"
-                onClicked: root.launch("org.kde.plasma-systemmonitor")
-            }
-            PlasmaExtras.MenuItem {
-                text: i18nd("kwin", "Kill Window")
-                icon: "window-close"
-                onClicked: executable.connectSource("qdbus6 org.kde.kglobalaccel /component/kwin org.kde.kglobalaccel.Component.invokeShortcut 'Kill Window'")
-            }
-            PlasmaExtras.MenuItem {
-                separator: true
-            }
-            PlasmaExtras.MenuItem {
-                text: i18ndc("libkicker", "Suspend to RAM", "Sleep")
-                icon: "system-suspend"
-                enabled: session.canSuspend
-                onClicked: session.suspend()
-            }
-            PlasmaExtras.MenuItem {
-                text: i18nd("libkicker", "Hibernate")
-                icon: "system-suspend-hibernate"
-                enabled: session.canHibernate
-                onClicked: session.hibernate()
-            }
-            PlasmaExtras.MenuItem {
-                text: i18nd("libkicker", "Restart")
-                icon: "system-reboot"
-                enabled: session.canReboot
-                onClicked: session.requestReboot()
-            }
-            PlasmaExtras.MenuItem {
-                text: i18nd("libkicker", "Shut Down")
-                icon: "system-shutdown"
-                enabled: session.canShutdown
-                onClicked: session.requestShutdown()
-            }
-            PlasmaExtras.MenuItem {
-                separator: true
-            }
-            PlasmaExtras.MenuItem {
-                text: i18nd("libkicker", "Lock")
-                icon: "system-lock-screen"
-                enabled: session.canLock
-                onClicked: session.lock()
-            }
-            PlasmaExtras.MenuItem {
-                text: i18nd("libkicker", "Log Out")
-                icon: "system-log-out"
-                enabled: session.canLogout
-                onClicked: session.requestLogout()
-            }
-            PlasmaExtras.MenuItem {
-                text: i18nd("libkicker", "Switch User")
-                icon: "system-switch-user"
-                enabled: session.canSwitchUser
-                onClicked: session.switchUser()
+
+            PlasmaExtras.Menu {
+                id: menu
+
+                visualParent: button
+                placement: PlasmaExtras.Menu.BottomPosedLeftAlignedPopup
+
+                PlasmaExtras.MenuItem {
+                    text: i18nd("systemsettings", "System Information")
+                    icon: "help-about"
+                    onClicked: root.launch("org.kde.kinfocenter")
+                }
+                PlasmaExtras.MenuItem {
+                    separator: true
+                }
+                PlasmaExtras.MenuItem {
+                    text: i18nd("systemsettings", "System Settings")
+                    icon: "systemsettings"
+                    onClicked: root.launch("systemsettings")
+                }
+                PlasmaExtras.MenuItem {
+                    text: i18nd("plasma-systemmonitor", "System Monitor")
+                    icon: "utilities-system-monitor"
+                    onClicked: root.launch("org.kde.plasma-systemmonitor")
+                }
+                PlasmaExtras.MenuItem {
+                    text: i18nd("kwin", "Kill Window")
+                    icon: "window-close"
+                    onClicked: executable.connectSource("qdbus6 org.kde.kglobalaccel /component/kwin org.kde.kglobalaccel.Component.invokeShortcut 'Kill Window'")
+                }
+                PlasmaExtras.MenuItem {
+                    separator: true
+                }
+                PlasmaExtras.MenuItem {
+                    text: i18ndc("libkicker", "Suspend to RAM", "Sleep")
+                    icon: "system-suspend"
+                    enabled: session.canSuspend
+                    onClicked: session.suspend()
+                }
+                PlasmaExtras.MenuItem {
+                    text: i18nd("libkicker", "Hibernate")
+                    icon: "system-suspend-hibernate"
+                    enabled: session.canHibernate
+                    onClicked: session.hibernate()
+                }
+                PlasmaExtras.MenuItem {
+                    text: i18nd("libkicker", "Restart")
+                    icon: "system-reboot"
+                    enabled: session.canReboot
+                    onClicked: session.requestReboot()
+                }
+                PlasmaExtras.MenuItem {
+                    text: i18nd("libkicker", "Shut Down")
+                    icon: "system-shutdown"
+                    enabled: session.canShutdown
+                    onClicked: session.requestShutdown()
+                }
+                PlasmaExtras.MenuItem {
+                    separator: true
+                }
+                PlasmaExtras.MenuItem {
+                    text: i18nd("libkicker", "Lock")
+                    icon: "system-lock-screen"
+                    enabled: session.canLock
+                    onClicked: session.lock()
+                }
+                PlasmaExtras.MenuItem {
+                    text: i18nd("libkicker", "Log Out")
+                    icon: "system-log-out"
+                    enabled: session.canLogout
+                    onClicked: session.requestLogout()
+                }
+                PlasmaExtras.MenuItem {
+                    text: i18nd("libkicker", "Switch User")
+                    icon: "system-switch-user"
+                    enabled: session.canSwitchUser
+                    onClicked: session.switchUser()
+                }
             }
         }
     }

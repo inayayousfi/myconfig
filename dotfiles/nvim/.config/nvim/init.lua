@@ -110,6 +110,19 @@ require("gitsigns").setup({
 
 require("autoreload").setup({})
 
+-- The terminal draws a see-through, blurred background, so pure black
+-- backgrounds are left to it.
+vim.api.nvim_create_autocmd("ColorScheme", {
+  group = vim.api.nvim_create_augroup("transparent-background", {}),
+  callback = function()
+    for name, spec in pairs(vim.api.nvim_get_hl(0, {})) do
+      if spec.bg == 0 and not spec.link then
+        spec.bg = nil
+        vim.api.nvim_set_hl(0, name, spec)
+      end
+    end
+  end,
+})
 vim.cmd.colorscheme("blacknpink")
 
 require("auto-save").setup({

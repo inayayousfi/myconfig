@@ -4,6 +4,8 @@ This document describes the Neovim module, `crates/modules/src/neovim.rs`, and t
 
 The config needs Neovim 0.12, because it installs its plugins with Neovim's built-in `vim.pack`. Arch and CachyOS install the `neovim` package. Ubuntu carries an older Neovim, so the Ubuntu Devbox profile installs the official release archive instead. `crates/modules/src/release_archive.rs` downloads it, checks it against the SHA-256 pinned in the module, unpacks it into `~/.local/opt/nvim-<version>`, and links `~/.local/bin/nvim` to it.
 
+The config uses the Black & Pink color scheme and clears every pure black background it sets, so the terminal's see-through, blurred background shows behind the text.
+
 `~/.config/nvim` stays a real directory, because Neovim writes its plugin lockfile `nvim-pack-lock.json` beside the config. Plugins live in `~/.local/share/nvim/site/pack/core/opt` and install on the first start.
 
 ## Mouse-first editing

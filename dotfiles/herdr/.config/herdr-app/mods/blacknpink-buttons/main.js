@@ -57,7 +57,7 @@ export default class Buttons extends View {
     };
     const item = (a, i) => a ? button(a) : div().id(`gap-${i}`).w(16).h(1).my(4).bg(t.border);
     // A card like the frame Herdr draws around the drawer beside it.
-    return v_flex().size_full().bg(t.popover).border(1).border_color(t.border).rounded(10).items_center().py(8).gap(4)
+    return v_flex().size_full().border(1).border_color(t.border).rounded(10).items_center().py(8).gap(4)
       .children(TOP.map(item))
       .child(div().flex_1())
       .children(BOTTOM.map(item));

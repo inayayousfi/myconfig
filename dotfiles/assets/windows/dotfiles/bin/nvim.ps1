@@ -10,8 +10,7 @@ $wslArgs = foreach ($arg in $FileArgs) {
     if ($arg -match '^[A-Za-z]:[\\/]' -or $arg -match '^\\\\') {
         $converted = & wsl.exe --exec wslpath -a $arg 2>$null
         if ($LASTEXITCODE -eq 0 -and $converted) { $converted } else { $arg }
-    }
-    else {
+    } else {
         $arg
     }
 }

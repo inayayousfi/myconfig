@@ -175,7 +175,7 @@ fn the_zsh_files_parse() {
     for file in [
         ".zshrc",
         ".oh-my-zsh/custom/plugins/inaya/inaya.plugin.zsh",
-        ".oh-my-zsh/custom/themes/blacknpink.zsh-theme",
+        ".oh-my-zsh/custom/themes/lilas.zsh-theme",
     ] {
         run(Command::new("zsh")
             .arg("-n")

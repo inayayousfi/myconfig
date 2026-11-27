@@ -11,33 +11,33 @@ gui:
       - "#ff4ead"
       - bold
     inactiveBorderColor:
-      - "#1a1a1a"
+      - "#3a2f52"
     searchingActiveBorderColor:
-      - "#60a5fa"
+      - "#9cc8f0"
       - bold
     optionsTextColor:
-      - "#a0aabe"
+      - "#b8a7cc"
     selectedLineBgColor:
-      - "#c02679"
+      - "#55234a"
     inactiveViewSelectedLineBgColor:
-      - "#222222"
+      - "#4a3a68"
     cherryPickedCommitFgColor:
-      - "#000000"
+      - "#1c1528"
     cherryPickedCommitBgColor:
-      - "#4ade80"
+      - "#9ee6c8"
     markedBaseCommitFgColor:
-      - "#000000"
+      - "#1c1528"
     markedBaseCommitBgColor:
-      - "#facc15"
+      - "#ffe39a"
     unstagedChangesColor:
-      - "#f87171"
+      - "#ff6b8b"
     defaultFgColor:
-      - "#d0d6e0"
+      - "#f1e8f8"
     authorColors:
-      "*": "#a0aabe"
+      "*": "#b8a7cc"
     branchColorPatterns:
-      "^main$": "#60a5fa"
-      "^master$": "#60a5fa"
-      "^release/": "#facc15"
-      "^hotfix/": "#f87171"
+      "^main$": "#9cc8f0"
+      "^master$": "#9cc8f0"
+      "^release/": "#ffe39a"
+      "^hotfix/": "#ff6b8b"
       "^(feature|feat|chore|docs|refactor|test)/": "#ff85c8"

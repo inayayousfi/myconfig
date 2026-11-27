@@ -1,10 +1,15 @@
 #!/usr/bin/env zsh
 
-# Black & Pink prompt theme for Oh My Zsh.
-# Based on the bundled "refined" theme, with colors mapped to the
-# blacknpink terminal palette from the shared stylesheet.
+# Lilas prompt theme for Oh My Zsh.
+# Based on the bundled "refined" theme, with the colors of stylesheet.md at the
+# root of the InayOS repository: lilac for the folder, mint for the branch,
+# and the neon pink only for the prompt arrow and unsaved changes.
 
 setopt prompt_subst
+
+# A terminal without 24-bit color, such as the Linux console, gets the nearest
+# of its own colors.
+[[ "$COLORTERM" == (truecolor|24bit) ]] || zmodload zsh/nearcolor
 
 autoload -Uz vcs_info
 
@@ -17,34 +22,34 @@ zstyle ':vcs_info:git:*' actionformats '%b|%a' '%u%c'
 zstyle ':vcs_info:hg:*' formats '%b' '%u%c'
 zstyle ':vcs_info:bzr:*' formats '%b' '%u%c'
 
-blacknpink_git_dirty() {
+lilas_git_dirty() {
     command git rev-parse --is-inside-work-tree &>/dev/null || return
     if ! command git diff --quiet --ignore-submodules HEAD &>/dev/null; then
         print -n '%F{magenta}●%f'
     fi
 }
 
-blacknpink_repo_information() {
+lilas_repo_information() {
     local branch="${vcs_info_msg_0_}"
     local state="${vcs_info_msg_1_}"
-    local out="%F{magenta}%~%f"
+    local out="%F{#b296cc}%~%f"
 
     if [[ -n "$branch" ]]; then
-        out+=" %F{8}on %f%F{magenta}${branch}%f"
+        out+=" %F{8}on %f%F{#9ee6c8}${branch}%f"
         [[ -n "$state" ]] && out+=" %F{red}${state}%f"
-        local dirty="$(blacknpink_git_dirty)"
+        local dirty="$(lilas_git_dirty)"
         [[ -n "$dirty" ]] && out+=" ${dirty}"
     fi
 
     print -n "$out"
 }
 
-blacknpink_cmd_exec_time() {
+lilas_cmd_exec_time() {
     local stop="${EPOCHSECONDS:-$(date +%s)}"
     local start="${cmd_timestamp:-$stop}"
     local elapsed=$((stop - start))
 
-    ((elapsed > 5)) && print -n " %F{yellow}${elapsed}s%f"
+    ((elapsed > 5)) && print -n " %F{#ffb38a}${elapsed}s%f"
 }
 
 preexec() {
@@ -55,14 +60,14 @@ precmd() {
     setopt localoptions nopromptsubst
 
     vcs_info
-    print -P "\n$(blacknpink_repo_information)$(blacknpink_cmd_exec_time)"
+    print -P "\n$(lilas_repo_information)$(lilas_cmd_exec_time)"
     unset cmd_timestamp
 }
 
-blacknpink_ssh_info() {
+lilas_ssh_info() {
     [[ -n "$SSH_TTY" || -n "$SSH_CONNECTION" || -n "$SSH_CLIENT" ]] || return
     print -n "%F{8}%n@%m%f"
 }
 
 PROMPT='%(?.%F{magenta}.%F{red})❯%f '
-RPROMPT='$(blacknpink_ssh_info)'
+RPROMPT='$(lilas_ssh_info)'

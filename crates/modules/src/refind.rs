@@ -1,4 +1,4 @@
-//! rEFInd, the boot manager, with the Black & Pink theme. On the system that an
+//! rEFInd, the boot manager, with the Lilas theme. On the system that an
 //! installer-mode run builds, the module installs rEFInd onto the EFI system partition
 //! and writes the kernel options of its Linux entries. A running system keeps the rEFInd
 //! its installer set up, and gets only the theme and the managed settings, which include
@@ -433,7 +433,7 @@ pub(crate) fn generate_images(ctx: &Context, directory: &Path) -> ModuleResult {
     let bottom = "rectangle 0,1076 1920,1080";
     ctx.run(cmd!(
         sh,
-        "{tool} -size 1920x1080 xc:#000000 -fill {pink} -draw {bottom} -define {no_dates} {banner}"
+        "{tool} -size 1920x1080 xc:#241c33 -fill {pink} -draw {bottom} -define {no_dates} {banner}"
     ))?;
     for (name, size, rect, stroke) in [
         (

@@ -51,10 +51,10 @@ jobs:
           "$(go env GOPATH)/bin/shfmt" -d -ln zsh -i 4 -ci -bn \
             dotfiles/zsh/.zshrc \
             dotfiles/zsh/.oh-my-zsh/custom/plugins/inaya/inaya.plugin.zsh \
-            dotfiles/zsh/.oh-my-zsh/custom/themes/blacknpink.zsh-theme
+            dotfiles/zsh/.oh-my-zsh/custom/themes/lilas.zsh-theme
 
       - name: Check Lua formatting
-        run: stylua --check dotfiles/nvim/.config/nvim/init.lua dotfiles/nvim/.config/nvim/lua/mouse.lua
+        run: stylua --check dotfiles/nvim/.config/nvim
 
       - name: Check TOML formatting
         run: |

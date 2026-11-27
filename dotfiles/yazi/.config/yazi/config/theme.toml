@@ -1,5 +1,5 @@
 # Yazi theme configuration
-# Uses black-pink flavor for dark mode
+# Uses the Lilas flavor for dark mode
 
 [flavor]
-dark = "black-pink"
+dark = "lilas"

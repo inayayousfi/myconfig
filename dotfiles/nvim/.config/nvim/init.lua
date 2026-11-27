@@ -57,7 +57,6 @@ vim.api.nvim_create_user_command("Update", function()
 end, {})
 
 vim.pack.add({
-  gh("blacknpink/blacknpink.nvim", "main"),
   gh("ccntrq/autoreload.nvim", "master"),
   gh("Pocco81/auto-save.nvim", "main"),
   gh("rachartier/tiny-inline-diagnostic.nvim", "main"),
@@ -110,27 +109,9 @@ require("gitsigns").setup({
 
 require("autoreload").setup({})
 
--- The terminal draws a see-through, blurred background, so black and
--- near-black backgrounds, such as the menu's, are left to it.
-local function near_black(color)
-  return color
-    and math.floor(color / 0x10000) <= 0x10
-    and math.floor(color / 0x100) % 0x100 <= 0x10
-    and color % 0x100 <= 0x10
-end
-
-vim.api.nvim_create_autocmd("ColorScheme", {
-  group = vim.api.nvim_create_augroup("transparent-background", {}),
-  callback = function()
-    for name, spec in pairs(vim.api.nvim_get_hl(0, {})) do
-      if near_black(spec.bg) and not spec.link then
-        spec.bg = nil
-        vim.api.nvim_set_hl(0, name, spec)
-      end
-    end
-  end,
-})
-vim.cmd.colorscheme("blacknpink")
+-- colors/lilas.lua leaves window and float backgrounds transparent, so the
+-- terminal's see-through background shows behind the text.
+vim.cmd.colorscheme("lilas")
 
 require("auto-save").setup({
   enabled = true,

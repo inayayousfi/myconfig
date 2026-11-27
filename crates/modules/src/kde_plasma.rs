@@ -1,7 +1,11 @@
-//! KDE Plasma with Breeze Dark, the pink accent, IBM Plex fonts, a top bar and a dock.
-use std::{fs, path::Path};
+//! KDE Plasma with Breeze Dark in the Lilas colors, the pink accent, IBM Plex fonts, video
+//! wallpapers, a top bar and a dock.
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
-use embedded_dotfiles::KDE_PLASMA_ASSETS;
+use embedded_dotfiles::{KDE_PLASMA_ASSETS, WALLPAPER_ASSETS};
 use typed_fs_rs::EmbeddedDirectory;
 use xshell::cmd;
 
@@ -26,6 +30,8 @@ const PACKAGES: &[Package] = &[
     Package::Libinput,
     Package::Ark,
     Package::SevenZip,
+    Package::SmartVideoWallpaper,
+    Package::Qt6MultimediaFfmpeg,
 ];
 /// The Plasma desktop, package by package: what `plasma-meta` holds, without the
 /// browser integration, and with the disk health monitor, the crash reporter and the
@@ -81,6 +87,9 @@ const PLASMA: &[Package] = &[
 /// The global theme of the `plasma` package: Breeze Dark's settings, with the top bar and
 /// dock as the layout that Plasma builds when it starts with no desktops.
 const LOOK_AND_FEEL: &str = "inayos.desktop";
+/// The dark lilac scheme that the `plasma` package installs, in place of the blue-grey of
+/// Breeze Dark.
+const COLOR_SCHEME: &str = "Lilas";
 /// The pink that Black & Pink uses in the terminal and Zsh.
 const ACCENT_COLOR: &str = "255,78,173";
 const CURSOR_THEME: &str = "breeze_cursors";
@@ -93,6 +102,11 @@ const WINDOW_RULE: &str = "inayos-picture-in-picture";
 
 const LAYOUT_COMMAND: &str = ".local/bin/inayos-plasma-layout";
 const PANEL_SCRIPT: &str = ".local/share/kwin/scripts/inayos-panels/metadata.json";
+
+/// Where the video wallpapers go. The layout script reads the desktop video from there.
+const WALLPAPERS: &str = ".local/share/wallpapers/inayos";
+const VIDEO_WALLPAPER: &str = "luisbocanegra.smart.video.wallpaper.reborn";
+const LOCK_SCREEN_VIDEO: &str = "lofi-pink-town.mp4";
 
 /// The fonts that the `plasma` package's fontconfig file makes the defaults for programs
 /// that ask for a kind of font instead of naming one.
@@ -155,6 +169,8 @@ pub(crate) fn kde_settings() -> Vec<(Setting, &'static str)> {
         "false",
     );
     add("plasmaparc", &["General"], "RaiseMaximumVolume", "true");
+    // Breeze draws its menus see-through, and KWin blurs what shows behind them.
+    add("breezerc", &["Style"], "MenuOpacity", "80");
     // On external power the laptop keeps running with the lid closed. On battery closing
     // the lid sleeps, also while an external display is connected.
     add(
@@ -336,6 +352,44 @@ fn require_default_fonts(ctx: &Context) -> ModuleResult {
     Ok(())
 }
 
+/// The video wallpapers, as their installed path and contents.
+fn wallpapers(home: &Path) -> Vec<(PathBuf, &'static [u8])> {
+    WALLPAPER_ASSETS
+        .files()
+        .into_iter()
+        .map(|file| {
+            (
+                home.join(WALLPAPERS).join(file.path_from_root),
+                file.content,
+            )
+        })
+        .collect()
+}
+
+/// The video wallpaper's list of videos, in the JSON form that its settings page writes.
+fn video_list(video: &Path) -> String {
+    format!(
+        r#"[{{"filename":"file://{}","enabled":true,"loop":true}}]"#,
+        video.display()
+    )
+}
+
+/// The lock screen plays the lofi town video, muted, through the video wallpaper.
+fn lock_screen_settings(home: &Path) -> Vec<(Setting, String)> {
+    let video = home.join(WALLPAPERS).join(LOCK_SCREEN_VIDEO);
+    let general = ["Greeter", "Wallpaper", VIDEO_WALLPAPER, "General"];
+    vec![
+        (
+            Setting::kde("kscreenlockerrc", &["Greeter"], "WallpaperPlugin"),
+            VIDEO_WALLPAPER.to_owned(),
+        ),
+        (
+            Setting::kde("kscreenlockerrc", &general, "VideoUrls"),
+            video_list(&video),
+        ),
+    ]
+}
+
 /// The libinput plugins, as their installed path and contents.
 fn libinput_plugins() -> Vec<(std::path::PathBuf, &'static [u8])> {
     KDE_PLASMA_ASSETS
@@ -393,10 +447,19 @@ impl Module for KdePlasma {
         for (path, contents) in libinput_plugins() {
             ctx.write_system_file(&path, contents, "0644")?;
         }
+        for (path, contents) in wallpapers(home) {
+            ctx.write_file(&path, contents, false)?;
+        }
         require_default_fonts(ctx)?;
 
+        // The global theme applies the Breeze Dark colors, so the scheme comes after it,
+        // and the accent after the scheme, which it recolors.
         ctx.set(Setting::LookAndFeel, LOOK_AND_FEEL)?;
+        ctx.set(Setting::ColorScheme, COLOR_SCHEME)?;
         ctx.set(Setting::AccentColor, ACCENT_COLOR)?;
+        for (setting, value) in lock_screen_settings(home) {
+            ctx.set(setting, &value)?;
+        }
         for (setting, value) in kde_settings() {
             ctx.set(setting, value)?;
         }
@@ -474,8 +537,17 @@ impl Module for KdePlasma {
             }
         }
         require_default_fonts(ctx)?;
+        for (path, _) in wallpapers(ctx.home) {
+            require_file(&path)?;
+        }
+        for (setting, value) in lock_screen_settings(ctx.home) {
+            if setting.read(ctx)?.as_deref() != Some(value.as_str()) {
+                return Err(format!("{} is not {value}", setting.describe()).into());
+            }
+        }
         for (setting, value) in [
             (Setting::LookAndFeel, LOOK_AND_FEEL),
+            (Setting::ColorScheme, COLOR_SCHEME),
             (Setting::AccentColor, ACCENT_COLOR),
             (Setting::CursorTheme, CURSOR_THEME),
         ]

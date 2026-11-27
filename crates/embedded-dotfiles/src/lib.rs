@@ -25,6 +25,8 @@ embed_dir!(pub static ENCRYPTION_ASSETS = "../../dotfiles/assets/encryption");
 embed_dir!(pub static HIBERNATION_ASSETS = "../../dotfiles/assets/hibernation");
 embed_dir!(pub static KDE_PLASMA_ASSETS = "../../dotfiles/assets/kde-plasma");
 embed_dir!(pub static MAINTENANCE_ASSETS = "../../dotfiles/assets/maintenance");
+// Only the re-encoded wallpapers: the originals beside them stay in the repository.
+embed_dir!(pub static WALLPAPER_ASSETS = "../../dotfiles/assets/wallpapers/reencoded");
 embed_dir!(pub static REFIND_ASSETS = "../../dotfiles/assets/refind");
 embed_dir!(pub static SNAPSHOTS_ASSETS = "../../dotfiles/assets/snapshots");
 embed_dir!(pub static SYSTEM_TUNING_ASSETS = "../../dotfiles/assets/system-tuning");

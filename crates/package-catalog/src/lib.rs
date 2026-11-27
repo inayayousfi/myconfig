@@ -171,6 +171,8 @@ pub enum Package {
     PlasmaDisks,
     Drkonqi,
     FlatpakKcm,
+    Qt6MultimediaFfmpeg,
+    SmartVideoWallpaper,
     Cups,
     SystemConfigPrinter,
     PrintManager,
@@ -556,6 +558,14 @@ pub const PACKAGE_NAMES: &[((Package, Platform), &str)] = &[
     ((Package::PlasmaDisks, Platform::Pacman), "plasma-disks"),
     ((Package::Drkonqi, Platform::Pacman), "drkonqi"),
     ((Package::FlatpakKcm, Platform::Pacman), "flatpak-kcm"),
+    (
+        (Package::Qt6MultimediaFfmpeg, Platform::Pacman),
+        "qt6-multimedia-ffmpeg",
+    ),
+    (
+        (Package::SmartVideoWallpaper, Platform::Aur),
+        "plasma6-wallpapers-smart-video-wallpaper-reborn",
+    ),
     ((Package::Cups, Platform::Pacman), "cups"),
     (
         (Package::SystemConfigPrinter, Platform::Pacman),

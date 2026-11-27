@@ -1134,6 +1134,7 @@ fn kde_keys_in_this_module_are_the_approved_values() {
         ),
         ("baloofilerc/Basic Settings/Indexing-Enabled", "false"),
         ("plasmaparc/General/RaiseMaximumVolume", "true"),
+        ("breezerc/Style/MenuOpacity", "80"),
         ("powerdevilrc/AC/SuspendAndShutdown/LidAction", "0"),
         ("powerdevilrc/Battery/SuspendAndShutdown/LidAction", "1"),
         (
@@ -1178,7 +1179,12 @@ fn plasma(sandbox: &Sandbox) {
     sandbox.fake("plasmashell", "exit 0");
     sandbox.fake(
         "plasma-apply-colorscheme",
-        r#"printf 'plasma-apply-colorscheme %s\n' "$*" >> "$INAYOS_TEST_LOG""#,
+        r#"printf 'plasma-apply-colorscheme %s\n' "$*" >> "$INAYOS_TEST_LOG"
+case "$1" in
+    --*) ;;
+    *) mkdir -p "$INAYOS_TEST_ROOT/kde/kdeglobals/General"
+       printf '%s' "$1" > "$INAYOS_TEST_ROOT/kde/kdeglobals/General/ColorScheme" ;;
+esac"#,
     );
     sandbox.fake(
         "plasma-apply-lookandfeel",
@@ -1253,7 +1259,7 @@ fn a_cursor_theme_that_plasma_keeps_only_in_its_defaults_still_verifies() {
 }
 
 #[test]
-fn kde_plasma_applies_breeze_dark_with_the_pink_accent_and_remove_puts_it_back() {
+fn kde_plasma_applies_breeze_dark_in_lilas_with_the_pink_accent_and_remove_puts_it_back() {
     let sandbox = Sandbox::new("kde-plasma");
     plasma(&sandbox);
     // The fake `kreadconfig6` reads its own store, and the module reads the theme tools'
@@ -1297,6 +1303,11 @@ exec kwriteconfig6-store "$@""#,
     sandbox.fake(
         "plasma-apply-colorscheme",
         r#"printf 'plasma-apply-colorscheme %s\n' "$*" >> "$INAYOS_TEST_LOG"
+case "$1" in
+    --*) ;;
+    *) mkdir -p "$INAYOS_TEST_ROOT/kde/kdeglobals/General"
+       printf '%s' "$1" > "$INAYOS_TEST_ROOT/kde/kdeglobals/General/ColorScheme" ;;
+esac
 printf '[Colors:View]\nBackgroundNormal=255,78,173\n' >> "$XDG_CONFIG_HOME/kdeglobals""#,
     );
     sandbox.fake(
@@ -1360,7 +1371,28 @@ esac"#,
         );
     }
     assert!(sandbox.calls("plasma-apply-lookandfeel --apply inayos.desktop") > 0);
+    assert!(sandbox.calls("plasma-apply-colorscheme Lilas") > 0);
     assert!(sandbox.calls("plasma-apply-colorscheme --accent-color #ff4ead") > 0);
+    for name in ["anime-cat-girl-lying-down-in-bed.mp4", "lofi-pink-town.mp4"] {
+        assert!(
+            sandbox
+                .home
+                .join(".local/share/wallpapers/inayos")
+                .join(name)
+                .is_file(),
+            "{name} was not installed"
+        );
+    }
+    assert_eq!(
+        kde(&sandbox, "kscreenlockerrc/Greeter/WallpaperPlugin").as_deref(),
+        Some("luisbocanegra.smart.video.wallpaper.reborn")
+    );
+    let lock_video = kde(
+        &sandbox,
+        "kscreenlockerrc/Greeter/Wallpaper/luisbocanegra.smart.video.wallpaper.reborn/General/VideoUrls",
+    )
+    .unwrap();
+    assert!(lock_video.contains("/.local/share/wallpapers/inayos/lofi-pink-town.mp4"));
     assert!(sandbox.calls("plasma-apply-cursortheme --size 24 breeze_cursors") > 0);
     for key in ["AccentColor", "LastUsedCustomAccentColor"] {
         assert_eq!(
@@ -1431,6 +1463,14 @@ exec systemctl-units "$@""#,
         Some("user-rule")
     );
     assert_eq!(kde(&sandbox, "kdeglobals/General/AccentColor"), None);
+    assert_eq!(
+        kde(&sandbox, "kscreenlockerrc/Greeter/WallpaperPlugin"),
+        None
+    );
+    assert!(
+        !sandbox.home.join(".local/share/wallpapers/inayos").exists(),
+        "remove left the video wallpapers"
+    );
     // Only the keys the theme tools changed go back, each through `kwriteconfig6`, and
     // the file keeps what was written after install.
     for restore in [
@@ -3707,7 +3747,12 @@ shift; exec "$@""#,
     );
     sandbox.fake(
         "plasma-apply-colorscheme",
-        r#"printf 'plasma-apply-colorscheme %s dirs=%s\n' "$*" "$XDG_CONFIG_DIRS" >> "$INAYOS_TEST_LOG""#,
+        r#"printf 'plasma-apply-colorscheme %s dirs=%s\n' "$*" "$XDG_CONFIG_DIRS" >> "$INAYOS_TEST_LOG"
+case "$1" in
+    --*) ;;
+    *) mkdir -p "$INAYOS_TEST_ROOT/kde/kdeglobals/General"
+       printf '%s' "$1" > "$INAYOS_TEST_ROOT/kde/kdeglobals/General/ColorScheme" ;;
+esac"#,
     );
     sandbox.fake(
         "gsettings",

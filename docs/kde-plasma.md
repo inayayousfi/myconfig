@@ -12,19 +12,19 @@ The module applies KDE's stock Breeze Dark global theme with personal settings: 
 
 The `plasma` package installs the Lilas color scheme, a dark lilac scheme that replaces the blue-grey of Breeze Dark. The module applies it after the global theme, because the global theme applies the Breeze Dark colors, and applies the accent after the scheme, because the accent recolors it. Its colors come from the desktop video and from the user's preference for pastel mint and lilac:
 
-| Role | Color |
-| --- | --- |
-| Window background | `#241c33` |
-| Lists and text areas | `#1c1528` |
-| Buttons, headers and title bars | `#2e2442` |
-| Text | `#f1e8f8` |
-| Secondary text | `#b8a7cc` |
+| Role                              | Color     |
+| --------------------------------- | --------- |
+| Window background                 | `#241c33` |
+| Lists and text areas              | `#1c1528` |
+| Buttons, headers and title bars   | `#2e2442` |
+| Text                              | `#f1e8f8` |
+| Secondary text                    | `#b8a7cc` |
 | Lilac, for focus and active items | `#b296cc` |
-| Mint, for positive messages | `#9ee6c8` |
-| Orange, for warnings | `#ffb38a` |
-| Pink, for errors | `#ff6b8b` |
-| Sky blue, for links | `#9cc8f0` |
-| Accent, for selection | `#ff4ead` |
+| Mint, for positive messages       | `#9ee6c8` |
+| Orange, for warnings              | `#ffb38a` |
+| Pink, for errors                  | `#ff6b8b` |
+| Sky blue, for links               | `#9cc8f0` |
+| Accent, for selection             | `#ff4ead` |
 
 Breeze draws menus at 80% opacity, and KWin blurs what shows behind them. The blur strength is 3 out of 15, so the wallpaper stays recognizable behind the bars and menus.
 

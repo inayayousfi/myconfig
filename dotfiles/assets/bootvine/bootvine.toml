@@ -1,7 +1,7 @@
-# Black & Pink colors for bootvine. The console shows its 16 colors, which the
+# Lilas colors for bootvine. The console shows its 16 colors, which the
 # bootvine module sets to the Ghostty palette through the kernel options
 # vt.default_red, vt.default_grn and vt.default_blu: magenta is #ff4ead,
-# light-magenta #ff85c8, green #4ade80 and light-red #fca5a5.
+# light-magenta #ff85c8, green #9ee6c8 and light-red #ff9ab0.
 
 [colors.header]
 origin = "white"

@@ -1,5 +1,5 @@
 //! bootvine, which shows the boot as a live tree of systemd jobs, from the distribution's
-//! package, in the Black & Pink colors.
+//! package, in the Lilas colors.
 use std::path::Path;
 
 use embedded_dotfiles::BOOTVINE_ASSETS;
@@ -21,8 +21,8 @@ const SERVICES: [&str; 2] = ["bootvine.service", "bootvine-shutdown.service"];
 const CONFIG: &str = "/etc/bootvine.toml";
 /// The Ghostty palette, colors 0 to 15, which the console shows instead of its own.
 const PALETTE: [&str; 16] = [
-    "000000", "f87171", "4ade80", "facc15", "60a5fa", "ff4ead", "22d3ee", "d0d6e0", "2a2d36",
-    "fca5a5", "86efac", "fde047", "93c5fd", "ff85c8", "67e8f9", "f0f2f7",
+    "1c1528", "ff6b8b", "9ee6c8", "ffe39a", "9cc8f0", "ff4ead", "8fe3ef", "f1e8f8", "7a6a92",
+    "ff9ab0", "c4f2de", "fff0c4", "c3defa", "ff85c8", "bff1f7", "fbf6fe",
 ];
 
 /// The kernel options that set the console's 16 colors to the palette.
@@ -106,7 +106,7 @@ impl Module for Bootvine {
         let sh = ctx.shell;
         verify_packages(ctx, PACKAGES)?;
         if !config_is_current(ctx)? {
-            return Err(format!("{CONFIG} does not hold the Black & Pink colors").into());
+            return Err(format!("{CONFIG} does not hold the Lilas colors").into());
         }
         let config = read_system_file(ctx, MKINITCPIO_CONFIG)?
             .ok_or_else(|| format!("{MKINITCPIO_CONFIG} was not found"))?;
@@ -148,9 +148,9 @@ mod tests {
     #[test]
     fn the_console_colors_split_each_color_into_its_channels() {
         let colors = console_colors();
-        assert!(colors[0].starts_with("vt.default_red=0,248,74,250,96,255,"));
-        assert!(colors[1].starts_with("vt.default_grn=0,113,222,204,165,78,"));
-        assert!(colors[2].starts_with("vt.default_blu=0,113,128,21,250,173,"));
+        assert!(colors[0].starts_with("vt.default_red=28,255,158,255,156,255,"));
+        assert!(colors[1].starts_with("vt.default_grn=21,107,230,227,200,78,"));
+        assert!(colors[2].starts_with("vt.default_blu=40,139,200,154,240,173,"));
         assert!(colors.iter().all(|option| option.split(',').count() == 16));
     }
 }

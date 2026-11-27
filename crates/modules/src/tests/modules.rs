@@ -1229,7 +1229,7 @@ fn the_gtk_cursor_size_changes_without_touching_other_settings() {
 }
 
 #[test]
-fn the_refind_banner_keeps_its_historical_colors_and_size() {
+fn the_refind_banner_is_lilac_with_a_pink_line_at_full_hd() {
     let sandbox = Sandbox::new("refind-images");
     let output = sandbox.root.join("theme");
     fs::create_dir_all(&output).unwrap();
@@ -1252,7 +1252,7 @@ fn the_refind_banner_keeps_its_historical_colors_and_size() {
         .unwrap();
     assert_eq!(
         String::from_utf8_lossy(&info.stdout),
-        "1920x1080|srgb(0,0,0)|srgb(255,78,173)"
+        "1920x1080|srgb(36,28,51)|srgb(255,78,173)"
     );
     for name in ["selection_big.png", "selection_small.png"] {
         assert!(
@@ -2054,9 +2054,9 @@ fn bootvine_installs_its_package_then_joins_the_initramfs_and_the_first_boot_ent
             .unwrap()
             .contains("HOOKS=(base systemd sd-bootvine autodetect")
     );
-    let colors = "vt.default_red=0,248,74,250,96,255,34,208,42,252,134,253,147,255,103,240 \
-                  vt.default_grn=0,113,222,204,165,78,211,214,45,165,239,224,197,133,232,242 \
-                  vt.default_blu=0,113,128,21,250,173,238,224,54,165,172,71,253,200,249,247";
+    let colors = "vt.default_red=28,255,158,255,156,255,143,241,122,255,196,255,195,255,191,251 \
+                  vt.default_grn=21,107,230,227,200,78,227,232,106,154,242,240,222,133,241,246 \
+                  vt.default_blu=40,139,200,154,240,173,239,248,146,176,222,196,250,200,247,254";
     assert_eq!(
         system_file(&sandbox, "/boot/refind_linux.conf").unwrap(),
         REFIND_LINUX

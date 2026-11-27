@@ -19,7 +19,7 @@ const INVENTORY_END: &str =
 
 const CACHYOS_INVENTORY: &[&str] = &[
     "- **Editor**: Neovim 0.12 is `EDITOR`, with the Black & Pink config and the mouse-first normie.nvim plugin (https://github.com/inayayousfi/normie.nvim).\n",
-    "- **Terminal workspace**: the Herdr app (AUR `herdr-app-bin`) on herdr-core (`hc`), the background server that keeps terminals and agents running. `hc ls`, `hc attach` and `hc read` list, join and read them; the `herdr` agent skill teaches agents to use it. Its Black & Pink look lives in the `blacknpink` layout and theme under `~/.config/herdr-app`, with telemetry off. Each Herdr shell sends right-clicks to mouse-using programs; Shift+right-click opens Herdr's menu.\n",
+    "- **Terminal workspace**: the Herdr app (AUR `herdr-app-bin`) on herdr-core (`hc`), the background server that keeps terminals and agents running. `hc ls`, `hc attach` and `hc read` list, join and read them; the `herdr` agent skill teaches agents to use it. Its Lilas look lives in the `blacknpink` layout and the `lilas` theme under `~/.config/herdr-app`, with telemetry off. Each Herdr shell sends right-clicks to mouse-using programs; Shift+right-click opens Herdr's menu.\n",
     "- **Browser**: Google Chrome from the AUR.\n",
     "- **Math and documents**: LyX with TeX Live, the Qalculate calculator with gnuplot for plots, and Okular as the default PDF viewer.\n",
     "- **On-screen keyboard**: Axidev OSK with desktop and login-screen startup.\n",

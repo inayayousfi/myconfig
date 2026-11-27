@@ -17,17 +17,13 @@ fn theme_paths(ctx: &Context) -> ModuleResult<Vec<PathBuf>> {
             Ok(profile
                 .parent()
                 .ok_or("PowerShell profile has no parent directory")?
-                .join("black-pink.omp.json"))
+                .join("lilas.omp.json"))
         })
         .collect()
 }
 
 fn contents() -> &'static [u8] {
-    WINDOWS_ASSETS
-        .dotfiles
-        .PowerShell
-        .black_pink_omp_json
-        .content
+    WINDOWS_ASSETS.dotfiles.PowerShell.lilas_omp_json.content
 }
 
 impl Module for OhMyPosh {

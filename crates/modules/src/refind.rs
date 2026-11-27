@@ -1,4 +1,4 @@
-//! The Black & Pink rEFInd boot menu theme, when rEFInd is installed.
+//! The Lilas rEFInd boot menu theme, when rEFInd is installed.
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -42,7 +42,7 @@ pub(crate) fn generate_images(ctx: &Context, directory: &Path) -> ModuleResult {
     let bottom = "rectangle 0,1076 1920,1080";
     ctx.run(cmd!(
         sh,
-        "{tool} -size 1920x1080 xc:#000000 -fill {pink} -draw {bottom} -define {no_dates} {banner}"
+        "{tool} -size 1920x1080 xc:#241c33 -fill {pink} -draw {bottom} -define {no_dates} {banner}"
     ))?;
     for (name, size, rect, stroke) in [
         (

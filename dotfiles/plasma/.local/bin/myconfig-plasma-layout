@@ -30,6 +30,7 @@ ensure_overview=false
 [ "${MYCONFIG_PLASMA_ENSURE_OVERVIEW:-}" != 1 ] || ensure_overview=true
 
 script="const myconfigFirstRun = $first_run;
+const myconfigHome = \"$HOME\";
 const myconfigEnsureOverview = $ensure_overview;
 $(<"$layout")"
 output="$(qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript "$script")"

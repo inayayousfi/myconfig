@@ -21,6 +21,8 @@ embed_dir!(pub static ZSH = "../../dotfiles/zsh");
 embed_dir!(pub static BOOT_RESCUE_ASSETS = "../../dotfiles/assets/boot-rescue");
 embed_dir!(pub static BOOTVINE_ASSETS = "../../dotfiles/assets/bootvine");
 embed_dir!(pub static KDE_PLASMA_ASSETS = "../../dotfiles/assets/kde-plasma");
+// Only the re-encoded wallpapers: the originals beside them stay in the repository.
+embed_dir!(pub static WALLPAPER_ASSETS = "../../dotfiles/assets/wallpapers/reencoded");
 embed_dir!(pub static REFIND_ASSETS = "../../dotfiles/assets/refind");
 embed_dir!(pub static WAKE_SOURCES_ASSETS = "../../dotfiles/assets/wake-sources");
 embed_dir!(pub static WINDOWS_ASSETS = "../../dotfiles/assets/windows");

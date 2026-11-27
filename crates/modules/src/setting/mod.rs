@@ -13,6 +13,7 @@ pub(crate) const PRESENT: &str = "present";
 
 mod accent_color;
 mod claude_mcp_server;
+mod color_scheme;
 mod controlled_folder_access_app;
 mod cursor_theme;
 mod docker_context;
@@ -54,6 +55,8 @@ pub enum Setting {
     },
     /// The KDE accent color, as `red,green,blue`.
     AccentColor,
+    /// The applied KDE color scheme, by the name of its `.colors` file.
+    ColorScheme,
     Gsettings {
         schema: String,
         key: String,
@@ -174,6 +177,7 @@ impl Setting {
             Self::CursorTheme => Box::new(cursor_theme::CursorTheme),
             Self::PlasmaPanels { runtime } => Box::new(plasma_panels::PlasmaPanels { runtime }),
             Self::AccentColor => Box::new(accent_color::AccentColor),
+            Self::ColorScheme => Box::new(color_scheme::ColorScheme),
             Self::Gsettings { schema, key } => Box::new(gsettings::Gsettings { schema, key }),
             Self::GitConfig { key } => Box::new(git_config::GitConfig { key }),
             Self::LoginShell { user } => Box::new(login_shell::LoginShell { user }),

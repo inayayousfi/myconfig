@@ -23,7 +23,13 @@ const defaultLaunchers = [
     "applications:lyx.desktop",
     "applications:io.github.Qalculate.qalculate-qt.desktop",
 ];
-const wallpaper = "/usr/share/wallpapers/Next/";
+// The kde-plasma module installs the video wallpaper plugin and the videos. The
+// layout command passes the home directory, which the video path needs.
+const home = typeof myconfigHome === "undefined" ? "" : myconfigHome;
+const wallpaperPlugin = "luisbocanegra.smart.video.wallpaper.reborn";
+const wallpaperVideo = `file://${home}/.local/share/wallpapers/myconfig/anime-cat-girl-lying-down-in-bed.mp4`;
+// The video pauses below this battery level, and behind maximized windows.
+const wallpaperPauseBatteryLevel = 30;
 const topWidgetTypes = [
     "myconfig.session",
     "org.kde.plasma.appmenu",
@@ -216,9 +222,10 @@ if (missingWidgetTypes.length > 0) {
 
         if (rebuildAll) {
             desktops().forEach(desktop => {
-                desktop.wallpaperPlugin = "org.kde.image";
-                desktop.currentConfigGroup = ["Wallpaper", "org.kde.image", "General"];
-                desktop.writeConfig("Image", wallpaper);
+                desktop.wallpaperPlugin = wallpaperPlugin;
+                desktop.currentConfigGroup = ["Wallpaper", wallpaperPlugin, "General"];
+                desktop.writeConfig("VideoUrls", JSON.stringify([{ filename: wallpaperVideo, enabled: true, loop: true }]));
+                desktop.writeConfig("PauseBatteryLevel", wallpaperPauseBatteryLevel);
             });
         }
 

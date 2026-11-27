@@ -20,7 +20,7 @@ pub enum HerdrCoreSource {
     Release,
 }
 
-/// The desktop app with its Black & Pink look, shown in the `blacknpink` layout.
+/// The desktop app with its Lilas look, shown in the `blacknpink` layout.
 pub struct Herdr;
 
 impl HerdrCore {

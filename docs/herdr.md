@@ -8,12 +8,14 @@ The `herdr-core` module installs herdr-core on every Linux profile. Arch and Cac
 
 The `herdr` module installs the app, the AUR package `herdr-app-bin`, on CachyOS only. It stows the `herdr` package into `~/.config/herdr-app`:
 
-- `settings.json` turns telemetry off and sets the Black & Pink theme and the BlexMono font for every layout that leaves them unset.
-- `themes/blacknpink.json` holds the Ghostty palette and the panel colors.
-- `layouts/blacknpink.json` is the window: the theme, the font, window blur and one see-through background shared by the terminals, the gaps and the bars, and the three mods below around Herdr's tab block and its Files and Changes panel. A lone terminal has no pane frame or title line; the tab bar shows its folder.
+- `settings.json` turns telemetry off and sets the Lilas theme and the BlexMono font for every layout that leaves them unset.
+- `themes/lilas.json` holds the terminal palette and the panel colors from `stylesheet.md` at the repository root.
+- `layouts/blacknpink.json` is the window: the theme, the font, window blur and one see-through background, the KDE window color at 85% opacity, shared by the terminals and the gaps. The tab bar and the left columns add a lilac tint that matches KDE title bars. The layout holds the three mods below around Herdr's tab block and its Files and Changes panel. A lone terminal has no pane frame or title line; the tab bar shows its folder.
 - `mods/blacknpink-drawer` is a drawer floating at the left edge. At rest only its edge column shows: each space's avatar and each agent's program icon with its status. Hovering slides out the space and agent names over the terminals. It spans the window's height.
 - `mods/blacknpink-buttons` is a fixed column of icon buttons beside the drawer: go to, the command palette, new tab, split right and down, the Files and Changes panel, and settings.
 - `mods/blacknpink-tabs` is a copy of Herdr's `tabs` mod without its new-tab, Files and Changes buttons.
+
+Herdr asks for window blur only through KDE's `org_kde_kwin_blur` protocol. KWin in Plasma 6.8 offers `ext_background_effect_manager_v1` instead, so the window stays see-through without blur.
 
 Herdr's own spaces and agents lists draw only a numbered rail when narrow, and a floating block shows a single mod, so the drawer draws its own lists. It does not offer their right-click menus, reordering or sub-agents. Herdr cuts the resting drawer at its peek width, so its right corners do not show.
 

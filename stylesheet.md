@@ -14,6 +14,7 @@ The palette comes from the desktop video wallpaper (`dotfiles/assets/wallpapers/
 - **Flat colors, sharp boundaries.** Colors sit in flat areas and change cleanly. No blended gradients: shapes may wave, colors do not mix.
 - **Everything is soft.** Round and organic shapes, generous radii, very few straight angles. The only sharpness is the border between two colors.
 - **Dark is a chosen void.** A dark area is a place where I decided there is nothing: the lilac void, or transparency that shows the wallpaper behind. Never a default black.
+- **One family of surfaces.** Every program draws the same two surfaces as KDE: `lilac-base` for window content and `lilac-raised` for bars, title bars and side columns. Everything then reads as one theme. A new shade needs a reason.
 - **Full but ordered.** Dense and maximalist, but aligned and organized. The overflow is in shapes and colors, never in disorder.
 - **Cute is welcome.** Mascots, characters and plush-like icons are part of the pleasure.
 
@@ -27,8 +28,8 @@ From deepest to highest. Each step is lilac, never grey.
 
 | Name              | Hex       | RGB         | Usage                                                  |
 | ----------------- | --------- | ----------- | ------------------------------------------------------ |
-| `lilac-void`      | `#1c1528` | 28, 21, 40  | Lists, text areas, editors, terminals, the chosen void |
-| `lilac-base`      | `#241c33` | 36, 28, 51  | Window background                                      |
+| `lilac-void`      | `#1c1528` | 28, 21, 40  | KDE lists, text areas and inputs, the terminal's black |
+| `lilac-base`      | `#241c33` | 36, 28, 51  | Window background, terminals and editors               |
 | `lilac-raised`    | `#2e2442` | 46, 36, 66  | Buttons, headers, title bars, bars, tooltips           |
 | `lilac-border`    | `#3a2f52` | 58, 47, 82  | Borders, dividers, separators                          |
 | `lilac-highlight` | `#4a3a68` | 74, 58, 104 | Hover backgrounds, current line, pressed buttons       |
@@ -110,12 +111,12 @@ Bright black is readable on the void, because shells use it for suggestions and 
 
 Transparency is how the void shows the wallpaper. A see-through surface is always one of the levels below, never an arbitrary value.
 
-| Name             | Opacity            | Where                                                        |
-| ---------------- | ------------------ | ------------------------------------------------------------ |
-| `glass-terminal` | `85%`              | Herdr window, its terminals, gaps and bars; Neovim inside it |
-| `glass-menu`     | `80%`              | KDE menus (Breeze `MenuOpacity`)                             |
-| `glass-bar`      | Plasma translucent | KDE top bar and dock                                         |
-| `solid`          | `100%`             | Drawers, dialogs, anything read for long                     |
+| Name | Opacity | Where |
+| --- | --- | --- |
+| `glass-terminal` | `85%` | Herdr window: `lilac-base`, with `lilac-raised` bars and side columns; Neovim inside it |
+| `glass-menu` | `80%` | KDE menus (Breeze `MenuOpacity`) |
+| `glass-bar` | Plasma translucent | KDE top bar and dock |
+| `solid` | `100%` | Drawers, dialogs, anything read for long |
 
 - **Blur:** KWin blurs what shows behind see-through surfaces at strength `3` out of `15`, light enough that the wallpaper stays recognizable.
 - **No transparent text.** Only backgrounds become see-through; text and icons stay fully opaque.
@@ -310,7 +311,7 @@ Buttons are pills (`radius-full`).
 
 | Element              | Color                                             |
 | -------------------- | ------------------------------------------------- |
-| Background           | transparent over `glass-terminal`, else `#1c1528` |
+| Background           | transparent over `glass-terminal`, else `#241c33` |
 | Current line         | `#2e2442`                                         |
 | Selection            | `#ff4ead26`                                       |
 | Search match         | `#b296cc40`                                       |

@@ -26,7 +26,7 @@ The `plasma` package installs the Lilas color scheme, a dark lilac scheme that r
 | Sky blue, for links | `#9cc8f0` |
 | Accent, for selection | `#ff4ead` |
 
-Breeze draws menus at 80% opacity, and KWin blurs what shows behind them.
+Breeze draws menus at 80% opacity, and KWin blurs what shows behind them. The blur strength is 3 out of 15, so the wallpaper stays recognizable behind the bars and menus.
 
 The session uses a US keyboard layout whose right Alt key is the Compose key: press and release it, then type a sequence such as `'` `e` for é. The login and lock screens keep the system layout from `localectl`.
 

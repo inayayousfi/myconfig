@@ -1127,6 +1127,7 @@ fn kde_keys_in_this_module_are_the_approved_values() {
         ("kdeglobals/KDE/AnimationDurationFactor", "0.25"),
         ("kdeglobals/KDE/SingleClick", "true"),
         ("kwinrc/Plugins/inayos-panelsEnabled", "true"),
+        ("kwinrc/Effect-blur/BlurStrength", "3"),
         ("plasmanotifyrc/DoNotDisturb/WhenFullscreen", "false"),
         (
             "kglobalshortcutsrc/services/org.kde.krunner.desktop/_launch",

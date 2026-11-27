@@ -145,6 +145,8 @@ pub(crate) fn kde_settings() -> Vec<(Setting, &'static str)> {
         ("EdgeBarrier", "EdgeBarrier", "0"),
         ("Effect-overview", "BorderActivate", "9"),
         ("Plugins", "inayos-panelsEnabled", "true"),
+        // A light blur behind see-through bars and menus, so the wallpaper still shows.
+        ("Effect-blur", "BlurStrength", "3"),
     ] {
         add("kwinrc", &[group], key, value);
     }

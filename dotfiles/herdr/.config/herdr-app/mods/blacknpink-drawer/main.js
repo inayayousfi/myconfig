@@ -12,8 +12,8 @@ const fullHeight = () => {
 
 const icon = (name) => `mods/workspace-chrome/${name}.svg`;
 const EDGE = 42, NAMES = 210;
-// The spaces mod's avatar colors.
-const MARK = { ansi6: "#22a99a", ansi3: "#e3814f", ansi4: "#5b8def", ansi5: "#8b7cf6", ansi2: "#3fae6a", ansi1: "#d9649a" };
+// The spaces mod's avatar colors, in the stylesheet's pastels.
+const MARK = { ansi6: "#8fe3ef", ansi3: "#ffb38a", ansi4: "#9cc8f0", ansi5: "#b296cc", ansi2: "#9ee6c8", ansi1: "#f1c6dd" };
 const clean = (s) => (s ?? "").replace(/^[^\p{L}\p{N}\p{Ps}\p{Pi}]+/u, "").trim();
 const stop = (_e, cx) => cx.stop_propagation();
 
@@ -39,7 +39,7 @@ export default class Drawer extends View {
       const c = colors[s.id] ?? "ansi6", fill = c.startsWith("#") ? c : (MARK[c] ?? t[c]);
       const mark = dot(s.status);
       const avatar = div().relative().size(22).rounded(6).bg(fill).flex().items_center().justify_center()
-        .text_size(11.5).font_semibold().text_color("#ffffff").child([...s.name][0]?.toUpperCase() ?? "?")
+        .text_size(11.5).font_semibold().text_color("#1c1528").child([...s.name][0]?.toUpperCase() ?? "?")
         .when(Boolean(mark), el => el.child(mark.absolute().top(-2).right(-2)));
       return row(`space-${s.id}`, s.active, () => run("space.select", { id: s.id }), avatar,
         [div().flex_1().min_w(0).truncate().child(s.name)]);

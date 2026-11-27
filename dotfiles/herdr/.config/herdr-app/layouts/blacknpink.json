@@ -45,7 +45,8 @@
           "size": {
             "px": 42
           },
-          "window_drag": true
+          "window_drag": true,
+          "background": "chrome"
         },
         {
           "id": "work-body",
@@ -131,14 +132,14 @@
     12,
     16
   ],
-  "theme": "blacknpink",
+  "theme": "lilas",
   "font": "BlexMono Nerd Font",
   "window_blur": true,
   "terminal_opacity": 0,
   "colors": {
-    "canvas": "#000000d9",
+    "canvas": "#241c33d9",
     "background": "#00000000",
-    "chrome": "#00000000"
+    "chrome": "#4a3a6840"
   },
   "floating": [
     {
